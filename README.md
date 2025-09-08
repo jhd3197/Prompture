@@ -6,7 +6,7 @@
 
 - ✅ **Structured Output**: Request models to return JSON only
 - ✅ **Validation**: Automatic validation with `jsonschema`
-- ✅ **Multi-driver**: Run the same specification against multiple drivers (OpenAI, Ollama, Claude, HTTP, mock)
+- ✅ **Multi-driver**: Run the same specification against multiple drivers (OpenAI, Ollama, Claude, Azure, HTTP, mock)
 - ✅ **Reports**: Generate JSON reports with results
 - ✅ **Usage Tracking**: **NEW** - Automatic token and cost monitoring for all calls
 
@@ -50,6 +50,7 @@ The main functions now return:
 - **OllamaDriver**: Cost = $0.00 (free local models)
 - **OpenAIDriver**: Cost automatically calculated based on the model
 - **ClaudeDriver**: Cost automatically calculated based on the model
+- **AzureDriver**: Cost automatically calculated based on the model
 
 ## Batch Running and Testing Prompts
 

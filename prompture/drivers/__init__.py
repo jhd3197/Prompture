@@ -3,6 +3,7 @@ from .openai_driver import OpenAIDriver
 from .local_http_driver import LocalHTTPDriver
 from .ollama_driver import OllamaDriver
 from .claude_driver import ClaudeDriver
+from .azure_driver import AzureDriver
 from ..settings import settings
 
 # Factory to get a driver instance
@@ -18,4 +19,4 @@ def get_driver(provider_name: str = None):
         return OllamaDriver(endpoint=settings.ollama_endpoint, model=settings.ollama_model)
     raise ValueError(f"Unknown provider: {provider}")
 
-__all__ = ["MockDriver", "OpenAIDriver", "LocalHTTPDriver", "OllamaDriver", "ClaudeDriver", "get_driver"]
+__all__ = ["MockDriver", "OpenAIDriver", "LocalHTTPDriver", "OllamaDriver", "ClaudeDriver", "AzureDriver", "get_driver"]

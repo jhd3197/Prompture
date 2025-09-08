@@ -4,6 +4,7 @@ from unittest.mock import patch, Mock
 from prompture.drivers import OllamaDriver
 from prompture.drivers import OpenAIDriver
 from prompture.drivers import MockDriver
+from prompture.drivers import AzureDriver
 
 
 def assert_valid_usage_metadata(meta: dict):
@@ -326,6 +327,197 @@ class TestOpenAIDriver:
         call_args = mock_create.call_args[1]
         assert call_args["temperature"] == 0.5
         assert call_args["max_tokens"] == 100
+
+
+class TestAzureDriver:
+    """Tests for AzureDriver with mocked OpenAI library."""
+
+    def test_init_without_api_keys_uses_env_vars(self):
+        """Test initialization with API key from environment variables."""
+        with patch.dict("os.environ", {
+            "AZURE_API_KEY": "test-key",
+            "AZURE_API_ENDPOINT": "https://test-endpoint.openai.azure.com",
+            "AZURE_DEPLOYMENT_ID": "test-deployment"
+        }):
+            with patch('prompture.drivers.azure_driver.openai') as mock_openai:
+                driver = AzureDriver()
+                assert driver.api_key == "test-key"
+                assert driver.endpoint == "https://test-endpoint.openai.azure.com"
+                assert driver.deployment_id == "test-deployment"
+                assert driver.model == "gpt-4o-mini"
+                # Verify openai configuration was set
+                assert mock_openai.api_key == "test-key"
+                assert mock_openai.api_type == "azure"
+                assert mock_openai.api_base == "https://test-endpoint.openai.azure.com"
+                assert mock_openai.api_version == "2023-07-01-preview"
+
+    def test_explicit_params_take_precedence(self):
+        """Test that explicit parameters override environment variables."""
+        with patch.dict("os.environ", {
+            "AZURE_API_KEY": "env-key",
+            "AZURE_API_ENDPOINT": "https://env-endpoint.openai.azure.com",
+            "AZURE_DEPLOYMENT_ID": "env-deployment"
+        }):
+            with patch('prompture.drivers.azure_driver.openai'):
+                driver = AzureDriver(
+                    api_key="explicit-key",
+                    endpoint="https://explicit-endpoint.openai.azure.com",
+                    deployment_id="explicit-deployment"
+                )
+                assert driver.api_key == "explicit-key"
+                assert driver.endpoint == "https://explicit-endpoint.openai.azure.com"
+                assert driver.deployment_id == "explicit-deployment"
+
+    def test_init_with_custom_model(self):
+        """Test initialization with custom model."""
+        with patch.dict("os.environ", {
+            "AZURE_API_KEY": "test-key",
+            "AZURE_API_ENDPOINT": "https://test-endpoint.openai.azure.com",
+            "AZURE_DEPLOYMENT_ID": "test-deployment"
+        }):
+            with patch('prompture.drivers.azure_driver.openai'):
+                driver = AzureDriver(model="gpt-4")
+                assert driver.model == "gpt-4"
+
+    @patch('prompture.drivers.azure_driver.openai')
+    def test_openai_not_installed_raises_error(self, mock_openai):
+        """Test that missing openai package raises RuntimeError."""
+        mock_openai.__bool__.return_value = False  # Simulate missing package
+
+        with patch.dict("os.environ", {
+            "AZURE_API_KEY": "test-key",
+            "AZURE_API_ENDPOINT": "https://test-endpoint.openai.azure.com",
+            "AZURE_DEPLOYMENT_ID": "test-deployment"
+        }):
+            driver = AzureDriver()
+            
+            with pytest.raises(RuntimeError, match="openai package not installed"):
+                driver.generate("Test", {})
+
+    @patch('prompture.drivers.azure_driver.openai.ChatCompletion.create')
+    def test_successful_generation_with_cost_calculation(self, mock_create):
+        """Test generation with proper cost calculation."""
+        # Mock the OpenAI response
+        mock_response = {
+            "usage": {
+                "prompt_tokens": 100,
+                "completion_tokens": 50,
+                "total_tokens": 150
+            },
+            "choices": [{ "message": { "content": '{"name": "Juan"}' } }]
+        }
+        mock_create.return_value = mock_response
+
+        with patch.dict("os.environ", {
+            "AZURE_API_KEY": "test-key",
+            "AZURE_API_ENDPOINT": "https://test-endpoint.openai.azure.com",
+            "AZURE_DEPLOYMENT_ID": "test-deployment"
+        }):
+            driver = AzureDriver(model="gpt-4o-mini")
+            result = driver.generate("Test prompt", {})
+
+        # Validate the API call
+        mock_create.assert_called_once()
+        call_args = mock_create.call_args[1]
+        assert call_args["engine"] == "test-deployment"  # Should use deployment_id as engine
+        assert call_args["messages"][0]["content"] == "Test prompt"
+        assert call_args["temperature"] == 0.0  # default from options
+
+        # Validate response
+        assert result["text"] == '{"name": "Juan"}'
+
+        # Validate metadata
+        meta = result["meta"]
+        assert_valid_usage_metadata(meta)
+
+        # Validate Azure-specific data
+        assert meta["prompt_tokens"] == 100
+        assert meta["completion_tokens"] == 50
+        assert meta["total_tokens"] == 150
+
+        # Validate cost calculation for gpt-4o-mini
+        expected_cost = (100 / 1000 * 0.00015) + (50 / 1000 * 0.0006)
+        assert abs(meta["cost"] - expected_cost) < 0.000001
+
+        # Validate raw response preservation
+        assert meta["raw_response"] == mock_response
+
+    @patch('prompture.drivers.azure_driver.openai.ChatCompletion.create')
+    def test_cost_calculation_for_different_models(self, mock_create):
+        """Test cost calculation for different Azure models."""
+        test_cases = [
+            ("gpt-4o", 100, 50, (100/1000*0.005) + (50/1000*0.015)),
+            ("gpt-4o-mini", 200, 75, (200/1000*0.00015) + (75/1000*0.0006)),
+            ("gpt-4", 50, 25, (50/1000*0.03) + (25/1000*0.06)),
+        ]
+
+        for model, prompt_tokens, completion_tokens, expected_cost in test_cases:
+            mock_response = {
+                "usage": {
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": completion_tokens,
+                    "total_tokens": prompt_tokens + completion_tokens
+                },
+                "choices": [{ "message": { "content": "{}" } }]
+            }
+            mock_create.return_value = mock_response
+
+            with patch.dict("os.environ", {
+                "AZURE_API_KEY": "test-key",
+                "AZURE_API_ENDPOINT": "https://test-endpoint.openai.azure.com",
+                "AZURE_DEPLOYMENT_ID": "test-deployment"
+            }):
+                driver = AzureDriver(model=model)
+                result = driver.generate("Test", {})
+
+            assert abs(result["meta"]["cost"] - expected_cost) < 0.000001
+
+    @patch('prompture.drivers.azure_driver.openai.ChatCompletion.create')
+    def test_missing_usage_defaults_to_zero(self, mock_create):
+        """Test handling when usage info is missing from Azure OpenAI response."""
+        mock_response = {
+            "choices": [{ "message": { "content": "{}" } }]
+            # No usage field
+        }
+        mock_create.return_value = mock_response
+
+        with patch.dict("os.environ", {
+            "AZURE_API_KEY": "test-key",
+            "AZURE_API_ENDPOINT": "https://test-endpoint.openai.azure.com",
+            "AZURE_DEPLOYMENT_ID": "test-deployment"
+        }):
+            driver = AzureDriver()
+            result = driver.generate("Test", {})
+
+        meta = result["meta"]
+        assert_valid_usage_metadata(meta)
+        assert meta["prompt_tokens"] == 0
+        assert meta["completion_tokens"] == 0
+        assert meta["total_tokens"] == 0
+        assert meta["cost"] == 0.0
+
+    @patch('prompture.drivers.azure_driver.openai.ChatCompletion.create')
+    def test_custom_model_option(self, mock_create):
+        """Test that options model is used for cost calculation."""
+        mock_response = {
+            "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+            "choices": [{ "message": { "content": "{}" } }]
+        }
+        mock_create.return_value = mock_response
+
+        with patch.dict("os.environ", {
+            "AZURE_API_KEY": "test-key",
+            "AZURE_API_ENDPOINT": "https://test-endpoint.openai.azure.com",
+            "AZURE_DEPLOYMENT_ID": "test-deployment"
+        }):
+            driver = AzureDriver(model="gpt-4o-mini")
+            result = driver.generate("Test", {"model": "gpt-4"})
+
+        # Model should be used for cost calculation
+        meta = result["meta"]
+        # Calculate expected cost for gpt-4
+        expected_cost = (1 / 1000 * 0.03) + (1 / 1000 * 0.06)
+        assert abs(meta["cost"] - expected_cost) < 0.000001
 
 
 class TestMockDriver:
