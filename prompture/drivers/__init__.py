@@ -17,6 +17,10 @@ def get_driver(provider_name: str = None):
         return LocalHTTPDriver(endpoint=settings.hf_endpoint)
     if provider == "ollama":
         return OllamaDriver(endpoint=settings.ollama_endpoint, model=settings.ollama_model)
+    if provider == "claude":
+        return ClaudeDriver(api_key=settings.claude_api_key, model=settings.claude_model)
+    if provider == "azure":
+        return AzureDriver(api_key=settings.azure_api_key, endpoint=settings.azure_api_endpoint, deployment_id=settings.azure_deployment_id)
     raise ValueError(f"Unknown provider: {provider}")
 
 __all__ = ["MockDriver", "OpenAIDriver", "LocalHTTPDriver", "OllamaDriver", "ClaudeDriver", "AzureDriver", "get_driver"]

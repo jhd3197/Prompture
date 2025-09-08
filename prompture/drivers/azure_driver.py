@@ -32,6 +32,10 @@ class AzureDriver(Driver):
             "prompt": 0.01,       # $0.01 per 1K prompt tokens
             "completion": 0.03,    # $0.03 per 1K completion tokens
         },
+        "gpt-4.1":{
+            "prompt": 0.03,       # $0.03 per 1K prompt tokens
+            "completion": 0.06,    # $0.06 per 1K completion tokens
+        }
     }
 
     def __init__(
@@ -44,13 +48,22 @@ class AzureDriver(Driver):
         self.api_key = api_key or os.getenv("AZURE_API_KEY")
         self.endpoint = endpoint or os.getenv("AZURE_API_ENDPOINT")
         self.deployment_id = deployment_id or os.getenv("AZURE_DEPLOYMENT_ID")
+        self.api_version = os.getenv("AZURE_API_VERSION", "2023-07-01-preview")
         self.model = model
+        
+        # Validate required configuration
+        if self.api_key is None:
+            raise ValueError("Azure API key is not configured. Please set the AZURE_API_KEY environment variable.")
+        if self.endpoint is None:
+            raise ValueError("Azure API endpoint is not configured. Please set the AZURE_API_ENDPOINT environment variable.")
+        if self.deployment_id is None:
+            raise ValueError("Azure deployment ID is not configured. Please set the AZURE_DEPLOYMENT_ID environment variable.")
         
         if openai:
             openai.api_key = self.api_key
             openai.api_type = "azure"
             openai.api_base = self.endpoint
-            openai.api_version = "2023-07-01-preview"
+            openai.api_version = self.api_version
 
     def generate(self, prompt: str, options: Dict[str,Any]) -> Dict[str,Any]:
         if not openai:
