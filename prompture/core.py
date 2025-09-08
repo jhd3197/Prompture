@@ -3,6 +3,7 @@ Comentarios en español.
 """
 from __future__ import annotations
 import json
+import re
 from typing import Any, Dict, Optional
 
 class Driver:
@@ -29,7 +30,12 @@ class Driver:
 def clean_json_text(text: str) -> str:
     """Intentos básicos para extraer JSON si viene con ````` o explicaciones.
     No es perfecto; se recomienda usar prompts con ejemplos para forzar JSON válido.
+    
+    Also removes <think>...</think> blocks that might be present in LLM output.
     """
+    # eliminar <think> blocks using regex
+    text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
+    
     # eliminar fences ```json ``` o ```
     text = text.strip()
     # detect code fence and extract first code block
@@ -73,7 +79,7 @@ def clean_json_text_with_ai(driver: Driver, text: str, options: Dict[str, Any] =
     cleaned = clean_json_text(raw)
     return cleaned
 
-def ask_for_json(driver: Driver, content_prompt: str, json_schema: Dict[str, Any], ai_cleanup: bool = False, options: Dict[str, Any] = {}) -> Dict[str, Any]:
+def ask_for_json(driver: Driver, content_prompt: str, json_schema: Dict[str, Any], ai_cleanup: bool = True, options: Dict[str, Any] = {}) -> Dict[str, Any]:
     """Sends a prompt to the driver and returns both JSON output and usage metadata.
 
     This function enforces a schema-first approach by requiring a json_schema parameter
@@ -113,16 +119,14 @@ def ask_for_json(driver: Driver, content_prompt: str, json_schema: Dict[str, Any
         if ai_cleanup:
             # clean_json_text_with_ai returns just the cleaned string, so we need to get fresh metadata
             cleaned_fixed = clean_json_text_with_ai(driver, cleaned, options)
-            try:
-                json_obj = json.loads(cleaned_fixed)
-                return {
-                    "json_string": cleaned_fixed,
-                    "json_object": json_obj,
-                    "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "cost": 0.0}  # Placeholder for cleanup call
-                }
-            except json.JSONDecodeError:
-                raise
-        else:
+        try:
+            json_obj = json.loads(cleaned_fixed)
+            return {
+                "json_string": cleaned_fixed,
+                "json_object": json_obj,
+                "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "cost": 0.0}  # Placeholder for cleanup call
+            }
+        except json.JSONDecodeError:
             raise
         
 def extract_and_jsonify(
@@ -130,7 +134,7 @@ def extract_and_jsonify(
     text: str,
     json_schema: Dict[str, Any],
     instruction_template: str = "Extract information from the following text:",
-    ai_cleanup: bool = False,
+    ai_cleanup: bool = True,
     options: Dict[str, Any] = {}
 ) -> Dict[str, Any]:
     """Extracts structured information from text and returns it as a JSON object with usage metadata.
