@@ -33,6 +33,10 @@ class OpenAIDriver(Driver):
             "prompt": 0.01,       # $0.01 per 1K prompt tokens
             "completion": 0.03,    # $0.03 per 1K completion tokens
         },
+        "gpt-3.5-turbo": {
+            "prompt": 0.0015,     # $0.0015 per
+            "completion": 0.002,   # $0.002 per 1K completion tokens
+        },
     }
 
     def __init__(self, api_key: str | None = None, model: str = "gpt-4o-mini"):
@@ -44,15 +48,26 @@ class OpenAIDriver(Driver):
     def generate(self, prompt: str, options: Dict[str,Any]) -> Dict[str,Any]:
         if openai is None:
             raise RuntimeError("openai package not installed")
-        opts = {**{"temperature": 0.0, "max_tokens": 512}, **options}
         model = options.get("model", self.model)
 
-        resp = openai.ChatCompletion.create(
-            model=model,
-            messages=[{"role":"user","content": prompt}],
-            temperature=opts["temperature"],
-            max_tokens=opts["max_tokens"]
-        )
+        # Build opts dict, excluding temperature for gpt-5-mini
+        if model == "gpt-5-mini":
+            opts = {**{"max_tokens": 512}, **options}
+            if "max_completion_tokens" not in opts:
+                raise ValueError("max_completion_tokens must be provided in options for gpt-5-mini")
+            resp = openai.ChatCompletion.create(
+                model=model,
+                messages=[{"role":"user","content": prompt}],
+                max_completion_tokens=opts["max_completion_tokens"]
+            )
+        else:
+            opts = {**{"temperature": 0.0, "max_tokens": 512}, **options}
+            resp = openai.ChatCompletion.create(
+                model=model,
+                messages=[{"role":"user","content": prompt}],
+                temperature=opts["temperature"],
+                max_tokens=opts["max_tokens"]
+            )
 
         # Extract token usage from OpenAI response
         usage = resp.get("usage", {})
