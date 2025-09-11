@@ -33,7 +33,7 @@ jobs:
           default_bump: patch
           tag_prefix: 'v'
           skip_ci: true
-          
+
       - name: Update VERSION File
         run: |
           echo "${{ steps.bump_version.outputs.new_version }}" > VERSION
@@ -54,6 +54,14 @@ jobs:
           draft: false
           prerelease: false
 
+      - name: Fetch all tags so setuptools_scm can detect the tag
+        run: |
+          git fetch --all --tags --prune
+          echo "Tags in repo:"
+          git tag --list
+          echo "Describe:"
+          git describe --tags --long || true
+
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
@@ -72,8 +80,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install setuptools_scm build twine
 
-      # Build prompture (root) - setuptools_scm will read the tag present in checkout
       - name: Build prompture
+        env:
+          # fallback: force setuptools_scm to use the bumped version if tag isn't seen
+          SETUPTOOLS_SCM_PRETEND_VERSION: ${{ steps.bump_version.outputs.new_version }}
         run: |
           python -m build -o dist/prompture
 
@@ -86,9 +96,11 @@ jobs:
           ls -al dist/prompture
           python -m twine upload dist/prompture/* --non-interactive
 
-      # Build wrapper package
+      ### Build & Publish wrapper ###
       - name: Build llm-to-json (wrapper)
         working-directory: packages/llm_to_json
+        env:
+          SETUPTOOLS_SCM_PRETEND_VERSION: ${{ steps.bump_version.outputs.new_version }}
         run: |
           python -m build -o ../../dist/llm_to_json
 
