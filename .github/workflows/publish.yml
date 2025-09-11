@@ -100,21 +100,7 @@ jobs:
         run: |
           NEW_VERSION=${{ steps.bump_version.outputs.new_version }}
           echo "Pinning wrapper to version $NEW_VERSION"
-          python - <<PY
-import re
-from pathlib import Path
-p = Path("packages/llm_to_json/pyproject.toml")
-s = p.read_text()
-# Replace project.version = "..." (handles both single/double quotes)
-s = re.sub(r'(?m)^(version\s*=\s*).*$',
-           r'\1"'" + NEW_VERSION + r"\"", s)
-# Replace dependencies = [ ... ] block to pin prompture==NEW_VERSION
-s = re.sub(r'(?ms)^(dependencies\s*=\s*\[).*?^\]',
-           'dependencies = [ "prompture=={}" ]'.format(NEW_VERSION), s)
-p.write_text(s)
-print("Updated", p)
-print(p.read_text())
-PY
+          python -c "import re; from pathlib import Path; p = Path('packages/llm_to_json/pyproject.toml'); s = p.read_text(); s = re.sub(r'(?m)^(version\\s*=\\s*).*$','\\1\"'+NEW_VERSION+'\"',s); s = re.sub(r'(?ms)^(dependencies\\s*=\\s*\\[).*?^\\]','dependencies = [ \"prompture=={}\" ]'.format(NEW_VERSION),s); p.write_text(s); print('Updated',p); print(p.read_text())"
 
       # Build wrapper package --------------------------------------------------
       - name: Build llm-to-json (wrapper)
