@@ -7,7 +7,8 @@ long_description = (this_directory / "README.md").read_text(encoding="utf-8")
 
 setup(
     name="prompture",
-    version='0.0.7',
+    use_scm_version=True, 
+    setup_requires=["setuptools_scm"],
     packages=find_packages(),
     install_requires=[
         "requests>=2.28",

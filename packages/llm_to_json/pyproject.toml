@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "llm-to-json"
+version = "0.0.0"
+description = "Tiny wrapper exposing Prompture helpers to convert LLM output into JSON."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+keywords = ["llm", "json", "prompt", "structured-output"]
+authors = [
+  { name="Juan Denis", email="juan@vene.co" }
+]
+
+# IMPORTANT: dependencies MUST be an array (list of strings)
+dependencies = [
+  "prompture>=0.0.1"
+]
