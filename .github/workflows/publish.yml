@@ -57,9 +57,7 @@ jobs:
       - name: Fetch all tags so setuptools_scm can detect the tag
         run: |
           git fetch --all --tags --prune
-          echo "Tags in repo:"
           git tag --list
-          echo "Describe:"
           git describe --tags --long || true
 
       - name: Set up Python
@@ -78,11 +76,12 @@ jobs:
       - name: Install Build Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install setuptools_scm build twine
+          pip install setuptools_scm build twine toml
 
+      # Build & Publish prompture ----------------------------------------------
       - name: Build prompture
         env:
-          # fallback: force setuptools_scm to use the bumped version if tag isn't seen
+          # fallback if tag not fully available: force version to bumped version
           SETUPTOOLS_SCM_PRETEND_VERSION: ${{ steps.bump_version.outputs.new_version }}
         run: |
           python -m build -o dist/prompture
@@ -96,11 +95,30 @@ jobs:
           ls -al dist/prompture
           python -m twine upload dist/prompture/* --non-interactive
 
-      ### Build & Publish wrapper ###
+      # ---- NEW: Pin wrapper version & dependency so it matches prompture ------
+      - name: Pin llm_to_json version & dependency to prompture
+        run: |
+          NEW_VERSION=${{ steps.bump_version.outputs.new_version }}
+          echo "Pinning wrapper to version $NEW_VERSION"
+          python - <<PY
+import re
+from pathlib import Path
+p = Path("packages/llm_to_json/pyproject.toml")
+s = p.read_text()
+# Replace project.version = "..." (handles both single/double quotes)
+s = re.sub(r'(?m)^(version\s*=\s*).*$',
+           r'\1"'" + NEW_VERSION + r"\"", s)
+# Replace dependencies = [ ... ] block to pin prompture==NEW_VERSION
+s = re.sub(r'(?ms)^(dependencies\s*=\s*\[).*?^\]',
+           'dependencies = [ "prompture=={}" ]'.format(NEW_VERSION), s)
+p.write_text(s)
+print("Updated", p)
+print(p.read_text())
+PY
+
+      # Build wrapper package --------------------------------------------------
       - name: Build llm-to-json (wrapper)
         working-directory: packages/llm_to_json
-        env:
-          SETUPTOOLS_SCM_PRETEND_VERSION: ${{ steps.bump_version.outputs.new_version }}
         run: |
           python -m build -o ../../dist/llm_to_json
 
