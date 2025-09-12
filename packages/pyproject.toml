@@ -7,7 +7,7 @@ name = "llm-to-json"
 version = "0.0.0"
 description = "Tiny wrapper exposing Prompture helpers to convert LLM output into JSON."
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = { text = "MIT" }
 keywords = ["llm", "json", "prompt", "structured-output"]
 authors = [
@@ -18,3 +18,7 @@ authors = [
 dependencies = [
   "prompture>=0.0.1"
 ]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["llm_to_json*"]

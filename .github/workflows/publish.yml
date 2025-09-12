@@ -104,9 +104,9 @@ jobs:
 
       # Build wrapper package --------------------------------------------------
       - name: Build llm-to-json (wrapper)
-        working-directory: packages/llm_to_json
+        working-directory: packages/
         run: |
-          python -m build -o ../../dist/llm_to_json
+          python -m build -o ../dist/llm_to_json
 
       - name: Publish llm-to-json to PyPI
         env:
