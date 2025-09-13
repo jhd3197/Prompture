@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     azure_api_endpoint: Optional[str] = None
     azure_deployment_id: Optional[str] = None
 
-    model_config = SettingsConfigDict(env_file=".env")
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        extra="ignore"
+    )
 
 settings = Settings()

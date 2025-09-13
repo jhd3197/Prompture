@@ -87,7 +87,8 @@ class OpenAIDriver(Driver):
             "completion_tokens": completion_tokens,
             "total_tokens": total_tokens,
             "cost": round(total_cost, 6),  # Round to 6 decimal places
-            "raw_response": dict(resp)
+            "raw_response": dict(resp),
+            "model_name": model
         }
 
         text = resp["choices"][0]["message"]["content"]

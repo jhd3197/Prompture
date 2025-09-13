@@ -124,7 +124,7 @@ def ask_for_json(driver: Driver, content_prompt: str, json_schema: Dict[str, Any
             return {
                 "json_string": cleaned_fixed,
                 "json_object": json_obj,
-                "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "cost": 0.0}  # Placeholder for cleanup call
+                "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "cost": 0.0, "model_name": options.get("model", getattr(driver, "model", "")) }  # Model name from options or driver
             }
         except json.JSONDecodeError:
             raise

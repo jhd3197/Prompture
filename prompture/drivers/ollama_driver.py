@@ -32,7 +32,8 @@ class OllamaDriver(Driver):
             "completion_tokens": completion_tokens,
             "total_tokens": total_tokens,
             "cost": cost,
-            "raw_response": response_data
+            "raw_response": response_data,
+            "model_name": options.get("model", self.model)
         }
 
         # Ollama returns the text in the "response" key
