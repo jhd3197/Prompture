@@ -10,7 +10,17 @@
 - ✅ **Reports**: Generate JSON reports with results
 - ✅ **Usage Tracking**: **NEW** - Automatic token and cost monitoring for all calls
 
-## 🆕 Token and Cost Tracking (New)
+<br><br>
+
+> [!TIP]
+> Starring this repo helps more developers discover Prompture ✨
+> 
+>![repo_header_no_forks](https://github.com/user-attachments/assets/df6f03c9-6dd2-49a2-b809-60a1ce23a95c)
+>  🔥 Also check out my other project [RepoGif](https://github.com/jhd3197/RepoGif) – the tool I used to generate the GIF above!
+<br>
+
+
+## 🆕 Token and Cost Tracking
 
 Starting with this version, `extract_and_jsonify` and `ask_for_json` automatically include token usage and cost information:
 
@@ -41,6 +51,7 @@ The main functions now return:
         "completion_tokens": int,
         "total_tokens": int,
         "cost": float      # Cost in USD (0.0 for free models)
+        "model_name": string
     }
 }
 ```
