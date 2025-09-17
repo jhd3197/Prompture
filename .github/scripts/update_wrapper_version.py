@@ -1,7 +1,7 @@
 import sys
 import toml
 
-PYPROJECT_PATH = "packages/llm_to_json/pyproject.toml"
+PYPROJECT_PATH = "packages/pyproject.toml"
 
 def main():
     if len(sys.argv) < 2:
