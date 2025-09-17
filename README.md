@@ -15,7 +15,8 @@
 > [!TIP]
 > Starring this repo helps more developers discover Prompture ✨
 > 
->![repo_header_no_forks](https://github.com/user-attachments/assets/df6f03c9-6dd2-49a2-b809-60a1ce23a95c)
+>![prompture_no_forks](https://github.com/user-attachments/assets/720f888e-a885-4eb3-970c-ba5809fe2ce7)
+> 
 >  🔥 Also check out my other project [RepoGif](https://github.com/jhd3197/RepoGif) – the tool I used to generate the GIF above!
 <br>
 
