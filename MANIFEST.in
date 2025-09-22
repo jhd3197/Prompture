@@ -1,0 +1,8 @@
+# MANIFEST.in
+exclude *.toml
+exclude *.yml
+exclude *.yaml
+exclude .gitignore
+exclude tests/*
+exclude examples/*
+exclude docs/*

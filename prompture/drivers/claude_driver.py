@@ -13,23 +13,36 @@ from ..core import Driver
 class ClaudeDriver(Driver):
     # Claude pricing per 1000 tokens (prices should be kept current with Anthropic's pricing)
     MODEL_PRICING = {
-        "claude-3-opus-20240229": {
-            "prompt": 0.015,      # $0.015 per 1K prompt tokens
-            "completion": 0.075,   # $0.075 per 1K completion tokens
+        # Claude Opus 4.1
+        "claude-opus-4-1-20250805": {
+            "prompt": 0.015,      # $15 per 1M prompt tokens
+            "completion": 0.075,   # $75 per 1M completion tokens
         },
-        "claude-3-sonnet-20240229": {
-            "prompt": 0.003,      # $0.003 per 1K prompt tokens
-            "completion": 0.015,   # $0.015 per 1K completion tokens
+        # Claude Opus 4.0
+        "claude-opus-4-20250514": {
+            "prompt": 0.015,      # $15 per 1M prompt tokens
+            "completion": 0.075,   # $75 per 1M completion tokens
         },
-        "claude-3-haiku-20240307": {
-            "prompt": 0.00025,    # $0.00025 per 1K prompt tokens
-            "completion": 0.00125, # $0.00125 per 1K completion tokens
+        # Claude Sonnet 4.0
+        "claude-sonnet-4-20250514": {
+            "prompt": 0.003,      # $3 per 1M prompt tokens
+            "completion": 0.015,   # $15 per 1M completion tokens
         },
+        # Claude Sonnet 3.7
+        "claude-3-7-sonnet-20250219": {
+            "prompt": 0.003,      # $3 per 1M prompt tokens
+            "completion": 0.015,   # $15 per 1M completion tokens
+        },
+        # Claude Haiku 3.5
+        "claude-3-5-haiku-20241022": {
+            "prompt": 0.0008,     # $0.80 per 1M prompt tokens
+            "completion": 0.004,   # $4 per 1M completion tokens
+        }
     }
 
-    def __init__(self, api_key: str | None = None, model: str = "claude-3-haiku-20240307"):
+    def __init__(self, api_key: str | None = None, model: str = "claude-3-5-haiku-20241022"):
         self.api_key = api_key or os.getenv("CLAUDE_API_KEY")
-        self.model = model
+        self.model = model or os.getenv("CLAUDE_MODEL_NAME", "claude-3-5-haiku-20241022")
 
     def generate(self, prompt: str, options: Dict[str,Any]) -> Dict[str,Any]:
         if anthropic is None:
@@ -47,9 +60,8 @@ class ClaudeDriver(Driver):
         )
         
         # Extract token usage from Claude response
-        usage = resp.usage
-        prompt_tokens = usage.input_tokens
-        completion_tokens = usage.output_tokens
+        prompt_tokens = resp.usage.input_tokens
+        completion_tokens = resp.usage.output_tokens
         total_tokens = prompt_tokens + completion_tokens
         
         # Calculate cost based on model pricing
