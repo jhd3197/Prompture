@@ -9,8 +9,9 @@
 - ✅ **Multi-driver**: Run the same specification against multiple drivers (OpenAI, Ollama, Claude, Azure, HTTP, mock)
 - ✅ **Reports**: Generate JSON reports with results
 - ✅ **Usage Tracking**: **NEW** - Automatic token and cost monitoring for all calls
+- ✅ **AI Cleanup**: Automatically fix malformed JSON responses using AI
 
-<br><br>
+<br>
 
 > [!TIP]
 > Starring this repo helps more developers discover Prompture ✨
@@ -27,10 +28,15 @@ Starting with this version, `extract_and_jsonify` and `ask_for_json` automatical
 
 ```python
 from prompture import extract_and_jsonify
-from prompture.drivers import OllamaDriver
 
-driver = OllamaDriver(endpoint="http://localhost:11434/api/generate", model="gemma3")
-result = extract_and_jsonify(driver, "Text to process", json_schema)
+# AI_PROVIDER environment variable should be set to "ollama", "openai", "azure", or "claude"
+
+# Extract JSON with automatic driver selection
+result = extract_and_jsonify(
+    text="Text to process",
+    json_schema=json_schema,
+    model_name="gemma3"  # optional model override
+)
 
 # Now returns both the response and usage information
 json_output = result["json_string"]
@@ -57,12 +63,16 @@ The main functions now return:
 }
 ```
 
-## 🚀 Automatic Driver Initialization
+## 🚀 Driver Initialization
 
-The `auto_extract_and_jsonify()` function provides a convenient way to extract JSON from text without manually initializing a driver. It automatically uses the appropriate driver based on your environment configuration:
+Prompture offers two approaches to initialize drivers: automatic (environment-based) and manual (explicit). Each has its own benefits depending on your use case.
+
+### Automatic Initialization
+
+The `extract_and_jsonify()` function provides a convenient way to extract JSON from text without manually initializing a driver. It automatically uses the appropriate driver based on your environment configuration:
 
 ```python
-from prompture import auto_extract_and_jsonify
+from prompture import extract_and_jsonify
 
 # Define your schema
 schema = {
@@ -74,7 +84,7 @@ schema = {
 }
 
 # Extract JSON with automatic driver initialization
-result = auto_extract_and_jsonify(
+result = extract_and_jsonify(
     "John is 28 years old",
     schema,
     instruction_template="Extract the person's information:"
@@ -92,7 +102,7 @@ print(f"Cost: ${usage['cost']:.6f}")
 
 ### Configuration
 
-The function uses the `AI_PROVIDER` environment variable to determine which driver to use. It supports all the same features as `extract_and_jsonify()`, including:
+The function uses the `AI_PROVIDER` environment variable to determine which driver to use. It supports all the standard features, including:
 
 - Schema validation
 - Token usage tracking
@@ -103,13 +113,14 @@ The function uses the `AI_PROVIDER` environment variable to determine which driv
 
 - `text`: The raw text to extract information from
 - `json_schema`: JSON schema dictionary defining the expected structure
+- `model_name`: Optional model name to override the default for the selected driver
 - `instruction_template`: Template string for the extraction instruction (default: "Extract information from the following text:")
 - `ai_cleanup`: Whether to attempt AI-based cleanup if JSON parsing fails (default: True)
 - `options`: Additional options to pass to the driver
 
 ### Return Structure
 
-Returns the same structure as `extract_and_jsonify()`:
+The function returns:
 ```python
 {
     "json_string": str,    # The original JSON string
@@ -129,7 +140,52 @@ Returns the same structure as `extract_and_jsonify()`:
 - **OllamaDriver**: Cost = $0.00 (free local models)
 - **OpenAIDriver**: Cost automatically calculated based on the model
 - **ClaudeDriver**: Cost automatically calculated based on the model
+- **HuggingFaceDriver**: Cost = $0.00 (free local models)
 - **AzureDriver**: Cost automatically calculated based on the model
+- **LocalHTTPDriver**: Cost = $0.00 (self-hosted models)
+
+
+### Manual Initialization
+
+The manual approach gives you more explicit control over driver configuration and allows using multiple drivers simultaneously. Use `get_driver()` to initialize a specific driver, then pass it to `manual_extract_and_jsonify()`:
+
+```python
+from prompture import manual_extract_and_jsonify
+from prompture.drivers import get_driver
+
+# Initialize driver explicitly
+ollama_driver = get_driver("ollama")
+
+# Define schema
+schema = {
+    "type": "object",
+    "properties": {
+        "name": {"type": "string"},
+        "age": {"type": "integer"}
+    }
+}
+
+# Extract JSON with manual driver
+result = manual_extract_and_jsonify(
+    driver=ollama_driver,
+    text="John is 28 years old",
+    json_schema=schema,
+    model_name="gpt-oss:20b"  # optional model override
+)
+
+# Access results (same structure as extract_and_jsonify)
+json_output = result["json_string"]
+json_object = result["json_object"]
+usage = result["usage"]
+```
+
+#### Benefits of Manual Initialization
+
+- **Multiple Drivers**: Run different drivers simultaneously (e.g., Ollama and OpenAI)
+- **Custom Configuration**: Initialize drivers with specific settings
+- **Explicit Control**: More control over which driver handles each request
+- **Model Flexibility**: Easily switch between models for the same driver
+- **Testing**: Better for testing scenarios where you need specific driver configurations
 
 ## Batch Running and Testing Prompts
 
