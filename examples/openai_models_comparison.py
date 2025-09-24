@@ -2,10 +2,13 @@
 Example script to compare multiple OpenAI models on a complex parsing task.
 
 This script demonstrates different OpenAI models by extracting structured information
-from a smartphone description using a complex JSON schema.
+from a smartphone description using a complex JSON schema. It uses the
+`manual_extract_and_jsonify` function to explicitly provide the OpenAI driver,
+ignoring environment defaults.
 """
+
 import json
-from prompture import extract_and_jsonify
+from prompture import manual_extract_and_jsonify
 from prompture.drivers import get_driver
 from prompture.drivers.openai_driver import OpenAIDriver
 
@@ -83,12 +86,17 @@ COMPLEX_SCHEMA = {
 # List of OpenAI models to test (from OpenAIDriver.MODEL_PRICING)
 MODELS_TO_TEST = list(OpenAIDriver.MODEL_PRICING.keys())
 
+
 def compare_openai_models():
     """
     Demonstrate comparing multiple OpenAI models on extracting smartphone specs.
 
-    Returns a dictionary mapping model names to their extraction results,
-    where each result contains 'success': True/False, and for successful ones: json_object, usage, json_string; for failed: 'error': message.
+    Returns:
+        dict: A mapping from model names to their results.
+              Each entry contains:
+                - success (bool)
+                - json_object, usage, json_string (on success)
+                - error (str) on failure
     """
     openai_driver = get_driver("openai")
     results = {}
@@ -97,17 +105,14 @@ def compare_openai_models():
     for model in MODELS_TO_TEST:
         print(f"Testing model: {model}")
         try:
-            # For "gpt-5-mini", omit 'temperature' from options as required by the driver.
-            if model == "gpt-5-mini":
-                options = {"model": model, "max_completion_token": 512}
-            else:
-                options = {"model": model, "max_tokens": 512, "temperature": 0.2}
-            result = extract_and_jsonify(
+
+            result = manual_extract_and_jsonify(
                 driver=openai_driver,
                 text=COMPLEX_TEXT,
                 json_schema=COMPLEX_SCHEMA,
-                options=options
+                model_name=model
             )
+
             results[model] = {
                 'success': True,
                 'json_object': result['json_object'],
@@ -121,6 +126,7 @@ def compare_openai_models():
             failed_models.append(model)
 
     return results
+
 
 def print_comparison_table(results_dict):
     """
@@ -179,7 +185,9 @@ def print_comparison_table(results_dict):
             error = str(result.get('error', 'N/A'))[:20]
             failed_models.append(model)
 
-        print(row_format.format(model[:15], success, str(prompt_tokens)[:8], str(completion_tokens)[:11], str(total_tokens)[:6], str(field_count)[:7], validation, name, price, str(variants)[:9], screen_size, warranty, is_new, error))
+        print(row_format.format(model[:15], success, str(prompt_tokens)[:8], str(completion_tokens)[:11],
+                                str(total_tokens)[:6], str(field_count)[:7], validation,
+                                name, price, str(variants)[:9], screen_size, warranty, is_new, error))
 
     print("\n" + "="*160)
     print("SUMMARY")
@@ -187,11 +195,13 @@ def print_comparison_table(results_dict):
     print(f"Successful models ({len(successful_models)}): {', '.join(successful_models)}")
     print(f"Failed models ({len(failed_models)}): {', '.join(failed_models)}")
 
+
 def main():
     """Run the OpenAI model comparison example."""
     print("Starting OpenAI Model Comparison Example...")
     results = compare_openai_models()
     print_comparison_table(results)
+
 
 if __name__ == "__main__":
     main()

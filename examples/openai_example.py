@@ -1,28 +1,36 @@
+"""
+Example: Using manual_extract_and_jsonify with different drivers and models.
+
+This example demonstrates how to:
+1. Initialize a specific driver (OpenAI in this case).
+2. Provide a text input and a JSON schema that defines the structure of the output.
+3. Use `manual_extract_and_jsonify` to extract structured JSON with:
+   - A default instruction template.
+   - A custom instruction template.
+4. Override the model per call using the `model_name` argument.
+5. Inspect and print the raw JSON output, parsed JSON object, and usage metadata.
+
+The `usage` metadata returned includes:
+- prompt_tokens: number of tokens used in the input prompt
+- completion_tokens: number of tokens used in the model’s output
+- total_tokens: sum of prompt and completion tokens
+- cost: approximate cost (depends on driver’s pricing table)
+- model_name: name of the model used for the request
+"""
+
 import json
-from prompture import extract_and_jsonify
+from prompture import manual_extract_and_jsonify
 from prompture.drivers import get_driver
 
-# 1. Instantiate the OpenAI driver
-# If you have an OPENAI_API_KEY set in your environment, this should work out-of-the-box.
-# You may specify a model if supported; here we use "gpt-3.5-turbo" if available.
+# 1. Instantiate the OpenAI driver explicitly
+# This uses environment variables (OPENAI_API_KEY, etc.) to configure credentials.
 openai_driver = get_driver("openai")
 
-# Specify the model to use
-model = "gpt-5-mini"  # Change to "gpt-5-mini" to test the special logic
-
-# Set options based on model
-# Only include temperature for models other than "gpt-5-mini"
-if model == "gpt-5-mini":
-    options = {"model": model, "max_completion_tokens": 512}
-else:
-    options = {"model": model, "max_tokens": 512, "temperature": 0.2}
-
-# 2. Define the raw text and JSON schema
-# Raw text containing information to extract
+# 2. Define the raw text to be processed
 text = "Maria is 32 years old and works as a software developer in New York. She loves hiking and photography."
 
 # 3. Define the JSON schema
-# This schema specifies the expected structure for the user information
+# This schema enforces the structure of the extracted information.
 json_schema = {
     "type": "object",
     "properties": {
@@ -34,48 +42,53 @@ json_schema = {
     }
 }
 
-# 4. Call extract_and_jsonify with default instruction
+# === FIRST EXAMPLE: Default instruction template ===
 print("Extracting information into JSON with default instruction...")
-result = extract_and_jsonify(
+
+# Call manual_extract_and_jsonify with a model override
+result = manual_extract_and_jsonify(
     driver=openai_driver,
     text=text,
     json_schema=json_schema,
-    options=options
+    model_name="gpt-4o-mini"  # model is explicitly chosen here
 )
 
-# Extract JSON output and usage metadata from the new return type
+# Extract JSON output and metadata
 json_output = result["json_string"]
 json_object = result["json_object"]
 usage = result["usage"]
 
-# 5. Print and validate the output
+# Print results
 print("\nRaw JSON output from model:")
 print(json_output)
 
 print("\nSuccessfully parsed JSON:")
 print(json.dumps(json_object, indent=2))
 
-# 6. Display token usage information
 print("\n=== TOKEN USAGE STATISTICS ===")
 print(f"Prompt tokens: {usage['prompt_tokens']}")
 print(f"Completion tokens: {usage['completion_tokens']}")
 print(f"Total tokens: {usage['total_tokens']}")
+print(f"Model name: {usage['model_name']}")
 
-# 7. Example with custom instruction template
+
+# === SECOND EXAMPLE: Custom instruction template ===
 print("\n\n=== SECOND EXAMPLE - CUSTOM INSTRUCTION TEMPLATE ===")
 print("Extracting information with custom instruction...")
-custom_result = extract_and_jsonify(
+
+custom_result = manual_extract_and_jsonify(
     driver=openai_driver,
     text=text,
     json_schema=json_schema,
+    model_name="gpt-3.5-turbo",  # override with a different model
     instruction_template="Parse the biographical details from this text:",
-    options=options
 )
 
 custom_json_output = custom_result["json_string"]
 custom_json_object = custom_result["json_object"]
 custom_usage = custom_result["usage"]
 
+# Print results
 print("\nRaw JSON output from model (custom instruction):")
 print(custom_json_output)
 
@@ -86,3 +99,4 @@ print("\n=== TOKEN USAGE STATISTICS (custom instruction) ===")
 print(f"Prompt tokens: {custom_usage['prompt_tokens']}")
 print(f"Completion tokens: {custom_usage['completion_tokens']}")
 print(f"Total tokens: {custom_usage['total_tokens']}")
+print(f"Model name: {custom_usage['model_name']}")

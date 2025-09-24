@@ -2,10 +2,13 @@
 Example script to compare multiple Ollama models on a complex parsing task.
 
 This script demonstrates different Ollama models by extracting structured information
-from a smartphone description using a complex JSON schema.
+from a smartphone description using a complex JSON schema. It uses the
+`manual_extract_and_jsonify` function to explicitly provide the Ollama driver,
+ignoring environment defaults.
 """
+
 import json
-from prompture import extract_and_jsonify
+from prompture import manual_extract_and_jsonify
 from prompture.drivers import get_driver
 
 # Define the complex text for parsing - 4-paragraph smartphone description
@@ -95,8 +98,12 @@ def compare_ollama_models():
     """
     Demonstrate comparing multiple Ollama models on extracting smartphone specs.
 
-    Returns a dictionary mapping model names to their extraction results,
-    where each result contains 'success': True/False, and for successful ones: json_object, usage, json_string; for failed: 'error': message.
+    Returns:
+        dict: A mapping from model names to their results.
+              Each entry contains:
+                - success (bool)
+                - json_object, usage, json_string (on success)
+                - error (str) on failure
     """
     ollama_driver = get_driver("ollama")
     results = {}
@@ -105,11 +112,11 @@ def compare_ollama_models():
     for model in MODELS_TO_TEST:
         print(f"Testing model: {model}")
         try:
-            result = extract_and_jsonify(
+            result = manual_extract_and_jsonify(
                 driver=ollama_driver,
                 text=COMPLEX_TEXT,
                 json_schema=COMPLEX_SCHEMA,
-                options={"model": model}
+                model_name=model
             )
             results[model] = {
                 'success': True,
@@ -122,7 +129,6 @@ def compare_ollama_models():
             print(f"  Failed: {str(e)}")
             results[model] = {'success': False, 'error': str(e)}
             failed_models.append(model)
-
 
     return results
 
@@ -151,7 +157,7 @@ def print_comparison_table(results_dict):
             completion_tokens = usage.get('completion_tokens', 0)
             total_tokens = usage.get('total_tokens', 0)
             field_count = len(json_obj)
-            # Required fields: name, price, variants (array), design (dict) with screen_size, warranty_years, is_new
+            # Required fields check
             has_required = (
                 'name' in json_obj and json_obj['name'] is not None and
                 'price' in json_obj and json_obj['price'] is not None and
@@ -185,7 +191,9 @@ def print_comparison_table(results_dict):
             error = str(result.get('error', 'N/A'))[:20]
             failed_models.append(model)
 
-        print(row_format.format(model[:15], success, str(prompt_tokens)[:8], str(completion_tokens)[:11], str(total_tokens)[:6], str(field_count)[:7], validation, name, price, str(variants)[:9], screen_size, warranty, is_new, error))
+        print(row_format.format(model[:15], success, str(prompt_tokens)[:8], str(completion_tokens)[:11],
+                                str(total_tokens)[:6], str(field_count)[:7], validation,
+                                name, price, str(variants)[:9], screen_size, warranty, is_new, error))
 
     print("\n" + "="*160)
     print("SUMMARY")

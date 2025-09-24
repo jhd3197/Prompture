@@ -3,54 +3,61 @@
 from __future__ import annotations
 import json
 import re
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict
 
-from .settings import settings
 from .drivers import get_driver
 from .driver import Driver
 
 
 def clean_json_text(text: str) -> str:
-    """Intentos básicos para extraer JSON si viene con ````` o explicaciones.
-    No es perfecto; se recomienda usar prompts con ejemplos para forzar JSON válido.
-    
-    Also removes <think>...</think> blocks that might be present in LLM output.
+    """Attempts to extract a valid JSON object string from text.
+
+    Handles multiple possible formatting issues:
+    - Removes <think>...</think> blocks.
+    - Strips markdown code fences (```json ... ```).
+    - Falls back to first {...} block found.
+
+    Args:
+        text: Raw string that may contain JSON plus extra formatting.
+
+    Returns:
+        A string that best resembles valid JSON content.
     """
-    # eliminar <think> blocks using regex
-    text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
-    
-    # eliminar fences ```json ``` o ```
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
     text = text.strip()
-    # detect code fence and extract first code block
+
     if text.startswith("```"):
-        # Find the first opening ```
         start_fence = text.find("```")
         if start_fence != -1:
-            # Skip the opening fence and language tag
             start_content = text.find("\n", start_fence)
             if start_content != -1:
-                # Find the first closing ```
                 end_fence = text.find("```", start_content)
                 if end_fence != -1:
-                    # Extract content between fences
-                    rest = text[start_content + 1:end_fence]
-                    return rest.strip()
+                    return text[start_content + 1:end_fence].strip()
                 else:
-                    # No closing fence, take from start content to end
-                    rest = text[start_content + 1:]
-                    return rest.strip()
-    # intentar extraer la primera ocurrencia de un objeto JSON
+                    return text[start_content + 1 :].strip()
+
     start = text.find("{")
     end = text.rfind("}")
     if start != -1 and end != -1 and end > start:
-        return text[start:end+1]
+        return text[start : end + 1]
+
     return text
+
 
 def clean_json_text_with_ai(driver: Driver, text: str, options: Dict[str, Any] = {}) -> str:
     """Use LLM to fix malformed JSON strings.
 
-    Creates a specialized prompt instructing the LLM to correct the provided text
-    into a valid JSON object, then cleans the response to ensure no markdown fences remain.
+    Generates a specialized prompt instructing the LLM to correct the
+    provided text into valid JSON.
+
+    Args:
+        driver: Active LLM driver used to send the correction request.
+        text: Malformed JSON string to be corrected.
+        options: Additional options passed to the driver.
+
+    Returns:
+        A cleaned string that should contain valid JSON.
     """
     prompt = (
         "The following text is supposed to be a single JSON object, but it is malformed. "
@@ -59,27 +66,36 @@ def clean_json_text_with_ai(driver: Driver, text: str, options: Dict[str, Any] =
     )
     resp = driver.generate(prompt, options)
     raw = resp.get("text", "")
-    cleaned = clean_json_text(raw)
-    return cleaned
+    return clean_json_text(raw)
 
-def ask_for_json(driver: Driver, content_prompt: str, json_schema: Dict[str, Any], ai_cleanup: bool = True, options: Dict[str, Any] = {}) -> Dict[str, Any]:
+
+def ask_for_json(
+    driver: Driver,
+    content_prompt: str,
+    json_schema: Dict[str, Any],
+    ai_cleanup: bool = True,
+    options: Dict[str, Any] = {},
+) -> Dict[str, Any]:
     """Sends a prompt to the driver and returns both JSON output and usage metadata.
 
     This function enforces a schema-first approach by requiring a json_schema parameter
     and automatically generating instructions for the LLM to return valid JSON matching the schema.
 
     Args:
-        driver: adapter that implements generate(prompt, options)
-        content_prompt: main prompt content (may include examples)
-        json_schema: required JSON schema dictionary defining the expected structure
-        ai_cleanup: whether to attempt AI-based cleanup if JSON parsing fails
-        options: additional options to pass to the driver
+        driver: Adapter that implements generate(prompt, options).
+        content_prompt: Main prompt content (may include examples).
+        json_schema: Required JSON schema dictionary defining the expected structure.
+        ai_cleanup: Whether to attempt AI-based cleanup if JSON parsing fails.
+        options: Additional options to pass to the driver.
 
     Returns:
         A dictionary containing:
-        - json_string: the JSON string output
-        - json_object: the parsed JSON object
-        - usage: token usage and cost information from the driver's meta object
+        - json_string: the JSON string output.
+        - json_object: the parsed JSON object.
+        - usage: token usage and cost information from the driver's meta object.
+
+    Raises:
+        json.JSONDecodeError: If the response cannot be parsed as JSON and ai_cleanup is False.
     """
     schema_string = json.dumps(json_schema, indent=2)
     instruct = (
@@ -91,118 +107,119 @@ def ask_for_json(driver: Driver, content_prompt: str, json_schema: Dict[str, Any
     resp = driver.generate(full_prompt, options)
     raw = resp.get("text", "")
     cleaned = clean_json_text(raw)
+
     try:
         json_obj = json.loads(cleaned)
         return {
             "json_string": cleaned,
             "json_object": json_obj,
-            "usage": resp.get("meta", {})
+            "usage": resp.get("meta", {}),
         }
     except json.JSONDecodeError:
         if ai_cleanup:
-            # clean_json_text_with_ai returns just the cleaned string, so we need to get fresh metadata
             cleaned_fixed = clean_json_text_with_ai(driver, cleaned, options)
-        try:
-            json_obj = json.loads(cleaned_fixed)
-            return {
-                "json_string": cleaned_fixed,
-                "json_object": json_obj,
-                "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "cost": 0.0, "model_name": options.get("model", getattr(driver, "model", "")) }  # Model name from options or driver
-            }
-        except json.JSONDecodeError:
+            try:
+                json_obj = json.loads(cleaned_fixed)
+                return {
+                    "json_string": cleaned_fixed,
+                    "json_object": json_obj,
+                    "usage": {
+                        "prompt_tokens": 0,
+                        "completion_tokens": 0,
+                        "total_tokens": 0,
+                        "cost": 0.0,
+                        "model_name": options.get("model", getattr(driver, "model", "")),
+                    },
+                }
+            except json.JSONDecodeError:
+                raise
+        else:
             raise
-        
+
+
 def extract_and_jsonify(
-    driver: Driver,
     text: str,
     json_schema: Dict[str, Any],
+    model_name: str = "",
     instruction_template: str = "Extract information from the following text:",
     ai_cleanup: bool = True,
-    options: Dict[str, Any] = {}
+    options: Dict[str, Any] = {},
 ) -> Dict[str, Any]:
-    """Extracts structured information from text and returns it as a JSON object with usage metadata.
+    """Extracts structured information using the default driver from AI_PROVIDER.
 
-    This is a higher-level function that simplifies the process of extracting information
-    into JSON by automatically constructing the content prompt and calling ask_for_json.
+    Automatically initializes the driver based on environment configuration
+    and constructs a schema-constrained prompt.
 
     Args:
-        driver: The LLM driver instance to use for generation
-        text: The raw text to extract information from
-        json_schema: JSON schema dictionary defining the expected structure
-        instruction_template: Template string for the extraction instruction
-                          (default: "Extract information from the following text:")
-        ai_cleanup: Whether to attempt AI-based cleanup if JSON parsing fails
-        options: Additional options to pass to the driver
+        text: The raw text to extract information from.
+        json_schema: JSON schema dictionary defining the expected structure.
+        instruction_template: Instructional text to prepend to the content.
+        model_name: Optional override of the model name.
+        ai_cleanup: Whether to attempt AI-based cleanup if JSON parsing fails.
+        options: Additional options to pass to the driver.
 
     Returns:
         A dictionary containing:
-        - json_string: the JSON string output
-        - json_object: the parsed JSON object
-        - usage: token usage and cost information from the driver's meta object
+        - json_string: the JSON string output.
+        - json_object: the parsed JSON object.
+        - usage: token usage and cost information from the driver's meta object.
 
     Raises:
-        ValueError: If text is empty or None
-        json.JSONDecodeError: If the response cannot be parsed as JSON and ai_cleanup is False
-
-    Example:
-        >>> schema = {"type": "object", "properties": {"name": {"type": "string"}}}
-        >>> result = extract_and_jsonify(driver, "John is a developer", schema)
-        >>> result["json_string"]
-        '{"name": "John"}'
-        >>> result["usage"]["total_tokens"]
-        150
+        ValueError: If text is empty or None.
+        json.JSONDecodeError: If the response cannot be parsed as JSON and ai_cleanup is False.
     """
     if not text or not text.strip():
         raise ValueError("Text input cannot be empty")
 
-    content_prompt = f"{instruction_template} {text}"
-    return ask_for_json(driver, content_prompt, json_schema, ai_cleanup, options)
+    driver = get_driver()
 
-def auto_extract_and_jsonify(
+    opts = dict(options)
+    if model_name:
+        opts["model"] = model_name
+
+    content_prompt = f"{instruction_template} {text}"
+    return ask_for_json(driver, content_prompt, json_schema, ai_cleanup, opts)
+
+def manual_extract_and_jsonify(
+    driver: Driver,
     text: str,
     json_schema: Dict[str, Any],
+    model_name: str = "",
     instruction_template: str = "Extract information from the following text:",
     ai_cleanup: bool = True,
-    options: Dict[str, Any] = {}
+    options: Dict[str, Any] = {},
 ) -> Dict[str, Any]:
-    """Extracts structured information from text and returns it as a JSON object with usage metadata.
-    
-    This is a convenience function that automatically initializes the appropriate driver based on
-    the AI_PROVIDER environment variable and uses it to extract structured information from text.
-    It combines the functionality of get_driver() and extract_and_jsonify().
+    """Extracts structured information using an explicitly provided driver.
+
+    This variant is useful when you want to directly control which driver
+    is used (e.g., OpenAI, Azure, Ollama, LocalHTTP) and optionally override
+    the model per call.
 
     Args:
-        text: The raw text to extract information from
-        json_schema: JSON schema dictionary defining the expected structure
-        instruction_template: Template string for the extraction instruction
-                          (default: "Extract information from the following text:")
-        ai_cleanup: Whether to attempt AI-based cleanup if JSON parsing fails
-        options: Additional options to pass to the driver
+        driver: The LLM driver instance to use.
+        text: The raw text to extract information from.
+        json_schema: JSON schema dictionary defining the expected structure.
+        instruction_template: Instructional text to prepend to the content.
+        model_name: Optional override of the model name.
+        ai_cleanup: Whether to attempt AI-based cleanup if JSON parsing fails.
+        options: Additional options to pass to the driver.
 
     Returns:
         A dictionary containing:
-        - json_string: the JSON string output
-        - json_object: the parsed JSON object
-        - usage: token usage and cost information from the driver's meta object
+        - json_string: the JSON string output.
+        - json_object: the parsed JSON object.
+        - usage: token usage and cost information from the driver's meta object.
 
     Raises:
-        ValueError: If text is empty or None, or if driver initialization fails
-        json.JSONDecodeError: If the response cannot be parsed as JSON and ai_cleanup is False
-
-    Example:
-        >>> schema = {"type": "object", "properties": {"name": {"type": "string"}}}
-        >>> result = auto_extract_and_jsonify("John is a developer", schema)
-        >>> result["json_string"]
-        '{"name": "John"}'
-        >>> result["usage"]["total_tokens"]
-        150
+        ValueError: If text is empty or None.
+        json.JSONDecodeError: If the response cannot be parsed as JSON and ai_cleanup is False.
     """
-    driver = get_driver()
-    return extract_and_jsonify(
-        driver=driver,
-        text=text,
-        json_schema=json_schema,
-        instruction_template=instruction_template,
-        ai_cleanup=ai_cleanup,
-        options=options
-    )
+    if not text or not text.strip():
+        raise ValueError("Text input cannot be empty")
+
+    opts = dict(options)
+    if model_name:
+        opts["model"] = model_name
+
+    content_prompt = f"{instruction_template} {text}"
+    return ask_for_json(driver, content_prompt, json_schema, ai_cleanup, opts)
