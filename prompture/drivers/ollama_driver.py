@@ -1,5 +1,5 @@
 import requests
-from ..core import Driver
+from ..driver import Driver
 from typing import Any, Dict
 
 class OllamaDriver(Driver):

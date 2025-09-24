@@ -11,12 +11,15 @@ setup(
     setup_requires=["setuptools_scm"],
     packages=find_packages(),
     install_requires=[
-        "requests>=2.28",
+        "anthropic>=0.8.0",
+        "click>=8.0",
+        "httpx>=0.25.0",
         "jsonschema>=4.0",
+        "openai>=1.0.0",
         "pydantic>=1.10",
         "pydantic-settings>=2.0",
-        "click>=8.0",
-        "python-dotenv>=0.19.0"
+        "python-dotenv>=0.19.0",
+        "requests>=2.28"
     ],
     author="Juan Denis",
     author_email="juan@vene.co",

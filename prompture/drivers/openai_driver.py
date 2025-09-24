@@ -8,7 +8,7 @@ try:
 except Exception:
     openai = None
 
-from ..core import Driver
+from ..driver import Driver
 
 class OpenAIDriver(Driver):
     # OpenAI pricing per 1000 tokens (prices should be kept current with OpenAI's pricing)

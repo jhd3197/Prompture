@@ -8,7 +8,7 @@ from ..settings import settings
 
 # Factory to get a driver instance
 def get_driver(provider_name: str = None):
-    provider = provider_name or settings.default_provider
+    provider = provider_name or settings.ai_provider
     if provider == "mock":
         return MockDriver()
     if provider == "openai":

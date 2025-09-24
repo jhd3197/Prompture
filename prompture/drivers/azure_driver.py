@@ -7,7 +7,7 @@ try:
 except Exception:
     openai = None
 
-from ..core import Driver
+from ..driver import Driver
 
 class AzureDriver(Driver):
     # Reusing OpenAI pricing model - can be adjusted for Azure-specific pricing if needed

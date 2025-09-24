@@ -4,7 +4,7 @@ from typing import Optional
 
 class Settings(BaseSettings):
     # Fields automatically map to UPPER_CASE environment variables
-    default_provider: str = "mock"
+    ai_provider: str = "mock"
     openai_api_key: Optional[str] = None
     openai_model: str = "gpt-3.5-turbo"
     claude_api_key: Optional[str] = None

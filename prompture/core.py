@@ -1,30 +1,13 @@
-"""Core utilities: Driver base class y helper para pedir JSON al LLM.
-Comentarios en español.
+"""Core utilities: Helpers for requesting JSON from LLM.
 """
 from __future__ import annotations
 import json
 import re
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 
-class Driver:
-    """Adapter base. Implementar generate(prompt, options) -> {"text": ... , "meta": {...}}
-
-    The 'meta' object in the response should have a standardized structure:
-
-    {
-        "prompt_tokens": int,     # Number of tokens in the prompt
-        "completion_tokens": int, # Number of tokens in the completion
-        "total_tokens": int,      # Total tokens used (prompt + completion)
-        "cost": float,            # Cost in USD (0.0 for free models)
-        "raw_response": dict      # Raw response from LLM provider
-    }
-
-    All drivers must populate these fields. The 'raw_response' field can contain
-    additional provider-specific metadata while the core fields provide
-    standardized access to token usage and cost information.
-    """
-    def generate(self, prompt: str, options: Dict[str,Any]) -> Dict[str,Any]:
-        raise NotImplementedError
+from .settings import settings
+from .drivers import get_driver
+from .driver import Driver
 
 
 def clean_json_text(text: str) -> str:
@@ -174,3 +157,52 @@ def extract_and_jsonify(
 
     content_prompt = f"{instruction_template} {text}"
     return ask_for_json(driver, content_prompt, json_schema, ai_cleanup, options)
+
+def auto_extract_and_jsonify(
+    text: str,
+    json_schema: Dict[str, Any],
+    instruction_template: str = "Extract information from the following text:",
+    ai_cleanup: bool = True,
+    options: Dict[str, Any] = {}
+) -> Dict[str, Any]:
+    """Extracts structured information from text and returns it as a JSON object with usage metadata.
+    
+    This is a convenience function that automatically initializes the appropriate driver based on
+    the AI_PROVIDER environment variable and uses it to extract structured information from text.
+    It combines the functionality of get_driver() and extract_and_jsonify().
+
+    Args:
+        text: The raw text to extract information from
+        json_schema: JSON schema dictionary defining the expected structure
+        instruction_template: Template string for the extraction instruction
+                          (default: "Extract information from the following text:")
+        ai_cleanup: Whether to attempt AI-based cleanup if JSON parsing fails
+        options: Additional options to pass to the driver
+
+    Returns:
+        A dictionary containing:
+        - json_string: the JSON string output
+        - json_object: the parsed JSON object
+        - usage: token usage and cost information from the driver's meta object
+
+    Raises:
+        ValueError: If text is empty or None, or if driver initialization fails
+        json.JSONDecodeError: If the response cannot be parsed as JSON and ai_cleanup is False
+
+    Example:
+        >>> schema = {"type": "object", "properties": {"name": {"type": "string"}}}
+        >>> result = auto_extract_and_jsonify("John is a developer", schema)
+        >>> result["json_string"]
+        '{"name": "John"}'
+        >>> result["usage"]["total_tokens"]
+        150
+    """
+    driver = get_driver()
+    return extract_and_jsonify(
+        driver=driver,
+        text=text,
+        json_schema=json_schema,
+        instruction_template=instruction_template,
+        ai_cleanup=ai_cleanup,
+        options=options
+    )

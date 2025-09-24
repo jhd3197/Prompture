@@ -8,7 +8,7 @@ try:
 except Exception:
     anthropic = None
 
-from ..core import Driver
+from ..driver import Driver
 
 class ClaudeDriver(Driver):
     # Claude pricing per 1000 tokens (prices should be kept current with Anthropic's pricing)

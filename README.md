@@ -57,6 +57,73 @@ The main functions now return:
 }
 ```
 
+## 🚀 Automatic Driver Initialization
+
+The `auto_extract_and_jsonify()` function provides a convenient way to extract JSON from text without manually initializing a driver. It automatically uses the appropriate driver based on your environment configuration:
+
+```python
+from prompture import auto_extract_and_jsonify
+
+# Define your schema
+schema = {
+    "type": "object",
+    "properties": {
+        "name": {"type": "string"},
+        "age": {"type": "integer"}
+    }
+}
+
+# Extract JSON with automatic driver initialization
+result = auto_extract_and_jsonify(
+    "John is 28 years old",
+    schema,
+    instruction_template="Extract the person's information:"
+)
+
+# Access the results
+json_output = result["json_string"]
+json_object = result["json_object"]
+usage = result["usage"]
+
+print(f"Extracted data: {json_object}")
+print(f"Tokens used: {usage['total_tokens']}")
+print(f"Cost: ${usage['cost']:.6f}")
+```
+
+### Configuration
+
+The function uses the `AI_PROVIDER` environment variable to determine which driver to use. It supports all the same features as `extract_and_jsonify()`, including:
+
+- Schema validation
+- Token usage tracking
+- Cost calculation
+- AI-based cleanup for malformed JSON
+
+### Parameters
+
+- `text`: The raw text to extract information from
+- `json_schema`: JSON schema dictionary defining the expected structure
+- `instruction_template`: Template string for the extraction instruction (default: "Extract information from the following text:")
+- `ai_cleanup`: Whether to attempt AI-based cleanup if JSON parsing fails (default: True)
+- `options`: Additional options to pass to the driver
+
+### Return Structure
+
+Returns the same structure as `extract_and_jsonify()`:
+```python
+{
+    "json_string": str,    # The original JSON string
+    "json_object": dict,   # The parsed JSON object
+    "usage": {
+        "prompt_tokens": int,
+        "completion_tokens": int,
+        "total_tokens": int,
+        "cost": float,     # Cost in USD
+        "model_name": str
+    }
+}
+```
+
 ### Supported Drivers
 
 - **OllamaDriver**: Cost = $0.00 (free local models)
