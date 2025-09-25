@@ -3,48 +3,13 @@
 from __future__ import annotations
 import json
 import re
-from typing import Any, Dict, Type, Optional
+from typing import Any, Dict, Type, Optional, List
 
 from pydantic import BaseModel
 
 from .drivers import get_driver
 from .driver import Driver
-
-
-def clean_json_text(text: str) -> str:
-    """Attempts to extract a valid JSON object string from text.
-
-    Handles multiple possible formatting issues:
-    - Removes <think>...</think> blocks.
-    - Strips markdown code fences (```json ... ```).
-    - Falls back to first {...} block found.
-
-    Args:
-        text: Raw string that may contain JSON plus extra formatting.
-
-    Returns:
-        A string that best resembles valid JSON content.
-    """
-    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
-    text = text.strip()
-
-    if text.startswith("```"):
-        start_fence = text.find("```")
-        if start_fence != -1:
-            start_content = text.find("\n", start_fence)
-            if start_content != -1:
-                end_fence = text.find("```", start_content)
-                if end_fence != -1:
-                    return text[start_content + 1:end_fence].strip()
-                else:
-                    return text[start_content + 1 :].strip()
-
-    start = text.find("{")
-    end = text.rfind("}")
-    if start != -1 and end != -1 and end > start:
-        return text[start : end + 1]
-
-    return text
+from .tools import create_field_schema, convert_value, log_debug, clean_json_text
 
 
 def clean_json_text_with_ai(driver: Driver, text: str, options: Dict[str, Any] = {}) -> str:
@@ -69,7 +34,6 @@ def clean_json_text_with_ai(driver: Driver, text: str, options: Dict[str, Any] =
     resp = driver.generate(prompt, options)
     raw = resp.get("text", "")
     return clean_json_text(raw)
-
 
 def ask_for_json(
     driver: Driver,
@@ -138,7 +102,6 @@ def ask_for_json(
         else:
             raise
 
-
 def extract_and_jsonify(
     text: str,
     json_schema: Dict[str, Any],
@@ -182,7 +145,6 @@ def extract_and_jsonify(
     content_prompt = f"{instruction_template} {text}"
     return ask_for_json(driver, content_prompt, json_schema, ai_cleanup, opts)
 
-
 def extract_with_model(
     model_cls: Type[BaseModel],
     text: str,
@@ -223,7 +185,6 @@ def extract_with_model(
     result = manual_extract_and_jsonify(driver, text, schema, model_name, instruction_template, ai_cleanup, options)
     return model_cls(**result["json_object"])
 
-
 def stepwise_extract_with_model(
     model_cls: Type[BaseModel],
     text: str,
@@ -231,6 +192,8 @@ def stepwise_extract_with_model(
     model_name: str = "",
     instruction_template: str = "Extract the {field_name} from the following text:",
     ai_cleanup: bool = True,
+    debug: bool = False,
+    fields: Optional[List[str]] = None,
     options: Dict[str, Any] = {},
 ) -> BaseModel:
     """Extracts structured information into a Pydantic model by processing each field individually.
@@ -245,6 +208,8 @@ def stepwise_extract_with_model(
         model_name: Optional override of the model name.
         instruction_template: Template for instructional text, should include {field_name} placeholder.
         ai_cleanup: Whether to attempt AI-based cleanup if JSON parsing fails.
+        debug: Whether to print debug information during extraction.
+        fields: Optional list of field names to extract. If None, extracts all fields.
         options: Additional options to pass to the driver.
 
     Returns:
@@ -253,6 +218,7 @@ def stepwise_extract_with_model(
     Raises:
         ValueError: If text is empty or None.
         ValidationError: If the extracted data doesn't match the model schema.
+        KeyError: If a requested field doesn't exist in the model.
     """
     if not text or not text.strip():
         raise ValueError("Text input cannot be empty")
@@ -261,25 +227,108 @@ def stepwise_extract_with_model(
         driver = get_driver()
 
     data = {}
-    for field_name, field_info in model_cls.model_fields.items():
-        field_schema = {
-            "value": {
-                "type": "string",
-                "description": f"Extract the {field_name} from the text"
-            }
-        }
-        result = manual_extract_and_jsonify(
-            driver,
-            text,
-            field_schema,
-            model_name,
-            instruction_template.format(field_name=field_name),
-            ai_cleanup,
-            options
-        )
-        data[field_name] = result["json_object"]["value"]
+    validation_errors = []
 
-    return model_cls(**data)
+    # Get valid field names from the model
+    valid_fields = set(model_cls.model_fields.keys())
+
+    # If fields specified, validate they exist
+    if fields is not None:
+        invalid_fields = set(fields) - valid_fields
+        if invalid_fields:
+            raise KeyError(f"Fields not found in model: {', '.join(invalid_fields)}")
+        field_items = [(name, model_cls.model_fields[name]) for name in fields]
+    else:
+        field_items = model_cls.model_fields.items()
+
+    for field_name, field_info in field_items:
+        if debug:
+            print(f"\n=== Extracting field: {field_name} ===")
+            print(f"Field info: {field_info}")
+            print(f"Field type: {field_info.annotation}")
+
+        # Create field schema using tools.create_field_schema
+        field_schema = {
+            "value": create_field_schema(
+                field_name,
+                field_info.annotation,
+                field_info.description
+            )
+        }
+
+        if debug:
+            print(f"Field schema: {field_schema}")
+            print(f"Prompt template: {instruction_template.format(field_name=field_name)}")
+
+        try:
+            result = manual_extract_and_jsonify(
+                driver,
+                text,
+                field_schema,
+                model_name,
+                instruction_template.format(field_name=field_name),
+                ai_cleanup,
+                options
+            )
+
+            if debug:
+                # Make a shallow copy to avoid modifying the original
+                safe_result = result.copy()
+
+                if "usage" in safe_result:
+                    safe_result["usage"] = {
+                        k: v for k, v in safe_result["usage"].items()
+                        if k in ("prompt_tokens", "completion_tokens", "total_tokens", "cost")
+                    }
+
+                print(f"Raw extraction result: {safe_result}")
+
+            extracted_value = result["json_object"]["value"]
+
+            # Convert value using tools.convert_value
+            try:
+                converted_value = convert_value(
+                    extracted_value,
+                    field_info.annotation,
+                    allow_shorthand=True
+                )
+                data[field_name] = converted_value
+
+                if debug:
+                    # Make a shallow copy to avoid modifying the original
+                    safe_result = result.copy()
+
+                    if "usage" in safe_result:
+                        safe_result["usage"] = {
+                            k: v for k, v in safe_result["usage"].items()
+                            if k in ("prompt_tokens", "completion_tokens", "total_tokens", "cost")
+                        }
+
+                    print(f"Raw extraction result: {safe_result}")
+
+            except ValueError as e:
+                error_msg = f"Type conversion failed for {field_name}: {str(e)}"
+                validation_errors.append(error_msg)
+                if debug:
+                    print(f"Error: {error_msg}")
+                
+        except Exception as e:
+            error_msg = f"Extraction failed for {field_name}: {str(e)}"
+            validation_errors.append(error_msg)
+            if debug:
+                print(f"Error: {error_msg}")
+    
+    if validation_errors and debug:
+        print("\n=== Validation Errors ===")
+        for error in validation_errors:
+            print(f"- {error}")
+    
+    try:
+        return model_cls(**data)
+    except Exception as e:
+        if debug:
+            print(f"\n=== Model Validation Error ===\n{str(e)}")
+        raise
 
 def manual_extract_and_jsonify(
     driver: Driver,
