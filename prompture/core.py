@@ -3,7 +3,9 @@
 from __future__ import annotations
 import json
 import re
-from typing import Any, Dict
+from typing import Any, Dict, Type, Optional
+
+from pydantic import BaseModel
 
 from .drivers import get_driver
 from .driver import Driver
@@ -179,6 +181,105 @@ def extract_and_jsonify(
 
     content_prompt = f"{instruction_template} {text}"
     return ask_for_json(driver, content_prompt, json_schema, ai_cleanup, opts)
+
+
+def extract_with_model(
+    model_cls: Type[BaseModel],
+    text: str,
+    driver: Optional[Driver] = None,
+    model_name: str = "",
+    instruction_template: str = "Extract information from the following text:",
+    ai_cleanup: bool = True,
+    options: Dict[str, Any] = {},
+) -> BaseModel:
+    """Extracts structured information into a Pydantic model instance.
+
+    Converts the Pydantic model to its JSON schema and uses the driver to extract
+    all fields at once, then validates and returns the model instance.
+
+    Args:
+        model_cls: The Pydantic BaseModel class to extract into.
+        text: The raw text to extract information from.
+        driver: Optional LLM driver instance. If None, uses get_driver().
+        model_name: Optional override of the model name.
+        instruction_template: Instructional text to prepend to the content.
+        ai_cleanup: Whether to attempt AI-based cleanup if JSON parsing fails.
+        options: Additional options to pass to the driver.
+
+    Returns:
+        A validated instance of the Pydantic model.
+
+    Raises:
+        ValueError: If text is empty or None.
+        ValidationError: If the extracted data doesn't match the model schema.
+    """
+    if not text or not text.strip():
+        raise ValueError("Text input cannot be empty")
+
+    if driver is None:
+        driver = get_driver()
+
+    schema = model_cls.model_json_schema()
+    result = manual_extract_and_jsonify(driver, text, schema, model_name, instruction_template, ai_cleanup, options)
+    return model_cls(**result["json_object"])
+
+
+def stepwise_extract_with_model(
+    model_cls: Type[BaseModel],
+    text: str,
+    driver: Optional[Driver] = None,
+    model_name: str = "",
+    instruction_template: str = "Extract the {field_name} from the following text:",
+    ai_cleanup: bool = True,
+    options: Dict[str, Any] = {},
+) -> BaseModel:
+    """Extracts structured information into a Pydantic model by processing each field individually.
+
+    For each field in the model, makes a separate LLM call to extract that specific field,
+    then combines the results and validates the complete model instance.
+
+    Args:
+        model_cls: The Pydantic BaseModel class to extract into.
+        text: The raw text to extract information from.
+        driver: Optional LLM driver instance. If None, uses get_driver().
+        model_name: Optional override of the model name.
+        instruction_template: Template for instructional text, should include {field_name} placeholder.
+        ai_cleanup: Whether to attempt AI-based cleanup if JSON parsing fails.
+        options: Additional options to pass to the driver.
+
+    Returns:
+        A validated instance of the Pydantic model.
+
+    Raises:
+        ValueError: If text is empty or None.
+        ValidationError: If the extracted data doesn't match the model schema.
+    """
+    if not text or not text.strip():
+        raise ValueError("Text input cannot be empty")
+
+    if driver is None:
+        driver = get_driver()
+
+    data = {}
+    for field_name, field_info in model_cls.model_fields.items():
+        field_schema = {
+            "value": {
+                "type": "string",
+                "description": f"Extract the {field_name} from the text"
+            }
+        }
+        result = manual_extract_and_jsonify(
+            driver,
+            text,
+            field_schema,
+            model_name,
+            instruction_template.format(field_name=field_name),
+            ai_cleanup,
+            options
+        )
+        data[field_name] = result["json_object"]["value"]
+
+    return model_cls(**data)
 
 def manual_extract_and_jsonify(
     driver: Driver,

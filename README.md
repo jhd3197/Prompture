@@ -187,6 +187,251 @@ usage = result["usage"]
 - **Model Flexibility**: Easily switch between models for the same driver
 - **Testing**: Better for testing scenarios where you need specific driver configurations
 
+## 🔎 Pydantic Model Extraction
+
+This document provides a comprehensive comparison between the two extraction modes available in Prompture: `extract_with_model` and `stepwise_extract_with_model`. These functions enable structured data extraction from text using Large Language Models (LLMs) with Pydantic model validation.
+
+### Overview
+
+Prompture offers two distinct approaches for extracting structured data from unstructured text using Pydantic models:
+
+1. **`extract_with_model`** - Single-call extraction that processes all model fields in one LLM request
+2. **`stepwise_extract_with_model`** - Multi-call extraction that processes each model field individually
+
+Both functions return validated Pydantic model instances, but they differ significantly in their approach, performance characteristics, and use cases.
+
+### Function Reference
+
+#### `extract_with_model`
+
+**Purpose:** Extracts structured information into a Pydantic model instance using a single LLM call.
+
+**Signature:**
+```python
+def extract_with_model(
+    model_cls: Type[BaseModel],
+    text: str,
+    driver: Optional[Driver] = None,
+    model_name: str = "",
+    instruction_template: str = "Extract information from the following text:",
+    ai_cleanup: bool = True,
+    options: Dict[str, Any] = {},
+) -> BaseModel
+```
+
+**Parameters:**
+- `model_cls`: The Pydantic BaseModel class to extract into
+- `text`: The raw text to extract information from
+- `driver`: Optional LLM driver instance (uses `get_driver()` if None)
+- `model_name`: Optional override of the model name
+- `instruction_template`: Instructional text to prepend to the content
+- `ai_cleanup`: Whether to attempt AI-based cleanup if JSON parsing fails
+- `options`: Additional options to pass to the driver
+
+**Behavior:**
+1. Converts the Pydantic model to its JSON schema
+2. Makes a single LLM call with the complete schema
+3. Parses and validates the response against the model
+4. Returns a validated model instance
+
+#### `stepwise_extract_with_model`
+
+**Purpose:** Extracts structured information into a Pydantic model by processing each field individually.
+
+**Signature:**
+```python
+def stepwise_extract_with_model(
+    model_cls: Type[BaseModel],
+    text: str,
+    driver: Optional[Driver] = None,
+    model_name: str = "",
+    instruction_template: str = "Extract the {field_name} from the following text:",
+    ai_cleanup: bool = True,
+    options: Dict[str, Any] = {},
+) -> BaseModel
+```
+
+**Parameters:**
+- `model_cls`: The Pydantic BaseModel class to extract into
+- `text`: The raw text to extract information from
+- `driver`: Optional LLM driver instance (uses `get_driver()` if None)
+- `model_name`: Optional override of the model name
+- `instruction_template`: Template for instructional text (must include `{field_name}` placeholder)
+- `ai_cleanup`: Whether to attempt AI-based cleanup if JSON parsing fails
+- `options`: Additional options to pass to the driver
+
+**Behavior:**
+1. Iterates through each field in the model
+2. Makes a separate LLM call for each field with a focused prompt
+3. Collects all field values
+4. Validates the complete model instance
+5. Returns a validated model instance
+
+### Comparison Table
+
+| Aspect | `extract_with_model` | `stepwise_extract_with_model` |
+|--------|---------------------|------------------------------|
+| **LLM Calls** | Single call | Multiple calls (one per field) |
+| **Prompt Complexity** | Complex schema-based | Simple field-focused |
+| **Token Usage** | Lower (shared context) | Higher (repeated context) |
+| **Cost** | Lower | Higher |
+| **Speed** | Faster | Slower |
+| **Reliability** | Schema coherence | Field-level accuracy |
+| **Error Recovery** | All-or-nothing | Per-field recovery |
+| **Context Length** | Full text per call | Full text per field |
+| **Field Dependencies** | Can leverage relationships | Independent extraction |
+
+### Practical Examples
+
+#### Example Model
+
+```python
+from pydantic import BaseModel
+from typing import List, Optional
+
+class Person(BaseModel):
+    name: str
+    age: int
+    profession: str
+    city: str
+    hobbies: List[str]
+    education: Optional[str] = None
+```
+
+#### Using `extract_with_model`
+
+```python
+from prompture import extract_with_model
+
+text = "Maria is 32 years old and works as a software developer in New York. She loves hiking and photography."
+
+person = extract_with_model(Person, text)
+print(person.name)  # "Maria"
+print(person.profession)  # "software developer"
+print(person.hobbies)  # ["hiking", "photography"]
+```
+
+#### Using `stepwise_extract_with_model`
+
+```python
+from prompture import stepwise_extract_with_model
+
+text = "Maria is 32 years old and works as a software developer in New York. She loves hiking and photography."
+
+person = stepwise_extract_with_model(Person, text)
+print(person.name)  # "Maria"
+print(person.profession)  # "software developer"
+print(person.hobbies)  # ["hiking", "photography"]
+```
+
+### When to Choose Each Approach
+
+#### Choose `extract_with_model` when:
+
+- **Cost efficiency is important** - Single LLM call reduces token usage and API costs
+- **Speed is critical** - Faster processing with fewer network round trips
+- **Fields are interdependent** - The LLM can leverage relationships between fields
+- **Simple models** - Fewer fields mean less complex prompts
+- **High coherence required** - All fields must be consistent with each other
+
+#### Choose `stepwise_extract_with_model` when:
+
+- **Accuracy per field is paramount** - Each field gets focused attention
+- **Complex models** - Many fields where individual focus improves results
+- **Field independence** - Fields don't rely on each other for context
+- **Error resilience** - Ability to recover from individual field extraction failures
+- **Debugging needs** - Easier to identify and fix issues with specific fields
+- **Cost is secondary** - When accuracy is more important than efficiency
+
+### Performance and Reliability Considerations
+
+#### Performance Metrics
+
+**Token Efficiency:**
+- `extract_with_model`: ~30-50% fewer tokens due to shared context
+- `stepwise_extract_with_model`: Higher token usage from repeated text and simpler prompts
+
+**Latency:**
+- `extract_with_model`: Single network round trip
+- `stepwise_extract_with_model`: Multiple round trips (N fields = N calls)
+
+**Throughput:**
+- `extract_with_model`: Better for batch processing
+- `stepwise_extract_with_model`: Better for real-time, field-by-field updates
+
+#### Reliability Factors
+
+**Error Handling:**
+- `extract_with_model`: Schema validation ensures all fields are present and valid
+- `stepwise_extract_with_model`: Individual field validation with potential partial failures
+
+**Context Quality:**
+- `extract_with_model`: Full context available for all fields simultaneously
+- `stepwise_extract_with_model`: Full context available for each field individually
+
+**Consistency:**
+- `extract_with_model`: Better cross-field consistency
+- `stepwise_extract_with_model`: Potential for field-level inconsistencies
+
+### Best Practices and Recommendations
+
+#### General Recommendations
+
+1. **Start with `extract_with_model`** for most use cases due to efficiency
+2. **Use `stepwise_extract_with_model`** when field accuracy is critical
+3. **Profile performance** for your specific use case and model size
+4. **Consider cost implications** when choosing between approaches
+
+#### Optimization Tips
+
+**For `extract_with_model`:**
+- Keep models focused and not overly complex
+- Use clear, descriptive field names and descriptions
+- Consider model size limits for very large schemas
+
+**For `stepwise_extract_with_model`:**
+- Order fields logically if there are dependencies
+- Use descriptive field names in the instruction template
+- Consider parallel processing for multiple fields if supported
+
+#### Error Handling
+
+```python
+from prompture import extract_with_model, stepwise_extract_with_model
+from pydantic import ValidationError
+
+def safe_extract(model_cls, text, use_stepwise=False):
+    try:
+        if use_stepwise:
+            return stepwise_extract_with_model(model_cls, text)
+        else:
+            return extract_with_model(model_cls, text)
+    except ValidationError as e:
+        print(f"Validation failed: {e}")
+        # Handle validation errors
+    except Exception as e:
+        print(f"Extraction failed: {e}")
+        # Handle other errors
+```
+
+#### Monitoring and Debugging
+
+**Track key metrics:**
+- Extraction success rate
+- Average processing time
+- Token usage per extraction
+- Cost per extraction
+
+**Debugging approaches:**
+- `extract_with_model`: Check the complete schema and response
+- `stepwise_extract_with_model`: Debug individual field extractions
+
+### Conclusion
+
+Both extraction modes serve important roles in the Prompture ecosystem. `extract_with_model` provides efficiency and coherence for most use cases, while `stepwise_extract_with_model` offers precision and resilience when individual field accuracy is paramount.
+
+Choose based on your specific requirements for accuracy, performance, cost, and complexity. Consider prototyping with both approaches to determine which works best for your particular use case and data characteristics.
+
 ## Batch Running and Testing Prompts
 
 `run_suite_from_spec` enables you to define and run test suites against multiple models using a specification file. This powerful feature allows you to systematically test and compare different models using a consistent set of prompts and validation criteria. Here's how it works:

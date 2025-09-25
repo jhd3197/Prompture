@@ -1,7 +1,7 @@
 """prompture - API package to convert LLM outputs into JSON + test harness."""
 
 from dotenv import load_dotenv
-from .core import ask_for_json, extract_and_jsonify, manual_extract_and_jsonify, Driver, clean_json_text, clean_json_text_with_ai
+from .core import ask_for_json, extract_and_jsonify, manual_extract_and_jsonify, Driver, clean_json_text, clean_json_text_with_ai, extract_with_model, stepwise_extract_with_model
 from .runner import run_suite_from_spec
 from .validator import validate_against_schema
 
@@ -22,4 +22,4 @@ except Exception:
     # fallback during local editable development
     __version__ = "0.0.0"
 
-__all__ = ["ask_for_json", "extract_and_jsonify", "manual_extract_and_jsonify","run_suite_from_spec", "validate_against_schema", "Driver", "clean_json_text", "clean_json_text_with_ai"]
+__all__ = ["ask_for_json", "extract_and_jsonify", "manual_extract_and_jsonify","run_suite_from_spec", "validate_against_schema", "Driver", "clean_json_text", "clean_json_text_with_ai", "extract_with_model", "stepwise_extract_with_model"]
