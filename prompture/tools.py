@@ -40,6 +40,10 @@ import uuid
 
 import dateutil.parser
 from pydantic import BaseModel
+from tukuy import TukuyTransformer
+
+# Initialize Tukuy transformer
+TUKUY = TukuyTransformer()
 
 __all__ = [
     "create_field_schema",
@@ -132,52 +136,17 @@ def log_debug(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-_BOOL_TRUE = {"true", "t", "yes", "y", "1", "on", "si", "sí", "verdadero"}
-_BOOL_FALSE = {"false", "f", "no", "n", "0", "off", "falso"}
-
-_NUM_STRIP_RE = re.compile(r"[,\s_]")
 _CURRENCY_PREFIX = tuple("$€£¥₿₽₹₩₫₪₴₦₲₵₡₱₺₸")  # basic strip-only handling
-_SUFFIX_MAP = {
-    # standard
-    "k": 1_000,
-    "m": 1_000_000,
-    "b": 1_000_000_000,
-    "t": 1_000_000_000_000,
-    # common alternates
-    "bn": 1_000_000_000,
-    "mm": 1_000_000,   # Spanish-speaking contexts
-    "tr": 1_000_000_000_000,
-}
-
-_NUMBER_RE = re.compile(
-    r"""
-    ^\s*
-    (?P<sign>[-+]?)\s*
-    (?P<body>
-        (?:\d+(?:[,_]\d+)*|\d*\.\d+|\d+)
-        (?:e[-+]?\d+)?     # scientific notation
-    )
-    \s*(?P<suffix>[a-z]{1,2})?
-    \s*$
-    """,
-    re.IGNORECASE | re.VERBOSE,
-)
 
 
 def parse_boolean(value: Any) -> bool:
-    """Best-effort boolean parser with multilingual variants."""
+    """Best-effort boolean parser with multilingual variants using Tukuy."""
     if isinstance(value, bool):
         return value
     if value is None:
         raise ValueError("Cannot parse None as boolean")
     s = str(value).strip().lower()
-    if s in _BOOL_TRUE:
-        return True
-    if s in _BOOL_FALSE:
-        return False
-    raise ValueError(f"Cannot parse '{value}' as boolean")
-
+    return TUKUY.transform(s, ["bool"])
 
 def as_list(value: Any, *, sep: str | None = None) -> List[Any]:
     """
@@ -199,7 +168,6 @@ def as_list(value: Any, *, sep: str | None = None) -> List[Any]:
             parts = value.split(sep)
         return [p.strip() for p in parts if p.strip() != ""]
     return [value]
-
 
 def parse_datetime(
     value: Any,
@@ -224,7 +192,6 @@ def parse_datetime(
 
 def _strip_currency_prefix(s: str) -> str:
     return s[1:].lstrip() if s and s[0] in _CURRENCY_PREFIX else s
-
 
 def parse_shorthand_number(
     value: Any,
@@ -268,55 +235,24 @@ def parse_shorthand_number(
     if allow_currency:
         s = _strip_currency_prefix(s)
 
-    # Percent handling
+    # Handle percent before Tukuy transform
     is_percent = False
     if allow_percent and s.endswith("%"):
         is_percent = True
         s = s[:-1].strip()
 
-    # Remove common numeric separators for the core match (we preserve decimals)
-    core = _NUM_STRIP_RE.sub("", s)
-
-    m = _NUMBER_RE.match(core)
-    if not m:
-        raise ValueError(f"Invalid number format: {value!r}")
-
-    body = m.group("body")
-    suffix = (m.group("suffix") or "").lower()
-
-    # Normalize thousand separators inside body again (commas/underscores already stripped)
-    # Now body should be like "1234.56" or "1e3"
-    multiplier = 1
-    if suffix:
-        multiplier = __SUFFIX_MAP.get(suffix, None)
-        if multiplier is None:
-            raise ValueError(f"Unknown numeric suffix '{suffix}' in {value!r}")
-
-    # Choose numeric constructor (Decimal if requested, or if body looks precise)
-    want_decimal = as_decimal is True or (as_decimal is None and "." in body or "e" in body.lower())
-    ctor = Decimal if want_decimal else float
-
-    try:
-        num = ctor(body)
-    except (InvalidOperation, ValueError) as e:
-        raise ValueError(f"Invalid number body '{body}': {e}") from e
-
-    num = num * (ctor(multiplier) if multiplier != 1 else 1)
-
+    # Use appropriate Tukuy transformer based on as_decimal
+    transformer = ["shorthand_decimal"] if as_decimal else ["shorthand_number"]
+    num = TUKUY.transform(s, transformer)
+    
+    # Handle percent if needed
     if is_percent:
-        num = num * ctor(percent_base) / ctor(100)
-
-    # Fold to int if exact
-    if ctor is float:
-        # floats are imprecise; only coerce if looks integerish after rounding
-        if abs(num - round(num)) < 1e-12:
-            return int(round(num))
-        return num
-    else:
-        # Decimal: if integral
-        if num == num.to_integral_value():
-            return int(num)
-        return num
+        if isinstance(num, (int, float)):
+            num = num * percent_base / 100
+        else:  # Decimal
+            num = num * Decimal(str(percent_base)) / Decimal('100')
+    
+    return num
 
 
 # ---------------------------------------------------------------------------

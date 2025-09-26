@@ -1,4 +1,3 @@
-from .mock_driver import MockDriver
 from .openai_driver import OpenAIDriver
 from .local_http_driver import LocalHTTPDriver
 from .ollama_driver import OllamaDriver
@@ -14,12 +13,11 @@ def get_driver(provider_name: str = None):
     - Explicit argument (provider_name)
     - Environment variable (AI_PROVIDER) via settings.ai_provider
     
+    If no provider is specified, defaults to "ollama" if available.
     Case-insensitive: "Ollama", "ollama", "OLLAMA" are treated the same.
     """
-    provider = (provider_name or settings.ai_provider or "").strip().lower()
+    provider = (provider_name or settings.ai_provider or "ollama").strip().lower()
 
-    if provider == "mock":
-        return MockDriver()
     if provider == "openai":
         return OpenAIDriver(api_key=settings.openai_api_key, model=settings.openai_model)
     if provider == "local_http":
@@ -38,7 +36,6 @@ def get_driver(provider_name: str = None):
     raise ValueError(f"Unknown provider: {provider_name}")
 
 __all__ = [
-    "MockDriver",
     "OpenAIDriver",
     "LocalHTTPDriver",
     "OllamaDriver",
