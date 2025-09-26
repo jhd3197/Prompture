@@ -1,14 +1,13 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field
 from typing import Optional
 
 class Settings(BaseSettings):
-    # Fields automatically map to UPPER_CASE environment variables
-    ai_provider: str = "mock"
+    """Application settings loaded from environment variables or .env file."""
+    ai_provider: str = "ollama"
     openai_api_key: Optional[str] = None
     openai_model: str = "gpt-3.5-turbo"
     claude_api_key: Optional[str] = None
-    claude_model: str = Field(default="claude-3-haiku-20240307", env="CLAUDE_MODEL_NAME")
+    claude_model: str = "claude-3-haiku-20240307"
     hf_endpoint: Optional[str] = None
     hf_token: Optional[str] = None
     ollama_endpoint: str = "http://localhost:11434/api/generate"
@@ -19,7 +18,8 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(
         env_file=".env",
-        extra="ignore"
+        extra="ignore",
+        env_prefix="",
     )
 
 settings = Settings()

@@ -19,7 +19,9 @@ setup(
         "pydantic>=1.10",
         "pydantic-settings>=2.0",
         "python-dotenv>=0.19.0",
-        "requests>=2.28"
+        "requests>=2.28",
+        "python-dateutil>=2.9.0",
+        "tukuy>=0.0.6"
     ],
     author="Juan Denis",
     author_email="juan@vene.co",

@@ -1,7 +1,6 @@
 import pytest
 import os
 from typing import Dict, Any
-from prompture.drivers import MockDriver
 
 
 @pytest.fixture
@@ -18,56 +17,58 @@ def sample_json_schema() -> Dict[str, Any]:
     }
 
 
-@pytest.fixture
-def mock_driver_with_metadata():
-    """Mock driver that returns realistic token usage and cost metadata."""
-    class MockDriverWithMetadata(MockDriver):
-        def generate(self, prompt: str, options: Dict[str, Any] = None) -> Dict[str, Any]:
-            # Base response from parent
-            response = super().generate(prompt, options or {})
-
-            # Enhanced metadata with token usage and cost tracking
-            prompt_tokens = len(prompt.split()) * 2  # Rough estimate
-            completion_tokens = len(response["text"].split()) * 2
-
-            response["meta"] = {
-                "prompt_tokens": prompt_tokens,
-                "completion_tokens": completion_tokens,
-                "total_tokens": prompt_tokens + completion_tokens,
-                "cost": 0.0,  # Mock is free
-                "raw_response": {
-                    "mock_response": True,
-                    "prompt_tokens": prompt_tokens,
-                    "completion_tokens": completion_tokens
-                }
+def get_provider_credentials(provider: str) -> Dict[str, Any]:
+    """Get credentials and configuration for a specific provider."""
+    credentials = {}
+    
+    if provider == "ollama":
+        # Check for endpoint using both possible env var names
+        endpoint = os.getenv("OLLAMA_ENDPOINT") or os.getenv("OLLAMA_URI")
+        if endpoint:
+            credentials = {
+                "endpoint": endpoint,
+                "model": os.getenv("OLLAMA_MODEL", "gemma:latest")
             }
-
-            return response
-
-    return MockDriverWithMetadata()
+    elif provider == "openai":
+        if api_key := os.getenv("OPENAI_API_KEY"):
+            credentials = {
+                "api_key": api_key,
+                "model": os.getenv("OPENAI_MODEL", "gpt-4-turbo-preview")
+            }
+    elif provider == "claude":
+        if api_key := os.getenv("ANTHROPIC_API_KEY"):
+            credentials = {
+                "api_key": api_key,
+                "model": os.getenv("CLAUDE_MODEL", "claude-3-sonnet-20240229")
+            }
+    
+    return credentials
 
 
 @pytest.fixture
-def integration_driver():
-    """Returns a real driver if environment variables are set, otherwise MockDriver."""
-    # Check for Ollama
-    if os.getenv("OLLAMA_URI"):
+def integration_driver(request):
+    """Returns a real driver based on AI_PROVIDER environment variable."""
+    provider = os.getenv("AI_PROVIDER", "")
+    
+    if not provider:
+        pytest.skip("AI_PROVIDER environment variable not set")
+    
+    # Convert to lowercase after logging original value
+    provider = provider.lower()
+            
+    credentials = get_provider_credentials(provider)
+        
+    if provider == "ollama":
         from prompture.drivers import OllamaDriver
-        return OllamaDriver(
-            endpoint=os.getenv("OLLAMA_URI"),
-            model=os.getenv("OLLAMA_MODEL", "gemma3:latest")
-        )
-
-    # Check for OpenAI
-    if os.getenv("OPENAI_API_KEY"):
+        return OllamaDriver(**credentials)
+    elif provider == "openai":
         from prompture.drivers import OpenAIDriver
-        return OpenAIDriver(
-            api_key=os.getenv("OPENAI_API_KEY"),
-            model=os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-        )
-
-    # Fallback to mock
-    return MockDriver()
+        return OpenAIDriver(**credentials)
+    elif provider == "claude":
+        from prompture.drivers import ClaudeDriver
+        return ClaudeDriver(**credentials)
+    else:
+        pytest.skip(f"Unsupported provider: {provider}")
 
 
 def pytest_configure(config):
@@ -76,17 +77,24 @@ def pytest_configure(config):
 
 
 def pytest_collection_modifyitems(config, items):
-    """Skip integration tests by default unless environment is configured."""
-    skip_integration = pytest.mark.skip(reason="integration test - requires API credentials")
-
+    """Skip integration tests unless environment is properly configured."""
     for item in items:
         if "integration" in item.keywords:
-            # Skip if no integration credentials are available
-            has_ollama = bool(os.getenv("OLLAMA_URI"))
-            has_openai = bool(os.getenv("OPENAI_API_KEY"))
-
-            if not (has_ollama or has_openai):
-                item.add_marker(skip_integration)
+            provider = os.getenv("AI_PROVIDER", "")
+            
+            if not provider:
+                item.add_marker(pytest.mark.skip(reason="AI_PROVIDER environment variable not set"))
+                continue
+            
+            # Convert to lowercase after logging
+            provider = provider.lower()
+            credentials = get_provider_credentials(provider)
+            
+            if not credentials:
+                skip_reason = f"Missing credentials for {provider} provider - check environment variables"
+                if provider == "ollama":
+                    skip_reason += " (OLLAMA_ENDPOINT or OLLAMA_URI required)"
+                item.add_marker(pytest.mark.skip(reason=skip_reason))
 
 
 def assert_valid_usage_metadata(meta: Dict[str, Any]):

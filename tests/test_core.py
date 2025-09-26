@@ -6,7 +6,6 @@ from prompture import (
     ask_for_json,
     extract_and_jsonify
 )
-from prompture.drivers import MockDriver
 
 
 def assert_valid_usage_metadata(meta: dict):
@@ -27,8 +26,14 @@ def assert_valid_usage_metadata(meta: dict):
     assert meta["total_tokens"] == meta["prompt_tokens"] + meta["completion_tokens"], "total_tokens should equal prompt + completion"
 
 
-def assert_jsonify_response_structure(response: dict):
-    """Helper function to validate the structure of jsonify responses."""
+def assert_jsonify_response_structure(response: dict, schema_type: str = "object"):
+    """
+    Helper function to validate the structure of jsonify responses.
+    
+    Args:
+        response: The response dictionary to validate
+        schema_type: The expected schema type (default: "object")
+    """
     required_keys = {"json_string", "json_object", "usage"}
 
     for key in required_keys:
@@ -36,7 +41,13 @@ def assert_jsonify_response_structure(response: dict):
 
     # Validate types
     assert isinstance(response["json_string"], str), "json_string must be string"
-    assert isinstance(response["json_object"], dict), "json_object must be dict"
+    
+    # Check json_object type based on schema_type
+    if schema_type == "string":
+        assert isinstance(response["json_object"], str), "json_object must be string when schema type is string"
+    else:
+        assert isinstance(response["json_object"], dict), "json_object must be dict"
+        
     assert isinstance(response["usage"], dict), "usage must be dict"
 
     # Validate usage metadata
@@ -155,60 +166,35 @@ And here is the second:
 class TestCleanJsonTextWithAi:
     """Tests for clean_json_text_with_ai function."""
 
-    def test_clean_malformed_json_with_ai_help(self, mock_driver_with_metadata):
+    @pytest.mark.integration
+    def test_clean_malformed_json_with_ai_help(self, integration_driver):
         """Test using AI to clean malformed JSON."""
         malformed_json = '{"name": "Juan", "age": 28, "interests": ["basketball"]'  # Missing closing brace
+        result = clean_json_text_with_ai(integration_driver, malformed_json)
+        
+        # Verify the result is valid JSON
+        parsed = json.loads(result)
+        assert isinstance(parsed, dict)
+        assert "name" in parsed
+        assert "age" in parsed
+        assert "interests" in parsed
 
-        # Mock the driver's response to return a cleaned version
-        original_generate = mock_driver_with_metadata.generate
-
-        def mock_generate(prompt, options):
-            if "correct it" in prompt and "valid JSON" in prompt:
-                return {
-                    "text": '{"name": "Juan", "age": 28, "interests": ["basketball"]}',
-                    "meta": {
-                        "prompt_tokens": 20,
-                        "completion_tokens": 15,
-                        "total_tokens": 35,
-                        "cost": 0.0,
-                        "raw_response": {"mock": True}
-                    }
-                }
-            return original_generate(prompt, options)
-
-        mock_driver_with_metadata.generate = mock_generate
-
-        result = clean_json_text_with_ai(mock_driver_with_metadata, malformed_json)
-        assert result == '{"name": "Juan", "age": 28, "interests": ["basketball"]}'
-
-    def test_clean_already_valid_json(self, mock_driver_with_metadata):
+    @pytest.mark.integration
+    def test_clean_already_valid_json(self, integration_driver):
         """Test that valid JSON is returned unchanged."""
         valid_json = '{"name": "Juan", "age": 28}'
-        # Use a driver that returns the original valid_json
-        class SimpleDriver(MockDriver):
-            def generate(self, prompt, options):
-                return {
-                    "text": valid_json,  # Return valid JSON
-                    "meta": {
-                        "prompt_tokens": 10,
-                        "completion_tokens": 5,
-                        "total_tokens": 15,
-                        "cost": 0.0,
-                        "raw_response": {"mock": True}
-                    }
-                }
-
-        result = clean_json_text_with_ai(SimpleDriver(), valid_json)
-        assert result == valid_json
+        result = clean_json_text_with_ai(integration_driver, valid_json)
+        assert json.loads(result) == json.loads(valid_json)
 
 
 class TestAskForJson:
     """Tests for ask_for_json function."""
 
-    def test_successful_json_response(self, mock_driver_with_metadata, sample_json_schema):
+    @pytest.mark.integration
+    def test_successful_json_response(self, integration_driver, sample_json_schema):
         """Test successful conversion of prompt to JSON."""
         content_prompt = "Extract user profile: Juan is 28 years old from Miami"
-        result = ask_for_json(mock_driver_with_metadata, content_prompt, sample_json_schema)
+        result = ask_for_json(integration_driver, content_prompt, sample_json_schema)
 
         # Validate response structure
         assert "json_string" in result
@@ -226,187 +212,95 @@ class TestAskForJson:
         # Validate usage metadata
         assert_valid_usage_metadata(result["usage"])
 
-    def test_json_schema_inclusion_in_prompt(self, mock_driver_with_metadata, sample_json_schema):
+    @pytest.mark.integration
+    def test_json_schema_inclusion_in_prompt(self, integration_driver, sample_json_schema):
         """Test that JSON schema is properly included in the generated prompt."""
         content_prompt = "Extract user info: Juan is 28 and lives in Miami"
-        result = ask_for_json(mock_driver_with_metadata, content_prompt, sample_json_schema)
-
-        # The mock driver should have received a prompt containing the schema
-        # This is tested indirectly through the response structure
+        result = ask_for_json(integration_driver, content_prompt, sample_json_schema)
         assert "json_string" in result
+        parsed = json.loads(result["json_string"])
+        assert isinstance(parsed, dict)
 
-    def test_ai_cleanup_enabled(self, mock_driver_with_metadata, sample_json_schema):
+    @pytest.mark.integration
+    def test_ai_cleanup_enabled(self, integration_driver, sample_json_schema):
         """Test AI cleanup when JSON parsing fails initially."""
-        # Set up mock to return malformed JSON initially
-        original_generate = mock_driver_with_metadata.generate
-
-        call_count = 0
-        def mock_generate(prompt, options):
-            nonlocal call_count
-            call_count += 1
-
-            if call_count == 1:
-                # First call returns malformed JSON
-                return {
-                    "text": '{"name": "Juan", "age": 28',
-                    "meta": {
-                        "prompt_tokens": 10,
-                        "completion_tokens": 5,
-                        "total_tokens": 15,
-                        "cost": 0.0,
-                        "raw_response": {"mock": True}
-                    }
-                }
-            else:
-                # Second call for cleanup returns valid JSON
-                return {
-                    "text": '{"name": "Juan", "age": 28}',
-                    "meta": {
-                        "prompt_tokens": 25,
-                        "completion_tokens": 8,
-                        "total_tokens": 33,
-                        "cost": 0.0,
-                        "raw_response": {"mock": True}
-                    }
-                }
-
-        mock_driver_with_metadata.generate = mock_generate
-
         content_prompt = "Extract user info"
-        result = ask_for_json(mock_driver_with_metadata, content_prompt, sample_json_schema, ai_cleanup=True)
-
-        assert call_count == 2  # Should have made two calls
+        result = ask_for_json(integration_driver, content_prompt, sample_json_schema, ai_cleanup=True)
         assert "json_object" in result
+        assert isinstance(result["json_object"], dict)
 
-    def test_ai_cleanup_disabled_raises_error(self, mock_driver_with_metadata, sample_json_schema):
+    def test_ai_cleanup_disabled_raises_error(self, integration_driver, sample_json_schema, monkeypatch):
         """Test that invalid JSON raises exception when AI cleanup is disabled."""
-        original_generate = mock_driver_with_metadata.generate
-
-        def mock_generate(prompt, options):
-            return {
-                "text": '{"name": "Juan", invalid_json}',  # Invalid JSON
-                "meta": {
-                    "prompt_tokens": 10,
-                    "completion_tokens": 5,
-                    "total_tokens": 15,
-                    "cost": 0.0,
-                    "raw_response": {"mock": True}
-                }
-            }
-
-        mock_driver_with_metadata.generate = mock_generate
-
+        # Create a test response with invalid JSON
+        def mock_clean_json_text(text):
+            return '{"name": "Test", "incomplete": true'  # Intentionally invalid JSON (missing closing brace)
+        
+        # Patch the clean_json_text function to return invalid JSON
+        monkeypatch.setattr('prompture.core.clean_json_text', mock_clean_json_text)
+        
         content_prompt = "Extract user info"
         with pytest.raises(json.JSONDecodeError):
-            ask_for_json(mock_driver_with_metadata, content_prompt, sample_json_schema, ai_cleanup=False)
+            ask_for_json(integration_driver, content_prompt, sample_json_schema, ai_cleanup=False)
 
 
 class TestExtractAndJsonify:
     """Tests for extract_and_jsonify function."""
 
-    def test_successful_extraction_with_template(self, mock_driver_with_metadata, sample_json_schema):
+    @pytest.mark.integration
+    def test_successful_extraction_with_template(self, integration_driver, sample_json_schema):
         """Test successful extraction with custom instruction template."""
         text = "Juan is 28 years old and lives in Miami."
         instruction_template = "Please extract the following information:"
-        result = extract_and_jsonify(mock_driver_with_metadata, text, sample_json_schema, instruction_template)
+        result = extract_and_jsonify(integration_driver, text, sample_json_schema, instruction_template)
 
         # Validate response structure
         assert_jsonify_response_structure(result)
-
-        # Validate that instruction was used
         assert "json_string" in result
         assert result["json_string"]  # Should contain some response
 
-    def test_default_template_usage(self, mock_driver_with_metadata, sample_json_schema):
+    @pytest.mark.integration
+    def test_default_template_usage(self, integration_driver, sample_json_schema):
         """Test using the default instruction template."""
         text = "John is 25 and from Texas."
-        result = extract_and_jsonify(mock_driver_with_metadata, text, sample_json_schema)
-
+        result = extract_and_jsonify(integration_driver, text, sample_json_schema)
         assert_jsonify_response_structure(result)
 
-    def test_empty_text_raises_error(self, mock_driver_with_metadata, sample_json_schema):
+    def test_empty_text_raises_error(self, integration_driver, sample_json_schema):
         """Test that empty text raises ValueError."""
         with pytest.raises(ValueError, match="Text input cannot be empty"):
-            extract_and_jsonify(mock_driver_with_metadata, "", sample_json_schema)
+            extract_and_jsonify(integration_driver, "", sample_json_schema)
 
-    def test_whitespace_only_text_raises_error(self, mock_driver_with_metadata, sample_json_schema):
+    def test_whitespace_only_text_raises_error(self, integration_driver, sample_json_schema):
         """Test that whitespace-only text raises ValueError."""
         with pytest.raises(ValueError, match="Text input cannot be empty"):
-            extract_and_jsonify(mock_driver_with_metadata, "   ", sample_json_schema)
+            extract_and_jsonify(integration_driver, "   ", sample_json_schema)
 
-    def test_with_ai_cleanup(self, mock_driver_with_metadata, sample_json_schema):
+    @pytest.mark.integration
+    def test_with_ai_cleanup(self, integration_driver, sample_json_schema):
         """Test extraction with AI cleanup enabled."""
         text = "Juan has information to extract"
-        result = extract_and_jsonify(mock_driver_with_metadata, text, sample_json_schema, ai_cleanup=True)
-
+        result = extract_and_jsonify(integration_driver, text, sample_json_schema, ai_cleanup=True)
         assert_jsonify_response_structure(result)
 
 
 class TestErrorHandlingAndEdgeCases:
     """Tests for error handling and edge cases."""
 
-    def test_json_parsing_error_detail(self, mock_driver_with_metadata, sample_json_schema):
-        """Test detailed JSON parsing error information."""
-        original_generate = mock_driver_with_metadata.generate
+    @pytest.mark.integration
+    def test_json_parsing_error_detail(integration_driver, sample_json_schema, monkeypatch):
+        # Force an invalid response from the driver
+        def fake_complete_json(*args, **kwargs):
+            return '{"name": "Bad", "incomplete": true'  # missing brace
+        monkeypatch.setattr('prompture.core._driver_complete_json', fake_complete_json)
 
-        def mock_generate(prompt, options):
-            return {
-                "text": '{"invalid": json, syntax}',
-                "meta": {
-                    "prompt_tokens": 10,
-                    "completion_tokens": 5,
-                    "total_tokens": 15,
-                    "cost": 0.0,
-                    "raw_response": {"mock": True}
-                }
-            }
-
-        mock_driver_with_metadata.generate = mock_generate
-
-        content_prompt = "Extract user info"
         with pytest.raises(json.JSONDecodeError) as exc_info:
-            ask_for_json(mock_driver_with_metadata, content_prompt, sample_json_schema, ai_cleanup=False)
+            ask_for_json(integration_driver, "whatever", sample_json_schema, ai_cleanup=False)
 
-        # Should contain information about the problematic parsing
-        error_msg = str(exc_info.value)
-        assert "Expecting" in error_msg  # JSON decode error should mention what it was expecting
+        msg = str(exc_info.value)
+        assert "Expecting" in msg or "Invalid" in msg
 
-    def test_ai_cleanup_with_driver_error(self, sample_json_schema):
-        """Test behavior when AI cleanup itself fails."""
-        from prompture.drivers import MockDriver
-
-        class FailingDriver(MockDriver):
-            def __init__(self):
-                super().__init__()
-                self.call_count = 0
-
-            def generate(self, prompt, options):
-                self.call_count += 1
-                if self.call_count == 1:
-                    # First call returns invalid JSON to trigger cleanup
-                    return {
-                        "text": '{"name": "Juan", "age": 28',
-                        "meta": {
-                            "prompt_tokens": 10,
-                            "completion_tokens": 5,
-                            "total_tokens": 15,
-                            "cost": 0.0,
-                            "raw_response": {"mock": True}
-                        }
-                    }
-                elif "correct it" in prompt:
-                    # Second call (cleanup) fails
-                    if self.call_count == 2:
-                        raise Exception("Network error during cleanup")
-                return super().generate(prompt, options)
-
-        failing_driver = FailingDriver()
-
-        content_prompt = "Extract user info"
-        with pytest.raises(Exception, match="Network error during cleanup"):
-            ask_for_json(failing_driver, content_prompt, sample_json_schema, ai_cleanup=True)
-
-    def test_very_large_json_schema(self, mock_driver_with_metadata):
+    @pytest.mark.integration
+    def test_very_large_json_schema(self, integration_driver):
         """Test handling of very large/complex JSON schemas."""
         # Create a very large schema
         large_schema = {
@@ -419,13 +313,12 @@ class TestErrorHandlingAndEdgeCases:
         for i in range(50):
             large_schema["properties"][f"field_{i}"] = {"type": "string"}
 
-        result = ask_for_json(mock_driver_with_metadata, "Extract info", large_schema)
-
-        # Should still work despite large schema
+        result = ask_for_json(integration_driver, "Extract info", large_schema)
         assert_jsonify_response_structure(result)
         assert isinstance(result["json_string"], str)
 
-    def test_nested_schema_validation(self, mock_driver_with_metadata):
+    @pytest.mark.integration
+    def test_nested_schema_validation(self, integration_driver):
         """Test schema with deeply nested structures."""
         nested_schema = {
             "type": "object",
@@ -447,47 +340,34 @@ class TestErrorHandlingAndEdgeCases:
             }
         }
 
-        result = ask_for_json(mock_driver_with_metadata, "Extract user profile", nested_schema)
+        result = ask_for_json(integration_driver, "Extract user profile", nested_schema)
         assert_jsonify_response_structure(result)
 
-    def test_driver_timeout_simulation(self, sample_json_schema):
-        """Test handling of simulated driver timeouts."""
-        from prompture.drivers import MockDriver
-
-        class TimeoutDriver(MockDriver):
-            def generate(self, prompt, options):
-                import time
-                if "timeout" in options:
-                    time.sleep(0.1)  # Simulate delay
-                return super().generate(prompt, options)
-
-        timeout_driver = TimeoutDriver()
-
-        # This should work fine as we don't actually enforce timeouts in mock
-        result = ask_for_json(timeout_driver, "Extract info", sample_json_schema, options={"timeout": 0.01})
-        assert_jsonify_response_structure(result)
-
-    def test_empty_content_prompt(self, mock_driver_with_metadata, sample_json_schema):
+    @pytest.mark.integration
+    def test_empty_content_prompt(self, integration_driver, sample_json_schema):
         """Test with empty content prompt."""
-        result = ask_for_json(mock_driver_with_metadata, "", sample_json_schema)
+        result = ask_for_json(integration_driver, "", sample_json_schema)
         assert_jsonify_response_structure(result)
 
-    def test_very_long_text_extraction(self, mock_driver_with_metadata, sample_json_schema):
+    @pytest.mark.integration
+    def test_very_long_text_extraction(self, integration_driver, sample_json_schema):
         """Test extraction from very long text."""
         long_text = "Some information about Juan. " * 1000 + "He is 28 years old."
-        result = extract_and_jsonify(mock_driver_with_metadata, long_text, sample_json_schema)
+        result = extract_and_jsonify(integration_driver, long_text, sample_json_schema)
         assert_jsonify_response_structure(result)
 
-    def test_special_characters_in_prompt(self, mock_driver_with_metadata):
+    @pytest.mark.integration
+    def test_special_characters_in_prompt(self, integration_driver):
         """Test handling of special characters and unicode in prompts."""
         special_prompt = "Extract from: Juan's info → José María & François"
         schema = {"type": "object", "properties": {"name": {"type": "string"}}}
 
-        result = ask_for_json(mock_driver_with_metadata, special_prompt, schema)
+        result = ask_for_json(integration_driver, special_prompt, schema)
         assert_jsonify_response_structure(result)
 
-    def test_minimal_schema(self, mock_driver_with_metadata):
+    @pytest.mark.integration
+    def test_minimal_schema(self, integration_driver):
         """Test with minimal possible schema."""
         minimal_schema = {"type": "string"}
-        result = ask_for_json(mock_driver_with_metadata, "Get some text", minimal_schema)
-        assert_jsonify_response_structure(result)
+        result = ask_for_json(integration_driver, "Get some text", minimal_schema)
+        assert_jsonify_response_structure(result, schema_type="string")

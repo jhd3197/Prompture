@@ -6,6 +6,9 @@ from click.testing import CliRunner
 from prompture.cli import cli
 
 
+import os
+
+@pytest.mark.integration
 def test_run_command(tmp_path):
     """Test the 'run' command using a mock spec file."""
     # Create temporary directory and files
@@ -14,12 +17,19 @@ def test_run_command(tmp_path):
     
     # Create a minimal valid spec file
     spec_data = {
-        "models": [{"id": "mock-model", "driver": "mock"}],
+        "models": [{
+            "id": "test-model",
+            "driver": os.getenv("AI_PROVIDER", "openai"),
+            "options": {
+                "api_key": os.getenv("OPENAI_API_KEY", ""),
+                "model": os.getenv("OPENAI_MODEL", "gpt-4-turbo-preview")
+            }
+        }],
         "tests": [{
             "id": "test-1",
-            "prompt_template": "test",
-            "inputs": [{}],
-            "schema": {"type": "object"}
+            "prompt_template": "Extract name from: {text}",
+            "inputs": [{"text": "My name is Juan"}],
+            "schema": {"type": "object", "properties": {"name": {"type": "string"}}}
         }]
     }
     
