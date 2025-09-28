@@ -2,94 +2,84 @@ name: Publish Dev Version to PyPI
 
 on:
   push:
-    branches:
-      - dev
+    branches: [ dev ]
 
 permissions:
   contents: write
 
 jobs:
-  bump-version-and-publish:
+  dev-pre-release:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout Repository
+      - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+        with: { fetch-depth: 0 }
 
-      - name: Check Committer
+      - name: Ignore bot
         if: github.actor == 'github-actions[bot]'
         run: |
-          echo "Commit made by GitHub Actions. Exiting workflow."
+          echo "Commit made by GitHub Actions. Exiting."
           exit 0
 
-      - name: Read current version
-        id: ver
-        run: echo "version=$(cat VERSION)" >> $GITHUB_OUTPUT
+      - name: Fetch tags
+        run: |
+          git fetch --tags --prune
+          git tag --list | sort -V
 
-      - name: Compute next dev version
-        id: bump_version
+      - name: Compute next dev version (next patch base)
+        id: ver
         shell: bash
         run: |
-          raw="${{ steps.ver.outputs.version }}"
-          # strip any .devN suffix (so 1.0.26.dev1 -> 1.0.26)
-          base="${raw%%.dev*}"
-          # detect existing dev version
-          if [[ "$raw" =~ \.dev([0-9]+)$ ]]; then
-            dev=$((BASH_REMATCH[1] + 1))
+          set -euo pipefail
+          # latest release tag (no pre-release), e.g. v1.0.1
+          last_release="$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)"
+          if [[ -z "${last_release}" ]]; then
+            base="0.1.0"  # bootstrap if no tags yet
           else
-            dev=1
+            v="${last_release#v}"                      # 1.0.0
+            IFS=. read -r MA MI PA <<< "${v}"
+            PA=$((PA+1))                               # next patch
+            base="${MA}.${MI}.${PA}"                   # 1.0.1
           fi
-          new="${base}.dev${dev}"
-          echo "new_version=$new" >> $GITHUB_OUTPUT
 
-      - name: Update VERSION File
+          # find last dev tag for this base: v1.0.1.dev*
+          last_dev="$(git tag -l "v${base}.dev*" | sort -V | tail -1)"
+          if [[ -z "${last_dev}" ]]; then
+            dev_n=1
+          else
+            suffix="${last_dev##*.dev}"               # take N from ...devN
+            dev_n=$((suffix+1))
+          fi
+
+          new="${base}.dev${dev_n}"
+          echo "base=${base}" >> $GITHUB_OUTPUT
+          echo "new=${new}"   >> $GITHUB_OUTPUT
+          echo "tag=v${new}"  >> $GITHUB_OUTPUT
+          echo "Computed dev version: ${new}"
+
+      - name: Create and push dev tag
         run: |
-          echo "${{ steps.bump_version.outputs.new_version }}" > VERSION
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add VERSION
-          git commit -m "🔄 Version to v${{ steps.bump_version.outputs.new_version }} [skip ci]" || echo "No changes to commit"
-          git push origin dev || echo "Push failed or nothing to push"
+          git tag -a "${{ steps.ver.outputs.tag }}" -m "pre: ${{ steps.ver.outputs.new }}"
+          git push origin "${{ steps.ver.outputs.tag }}"
 
-      - name: Fetch all tags so setuptools_scm can detect the tag
-        run: |
-          git fetch --all --tags --prune
-          git tag --list
-          git describe --tags --long || true
-
-      - name: Set up Python
+      - name: Setup Python
         uses: actions/setup-python@v4
-        with:
-          python-version: '3.x'
+        with: { python-version: '3.x' }
 
-      - name: Cache pip
-        uses: actions/cache@v3
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-
-
-      - name: Install Build Dependencies
+      - name: Install build deps
         run: |
           python -m pip install --upgrade pip
-          pip install setuptools_scm build twine toml
+          pip install setuptools_scm build twine
 
-      # Build & Publish prompture ----------------------------------------------
-      - name: Build prompture
+      - name: Build (dev)
         env:
-          # fallback if tag not fully available: force version to bumped version
-          SETUPTOOLS_SCM_PRETEND_VERSION: ${{ steps.bump_version.outputs.new_version }}
+          SETUPTOOLS_SCM_PRETEND_VERSION: ${{ steps.ver.outputs.new }}
         run: |
           python -m build -o dist/prompture
 
-      - name: Publish prompture to PyPI
+      - name: Publish to PyPI (dev)
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
         run: |
-          python -m pip install --upgrade twine
-          ls -al dist/prompture
           python -m twine upload dist/prompture/* --non-interactive

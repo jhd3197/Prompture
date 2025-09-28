@@ -4,13 +4,14 @@ from __future__ import annotations
 import json
 import re
 import requests
+import warnings
 from typing import Any, Dict, Type, Optional, List
 
 from pydantic import BaseModel
 
 from .drivers import get_driver
 from .driver import Driver
-from .tools import create_field_schema, convert_value, log_debug, clean_json_text
+from .tools import create_field_schema, convert_value, log_debug, clean_json_text, LogLevel
 
 
 def clean_json_text_with_ai(driver: Driver, text: str, options: Dict[str, Any] = {}) -> str:
@@ -54,6 +55,7 @@ def ask_for_json(
         json_schema: Required JSON schema dictionary defining the expected structure.
         ai_cleanup: Whether to attempt AI-based cleanup if JSON parsing fails.
         options: Additional options to pass to the driver.
+        verbose_level: Logging level for debug output (LogLevel.OFF by default).
 
     Returns:
         A dictionary containing:
@@ -124,6 +126,7 @@ def extract_and_jsonify(
         instruction_template: Instructional text to prepend to the content.
         ai_cleanup: Whether to attempt AI-based cleanup if JSON parsing fails.
         options: Additional options to pass to the driver.
+        verbose_level: Logging level for debug output (LogLevel.OFF by default).
 
     Returns:
         A dictionary containing:
@@ -152,6 +155,7 @@ def extract_and_jsonify(
     
     try:
         return ask_for_json(driver, content_prompt, json_schema, ai_cleanup, opts)
+        
     except (requests.exceptions.ConnectionError, requests.exceptions.HTTPError) as e:
         # Check if we're running in pytest
         if 'pytest' in sys.modules:
@@ -169,6 +173,7 @@ def manual_extract_and_jsonify(
     instruction_template: str = "Extract information from the following text:",
     ai_cleanup: bool = True,
     options: Dict[str, Any] = {},
+    verbose_level: LogLevel | int = LogLevel.OFF,
 ) -> Dict[str, Any]:
     """Extracts structured information using an explicitly provided driver.
 
@@ -184,6 +189,7 @@ def manual_extract_and_jsonify(
         instruction_template: Instructional text to prepend to the content.
         ai_cleanup: Whether to attempt AI-based cleanup if JSON parsing fails.
         options: Additional options to pass to the driver.
+        verbose_level: Logging level for debug output (LogLevel.OFF by default).
 
     Returns:
         A dictionary containing:
@@ -200,13 +206,31 @@ def manual_extract_and_jsonify(
     
     if not text or not text.strip():
         raise ValueError("Text input cannot be empty")
+    # Add function entry logging
+    log_debug(LogLevel.INFO, verbose_level, "Starting manual extraction", prefix="[manual]")
+    log_debug(LogLevel.DEBUG, verbose_level, {
+        "text_length": len(text),
+        "model_name": model_name,
+        "schema_keys": list(json_schema.keys()) if json_schema else []
+    }, prefix="[manual]")
 
     opts = dict(options)
     if model_name:
         opts["model"] = model_name
 
+    
+    # Add logging for prompt generation
+    log_debug(LogLevel.DEBUG, verbose_level, "Generated prompt for extraction", prefix="[manual]")
+    log_debug(LogLevel.TRACE, verbose_level, {"content_prompt": content_prompt}, prefix="[manual]")
+    
+    # Call ask_for_json and log the result
+    result = ask_for_json(driver, content_prompt, json_schema, ai_cleanup, opts)
+    log_debug(LogLevel.DEBUG, verbose_level, "Manual extraction completed successfully", prefix="[manual]")
+    log_debug(LogLevel.TRACE, verbose_level, {"result": result}, prefix="[manual]")
+    
+    return result
     content_prompt = f"{instruction_template} {text}"
-    return ask_for_json(driver, content_prompt, json_schema, ai_cleanup, opts)
+    
 
 def extract_with_model(
     model_cls: Type[BaseModel],
@@ -216,6 +240,7 @@ def extract_with_model(
     instruction_template: str = "Extract information from the following text:",
     ai_cleanup: bool = True,
     options: Dict[str, Any] = {},
+    verbose_level: LogLevel | int = LogLevel.OFF,
 ) -> BaseModel:
     """Extracts structured information into a Pydantic model instance.
 
@@ -230,6 +255,7 @@ def extract_with_model(
         instruction_template: Instructional text to prepend to the content.
         ai_cleanup: Whether to attempt AI-based cleanup if JSON parsing fails.
         options: Additional options to pass to the driver.
+        verbose_level: Logging level for debug output (LogLevel.OFF by default).
 
     Returns:
         A validated instance of the Pydantic model.
@@ -243,9 +269,22 @@ def extract_with_model(
 
     if driver is None:
         driver = get_driver()
+    
+    # Add function entry logging
+    log_debug(LogLevel.INFO, verbose_level, "Starting extract_with_model", prefix="[extract]")
+    log_debug(LogLevel.DEBUG, verbose_level, {
+        "model_cls": model_cls.__name__,
+        "text_length": len(text),
+        "model_name": model_name
+    }, prefix="[extract]")
 
     schema = model_cls.model_json_schema()
+    log_debug(LogLevel.DEBUG, verbose_level, "Generated JSON schema", prefix="[extract]")
+    log_debug(LogLevel.TRACE, verbose_level, {"schema": schema}, prefix="[extract]")
+    
     result = extract_and_jsonify(driver, text, schema, model_name, instruction_template, ai_cleanup, options)
+    log_debug(LogLevel.DEBUG, verbose_level, "Extraction completed successfully", prefix="[extract]")
+    log_debug(LogLevel.TRACE, verbose_level, {"result": result}, prefix="[extract]")
     return model_cls(**result["json_object"])
 
 def stepwise_extract_with_model(
@@ -255,9 +294,9 @@ def stepwise_extract_with_model(
     model_name: str = "",
     instruction_template: str = "Extract the {field_name} from the following text:",
     ai_cleanup: bool = True,
-    debug: bool = False,
     fields: Optional[List[str]] = None,
     options: Dict[str, Any] = {},
+    verbose_level: LogLevel | int = LogLevel.OFF,
 ) -> BaseModel:
     """Extracts structured information into a Pydantic model by processing each field individually.
 
@@ -271,9 +310,9 @@ def stepwise_extract_with_model(
         model_name: Optional override of the model name.
         instruction_template: Template for instructional text, should include {field_name} placeholder.
         ai_cleanup: Whether to attempt AI-based cleanup if JSON parsing fails.
-        debug: Whether to print debug information during extraction.
         fields: Optional list of field names to extract. If None, extracts all fields.
         options: Additional options to pass to the driver.
+        verbose_level: Logging level for debug output (LogLevel.OFF by default).
 
     Returns:
         A validated instance of the Pydantic model.
@@ -288,6 +327,13 @@ def stepwise_extract_with_model(
 
     if driver is None:
         driver = get_driver()
+    # Add function entry logging
+    log_debug(LogLevel.INFO, verbose_level, "Starting stepwise extraction", prefix="[stepwise]")
+    log_debug(LogLevel.DEBUG, verbose_level, {
+        "model_cls": model_cls.__name__,
+        "text_length": len(text),
+        "fields": fields,
+    }, prefix="[stepwise]")
 
     data = {}
     validation_errors = []
@@ -305,10 +351,13 @@ def stepwise_extract_with_model(
         field_items = model_cls.model_fields.items()
 
     for field_name, field_info in field_items:
-        if debug:
-            print(f"\n=== Extracting field: {field_name} ===")
-            print(f"Field info: {field_info}")
-            print(f"Field type: {field_info.annotation}")
+        # Add structured logging for field extraction
+        log_debug(LogLevel.DEBUG, verbose_level, f"Extracting field: {field_name}", prefix="[stepwise]")
+        log_debug(LogLevel.TRACE, verbose_level, {
+            "field_name": field_name,
+            "field_info": str(field_info),
+            "field_type": str(field_info.annotation)
+        }, prefix="[stepwise]")
 
         # Create field schema using tools.create_field_schema
         field_schema = {
@@ -319,9 +368,11 @@ def stepwise_extract_with_model(
             )
         }
 
-        if debug:
-            print(f"Field schema: {field_schema}")
-            print(f"Prompt template: {instruction_template.format(field_name=field_name)}")
+        # Add structured logging for field schema and prompt
+        log_debug(LogLevel.TRACE, verbose_level, {
+            "field_schema": field_schema,
+            "prompt_template": instruction_template.format(field_name=field_name)
+        }, prefix="[stepwise]")
 
         try:
             result = extract_and_jsonify(
@@ -334,8 +385,9 @@ def stepwise_extract_with_model(
                 options
             )
 
-            if debug:
-                print(f"Raw extraction result: {result}")
+            # Add structured logging for extraction result
+            log_debug(LogLevel.DEBUG, verbose_level, f"Raw extraction result for {field_name}", prefix="[stepwise]")
+            log_debug(LogLevel.TRACE, verbose_level, {"result": result}, prefix="[stepwise]")
 
             extracted_value = result["json_object"]["value"]
 
@@ -348,29 +400,36 @@ def stepwise_extract_with_model(
                 )
                 data[field_name] = converted_value
 
-                if debug:
-                    print(f"Converted value: {converted_value}")
+                # Add structured logging for converted value
+                log_debug(LogLevel.DEBUG, verbose_level, f"Successfully converted {field_name}", prefix="[stepwise]")
+                log_debug(LogLevel.TRACE, verbose_level, {
+                    "field_name": field_name,
+                    "converted_value": converted_value
+                }, prefix="[stepwise]")
                     
             except ValueError as e:
                 error_msg = f"Type conversion failed for {field_name}: {str(e)}"
                 validation_errors.append(error_msg)
-                if debug:
-                    print(f"Error: {error_msg}")
+                
+                # Add structured logging for conversion error
+                log_debug(LogLevel.ERROR, verbose_level, error_msg, prefix="[stepwise]")
                 
         except Exception as e:
             error_msg = f"Extraction failed for {field_name}: {str(e)}"
             validation_errors.append(error_msg)
-            if debug:
-                print(f"Error: {error_msg}")
+            
+            # Add structured logging for extraction error
+            log_debug(LogLevel.ERROR, verbose_level, error_msg, prefix="[stepwise]")
     
-    if validation_errors and debug:
-        print("\n=== Validation Errors ===")
+    # Add structured logging for validation errors
+    if validation_errors:
+        log_debug(LogLevel.WARN, verbose_level, f"Found {len(validation_errors)} validation errors", prefix="[stepwise]")
         for error in validation_errors:
-            print(f"- {error}")
+            log_debug(LogLevel.ERROR, verbose_level, error, prefix="[stepwise]")
     
     try:
         return model_cls(**data)
     except Exception as e:
-        if debug:
-            print(f"\n=== Model Validation Error ===\n{str(e)}")
+        # Add structured logging for model validation error
+        log_debug(LogLevel.ERROR, verbose_level, f"Model validation error: {str(e)}", prefix="[stepwise]")
         raise

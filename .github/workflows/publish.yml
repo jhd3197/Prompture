@@ -10,19 +10,17 @@ permissions:
   pull-requests: read
 
 jobs:
-  bump-version-and-publish:
+  release:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout Repository
+      - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+        with: { fetch-depth: 0 }
 
-      - name: Check Committer
+      - name: Ignore bot
         if: github.actor == 'github-actions[bot]'
         run: |
-          echo "Commit made by GitHub Actions. Exiting workflow."
+          echo "Commit made by GitHub Actions. Exiting."
           exit 0
 
       - name: Bump Version and Push Tag
@@ -34,14 +32,15 @@ jobs:
           default_bump: patch
           tag_prefix: 'v'
 
-      - name: Update VERSION File
+      # OPTIONAL: keep VERSION only on main (dev never changes it)
+      - name: Update VERSION (main only)
         run: |
           echo "${{ steps.bump_version.outputs.new_version }}" > VERSION
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add VERSION
-          git commit -m "🔄 Version to v${{ steps.bump_version.outputs.new_version }} [skip ci]" || echo "No changes to commit"
-          git push origin main || echo "Push failed or nothing to push"
+          git commit -m "🔖 Version v${{ steps.bump_version.outputs.new_version }} [skip ci]" || true
+          git push origin main || true
 
       - name: Fetch Latest Pull Request Info
         id: fetch_pr
@@ -94,9 +93,7 @@ jobs:
           tag_name: v${{ steps.bump_version.outputs.new_version }}
           release_name: Release v${{ steps.bump_version.outputs.new_version }}
           body: |
-            # Release v${{ steps.bump_version.outputs.new_version }}
-            
-            ${{ steps.fetch_pr.outputs.result != 'null' && fromJSON(steps.fetch_pr.outputs.result).title || 'New Release' }}
+            # ${{ steps.fetch_pr.outputs.result != 'null' && fromJSON(steps.fetch_pr.outputs.result).title || 'New Release' }}
             
             ## Changes
             ${{ steps.fetch_pr.outputs.result != 'null' && fromJSON(steps.fetch_pr.outputs.result).body || 'Version update' }}
@@ -114,10 +111,9 @@ jobs:
           git tag --list
           git describe --tags --long || true
 
-      - name: Set up Python
+      - name: Setup Python
         uses: actions/setup-python@v4
-        with:
-          python-version: '3.x'
+        with: { python-version: '3.x' }
 
       - name: Cache pip
         uses: actions/cache@v3
@@ -127,15 +123,13 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pip-
 
-      - name: Install Build Dependencies
+      - name: Install build deps
         run: |
           python -m pip install --upgrade pip
-          pip install setuptools_scm build twine toml
+          pip install setuptools_scm build twine
 
-      # Build & Publish prompture ----------------------------------------------
-      - name: Build prompture
+      - name: Build (release)
         env:
-          # fallback if tag not fully available: force version to bumped version
           SETUPTOOLS_SCM_PRETEND_VERSION: ${{ steps.bump_version.outputs.new_version }}
         run: |
           python -m build -o dist/prompture
