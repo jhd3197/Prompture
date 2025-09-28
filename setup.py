@@ -13,6 +13,8 @@ setup(
     install_requires=[
         "anthropic>=0.8.0",
         "click>=8.0",
+        "google-generativeai>=0.3.0",
+        "groq>=0.4.0",
         "httpx>=0.25.0",
         "jsonschema>=4.0",
         "openai>=1.0.0",

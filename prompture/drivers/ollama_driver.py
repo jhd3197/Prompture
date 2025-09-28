@@ -66,7 +66,7 @@ class OllamaDriver(Driver):
             logger.debug(f"Sending request to Ollama endpoint: {self.endpoint}")
             logger.debug(f"Request payload: {payload}")
             
-            r = requests.post(self.endpoint, json=payload, timeout=60)
+            r = requests.post(self.endpoint, json=payload, timeout=120)
             logger.debug(f"Response status code: {r.status_code}")
             
             r.raise_for_status()

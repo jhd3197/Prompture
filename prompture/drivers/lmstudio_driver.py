@@ -53,7 +53,7 @@ class LMStudioDriver(Driver):
             logger.debug(f"Sending request to LM Studio endpoint: {self.endpoint}")
             logger.debug(f"Request payload: {payload}")
 
-            r = requests.post(self.endpoint, json=payload, timeout=60)
+            r = requests.post(self.endpoint, json=payload, timeout=120)
             r.raise_for_status()
 
             response_data = r.json()

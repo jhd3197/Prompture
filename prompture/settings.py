@@ -32,6 +32,22 @@ class Settings(BaseSettings):
     lmstudio_endpoint: str = "http://127.0.0.1:1234/v1/chat/completions"
     lmstudio_model: str = "deepseek/deepseek-r1-0528-qwen3-8b"
 
+    # Google
+    google_api_key: Optional[str] = None
+    google_model: str = "gemini-1.5-pro"
+
+    # Groq
+    groq_api_key: Optional[str] = None
+    groq_model: str = "llama2-70b-4096"
+
+    # OpenRouter
+    openrouter_api_key: Optional[str] = None
+    openrouter_model: str = "openai/gpt-3.5-turbo"
+
+    # Grok
+    grok_api_key: Optional[str] = None
+    grok_model: str = "grok-4-fast-reasoning"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         extra="ignore",

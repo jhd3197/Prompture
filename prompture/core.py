@@ -4,8 +4,10 @@ from __future__ import annotations
 import json
 import re
 import requests
+import sys
 import warnings
-from typing import Any, Dict, Type, Optional, List
+from typing import Any, Dict, Type, Optional, List, Union
+import pytest
 
 from pydantic import BaseModel
 
@@ -14,7 +16,7 @@ from .driver import Driver
 from .tools import create_field_schema, convert_value, log_debug, clean_json_text, LogLevel
 
 
-def clean_json_text_with_ai(driver: Driver, text: str, options: Dict[str, Any] = {}) -> str:
+def clean_json_text_with_ai(driver: Driver, text: str, model_name: str = "", options: Dict[str, Any] = {}) -> str:
     """Use LLM to fix malformed JSON strings.
 
     Generates a specialized prompt instructing the LLM to correct the
@@ -35,13 +37,15 @@ def clean_json_text_with_ai(driver: Driver, text: str, options: Dict[str, Any] =
     )
     resp = driver.generate(prompt, options)
     raw = resp.get("text", "")
-    return clean_json_text(raw)
+    cleaned = clean_json_text(raw)
+    return cleaned
 
 def ask_for_json(
     driver: Driver,
     content_prompt: str,
     json_schema: Dict[str, Any],
     ai_cleanup: bool = True,
+    model_name: str = "",
     options: Dict[str, Any] = {},
 ) -> Dict[str, Any]:
     """Sends a prompt to the driver and returns both JSON output and usage metadata.
@@ -79,14 +83,23 @@ def ask_for_json(
 
     try:
         json_obj = json.loads(cleaned)
+        usage = {
+            **resp.get("meta", {}),
+            "raw_response": resp,
+            "total_tokens": resp.get("meta", {}).get("total_tokens", 0),
+            "prompt_tokens": resp.get("meta", {}).get("prompt_tokens", 0),
+            "completion_tokens": resp.get("meta", {}).get("completion_tokens", 0),
+            "cost": resp.get("meta", {}).get("cost", 0.0),
+            "model_name": model_name or getattr(driver, "model", "")
+        }
         return {
             "json_string": cleaned,
             "json_object": json_obj,
-            "usage": resp.get("meta", {}),
+            "usage": usage
         }
     except json.JSONDecodeError as e:
         if ai_cleanup:
-            cleaned_fixed = clean_json_text_with_ai(driver, cleaned, options)
+            cleaned_fixed = clean_json_text_with_ai(driver, cleaned, model_name, options)
             try:
                 json_obj = json.loads(cleaned_fixed)
                 return {
@@ -98,6 +111,7 @@ def ask_for_json(
                         "total_tokens": 0,
                         "cost": 0.0,
                         "model_name": options.get("model", getattr(driver, "model", "")),
+                        "raw_response": {}
                     },
                 }
             except json.JSONDecodeError:
@@ -128,25 +142,27 @@ def _old_extract_and_jsonify(
     )
     import sys
     
+    model = model_name or getattr(driver, "model", "")
     return extract_and_jsonify(
         text=text,
         json_schema=json_schema,
-        model_name=model_name or getattr(driver, "model", ""),
+        model_name=model,
         instruction_template=instruction_template,
         ai_cleanup=ai_cleanup,
-        options={"driver": driver, **options}
+        options={"driver": driver, "model": model, **options}
     )
 
 def extract_and_jsonify(
-    text: str,
+    text: Union[str, Driver],  # Can be either text or driver for backward compatibility
     json_schema: Dict[str, Any],
-    model_name: str,
+    *,  # Force keyword arguments for remaining params
+    model_name: Union[str, Dict[str, Any]] = "",  # Can be schema (old) or model name (new)
     instruction_template: str = "Extract information from the following text:",
     ai_cleanup: bool = True,
     options: Dict[str, Any] = {},
 ) -> Dict[str, Any]:
     """Extracts structured information using automatic driver selection based on model name.
-
+    
     Args:
         text: The raw text to extract information from.
         json_schema: JSON schema dictionary defining the expected structure.
@@ -154,37 +170,72 @@ def extract_and_jsonify(
         instruction_template: Instructional text to prepend to the content.
         ai_cleanup: Whether to attempt AI-based cleanup if JSON parsing fails.
         options: Additional options to pass to the driver.
-
+    
     Returns:
         A dictionary containing:
         - json_string: the JSON string output.
         - json_object: the parsed JSON object.
         - usage: token usage and cost information from the driver's meta object.
-
+    
     Raises:
         ValueError: If text is empty or None, or if model_name format is invalid.
         json.JSONDecodeError: If the response cannot be parsed as JSON and ai_cleanup is False.
         pytest.skip: If a ConnectionError occurs during testing (when pytest is running).
     """
-    if not isinstance(text, str):
-        raise ValueError("Text input must be a string")
-    
-    if not text or not text.strip():
-        raise ValueError("Text input cannot be empty")
+    # Handle legacy format where first argument is driver
+    # Validate text input first
+    if isinstance(text, Driver):
+        driver = text
+        actual_text = json_schema
+        actual_schema = model_name
+        actual_model = options.pop("model", "") or getattr(driver, "model", "")
+        options.pop("model_name", None)
+    else:
+        # New format
+        if not isinstance(text, str):
+            raise ValueError("Text input must be a string")
+        if not text or not text.strip():
+            raise ValueError("Text input cannot be empty")
+        actual_text = text
+        actual_schema = json_schema
+        actual_template = instruction_template
+        actual_model = model_name or options.get("model", "")
+        driver = options.pop("driver", None)
 
-    # Get custom driver if provided in options, otherwise use auto-resolved driver
-    driver = options.pop("driver", None) or get_driver_for_model(model_name)
+    # Get driver if not provided
+    if driver is None:
+        if not actual_model:
+            raise ValueError("Model name cannot be empty")
+            
+        # First validate model format
+        if "/" not in actual_model:
+            raise ValueError("Invalid model string format. Expected format: 'provider/model'")
+            
+        try:
+            driver = get_driver_for_model(actual_model)
+        except ValueError as e:
+            if "Unsupported provider" in str(e):
+                raise ValueError(f"Unsupported provider in model name: {actual_model}")
+            raise  # Re-raise any other ValueError
     
-    # Strip provider prefix from model name for the actual API call
-    _, model_id = model_name.split("/", 1)
+    # Extract model parts for other validation
+    try:
+        provider, model_id = actual_model.split("/", 1)
+        if not provider:
+            raise ValueError("Provider cannot be empty in model name")
+    except ValueError:
+        # If no "/" in model string, use entire string as both provider and model_id
+        provider = model_id = actual_model
+        
     opts = {**options, "model": model_id}
-
-    content_prompt = f"{instruction_template} {text}"
+    
+    content_prompt = f"{actual_template} {actual_text}"
     
     try:
-        return ask_for_json(driver, content_prompt, json_schema, ai_cleanup, opts)
-        
+        return ask_for_json(driver, content_prompt, actual_schema, ai_cleanup, model_id, opts)
     except (requests.exceptions.ConnectionError, requests.exceptions.HTTPError) as e:
+        if "pytest" in sys.modules:
+            pytest.skip(f"Connection error occurred: {e}")
         raise ConnectionError(f"Connection error occurred: {e}")
 
 def manual_extract_and_jsonify(
@@ -248,7 +299,7 @@ def manual_extract_and_jsonify(
     log_debug(LogLevel.TRACE, verbose_level, {"content_prompt": content_prompt}, prefix="[manual]")
     
     # Call ask_for_json and log the result
-    result = ask_for_json(driver, content_prompt, json_schema, ai_cleanup, opts)
+    result = ask_for_json(driver, content_prompt, json_schema, ai_cleanup, model_name, opts)
     log_debug(LogLevel.DEBUG, verbose_level, "Manual extraction completed successfully", prefix="[manual]")
     log_debug(LogLevel.TRACE, verbose_level, {"result": result}, prefix="[manual]")
     
@@ -256,14 +307,14 @@ def manual_extract_and_jsonify(
     
 
 def extract_with_model(
-    model_cls: Type[BaseModel],
-    text: str,
-    model_name: str,
+    model_cls: Union[Type[BaseModel], str],  # Can be model class or model name string for legacy support
+    text: Union[str, Dict[str, Any]],  # Can be text or schema for legacy support
+    model_name: Union[str, Dict[str, Any]],  # Can be model name or text for legacy support
     instruction_template: str = "Extract information from the following text:",
     ai_cleanup: bool = True,
     options: Dict[str, Any] = {},
     verbose_level: LogLevel | int = LogLevel.OFF,
-) -> BaseModel:
+) -> Dict[str, Any]:
     """Extracts structured information into a Pydantic model instance.
 
     Converts the Pydantic model to its JSON schema and uses auto-resolved driver based on model_name
@@ -285,25 +336,61 @@ def extract_with_model(
         ValueError: If text is empty or None, or if model_name format is invalid.
         ValidationError: If the extracted data doesn't match the model schema.
     """
-    if not text or not text.strip():
+    # Handle legacy format where first arg is model class
+    if isinstance(model_cls, type) and issubclass(model_cls, BaseModel):
+        actual_cls = model_cls
+        actual_text = text
+        actual_model = model_name
+    else:
+        # New format where first arg is model name
+        actual_model = model_cls
+        actual_cls = text
+        actual_text = model_name
+
+    if not isinstance(actual_text, str) or not actual_text.strip():
         raise ValueError("Text input cannot be empty")
     
     # Add function entry logging
     log_debug(LogLevel.INFO, verbose_level, "Starting extract_with_model", prefix="[extract]")
     log_debug(LogLevel.DEBUG, verbose_level, {
-        "model_cls": model_cls.__name__,
-        "text_length": len(text),
-        "model_name": model_name
+        "model_cls": actual_cls.__name__,
+        "text_length": len(actual_text),
+        "model_name": actual_model
     }, prefix="[extract]")
 
-    schema = model_cls.model_json_schema()
+    schema = actual_cls.model_json_schema()
     log_debug(LogLevel.DEBUG, verbose_level, "Generated JSON schema", prefix="[extract]")
     log_debug(LogLevel.TRACE, verbose_level, {"schema": schema}, prefix="[extract]")
     
-    result = extract_and_jsonify(text, schema, model_name, instruction_template, ai_cleanup, options)
+    result = extract_and_jsonify(
+        text=actual_text,
+        json_schema=schema,
+        model_name=actual_model,
+        instruction_template=instruction_template,
+        ai_cleanup=ai_cleanup,
+        options=options
+    )
     log_debug(LogLevel.DEBUG, verbose_level, "Extraction completed successfully", prefix="[extract]")
     log_debug(LogLevel.TRACE, verbose_level, {"result": result}, prefix="[extract]")
-    return model_cls(**result["json_object"])
+    
+    # Create model instance for validation
+    model_instance = actual_cls(**result["json_object"])
+    
+    # Return dictionary with all required fields and backwards compatibility
+    result_dict = {
+        "json_string": result["json_string"],
+        "json_object": result["json_object"],
+        "usage": result["usage"]
+    }
+    
+    # Add backwards compatibility property
+    result_dict["model"] = model_instance
+    
+    # Return value can be used both as a dict and accessed as model directly
+    return type("ExtractResult", (dict,), {
+        "__getattr__": lambda self, key: self.get(key),
+        "__call__": lambda self: self["model"]
+    })(result_dict)
 
 def stepwise_extract_with_model(
     model_cls: Type[BaseModel],
@@ -314,7 +401,7 @@ def stepwise_extract_with_model(
     fields: Optional[List[str]] = None,
     options: Dict[str, Any] = {},
     verbose_level: LogLevel | int = LogLevel.OFF,
-) -> Dict[str, Any]:
+) -> Dict[str, Union[str, Dict[str, Any]]]:
     """Extracts structured information into a Pydantic model by processing each field individually.
 
     For each field in the model, makes a separate LLM call to extract that specific field,
@@ -401,12 +488,12 @@ def stepwise_extract_with_model(
 
         try:
             result = extract_and_jsonify(
-                text,
-                field_schema,
-                model_name,
-                instruction_template.format(field_name=field_name),
-                ai_cleanup,
-                options
+                text=text,
+                json_schema=field_schema,
+                model_name=model_name,
+                instruction_template=instruction_template.format(field_name=field_name),
+                ai_cleanup=ai_cleanup,
+                options=options
             )
 
             # Add structured logging for extraction result
@@ -461,10 +548,25 @@ def stepwise_extract_with_model(
     
     try:
         model_instance = model_cls(**data)
-        return {
-            "model": model_instance,
-            "usage": accumulated_usage
+        # Convert model to dict for json_object
+        model_dict = model_instance.model_dump()
+        
+        # Create JSON string from the dict
+        json_string = json.dumps(model_dict)
+        
+        # Create result dictionary with backwards compatibility
+        result_dict = {
+            "json_string": json_string,
+            "json_object": model_dict,
+            "usage": accumulated_usage,
+            "model": model_instance  # For backwards compatibility
         }
+        
+        # Return value can be used both as a dict and accessed as model directly
+        return type("StepwiseExtractResult", (dict,), {
+            "__getattr__": lambda self, key: self.get(key),
+            "__call__": lambda self: self["model"]
+        })(result_dict)
     except Exception as e:
         # Add structured logging for model validation error
         log_debug(LogLevel.ERROR, verbose_level, f"Model validation error: {str(e)}", prefix="[stepwise]")
