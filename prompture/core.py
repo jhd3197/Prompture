@@ -9,7 +9,7 @@ from typing import Any, Dict, Type, Optional, List
 
 from pydantic import BaseModel
 
-from .drivers import get_driver
+from .drivers import get_driver, get_driver_for_model
 from .driver import Driver
 from .tools import create_field_schema, convert_value, log_debug, clean_json_text, LogLevel
 
@@ -107,7 +107,7 @@ def ask_for_json(
             # Explicitly re-raise the original JSONDecodeError
             raise e
 
-def extract_and_jsonify(
+def _old_extract_and_jsonify(
     driver: Driver,
     text: str,
     json_schema: Dict[str, Any],
@@ -116,17 +116,44 @@ def extract_and_jsonify(
     ai_cleanup: bool = True,
     options: Dict[str, Any] = {},
 ) -> Dict[str, Any]:
-    """Extracts structured information using the provided driver.
+    """[DEPRECATED] Legacy version of extract_and_jsonify that takes an explicit driver.
+    
+    Use the new extract_and_jsonify(text, json_schema, model_name, ...) instead.
+    This version will be removed in a future release.
+    """
+    warnings.warn(
+        "This function is deprecated. Use extract_and_jsonify(text, json_schema, model_name, ...) instead.",
+        DeprecationWarning,
+        stacklevel=2
+    )
+    import sys
+    
+    return extract_and_jsonify(
+        text=text,
+        json_schema=json_schema,
+        model_name=model_name or getattr(driver, "model", ""),
+        instruction_template=instruction_template,
+        ai_cleanup=ai_cleanup,
+        options={"driver": driver, **options}
+    )
+
+def extract_and_jsonify(
+    text: str,
+    json_schema: Dict[str, Any],
+    model_name: str,
+    instruction_template: str = "Extract information from the following text:",
+    ai_cleanup: bool = True,
+    options: Dict[str, Any] = {},
+) -> Dict[str, Any]:
+    """Extracts structured information using automatic driver selection based on model name.
 
     Args:
-        driver: The LLM driver to use for extraction.
         text: The raw text to extract information from.
         json_schema: JSON schema dictionary defining the expected structure.
-        model_name: Optional override of the model name.
+        model_name: Model identifier in format "provider/model" (e.g., "openai/gpt-4-turbo-preview").
         instruction_template: Instructional text to prepend to the content.
         ai_cleanup: Whether to attempt AI-based cleanup if JSON parsing fails.
         options: Additional options to pass to the driver.
-        verbose_level: Logging level for debug output (LogLevel.OFF by default).
 
     Returns:
         A dictionary containing:
@@ -135,21 +162,22 @@ def extract_and_jsonify(
         - usage: token usage and cost information from the driver's meta object.
 
     Raises:
-        ValueError: If text is empty or None.
+        ValueError: If text is empty or None, or if model_name format is invalid.
         json.JSONDecodeError: If the response cannot be parsed as JSON and ai_cleanup is False.
         pytest.skip: If a ConnectionError occurs during testing (when pytest is running).
     """
-    import sys
-    
     if not isinstance(text, str):
         raise ValueError("Text input must be a string")
     
     if not text or not text.strip():
         raise ValueError("Text input cannot be empty")
 
-    opts = dict(options)
-    if model_name:
-        opts["model"] = model_name
+    # Get custom driver if provided in options, otherwise use auto-resolved driver
+    driver = options.pop("driver", None) or get_driver_for_model(model_name)
+    
+    # Strip provider prefix from model name for the actual API call
+    _, model_id = model_name.split("/", 1)
+    opts = {**options, "model": model_id}
 
     content_prompt = f"{instruction_template} {text}"
     
@@ -157,13 +185,7 @@ def extract_and_jsonify(
         return ask_for_json(driver, content_prompt, json_schema, ai_cleanup, opts)
         
     except (requests.exceptions.ConnectionError, requests.exceptions.HTTPError) as e:
-        # Check if we're running in pytest
-        if 'pytest' in sys.modules:
-            import pytest
-            pytest.skip(f"Ollama server unavailable: {str(e)}")
-        else:
-            # Re-raise if not in test environment
-            raise
+        raise ConnectionError(f"Connection error occurred: {e}")
 
 def manual_extract_and_jsonify(
     driver: Driver,
@@ -236,8 +258,7 @@ def manual_extract_and_jsonify(
 def extract_with_model(
     model_cls: Type[BaseModel],
     text: str,
-    driver: Optional[Driver] = None,
-    model_name: str = "",
+    model_name: str,
     instruction_template: str = "Extract information from the following text:",
     ai_cleanup: bool = True,
     options: Dict[str, Any] = {},
@@ -245,14 +266,13 @@ def extract_with_model(
 ) -> BaseModel:
     """Extracts structured information into a Pydantic model instance.
 
-    Converts the Pydantic model to its JSON schema and uses the driver to extract
-    all fields at once, then validates and returns the model instance.
+    Converts the Pydantic model to its JSON schema and uses auto-resolved driver based on model_name
+    to extract all fields at once, then validates and returns the model instance.
 
     Args:
         model_cls: The Pydantic BaseModel class to extract into.
         text: The raw text to extract information from.
-        driver: Optional LLM driver instance. If None, uses get_driver().
-        model_name: Optional override of the model name.
+        model_name: Model identifier in format "provider/model" (e.g., "openai/gpt-4-turbo-preview").
         instruction_template: Instructional text to prepend to the content.
         ai_cleanup: Whether to attempt AI-based cleanup if JSON parsing fails.
         options: Additional options to pass to the driver.
@@ -262,14 +282,11 @@ def extract_with_model(
         A validated instance of the Pydantic model.
 
     Raises:
-        ValueError: If text is empty or None.
+        ValueError: If text is empty or None, or if model_name format is invalid.
         ValidationError: If the extracted data doesn't match the model schema.
     """
     if not text or not text.strip():
         raise ValueError("Text input cannot be empty")
-
-    if driver is None:
-        driver = get_driver()
     
     # Add function entry logging
     log_debug(LogLevel.INFO, verbose_level, "Starting extract_with_model", prefix="[extract]")
@@ -283,7 +300,7 @@ def extract_with_model(
     log_debug(LogLevel.DEBUG, verbose_level, "Generated JSON schema", prefix="[extract]")
     log_debug(LogLevel.TRACE, verbose_level, {"schema": schema}, prefix="[extract]")
     
-    result = extract_and_jsonify(driver, text, schema, model_name, instruction_template, ai_cleanup, options)
+    result = extract_and_jsonify(text, schema, model_name, instruction_template, ai_cleanup, options)
     log_debug(LogLevel.DEBUG, verbose_level, "Extraction completed successfully", prefix="[extract]")
     log_debug(LogLevel.TRACE, verbose_level, {"result": result}, prefix="[extract]")
     return model_cls(**result["json_object"])
@@ -291,8 +308,7 @@ def extract_with_model(
 def stepwise_extract_with_model(
     model_cls: Type[BaseModel],
     text: str,
-    driver: Optional[Driver] = None,
-    model_name: str = "",
+    model_name: str,
     instruction_template: str = "Extract the {field_name} from the following text:",
     ai_cleanup: bool = True,
     fields: Optional[List[str]] = None,
@@ -307,8 +323,7 @@ def stepwise_extract_with_model(
     Args:
         model_cls: The Pydantic BaseModel class to extract into.
         text: The raw text to extract information from.
-        driver: Optional LLM driver instance. If None, uses get_driver().
-        model_name: Optional override of the model name.
+        model_name: Model identifier in format "provider/model" (e.g., "openai/gpt-4-turbo-preview").
         instruction_template: Template for instructional text, should include {field_name} placeholder.
         ai_cleanup: Whether to attempt AI-based cleanup if JSON parsing fails.
         fields: Optional list of field names to extract. If None, extracts all fields.
@@ -321,15 +336,12 @@ def stepwise_extract_with_model(
         - usage: Accumulated token usage and cost information across all field extractions.
 
     Raises:
-        ValueError: If text is empty or None.
+        ValueError: If text is empty or None, or if model_name format is invalid.
         ValidationError: If the extracted data doesn't match the model schema.
         KeyError: If a requested field doesn't exist in the model.
     """
     if not text or not text.strip():
         raise ValueError("Text input cannot be empty")
-
-    if driver is None:
-        driver = get_driver()
     # Add function entry logging
     log_debug(LogLevel.INFO, verbose_level, "Starting stepwise extraction", prefix="[stepwise]")
     log_debug(LogLevel.DEBUG, verbose_level, {
@@ -389,7 +401,6 @@ def stepwise_extract_with_model(
 
         try:
             result = extract_and_jsonify(
-                driver,
                 text,
                 field_schema,
                 model_name,

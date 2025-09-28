@@ -12,13 +12,9 @@ This example demonstrates how to:
 """
 
 import json
-from prompture import manual_extract_and_jsonify
-from prompture.drivers import get_driver
+from prompture import extract_and_jsonify
 
-# 1. Manually get the Ollama driver
-ollama_driver = get_driver("ollama")
-
-# 2. Define the raw text and JSON schema
+# 1. Define the raw text and JSON schema
 text = "Maria is 32 years old and works as a software developer in New York. She loves hiking and photography."
 
 json_schema = {
@@ -35,11 +31,10 @@ json_schema = {
 # === FIRST EXAMPLE: Default instruction template ===
 print("Extracting information into JSON with default instruction...")
 
-result = manual_extract_and_jsonify(
-    driver=ollama_driver,
+result = extract_and_jsonify(
     text=text,
     json_schema=json_schema,
-    model_name="gpt-oss:20b"  # explicit model override
+    model_name="ollama/gpt-oss:20b"  # explicit model override
 )
 
 json_output = result["json_string"]
@@ -63,11 +58,10 @@ print(f"Model name: {usage['model_name']}")
 print("\n\n=== SECOND EXAMPLE - CUSTOM INSTRUCTION TEMPLATE ===")
 print("Extracting information with custom instruction...")
 
-custom_result = manual_extract_and_jsonify(
-    driver=ollama_driver,
+custom_result = extract_and_jsonify(
     text=text,
     json_schema=json_schema,
-    model_name="gpt-oss:20b",  # keep same model
+    model_name="ollama/gpt-oss:20b",
     instruction_template="Parse the biographical details from this text:",
 )
 

@@ -19,17 +19,12 @@ The `usage` metadata returned includes:
 """
 
 import json
-from prompture import manual_extract_and_jsonify
-from prompture.drivers import get_driver
+from prompture import extract_and_jsonify
 
-# 1. Instantiate the OpenAI driver explicitly
-# This uses environment variables (OPENAI_API_KEY, etc.) to configure credentials.
-openai_driver = get_driver("openai")
-
-# 2. Define the raw text to be processed
+# 1. Define the raw text to be processed
 text = "Maria is 32 years old and works as a software developer in New York. She loves hiking and photography."
 
-# 3. Define the JSON schema
+# 2. Define the JSON schema
 # This schema enforces the structure of the extracted information.
 json_schema = {
     "type": "object",
@@ -45,12 +40,11 @@ json_schema = {
 # === FIRST EXAMPLE: Default instruction template ===
 print("Extracting information into JSON with default instruction...")
 
-# Call manual_extract_and_jsonify with a model override
-result = manual_extract_and_jsonify(
-    driver=openai_driver,
+# Call extract_and_jsonify with a model override
+result = extract_and_jsonify(
     text=text,
     json_schema=json_schema,
-    model_name="gpt-4o-mini"  # model is explicitly chosen here
+    model_name="openai/gpt-4o-mini"  # model is explicitly chosen here
 )
 
 # Extract JSON output and metadata
@@ -76,11 +70,10 @@ print(f"Model name: {usage['model_name']}")
 print("\n\n=== SECOND EXAMPLE - CUSTOM INSTRUCTION TEMPLATE ===")
 print("Extracting information with custom instruction...")
 
-custom_result = manual_extract_and_jsonify(
-    driver=openai_driver,
+custom_result = extract_and_jsonify(
     text=text,
     json_schema=json_schema,
-    model_name="gpt-3.5-turbo",  # override with a different model
+    model_name="openai/gpt-3.5-turbo",  # override with a different model
     instruction_template="Parse the biographical details from this text:",
 )
 

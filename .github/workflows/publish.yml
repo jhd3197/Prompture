@@ -91,10 +91,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: v${{ steps.bump_version.outputs.new_version }}
-          release_name: Release v${{ steps.bump_version.outputs.new_version }}
-          body: |
-            # ${{ steps.fetch_pr.outputs.result != 'null' && fromJSON(steps.fetch_pr.outputs.result).title || 'New Release' }}
-            
+          release_name: v${{ steps.bump_version.outputs.new_version }}
+          body: |            
             ## Changes
             ${{ steps.fetch_pr.outputs.result != 'null' && fromJSON(steps.fetch_pr.outputs.result).body || 'Version update' }}
             
@@ -148,6 +146,7 @@ jobs:
         run: |
           NEW_VERSION=${{ steps.bump_version.outputs.new_version }}
           echo "Pinning wrapper to version $NEW_VERSION"
+          pip install toml
           python .github/scripts/update_wrapper_version.py "$NEW_VERSION"
 
       # Build wrapper package --------------------------------------------------

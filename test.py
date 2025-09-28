@@ -23,6 +23,7 @@ VALID_PROVIDERS = [
     'ollama',
     'claude',
     'azure',
+    'lmstudio',
     'hugging',
     'local_http'
 ]
@@ -32,6 +33,7 @@ PROVIDER_REQUIREMENTS: Dict[str, List[str]] = {
     'ollama': ['OLLAMA_ENDPOINT'],
     'claude': ['CLAUDE_API_KEY'],
     'azure': ['AZURE_API_KEY', 'AZURE_API_ENDPOINT', 'AZURE_DEPLOYMENT_ID'],
+    'lmstudio': ['LMSTUDIO_ENDPOINT'],
     'hugging': ['HF_ENDPOINT', 'HF_TOKEN'],
     'local_http': ['LOCAL_HTTP_ENDPOINT']
 }

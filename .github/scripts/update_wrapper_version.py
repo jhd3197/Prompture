@@ -15,8 +15,12 @@ def main():
     # Update version
     data["project"]["version"] = new_version
 
-    # Optionally update dependencies here if needed
-    # Example: data["project"]["dependencies"] = ["prompture>=" + new_version]
+    # Update prompture dependency
+    if "dependencies" in data["project"]:
+        for i, dep in enumerate(data["project"]["dependencies"]):
+            if dep.startswith("prompture"):
+                data["project"]["dependencies"][i] = f"prompture>={new_version}"
+                break
 
     with open(PYPROJECT_PATH, "w", encoding="utf-8") as f:
         toml.dump(data, f)

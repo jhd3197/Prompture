@@ -61,10 +61,11 @@ try:
     result = extract_with_model(
         model_cls=Person,
         text=text,
+        model_name="ollama/gpt-oss:20b",
         instruction_template="Extract biographical information into structured data:",
     )
     print("\nExtracted Person object:")
-    print(result.model_dump_json(indent=2))
+    print(result)
 
 except Exception as e:
     print(f"Error with Ollama driver: {str(e)}")
@@ -78,9 +79,11 @@ try:
     result = stepwise_extract_with_model(
         model_cls=Person,
         text=text,
+        model_name="ollama/gpt-oss:20b",
     )
     print("\nFinal extracted Person object:")
-    print(result.model_dump_json(indent=2))
+    print("DEBUG: type(result) =", type(result), "keys =", list(result.keys()))
+    print(result)
 
 except Exception as e:
     print(f"Error with stepwise extraction: {str(e)}")
@@ -97,6 +100,7 @@ try:
     result = stepwise_extract_with_model(
         model_cls=Person,
         text=invalid_text,
+        model_name="ollama/gpt-oss:20b",
     )
     
 except Exception as e:
@@ -115,11 +119,12 @@ try:
     result = stepwise_extract_with_model(
         model_cls=Person,
         text=mixed_text,
+        model_name="ollama/gpt-oss:20b",
         verbose_level=2  # Show detailed debug output
     )
     
     print("\nExtracted and validated data:")
-    print(result.model_dump_json(indent=2))
+    print(result["model"].model_dump_json(indent=2))
     
 except Exception as e:
     print(f"\nError handling types: {str(e)}")
