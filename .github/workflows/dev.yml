@@ -57,6 +57,11 @@ jobs:
           echo "tag=v${new}"  >> $GITHUB_OUTPUT
           echo "Computed dev version: ${new}"
 
+      - name: Configure Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
       - name: Create and push dev tag
         run: |
           git tag -a "${{ steps.ver.outputs.tag }}" -m "pre: ${{ steps.ver.outputs.new }}"
