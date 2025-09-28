@@ -1,15 +1,15 @@
 # Prompture
 
-`Prompture` is an API-first library for requesting structured **JSON** output from LLMs (or any structure), validating it against a schema, and running comparative tests between models.
+**Prompture** is an API-first library for getting **structured JSON** (or any structure) from LLMs, validating it, and benchmarking multiple models with one spec.
 
 ## ✨ Features
 
-- ✅ **Structured Output**: Request models to return JSON only
-- ✅ **Validation**: Automatic validation with `jsonschema`
-- ✅ **Multi-driver**: Run the same specification against multiple drivers (OpenAI, Ollama, Claude, Azure, HTTP, mock)
-- ✅ **Reports**: Generate JSON reports with results
-- ✅ **Usage Tracking**: **NEW** - Automatic token and cost monitoring for all calls
-- ✅ **AI Cleanup**: Automatically fix malformed JSON responses using AI
+- ✅ **Structured output** → JSON schema enforcement, or direct **Pydantic** instances
+- ✅ **Stepwise extraction** → Per-field prompts, with smart type conversion (incl. shorthand numbers)
+- ✅ **Multi-driver** → OpenAI, Azure, Claude, Ollama, HTTP, Mock, HuggingFace (via `get_driver()`)
+- ✅ **Usage & cost** → Token + $ tracking on every call (`usage` from driver meta)
+- ✅ **AI cleanup** → Optional LLM pass to fix malformed JSON
+- ✅ **Batch testing** → Define suites and compare models (spec-driven)
 
 <br>
 
@@ -22,272 +22,50 @@
 <br>
 
 
-## 🆕 Token and Cost Tracking
+---
 
-Starting with this version, `extract_and_jsonify` and `ask_for_json` automatically include token usage and cost information:
+## Installation
 
-```python
-from prompture import extract_and_jsonify
+```bash
+pip install prompture
+````
 
-# AI_PROVIDER environment variable should be set to "ollama", "openai", "azure", or "claude"
+---
 
-# Extract JSON with automatic driver selection
-result = extract_and_jsonify(
-    text="Text to process",
-    json_schema=json_schema,
-    model_name="gemma3"  # optional model override
-)
+## Configure a Provider
 
-# Now returns both the response and usage information
-json_output = result["json_string"]
-usage = result["usage"]
+`get_driver()` (used by high-level helpers) selects a driver from env:
 
-print(f"Tokens used: {usage['total_tokens']}")
-print(f"Cost: ${usage['cost']:.6f}")
+```bash
+# One of: ollama | openai | azure | claude | http | huggingface
+export AI_PROVIDER=ollama
+
+# Only if the provider needs them:
+export OPENAI_API_KEY=...
+export AZURE_OPENAI_ENDPOINT=...
+export AZURE_OPENAI_API_KEY=...
+export ANTHROPIC_API_KEY=...
 ```
 
-### Return Structure
+| Provider (AI_PROVIDER) | Example models              | Cost calc       |
+| ---------------------- | --------------------------- | --------------- |
+| `ollama`               | `llama3.1:8b`, `qwen2.5:3b` | `$0.00` (local) |
+| `openai`               | `gpt-*`                     | Automatic       |
+| `azure`                | Deployed names              | Automatic       |
+| `claude`               | `claude-*`                  | Automatic       |
+| `huggingface`          | local/endpoint              | `$0.00` (local) |
+| `http`                 | self-hosted                 | `$0.00`         |
 
-The main functions now return:
-```python
-{
-    "json_string": str,    # The original JSON string
-    "json_object": dict,   # The parsed JSON object
-    "usage": {
-        "prompt_tokens": int,
-        "completion_tokens": int,
-        "total_tokens": int,
-        "cost": float      # Cost in USD (0.0 for free models)
-        "model_name": string
-    }
-}
-```
+---
 
-## 🚀 Driver Initialization
+## Quickstart: Pydantic in one line (auto driver)
 
-Prompture offers two approaches to initialize drivers: automatic (environment-based) and manual (explicit). Each has its own benefits depending on your use case.
-
-### Automatic Initialization
-
-The `extract_and_jsonify()` function provides a convenient way to extract JSON from text without manually initializing a driver. It automatically uses the appropriate driver based on your environment configuration:
+Use `extract_with_model` for a single LLM call that fills your Pydantic model.
 
 ```python
-from prompture import extract_and_jsonify
-
-# Define your schema
-schema = {
-    "type": "object",
-    "properties": {
-        "name": {"type": "string"},
-        "age": {"type": "integer"}
-    }
-}
-
-# Extract JSON with automatic driver initialization
-result = extract_and_jsonify(
-    "John is 28 years old",
-    schema,
-    instruction_template="Extract the person's information:"
-)
-
-# Access the results
-json_output = result["json_string"]
-json_object = result["json_object"]
-usage = result["usage"]
-
-print(f"Extracted data: {json_object}")
-print(f"Tokens used: {usage['total_tokens']}")
-print(f"Cost: ${usage['cost']:.6f}")
-```
-
-### Configuration
-
-The function uses the `AI_PROVIDER` environment variable to determine which driver to use. It supports all the standard features, including:
-
-- Schema validation
-- Token usage tracking
-- Cost calculation
-- AI-based cleanup for malformed JSON
-
-### Parameters
-
-- `text`: The raw text to extract information from
-- `json_schema`: JSON schema dictionary defining the expected structure
-- `model_name`: Optional model name to override the default for the selected driver
-- `instruction_template`: Template string for the extraction instruction (default: "Extract information from the following text:")
-- `ai_cleanup`: Whether to attempt AI-based cleanup if JSON parsing fails (default: True)
-- `options`: Additional options to pass to the driver
-
-### Return Structure
-
-The function returns:
-```python
-{
-    "json_string": str,    # The original JSON string
-    "json_object": dict,   # The parsed JSON object
-    "usage": {
-        "prompt_tokens": int,
-        "completion_tokens": int,
-        "total_tokens": int,
-        "cost": float,     # Cost in USD
-        "model_name": str
-    }
-}
-```
-
-### Supported Drivers
-
-- **OllamaDriver**: Cost = $0.00 (free local models)
-- **OpenAIDriver**: Cost automatically calculated based on the model
-- **ClaudeDriver**: Cost automatically calculated based on the model
-- **HuggingFaceDriver**: Cost = $0.00 (free local models)
-- **AzureDriver**: Cost automatically calculated based on the model
-- **LocalHTTPDriver**: Cost = $0.00 (self-hosted models)
-
-
-### Manual Initialization
-
-The manual approach gives you more explicit control over driver configuration and allows using multiple drivers simultaneously. Use `get_driver()` to initialize a specific driver, then pass it to `manual_extract_and_jsonify()`:
-
-```python
-from prompture import manual_extract_and_jsonify
-from prompture.drivers import get_driver
-
-# Initialize driver explicitly
-ollama_driver = get_driver("ollama")
-
-# Define schema
-schema = {
-    "type": "object",
-    "properties": {
-        "name": {"type": "string"},
-        "age": {"type": "integer"}
-    }
-}
-
-# Extract JSON with manual driver
-result = manual_extract_and_jsonify(
-    driver=ollama_driver,
-    text="John is 28 years old",
-    json_schema=schema,
-    model_name="gpt-oss:20b"  # optional model override
-)
-
-# Access results (same structure as extract_and_jsonify)
-json_output = result["json_string"]
-json_object = result["json_object"]
-usage = result["usage"]
-```
-
-#### Benefits of Manual Initialization
-
-- **Multiple Drivers**: Run different drivers simultaneously (e.g., Ollama and OpenAI)
-- **Custom Configuration**: Initialize drivers with specific settings
-- **Explicit Control**: More control over which driver handles each request
-- **Model Flexibility**: Easily switch between models for the same driver
-- **Testing**: Better for testing scenarios where you need specific driver configurations
-
-## 🔎 Pydantic Model Extraction
-
-This document provides a comprehensive comparison between the two extraction modes available in Prompture: `extract_with_model` and `stepwise_extract_with_model`. These functions enable structured data extraction from text using Large Language Models (LLMs) with Pydantic model validation.
-
-### Overview
-
-Prompture offers two distinct approaches for extracting structured data from unstructured text using Pydantic models:
-
-1. **`extract_with_model`** - Single-call extraction that processes all model fields in one LLM request
-2. **`stepwise_extract_with_model`** - Multi-call extraction that processes each model field individually
-
-Both functions return validated Pydantic model instances, but they differ significantly in their approach, performance characteristics, and use cases.
-
-### Function Reference
-
-#### `extract_with_model`
-
-**Purpose:** Extracts structured information into a Pydantic model instance using a single LLM call.
-
-**Signature:**
-```python
-def extract_with_model(
-    model_cls: Type[BaseModel],
-    text: str,
-    driver: Optional[Driver] = None,
-    model_name: str = "",
-    instruction_template: str = "Extract information from the following text:",
-    ai_cleanup: bool = True,
-    options: Dict[str, Any] = {},
-) -> BaseModel
-```
-
-**Parameters:**
-- `model_cls`: The Pydantic BaseModel class to extract into
-- `text`: The raw text to extract information from
-- `driver`: Optional LLM driver instance (uses `get_driver()` if None)
-- `model_name`: Optional override of the model name
-- `instruction_template`: Instructional text to prepend to the content
-- `ai_cleanup`: Whether to attempt AI-based cleanup if JSON parsing fails
-- `options`: Additional options to pass to the driver
-
-**Behavior:**
-1. Converts the Pydantic model to its JSON schema
-2. Makes a single LLM call with the complete schema
-3. Parses and validates the response against the model
-4. Returns a validated model instance
-
-#### `stepwise_extract_with_model`
-
-**Purpose:** Extracts structured information into a Pydantic model by processing each field individually.
-
-**Signature:**
-```python
-def stepwise_extract_with_model(
-    model_cls: Type[BaseModel],
-    text: str,
-    driver: Optional[Driver] = None,
-    model_name: str = "",
-    instruction_template: str = "Extract the {field_name} from the following text:",
-    ai_cleanup: bool = True,
-    options: Dict[str, Any] = {},
-) -> BaseModel
-```
-
-**Parameters:**
-- `model_cls`: The Pydantic BaseModel class to extract into
-- `text`: The raw text to extract information from
-- `driver`: Optional LLM driver instance (uses `get_driver()` if None)
-- `model_name`: Optional override of the model name
-- `instruction_template`: Template for instructional text (must include `{field_name}` placeholder)
-- `ai_cleanup`: Whether to attempt AI-based cleanup if JSON parsing fails
-- `options`: Additional options to pass to the driver
-
-**Behavior:**
-1. Iterates through each field in the model
-2. Makes a separate LLM call for each field with a focused prompt
-3. Collects all field values
-4. Validates the complete model instance
-5. Returns a validated model instance
-
-### Comparison Table
-
-| Aspect | `extract_with_model` | `stepwise_extract_with_model` |
-|--------|---------------------|------------------------------|
-| **LLM Calls** | Single call | Multiple calls (one per field) |
-| **Prompt Complexity** | Complex schema-based | Simple field-focused |
-| **Token Usage** | Lower (shared context) | Higher (repeated context) |
-| **Cost** | Lower | Higher |
-| **Speed** | Faster | Slower |
-| **Reliability** | Schema coherence | Field-level accuracy |
-| **Error Recovery** | All-or-nothing | Per-field recovery |
-| **Context Length** | Full text per call | Full text per field |
-| **Field Dependencies** | Can leverage relationships | Independent extraction |
-
-### Practical Examples
-
-#### Example Model
-
-```python
-from pydantic import BaseModel
 from typing import List, Optional
+from pydantic import BaseModel
+from prompture import extract_with_model
 
 class Person(BaseModel):
     name: str
@@ -296,181 +74,142 @@ class Person(BaseModel):
     city: str
     hobbies: List[str]
     education: Optional[str] = None
+
+text = "Maria is 32, a software developer in New York. She loves hiking and photography."
+
+# Uses get_driver() internally (AI_PROVIDER). You can still pass driver/model_name.
+person = extract_with_model(Person, text, model_name="gpt-oss:20b")
+print(person.dict())
 ```
 
-#### Using `extract_with_model`
+**Why start here?** It’s fast (one call), cost-efficient, and returns a validated Pydantic instance.
+
+---
+
+## JSON-first (low-level primitives)
+
+When you want raw JSON with a schema and full control, use `ask_for_json` or `extract_and_jsonify`.
+**Note:** these require an explicit `driver`.
 
 ```python
-from prompture import extract_with_model
+from prompture.drivers import get_driver
+from prompture import ask_for_json, extract_and_jsonify
 
-text = "Maria is 32 years old and works as a software developer in New York. She loves hiking and photography."
+driver = get_driver("ollama")  # or "openai", "azure", etc.
 
-person = extract_with_model(Person, text)
-print(person.name)  # "Maria"
-print(person.profession)  # "software developer"
-print(person.hobbies)  # ["hiking", "photography"]
+schema = {
+    "type": "object",
+    "required": ["name", "age"],
+    "properties": {
+        "name": {"type": "string"},
+        "age": {"type": "integer"}
+    }
+}
+
+# 1) ask_for_json: you provide the full content prompt
+resp1 = ask_for_json(
+    driver=driver,
+    content_prompt="Extract the person's info from: John is 28 and lives in Miami.",
+    json_schema=schema,
+    options={"model": "llama3.1:8b"}
+)
+print(resp1["json_object"], resp1["usage"])
+
+# 2) extract_and_jsonify: you provide text & an instruction template; it builds the prompt
+resp2 = extract_and_jsonify(
+    driver=driver,
+    text="John is 28 and lives in Miami.",
+    json_schema=schema,
+    model_name="llama3.1:8b",
+    instruction_template="Extract the person's information:"
+)
+print(resp2["json_object"], resp2["usage"])
 ```
 
-#### Using `stepwise_extract_with_model`
+### Return shape (JSON helpers)
 
 ```python
-from prompture import stepwise_extract_with_model
-
-text = "Maria is 32 years old and works as a software developer in New York. She loves hiking and photography."
-
-person = stepwise_extract_with_model(Person, text)
-print(person.name)  # "Maria"
-print(person.profession)  # "software developer"
-print(person.hobbies)  # ["hiking", "photography"]
+{
+  "json_string": str,
+  "json_object": dict,
+  "usage": {
+    "prompt_tokens": int,
+    "completion_tokens": int,
+    "total_tokens": int,
+    "cost": float,
+    "model_name": str
+  }
+}
 ```
 
-### When to Choose Each Approach
+> If the model returns malformed JSON and `ai_cleanup=True`, a second LLM pass tries to fix it.
 
-#### Choose `extract_with_model` when:
+---
 
-- **Cost efficiency is important** - Single LLM call reduces token usage and API costs
-- **Speed is critical** - Faster processing with fewer network round trips
-- **Fields are interdependent** - The LLM can leverage relationships between fields
-- **Simple models** - Fewer fields mean less complex prompts
-- **High coherence required** - All fields must be consistent with each other
+## Pydantic: one-shot vs stepwise
 
-#### Choose `stepwise_extract_with_model` when:
+Prompture supports two Pydantic extraction modes:
 
-- **Accuracy per field is paramount** - Each field gets focused attention
-- **Complex models** - Many fields where individual focus improves results
-- **Field independence** - Fields don't rely on each other for context
-- **Error resilience** - Ability to recover from individual field extraction failures
-- **Debugging needs** - Easier to identify and fix issues with specific fields
-- **Cost is secondary** - When accuracy is more important than efficiency
+* **`extract_with_model`** → Single call; global context; best cost/latency; coherent fields
+* **`stepwise_extract_with_model`** → One call per field; higher per-field accuracy; resilient
 
-### Performance and Reliability Considerations
+| Aspect         | `extract_with_model` (one-shot)        | `stepwise_extract_with_model` (per-field) |
+| -------------- | -------------------------------------- | ----------------------------------------- |
+| LLM calls      | 1                                      | N (one per field)                         |
+| Speed & cost   | **Faster / cheaper**                   | Slower / higher                           |
+| Accuracy       | Good global coherence                  | **Higher per-field accuracy**             |
+| Error handling | All-or-nothing                         | **Per-field recovery**                    |
+| Best when      | Fields are related; throughput matters | Correctness per field is critical         |
 
-#### Performance Metrics
-
-**Token Efficiency:**
-- `extract_with_model`: ~30-50% fewer tokens due to shared context
-- `stepwise_extract_with_model`: Higher token usage from repeated text and simpler prompts
-
-**Latency:**
-- `extract_with_model`: Single network round trip
-- `stepwise_extract_with_model`: Multiple round trips (N fields = N calls)
-
-**Throughput:**
-- `extract_with_model`: Better for batch processing
-- `stepwise_extract_with_model`: Better for real-time, field-by-field updates
-
-#### Reliability Factors
-
-**Error Handling:**
-- `extract_with_model`: Schema validation ensures all fields are present and valid
-- `stepwise_extract_with_model`: Individual field validation with potential partial failures
-
-**Context Quality:**
-- `extract_with_model`: Full context available for all fields simultaneously
-- `stepwise_extract_with_model`: Full context available for each field individually
-
-**Consistency:**
-- `extract_with_model`: Better cross-field consistency
-- `stepwise_extract_with_model`: Potential for field-level inconsistencies
-
-### Best Practices and Recommendations
-
-#### General Recommendations
-
-1. **Start with `extract_with_model`** for most use cases due to efficiency
-2. **Use `stepwise_extract_with_model`** when field accuracy is critical
-3. **Profile performance** for your specific use case and model size
-4. **Consider cost implications** when choosing between approaches
-
-#### Optimization Tips
-
-**For `extract_with_model`:**
-- Keep models focused and not overly complex
-- Use clear, descriptive field names and descriptions
-- Consider model size limits for very large schemas
-
-**For `stepwise_extract_with_model`:**
-- Order fields logically if there are dependencies
-- Use descriptive field names in the instruction template
-- Consider parallel processing for multiple fields if supported
-
-#### Error Handling
+### Examples
 
 ```python
 from prompture import extract_with_model, stepwise_extract_with_model
-from pydantic import ValidationError
 
-def safe_extract(model_cls, text, use_stepwise=False):
-    try:
-        if use_stepwise:
-            return stepwise_extract_with_model(model_cls, text)
-        else:
-            return extract_with_model(model_cls, text)
-    except ValidationError as e:
-        print(f"Validation failed: {e}")
-        # Handle validation errors
-    except Exception as e:
-        print(f"Extraction failed: {e}")
-        # Handle other errors
+person1 = extract_with_model(Person, text, model_name="gpt-oss:20b")
+print(person1.dict())
+
+res = stepwise_extract_with_model(Person, text, model_name="gpt-oss:20b")
+print(res["model"].dict())
+print(res["usage"])  # includes per-field usage and totals
 ```
 
-#### Monitoring and Debugging
+**Stepwise extras:** internally uses `tools.create_field_schema` + `tools.convert_value` (with `allow_shorthand=True`) so values like `"3.4m"`, `"2k"`, `"1.2b"` can be converted to typed fields where appropriate.
 
-**Track key metrics:**
-- Extraction success rate
-- Average processing time
-- Token usage per extraction
-- Cost per extraction
+---
 
-**Debugging approaches:**
-- `extract_with_model`: Check the complete schema and response
-- `stepwise_extract_with_model`: Debug individual field extractions
+## Manual control with logging
 
-### Conclusion
-
-Both extraction modes serve important roles in the Prompture ecosystem. `extract_with_model` provides efficiency and coherence for most use cases, while `stepwise_extract_with_model` offers precision and resilience when individual field accuracy is paramount.
-
-Choose based on your specific requirements for accuracy, performance, cost, and complexity. Consider prototyping with both approaches to determine which works best for your particular use case and data characteristics.
-
-## Batch Running and Testing Prompts
-
-`run_suite_from_spec` enables you to define and run test suites against multiple models using a specification file. This powerful feature allows you to systematically test and compare different models using a consistent set of prompts and validation criteria. Here's how it works:
+`manual_extract_and_jsonify` is like `extract_and_jsonify` but adds structured debug logging.
 
 ```python
-from prompture import run_suite_from_spec
-from prompture.drivers import MockDriver
+from prompture import manual_extract_and_jsonify
+from prompture.drivers import get_driver
+from prompture.tools import LogLevel
 
-spec = {
-    "meta": {"project": "test"},
-    "models": [{"id": "mock1", "driver": "mock", "options": {}}],
-    "tests": [
-        {
-            "id": "t1",
-            "prompt_template": "Extract user info: '{text}'",
-            "inputs": [{"text": "Juan is 28 and lives in Miami. He likes basketball and coding."}],
-            "schema": {"type": "object", "required": ["name", "interests"]}
-        }
-    ]
-}
-drivers = {"mock": MockDriver()}
-report = run_suite_from_spec(spec, drivers)
-print(report)
+driver = get_driver("ollama")
+res = manual_extract_and_jsonify(
+    driver=driver,
+    text="Maria works as a software developer in New York.",
+    json_schema={
+      "type": "object",
+      "required": ["city", "profession"],
+      "properties": {"city": {"type": "string"}, "profession": {"type": "string"}}
+    },
+    model_name="llama3.1:8b",
+    options={"temperature": 0.2},
+    verbose_level=LogLevel.DEBUG  # TRACE for full prompts/results
+)
+print(res["json_object"])
 ```
 
-The generated report includes comprehensive results for each test, model, and input combination:
-- Validation status for each response
-- Usage statistics (tokens, costs) per model
-- Execution times
-- Generated JSON responses
+---
 
-## Quick Usage (example):
 
-```py
-from prompture import run_suite_from_spec, drivers
-spec = { ... }
-report = run_suite_from_spec(spec, drivers={"mock": drivers.MockDriver()})
-print(report)
-```
+**Example output (Ollama comparison)** — see `examples/ollama_models_comparison.py` for a richer comparison table.
+
+---
+
 
 ## Ollama Model Comparison Example
 
@@ -493,4 +232,25 @@ You can run this comparison yourself with:
 
 This example script compares multiple Ollama models on a complex task of extracting structured information from a smartphone description using a detailed JSON schema. The purpose of this example is to illustrate how `Prompture` can be used to test and compare different models on the same structured output task, showing their success rates, token usage, and validation results.
 
-**Location:** `examples/ollama_models_comparison.py`
+---
+
+## Error handling notes
+
+* With `ai_cleanup=True`, a second LLM pass attempts to fix malformed JSON; on success, `usage` may be a minimal stub.
+* `extract_and_jsonify` will **skip tests** under `pytest` if there’s a local server connection error (e.g., Ollama), instead of failing the suite.
+* All functions raise `ValueError` for empty text.
+
+---
+
+## Tips & Best Practices
+
+* Add `description` to schema fields (or Pydantic field metadata) for better extractions.
+* Start with **one-shot Pydantic**; switch specific fields to **stepwise** if they’re noisy.
+* Track usage/cost before scaling; tweak `temperature` in `options` if consistency wobbles.
+* Use `verbose_level=TRACE` in dev to see prompts/results and tighten your specs.
+
+---
+
+## Contributing
+
+PRs welcome! Add tests and—if adding drivers or patterns—drop an example under `examples/`.

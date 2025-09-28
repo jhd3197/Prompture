@@ -218,6 +218,8 @@ def manual_extract_and_jsonify(
     if model_name:
         opts["model"] = model_name
 
+    # Generate the content prompt
+    content_prompt = f"{instruction_template} {text}"
     
     # Add logging for prompt generation
     log_debug(LogLevel.DEBUG, verbose_level, "Generated prompt for extraction", prefix="[manual]")
@@ -229,7 +231,6 @@ def manual_extract_and_jsonify(
     log_debug(LogLevel.TRACE, verbose_level, {"result": result}, prefix="[manual]")
     
     return result
-    content_prompt = f"{instruction_template} {text}"
     
 
 def extract_with_model(
@@ -297,7 +298,7 @@ def stepwise_extract_with_model(
     fields: Optional[List[str]] = None,
     options: Dict[str, Any] = {},
     verbose_level: LogLevel | int = LogLevel.OFF,
-) -> BaseModel:
+) -> Dict[str, Any]:
     """Extracts structured information into a Pydantic model by processing each field individually.
 
     For each field in the model, makes a separate LLM call to extract that specific field,
@@ -315,7 +316,9 @@ def stepwise_extract_with_model(
         verbose_level: Logging level for debug output (LogLevel.OFF by default).
 
     Returns:
-        A validated instance of the Pydantic model.
+        A dictionary containing:
+        - model: A validated instance of the Pydantic model.
+        - usage: Accumulated token usage and cost information across all field extractions.
 
     Raises:
         ValueError: If text is empty or None.
@@ -337,6 +340,16 @@ def stepwise_extract_with_model(
 
     data = {}
     validation_errors = []
+    
+    # Initialize usage accumulator
+    accumulated_usage = {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0,
+        "cost": 0.0,
+        "model_name": model_name or getattr(driver, "model", ""),
+        "field_usages": {}
+    }
 
     # Get valid field names from the model
     valid_fields = set(model_cls.model_fields.keys())
@@ -389,6 +402,14 @@ def stepwise_extract_with_model(
             log_debug(LogLevel.DEBUG, verbose_level, f"Raw extraction result for {field_name}", prefix="[stepwise]")
             log_debug(LogLevel.TRACE, verbose_level, {"result": result}, prefix="[stepwise]")
 
+            # Accumulate usage data from this field extraction
+            field_usage = result.get("usage", {})
+            accumulated_usage["prompt_tokens"] += field_usage.get("prompt_tokens", 0)
+            accumulated_usage["completion_tokens"] += field_usage.get("completion_tokens", 0)
+            accumulated_usage["total_tokens"] += field_usage.get("total_tokens", 0)
+            accumulated_usage["cost"] += field_usage.get("cost", 0.0)
+            accumulated_usage["field_usages"][field_name] = field_usage
+
             extracted_value = result["json_object"]["value"]
 
             # Convert value using tools.convert_value
@@ -428,7 +449,11 @@ def stepwise_extract_with_model(
             log_debug(LogLevel.ERROR, verbose_level, error, prefix="[stepwise]")
     
     try:
-        return model_cls(**data)
+        model_instance = model_cls(**data)
+        return {
+            "model": model_instance,
+            "usage": accumulated_usage
+        }
     except Exception as e:
         # Add structured logging for model validation error
         log_debug(LogLevel.ERROR, verbose_level, f"Model validation error: {str(e)}", prefix="[stepwise]")
