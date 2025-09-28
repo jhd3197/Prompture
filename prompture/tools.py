@@ -607,76 +607,37 @@ def extract_fields(
 # JSON text cleaning
 # ---------------------------------------------------------------------------
 
-_THINK_RE = re.compile(r"<think>.*?</think>", flags=re.DOTALL)
-_FENCE_RE = re.compile(r"^\s*```[a-zA-Z0-9_-]*\s*([\s\S]*?)```", flags=re.MULTILINE)
-
 def clean_json_text(text: str) -> str:
-    """
-    Attempts to extract a valid JSON object/array string from text.
+    """Attempts to extract a valid JSON object string from text.
 
-    Handles multiple formatting issues:
+    Handles multiple possible formatting issues:
     - Removes <think>...</think> blocks.
     - Strips markdown code fences (```json ... ```).
-    - Falls back to first {...} or [...] balanced block found.
+    - Falls back to first {...} block found.
+
+    Args:
+        text: Raw string that may contain JSON plus extra formatting.
 
     Returns:
         A string that best resembles valid JSON content.
     """
-    if not isinstance(text, str):
-        text = str(text)
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
+    text = text.strip()
 
-    text = _THINK_RE.sub("", text).strip()
+    if text.startswith("```"):
+        start_fence = text.find("```")
+        if start_fence != -1:
+            start_content = text.find("\n", start_fence)
+            if start_content != -1:
+                end_fence = text.find("```", start_content)
+                if end_fence != -1:
+                    return text[start_content + 1:end_fence].strip()
+                else:
+                    return text[start_content + 1 :].strip()
 
-    # Strip fenced code if present
-    m = _FENCE_RE.search(text)
-    if m:
-        candidate = m.group(1).strip()
-        if candidate:
-            return candidate
+    start = text.find("{")
+    end = text.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        return text[start : end + 1]
 
-    # Find first balanced object or array by scanning
-    # Try object
-    obj = _balanced_block(text, "{", "}")
-    if obj is not None:
-        return obj.strip()
-
-    # Try array
-    arr = _balanced_block(text, "[", "]")
-    if arr is not None:
-        return arr.strip()
-
-    return text.strip()
-
-
-def _balanced_block(s: str, open_ch: str, close_ch: str) -> Optional[str]:
-    depth = 0
-    start = -1
-    in_str = False
-    esc = False
-
-    for i, ch in enumerate(s):
-        if in_str:
-            if esc:
-                esc = False
-            elif ch == "\\":
-                esc = True
-            elif ch == '"':
-                in_str = False
-            continue
-
-        if ch == '"':
-            in_str = True
-            if depth == 0 and start == -1:
-                start = i if start != -1 else start
-            continue
-
-        if ch == open_ch:
-            depth += 1
-            if depth == 1:
-                start = i
-        elif ch == close_ch:
-            if depth > 0:
-                depth -= 1
-                if depth == 0 and start != -1:
-                    return s[start : i + 1]
-    return None
+    return text

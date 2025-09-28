@@ -78,7 +78,6 @@ try:
     result = stepwise_extract_with_model(
         model_cls=Person,
         text=text,
-        debug=False,  # Enable debug mode to see detailed extraction process
     )
     print("\nFinal extracted Person object:")
     print(result.model_dump_json(indent=2))
@@ -98,7 +97,6 @@ try:
     result = stepwise_extract_with_model(
         model_cls=Person,
         text=invalid_text,
-        debug=False,  # Enable debug mode to see validation errors
     )
     
 except Exception as e:
@@ -117,7 +115,7 @@ try:
     result = stepwise_extract_with_model(
         model_cls=Person,
         text=mixed_text,
-        debug=False,  # See how different types are handled
+        verbose_level=2  # Show detailed debug output
     )
     
     print("\nExtracted and validated data:")

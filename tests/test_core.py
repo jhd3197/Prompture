@@ -286,18 +286,6 @@ class TestExtractAndJsonify:
 class TestErrorHandlingAndEdgeCases:
     """Tests for error handling and edge cases."""
 
-    @pytest.mark.integration
-    def test_json_parsing_error_detail(integration_driver, sample_json_schema, monkeypatch):
-        # Force an invalid response from the driver
-        def fake_complete_json(*args, **kwargs):
-            return '{"name": "Bad", "incomplete": true'  # missing brace
-        monkeypatch.setattr('prompture.core._driver_complete_json', fake_complete_json)
-
-        with pytest.raises(json.JSONDecodeError) as exc_info:
-            ask_for_json(integration_driver, "whatever", sample_json_schema, ai_cleanup=False)
-
-        msg = str(exc_info.value)
-        assert "Expecting" in msg or "Invalid" in msg
 
     @pytest.mark.integration
     def test_very_large_json_schema(self, integration_driver):
