@@ -1,5 +1,5 @@
 """
-Example: Using manual_extract_and_jsonify with Google Gemini.
+Example: Using extract_and_jsonify with Google Gemini.
 
 This script demonstrates:
 1. Initializing the Google driver manually (ignoring AI_PROVIDER).

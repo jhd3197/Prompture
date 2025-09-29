@@ -1,5 +1,5 @@
 """
-Example: Using manual_extract_and_jsonify with OpenRouter.
+Example: Using extract_and_jsonify with OpenRouter.
 
 This script demonstrates:
 1. Initializing OpenRouter driver manually (ignoring AI_PROVIDER).

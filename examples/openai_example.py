@@ -1,10 +1,10 @@
 """
-Example: Using manual_extract_and_jsonify with different drivers and models.
+Example: Using extract_and_jsonify with different drivers and models.
 
 This example demonstrates how to:
 1. Initialize a specific driver (OpenAI in this case).
 2. Provide a text input and a JSON schema that defines the structure of the output.
-3. Use `manual_extract_and_jsonify` to extract structured JSON with:
+3. Use `extract_and_jsonify` to extract structured JSON with:
    - A default instruction template.
    - A custom instruction template.
 4. Override the model per call using the `model_name` argument.

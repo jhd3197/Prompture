@@ -1,5 +1,5 @@
 """
-Example: Using manual_extract_and_jsonify with Grok.
+Example: Using extract_and_jsonify with Grok.
 
 This script demonstrates:
 1. Initializing the Grok driver manually (ignoring AI_PROVIDER).

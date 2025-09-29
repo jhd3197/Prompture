@@ -1,5 +1,5 @@
 """
-Example: Using manual_extract_and_jsonify with Groq.
+Example: Using extract_and_jsonify with Groq.
 
 This script demonstrates:
 1. Initializing the Groq driver manually (ignoring AI_PROVIDER).

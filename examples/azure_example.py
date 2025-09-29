@@ -1,5 +1,5 @@
 """
-Example: Using manual_extract_and_jsonify with Azure OpenAI.
+Example: Using extract_and_jsonify with Azure OpenAI.
 
 This script demonstrates:
 1. Initializing the Azure driver manually (ignoring AI_PROVIDER).

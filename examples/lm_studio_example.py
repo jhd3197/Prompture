@@ -1,10 +1,10 @@
 """
-Example: Using manual_extract_and_jsonify with LM Studio.
+Example: Using extract_and_jsonify with LM Studio.
 
 This example demonstrates how to:
 1. Manually initialize the LM Studio driver (ignoring AI_PROVIDER env).
 2. Provide a text input and a JSON schema to enforce structured extraction.
-3. Call `manual_extract_and_jsonify` with:
+3. Call `extract_and_jsonify` with:
    - Default instruction template.
    - A custom instruction template.
 4. Override the model per call using `model_name="deepseek/deepseek-r1-0528-qwen3-8b"`.

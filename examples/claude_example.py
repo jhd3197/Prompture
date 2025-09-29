@@ -1,5 +1,5 @@
 """
-Example: Using manual_extract_and_jsonify with Claude.
+Example: Using extract_and_jsonify with Claude.
 
 This script demonstrates:
 1. Initializing the Claude driver manually (ignoring AI_PROVIDER).
