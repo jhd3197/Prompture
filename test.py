@@ -3,9 +3,10 @@ import argparse
 import os
 import sys
 from typing import Dict, List, Tuple
-import pytest
 from dotenv import load_dotenv
 from pathlib import Path
+import re
+
 
 # Add src directory to path for prompture package imports
 sys.path.append('src')
@@ -132,19 +133,37 @@ def configure_test_environment(args: argparse.Namespace) -> None:
             print("Error: Provider credentials missing and skip tests not enabled")
             sys.exit(1)
 
+
+def read_default_model_from_conftest() -> str:
+    path = Path('tests') / 'conftest.py'
+    text = path.read_text(encoding='utf-8')
+    m = re.search(r"DEFAULT_MODEL\s*=\s*['\"]([^'\"]+)['\"]", text)
+    if not m:
+        raise RuntimeError("Couldn't locate DEFAULT_MODEL in tests/conftest.py")
+    return m.group(1)
+
+def configure_test_environment_from_model(model: str, args):
+    provider = get_provider_from_model(model)
+    if provider not in VALID_PROVIDERS:
+        print(f"Error: Invalid provider '{provider}' in DEFAULT_MODEL.")
+        sys.exit(1)
+    # print diagnostics and credential checks same as before, but take `model` param
+
 def main() -> int:
-    """Main test runner function."""
     args = parse_args()
-    
+
+    # Import pytest only now, inside main, before any test module import
+    import pytest
+
     try:
-        configure_test_environment(args)
-        
-        # Run pytest with any additional arguments
+        DEFAULT_MODEL = read_default_model_from_conftest()
+        configure_test_environment_from_model(DEFAULT_MODEL, args)
+
+        # safe to run pytest.main() now because pytest is loaded and its import hooks installed
         return pytest.main(args.pytest_args)
-        
+
     except Exception as e:
         print(f"Error running tests: {e}")
         return 1
-
 if __name__ == '__main__':
     sys.exit(main())

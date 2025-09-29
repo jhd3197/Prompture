@@ -41,11 +41,11 @@ class Person(BaseModel):
     )
     is_employed: bool = Field(
         ...,
-        description="Whether the person is currently employed."
+        description="Whether the person is currently employed. True or False."
     )
     salary: Optional[float] = Field(
         None,
-        description="Annual salary in USD, if available."
+        description="Annual salary in USD, if available. Numbers only e.g. 75000.50"
     )
 
 
@@ -65,7 +65,7 @@ try:
         instruction_template="Extract biographical information into structured data:",
     )
     print("\nExtracted Person object:")
-    print(result)
+    print(result["model"])
 
 except Exception as e:
     print(f"Error with Ollama driver: {str(e)}")
@@ -81,9 +81,8 @@ try:
         text=text,
         model_name="ollama/gpt-oss:20b",
     )
-    print("\nFinal extracted Person object:")
-    print("DEBUG: type(result) =", type(result), "keys =", list(result.keys()))
-    print(result)
+    print("\nExtracted and validated data:")
+    print(result["model"])
 
 except Exception as e:
     print(f"Error with stepwise extraction: {str(e)}")
@@ -102,6 +101,7 @@ try:
         text=invalid_text,
         model_name="ollama/gpt-oss:20b",
     )
+    print(result["error"])
     
 except Exception as e:
     print(f"\nValidation caught the following issues:\n{str(e)}")
@@ -120,11 +120,10 @@ try:
         model_cls=Person,
         text=mixed_text,
         model_name="ollama/gpt-oss:20b",
-        verbose_level=2  # Show detailed debug output
     )
     
     print("\nExtracted and validated data:")
-    print(result["model"].model_dump_json(indent=2))
+    print(result["model"])
     
 except Exception as e:
     print(f"\nError handling types: {str(e)}")

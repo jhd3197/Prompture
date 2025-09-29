@@ -119,16 +119,3 @@ def test_manual_extract_and_jsonify_explicit_driver():
     assert "json_string" in result
     assert "json_object" in result
     assert "usage" in result
-
-def test_deprecation_warning_for_old_extract_and_jsonify():
-    try:
-        from prompture.core import _old_extract_and_jsonify
-    except ImportError:
-        pytest.skip("Old extract_and_jsonify not available.")
-    with warnings.catch_warnings(record=True) as w:
-        warnings.simplefilter("always")
-        driver = get_driver_for_model("openai/gpt-3.5-turbo")
-        # Old function returns a single value, not a tuple
-        result = _old_extract_and_jsonify(driver, SIMPLE_TEXT, SIMPLE_SCHEMA)
-        assert isinstance(result, dict)  # Basic validation of return value
-        assert any("deprecated" in str(warn.message).lower() for warn in w)

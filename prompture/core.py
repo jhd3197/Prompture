@@ -6,10 +6,12 @@ import re
 import requests
 import sys
 import warnings
+from datetime import datetime, date
+from decimal import Decimal
 from typing import Any, Dict, Type, Optional, List, Union
 import pytest
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .drivers import get_driver, get_driver_for_model
 from .driver import Driver
@@ -120,37 +122,6 @@ def ask_for_json(
         else:
             # Explicitly re-raise the original JSONDecodeError
             raise e
-
-def _old_extract_and_jsonify(
-    driver: Driver,
-    text: str,
-    json_schema: Dict[str, Any],
-    model_name: str = "",
-    instruction_template: str = "Extract information from the following text:",
-    ai_cleanup: bool = True,
-    options: Dict[str, Any] = {},
-) -> Dict[str, Any]:
-    """[DEPRECATED] Legacy version of extract_and_jsonify that takes an explicit driver.
-    
-    Use the new extract_and_jsonify(text, json_schema, model_name, ...) instead.
-    This version will be removed in a future release.
-    """
-    warnings.warn(
-        "This function is deprecated. Use extract_and_jsonify(text, json_schema, model_name, ...) instead.",
-        DeprecationWarning,
-        stacklevel=2
-    )
-    import sys
-    
-    model = model_name or getattr(driver, "model", "")
-    return extract_and_jsonify(
-        text=text,
-        json_schema=json_schema,
-        model_name=model,
-        instruction_template=instruction_template,
-        ai_cleanup=ai_cleanup,
-        options={"driver": driver, "model": model, **options}
-    )
 
 def extract_and_jsonify(
     text: Union[str, Driver],  # Can be either text or driver for backward compatibility
@@ -304,7 +275,6 @@ def manual_extract_and_jsonify(
     log_debug(LogLevel.TRACE, verbose_level, {"result": result}, prefix="[manual]")
     
     return result
-    
 
 def extract_with_model(
     model_cls: Union[Type[BaseModel], str],  # Can be model class or model name string for legacy support
@@ -395,11 +365,12 @@ def extract_with_model(
 def stepwise_extract_with_model(
     model_cls: Type[BaseModel],
     text: str,
+    *,  # Force keyword arguments for remaining params
     model_name: str,
     instruction_template: str = "Extract the {field_name} from the following text:",
     ai_cleanup: bool = True,
     fields: Optional[List[str]] = None,
-    options: Dict[str, Any] = {},
+    options: Optional[Dict[str, Any]] = None,
     verbose_level: LogLevel | int = LogLevel.OFF,
 ) -> Dict[str, Union[str, Dict[str, Any]]]:
     """Extracts structured information into a Pydantic model by processing each field individually.
@@ -439,6 +410,7 @@ def stepwise_extract_with_model(
 
     data = {}
     validation_errors = []
+    options = options or {}
     
     # Initialize usage accumulator
     accumulated_usage = {
@@ -446,7 +418,7 @@ def stepwise_extract_with_model(
         "completion_tokens": 0,
         "total_tokens": 0,
         "cost": 0.0,
-        "model_name": model_name or getattr(driver, "model", ""),
+        "model_name": model_name,  # Use provided model_name directly
         "field_usages": {}
     }
 
@@ -471,13 +443,12 @@ def stepwise_extract_with_model(
             "field_type": str(field_info.annotation)
         }, prefix="[stepwise]")
 
-        # Create field schema using tools.create_field_schema
+        # Create field schema that expects a direct value rather than a dict
         field_schema = {
-            "value": create_field_schema(
-                field_name,
-                field_info.annotation,
-                field_info.description
-            )
+            "value": {
+                "type": "integer" if field_info.annotation == int else "string",
+                "description": field_info.description or f"Value for {field_name}"
+            }
         }
 
         # Add structured logging for field schema and prompt
@@ -508,12 +479,24 @@ def stepwise_extract_with_model(
             accumulated_usage["cost"] += field_usage.get("cost", 0.0)
             accumulated_usage["field_usages"][field_name] = field_usage
 
+            # Extract the raw value from the response - handle both dict and direct value formats
             extracted_value = result["json_object"]["value"]
+            log_debug(LogLevel.DEBUG, verbose_level, f"Raw extracted value for {field_name}", prefix="[stepwise]")
+            log_debug(LogLevel.DEBUG, verbose_level, {"extracted_value": extracted_value}, prefix="[stepwise]")
+            
+            if isinstance(extracted_value, dict) and "value" in extracted_value:
+                raw_value = extracted_value["value"]
+                log_debug(LogLevel.DEBUG, verbose_level, f"Extracted inner value from dict for {field_name}", prefix="[stepwise]")
+            else:
+                raw_value = extracted_value
+                log_debug(LogLevel.DEBUG, verbose_level, f"Using direct value for {field_name}", prefix="[stepwise]")
+            
+            log_debug(LogLevel.DEBUG, verbose_level, {"field_name": field_name, "raw_value": raw_value}, prefix="[stepwise]")
 
-            # Convert value using tools.convert_value
+            # Convert value using tools.convert_value with logging
             try:
                 converted_value = convert_value(
-                    extracted_value,
+                    raw_value,
                     field_info.annotation,
                     allow_shorthand=True
                 )
@@ -536,9 +519,16 @@ def stepwise_extract_with_model(
         except Exception as e:
             error_msg = f"Extraction failed for {field_name}: {str(e)}"
             validation_errors.append(error_msg)
+            data[field_name] = None  # Store None for failed fields
             
             # Add structured logging for extraction error
             log_debug(LogLevel.ERROR, verbose_level, error_msg, prefix="[stepwise]")
+            
+            # Store error details in field_usages
+            accumulated_usage["field_usages"][field_name] = {
+                "error": str(e),
+                "status": "failed"
+            }
     
     # Add structured logging for validation errors
     if validation_errors:
@@ -546,28 +536,75 @@ def stepwise_extract_with_model(
         for error in validation_errors:
             log_debug(LogLevel.ERROR, verbose_level, error, prefix="[stepwise]")
     
+    # If there are validation errors, include them in the result
+    if validation_errors:
+        accumulated_usage["validation_errors"] = validation_errors
+    
     try:
+        # Create model instance with collected data
+        # Create model instance with collected data
         model_instance = model_cls(**data)
-        # Convert model to dict for json_object
         model_dict = model_instance.model_dump()
         
-        # Create JSON string from the dict
-        json_string = json.dumps(model_dict)
+        # Enhanced DateTimeEncoder to handle both datetime and date objects
+        class ExtendedJSONEncoder(json.JSONEncoder):
+            def default(self, obj):
+                if isinstance(obj, (datetime, date)):
+                    return obj.isoformat()
+                if isinstance(obj, Decimal):
+                    return str(obj)
+                return super().default(obj)
         
-        # Create result dictionary with backwards compatibility
-        result_dict = {
+        # Use enhanced encoder for JSON serialization
+        json_string = json.dumps(model_dict, cls=ExtendedJSONEncoder)
+
+        # Also modify return value to use ExtendedJSONEncoder
+        if 'json_string' in result:
+            result['json_string'] = json.dumps(result['json_object'], cls=ExtendedJSONEncoder)
+        
+        # Define ExtendedJSONEncoder for handling special types
+        class ExtendedJSONEncoder(json.JSONEncoder):
+            def default(self, obj):
+                if isinstance(obj, (datetime, date)):
+                    return obj.isoformat()
+                if isinstance(obj, Decimal):
+                    return str(obj)
+                return super().default(obj)
+        
+        # Create json string with custom encoder
+        json_string = json.dumps(model_dict, cls=ExtendedJSONEncoder)
+        
+        # Create result matching extract_with_model format
+        result = {
             "json_string": json_string,
-            "json_object": model_dict,
+            "json_object": json.loads(json_string),  # Re-parse to ensure all values are JSON serializable
             "usage": accumulated_usage,
-            "model": model_instance  # For backwards compatibility
         }
         
-        # Return value can be used both as a dict and accessed as model directly
-        return type("StepwiseExtractResult", (dict,), {
+        # Add model instance as property and make callable
+        result["model"] = model_instance
+        return type("ExtractResult", (dict,), {
             "__getattr__": lambda self, key: self.get(key),
             "__call__": lambda self: self["model"]
-        })(result_dict)
+        })(result)
     except Exception as e:
-        # Add structured logging for model validation error
-        log_debug(LogLevel.ERROR, verbose_level, f"Model validation error: {str(e)}", prefix="[stepwise]")
-        raise
+        error_msg = f"Model validation error: {str(e)}"
+        # Add validation error to accumulated usage
+        if "validation_errors" not in accumulated_usage:
+            accumulated_usage["validation_errors"] = []
+        accumulated_usage["validation_errors"].append(error_msg)
+        
+        # Add structured logging
+        log_debug(LogLevel.ERROR, verbose_level, error_msg, prefix="[stepwise]")
+        
+        # Create error result with partial data
+        error_result = {
+            "json_string": "{}",
+            "json_object": {},
+            "usage": accumulated_usage,
+            "error": error_msg
+        }
+        return type("ExtractResult", (dict,), {
+            "__getattr__": lambda self, key: self.get(key),
+            "__call__": lambda self: None  # Return None when called if validation failed
+        })(error_result)

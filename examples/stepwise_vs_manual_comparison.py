@@ -125,17 +125,30 @@ def test_stepwise_method(model_name=None):
             
         result = stepwise_extract_with_model(**kwargs)
         
+        # Call result() to get the model instance
+        model_instance = result()
+        
+        # Check if model instance is valid
+        if model_instance is None:
+            raise ValueError(f"Model validation failed: {result.get('usage', {}).get('validation_errors', 'Unknown error')}")
+            
+        # Get usage info, checking for validation errors
+        usage = result.get('usage', {})
+        if 'validation_errors' in usage:
+            print(f"Validation errors: {usage['validation_errors']}")
+            
         return {
             'success': True,
             'method': 'stepwise_extract_with_model',
             'model_name': model_name or 'default',
-            'extracted_model': result['model'],
-            'usage': result['usage'],
-            'field_count': len(result['model'].__dict__),
-            'api_calls': len(result['usage'].get('field_usages', {}))
+            'extracted_model': model_instance,
+            'usage': usage,
+            'field_count': len(model_instance.__dict__),
+            'api_calls': len(usage.get('field_usages', {}))
         }
         
     except Exception as e:
+        print(f"Stepwise extraction error: {str(e)}")  # Add detailed error logging
         return {
             'success': False,
             'method': 'stepwise_extract_with_model',
