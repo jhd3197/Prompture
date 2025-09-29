@@ -3,13 +3,12 @@ Example script to compare multiple Ollama models on a complex parsing task.
 
 This script demonstrates different Ollama models by extracting structured information
 from a smartphone description using a complex JSON schema. It uses the
-`manual_extract_and_jsonify` function to explicitly provide the Ollama driver,
+`extract_and_jsonify` function to explicitly provide the Ollama driver,
 ignoring environment defaults.
 """
 
 import json
-from prompture import manual_extract_and_jsonify
-from prompture.drivers import get_driver
+from prompture import extract_and_jsonify
 
 # Define the complex text for parsing - 4-paragraph smartphone description
 COMPLEX_TEXT = """
@@ -84,13 +83,12 @@ COMPLEX_SCHEMA = {
 
 # List of Ollama models to test
 MODELS_TO_TEST = [
-    "gpt-oss:20b",
-    "deepseek-r1:latest",
-    "llama3.1:8b",
-    "gemma3:latest",
-    "qwen2.5:1.5b",
-    "qwen2.5:3b",
-    "mistral:latest"
+    "ollama/gpt-oss:20b",
+    "ollama/llama3.1:8b",
+    "ollama/gemma3:latest",
+    "ollama/qwen2.5:1.5b",
+    "ollama/qwen2.5:3b",
+    "ollama/mistral:latest"
 ]
 
 
@@ -105,15 +103,13 @@ def compare_ollama_models():
                 - json_object, usage, json_string (on success)
                 - error (str) on failure
     """
-    ollama_driver = get_driver("ollama")
     results = {}
     failed_models = []
 
     for model in MODELS_TO_TEST:
         print(f"Testing model: {model}")
         try:
-            result = manual_extract_and_jsonify(
-                driver=ollama_driver,
+            result = extract_and_jsonify(
                 text=COMPLEX_TEXT,
                 json_schema=COMPLEX_SCHEMA,
                 model_name=model

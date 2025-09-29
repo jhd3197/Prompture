@@ -1,27 +1,20 @@
 """
-Example: Using extract_and_jsonify with Azure OpenAI.
+Example: Using extract_and_jsonify with Google Gemini.
 
 This script demonstrates:
-1. Initializing the Azure driver manually (ignoring AI_PROVIDER).
-2. Extracting structured information from text into JSON using a schema.
-3. Overriding the model per call with `model_name`.
+1. Initializing the Google driver manually (ignoring AI_PROVIDER).
+2. Extracting structured information from text using a JSON schema.
+3. Overriding the Google model per call with `model_name`.
 4. Running both a default extraction and a custom-instruction extraction.
-
-Environment variables required:
-- AZURE_API_KEY: Your Azure OpenAI API key
-- AZURE_API_ENDPOINT: Your Azure OpenAI endpoint URL
-- AZURE_DEPLOYMENT_ID: Your deployment ID for the model
-- AZURE_API_VERSION: (Optional) Defaults to "2023-07-01-preview"
 """
 
 import json
 from prompture import extract_and_jsonify
 
-
-# 1. Define the raw text to parse
+# 1. Define the raw text
 text = "Maria is 32 years old and works as a software developer in New York. She loves hiking and photography."
 
-# 2. Define the JSON schema for expected output
+# 2. Define the JSON schema
 json_schema = {
     "type": "object",
     "properties": {
@@ -33,20 +26,20 @@ json_schema = {
     }
 }
 
-# === FIRST EXAMPLE: Default instruction with explicit Azure model ===
+# === FIRST EXAMPLE: Default instruction with Gemini Pro ===
 print("Extracting information into JSON with default instruction...")
 
 result = extract_and_jsonify(
     text=text,
     json_schema=json_schema,
-    model_name="azure/gpt-4o-mini"  # explicitly override to a known Azure deployment
+    model_name="google/gemini-2.5-flash"  # explicitly select model
 )
 
 json_output = result["json_string"]
 json_object = result["json_object"]
 usage = result["usage"]
 
-print("\nRaw JSON output from Azure model:")
+print("\nRaw JSON output from model:")
 print(json_output)
 
 print("\nSuccessfully parsed JSON:")
@@ -60,15 +53,15 @@ print(f"Cost: ${usage['cost']:.6f}")
 print(f"Model used: {usage['model_name']}")
 
 
-# === SECOND EXAMPLE: Custom instruction with a different model ===
-print("\n\n=== SECOND EXAMPLE - CUSTOM INSTRUCTION TEMPLATE ===")
-print("Extracting information with custom instruction using Azure GPT-4...")
+# === SECOND EXAMPLE: Custom instruction with Gemini Flash ===
+print("\n\n=== SECOND EXAMPLE - CUSTOM INSTRUCTION & DIFFERENT MODEL ===")
+print("Extracting information with custom instruction using Gemini Flash...")
 
 custom_result = extract_and_jsonify(
     text=text,
     json_schema=json_schema,
     instruction_template="Parse the biographical details from this text:",
-    model_name="azure/gpt-4"  # override to a different Azure deployment/model
+    model_name="google/gemini-2.0-flash"  # override model here
 )
 
 custom_json_output = custom_result["json_string"]

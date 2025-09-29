@@ -3,13 +3,12 @@ Example script to compare multiple OpenAI models on a complex parsing task.
 
 This script demonstrates different OpenAI models by extracting structured information
 from a smartphone description using a complex JSON schema. It uses the
-`manual_extract_and_jsonify` function to explicitly provide the OpenAI driver,
+`extract_and_jsonify` function to explicitly provide the OpenAI driver,
 ignoring environment defaults.
 """
 
 import json
-from prompture import manual_extract_and_jsonify
-from prompture.drivers import get_driver
+from prompture import extract_and_jsonify
 from prompture.drivers.openai_driver import OpenAIDriver
 
 # Define the complex text for parsing - 4-paragraph smartphone description
@@ -98,7 +97,6 @@ def compare_openai_models():
                 - json_object, usage, json_string (on success)
                 - error (str) on failure
     """
-    openai_driver = get_driver("openai")
     results = {}
     failed_models = []
 
@@ -106,11 +104,10 @@ def compare_openai_models():
         print(f"Testing model: {model}")
         try:
 
-            result = manual_extract_and_jsonify(
-                driver=openai_driver,
+            result = extract_and_jsonify(
                 text=COMPLEX_TEXT,
                 json_schema=COMPLEX_SCHEMA,
-                model_name=model
+                model_name="openai/" + model
             )
 
             results[model] = {

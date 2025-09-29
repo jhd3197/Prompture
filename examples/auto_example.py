@@ -34,16 +34,18 @@ json_schema = {
     }
 }
 
-# 3. Define Ollama models to test
-ollama_models = [
-    "gpt-oss:20b",
-    "qwen2.5:3b",
-    "mistral:latest"
+# 3. Define llm models to test
+llm_models = [
+    "ollama/gpt-oss:20b",
+    "ollama/qwen2.5:3b",
+    "ollama/mistral:latest",
+    "azure/gpt-4",
+    "lmstudio/deepseek/deepseek-r1-0528-qwen3-8b"
 ]
 
 # 4. Run extraction for each model
-for model in ollama_models:
-    print(f"\n=== Extracting information using Ollama model: {model} ===")
+for model in llm_models:
+    print(f"\n=== Extracting information using LLM model: {model} ===")
     try:
         result = extract_and_jsonify(
             text=text,

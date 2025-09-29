@@ -1,27 +1,22 @@
 """
-Example: Using extract_and_jsonify with Azure OpenAI.
+Example: Using extract_and_jsonify with LM Studio.
 
-This script demonstrates:
-1. Initializing the Azure driver manually (ignoring AI_PROVIDER).
-2. Extracting structured information from text into JSON using a schema.
-3. Overriding the model per call with `model_name`.
-4. Running both a default extraction and a custom-instruction extraction.
-
-Environment variables required:
-- AZURE_API_KEY: Your Azure OpenAI API key
-- AZURE_API_ENDPOINT: Your Azure OpenAI endpoint URL
-- AZURE_DEPLOYMENT_ID: Your deployment ID for the model
-- AZURE_API_VERSION: (Optional) Defaults to "2023-07-01-preview"
+This example demonstrates how to:
+1. Manually initialize the LM Studio driver (ignoring AI_PROVIDER env).
+2. Provide a text input and a JSON schema to enforce structured extraction.
+3. Call `extract_and_jsonify` with:
+   - Default instruction template.
+   - A custom instruction template.
+4. Override the model per call using `model_name="deepseek/deepseek-r1-0528-qwen3-8b"`.
+5. Inspect and print the JSON output and usage metadata.
 """
 
 import json
 from prompture import extract_and_jsonify
 
-
-# 1. Define the raw text to parse
+# 1. Define the raw text and JSON schema
 text = "Maria is 32 years old and works as a software developer in New York. She loves hiking and photography."
 
-# 2. Define the JSON schema for expected output
 json_schema = {
     "type": "object",
     "properties": {
@@ -33,20 +28,20 @@ json_schema = {
     }
 }
 
-# === FIRST EXAMPLE: Default instruction with explicit Azure model ===
+# === FIRST EXAMPLE: Default instruction template ===
 print("Extracting information into JSON with default instruction...")
 
 result = extract_and_jsonify(
     text=text,
     json_schema=json_schema,
-    model_name="azure/gpt-4o-mini"  # explicitly override to a known Azure deployment
+    model_name="lmstudio/deepseek/deepseek-r1-0528-qwen3-8b"  # explicit model override
 )
 
 json_output = result["json_string"]
 json_object = result["json_object"]
 usage = result["usage"]
 
-print("\nRaw JSON output from Azure model:")
+print("\nRaw JSON output from model:")
 print(json_output)
 
 print("\nSuccessfully parsed JSON:")
@@ -56,19 +51,18 @@ print("\n=== TOKEN USAGE STATISTICS ===")
 print(f"Prompt tokens: {usage['prompt_tokens']}")
 print(f"Completion tokens: {usage['completion_tokens']}")
 print(f"Total tokens: {usage['total_tokens']}")
-print(f"Cost: ${usage['cost']:.6f}")
-print(f"Model used: {usage['model_name']}")
+print(f"Model name: {usage['model_name']}")
 
 
-# === SECOND EXAMPLE: Custom instruction with a different model ===
+# === SECOND EXAMPLE: Custom instruction template ===
 print("\n\n=== SECOND EXAMPLE - CUSTOM INSTRUCTION TEMPLATE ===")
-print("Extracting information with custom instruction using Azure GPT-4...")
+print("Extracting information with custom instruction...")
 
 custom_result = extract_and_jsonify(
     text=text,
     json_schema=json_schema,
+    model_name="lmstudio/deepseek/deepseek-r1-0528-qwen3-8b",  # keep same model
     instruction_template="Parse the biographical details from this text:",
-    model_name="azure/gpt-4"  # override to a different Azure deployment/model
 )
 
 custom_json_output = custom_result["json_string"]
@@ -85,5 +79,4 @@ print("\n=== TOKEN USAGE STATISTICS (Custom Template) ===")
 print(f"Prompt tokens: {custom_usage['prompt_tokens']}")
 print(f"Completion tokens: {custom_usage['completion_tokens']}")
 print(f"Total tokens: {custom_usage['total_tokens']}")
-print(f"Cost: ${custom_usage['cost']:.6f}")
-print(f"Model used: {custom_usage['model_name']}")
+print(f"Model name: {custom_usage['model_name']}")

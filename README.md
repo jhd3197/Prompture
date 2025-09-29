@@ -6,7 +6,7 @@
 
 - ✅ **Structured output** → JSON schema enforcement, or direct **Pydantic** instances
 - ✅ **Stepwise extraction** → Per-field prompts, with smart type conversion (incl. shorthand numbers)
-- ✅ **Multi-driver** → OpenAI, Azure, Claude, Ollama, HTTP, Mock, HuggingFace (via `get_driver()`)
+- ✅ **Multi-driver** → OpenAI, Azure, Claude, Ollama, LM Studio, Google, Groq, OpenRouter, Grok, HTTP, Mock, HuggingFace (via `get_driver()`)
 - ✅ **Usage & cost** → Token + $ tracking on every call (`usage` from driver meta)
 - ✅ **AI cleanup** → Optional LLM pass to fix malformed JSON
 - ✅ **Batch testing** → Define suites and compare models (spec-driven)
@@ -34,27 +34,39 @@ pip install prompture
 
 ## Configure a Provider
 
-`get_driver()` (used by high-level helpers) selects a driver from env:
+Model names now support provider prefixes (e.g., "ollama/llama3.1:8b"). The `get_driver_for_model()` function automatically selects the appropriate driver based on the provider prefix.
+
+You can configure providers either through environment variables or by using provider-prefixed model names:
 
 ```bash
-# One of: ollama | openai | azure | claude | http | huggingface
-export AI_PROVIDER=ollama
+# Environment variable approach:
+export AI_PROVIDER=ollama  # One of: ollama | openai | azure | claude | google | groq | openrouter | grok | lmstudio | http | huggingface
 
 # Only if the provider needs them:
 export OPENAI_API_KEY=...
 export AZURE_OPENAI_ENDPOINT=...
 export AZURE_OPENAI_API_KEY=...
 export ANTHROPIC_API_KEY=...
+export GOOGLE_API_KEY=...
+export GROQ_API_KEY=...
+export OPENROUTER_API_KEY=...
+export GROK_API_KEY=...
+export LMSTUDIO_ENDPOINT=...
 ```
 
-| Provider (AI_PROVIDER) | Example models              | Cost calc       |
-| ---------------------- | --------------------------- | --------------- |
-| `ollama`               | `llama3.1:8b`, `qwen2.5:3b` | `$0.00` (local) |
-| `openai`               | `gpt-*`                     | Automatic       |
-| `azure`                | Deployed names              | Automatic       |
-| `claude`               | `claude-*`                  | Automatic       |
-| `huggingface`          | local/endpoint              | `$0.00` (local) |
-| `http`                 | self-hosted                 | `$0.00`         |
+| Provider | Example models                        | Cost calc       |
+| -------- | ------------------------------------- | --------------- |
+| `ollama` | `ollama/llama3.1:8b`, `ollama/qwen2.5:3b` | `$0.00` (local) |
+| `openai` | `openai/gpt-4`, `openai/gpt-3.5-turbo` | Automatic       |
+| `azure`  | `azure/deployed-name`                  | Automatic       |
+| `claude` | `claude/claude-3`                      | Automatic       |
+| `google` | `google/gemini-1.5-pro`, `google/gemini-1.5-flash` | Automatic |
+| `groq` | `groq/llama2-70b-4096`, `groq/mixtral-8x7b-32768` | Automatic |
+| `openrouter` | `openrouter/openai/gpt-3.5-turbo`, `openrouter/anthropic/claude-2` | Automatic |
+| `grok` | `grok/grok-4-fast-reasoning`, `grok/grok-3-mini` | Automatic |
+| `lmstudio` | `lmstudio/local-model` | `$0.00` (local) |
+| `huggingface` | `hf/local-or-endpoint`            | `$0.00` (local) |
+| `http`   | `http/self-hosted`                     | `$0.00`         |
 
 ---
 
@@ -77,8 +89,8 @@ class Person(BaseModel):
 
 text = "Maria is 32, a software developer in New York. She loves hiking and photography."
 
-# Uses get_driver() internally (AI_PROVIDER). You can still pass driver/model_name.
-person = extract_with_model(Person, text, model_name="gpt-oss:20b")
+# Uses get_driver_for_model() internally based on model name prefix
+person = extract_with_model(Person, text, model_name="ollama/gpt-oss:20b")
 print(person.dict())
 ```
 
@@ -89,13 +101,10 @@ print(person.dict())
 ## JSON-first (low-level primitives)
 
 When you want raw JSON with a schema and full control, use `ask_for_json` or `extract_and_jsonify`.
-**Note:** these require an explicit `driver`.
 
 ```python
 from prompture.drivers import get_driver
 from prompture import ask_for_json, extract_and_jsonify
-
-driver = get_driver("ollama")  # or "openai", "azure", etc.
 
 schema = {
     "type": "object",
@@ -108,19 +117,17 @@ schema = {
 
 # 1) ask_for_json: you provide the full content prompt
 resp1 = ask_for_json(
-    driver=driver,
     content_prompt="Extract the person's info from: John is 28 and lives in Miami.",
     json_schema=schema,
-    options={"model": "llama3.1:8b"}
+    model_name="google/gemini-1.5-pro"
 )
 print(resp1["json_object"], resp1["usage"])
 
 # 2) extract_and_jsonify: you provide text & an instruction template; it builds the prompt
 resp2 = extract_and_jsonify(
-    driver=driver,
     text="John is 28 and lives in Miami.",
     json_schema=schema,
-    model_name="llama3.1:8b",
+    model_name="groq/mixtral-8x7b-32768",
     instruction_template="Extract the person's information:"
 )
 print(resp2["json_object"], resp2["usage"])
@@ -166,10 +173,10 @@ Prompture supports two Pydantic extraction modes:
 ```python
 from prompture import extract_with_model, stepwise_extract_with_model
 
-person1 = extract_with_model(Person, text, model_name="gpt-oss:20b")
+person1 = extract_with_model(Person, text, model_name="openrouter/anthropic/claude-2")
 print(person1.dict())
 
-res = stepwise_extract_with_model(Person, text, model_name="gpt-oss:20b")
+res = stepwise_extract_with_model(Person, text, model_name="grok/grok-4-fast-reasoning")
 print(res["model"].dict())
 print(res["usage"])  # includes per-field usage and totals
 ```

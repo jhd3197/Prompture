@@ -1,5 +1,5 @@
 """
-Example: Using manual_extract_and_jsonify with Claude.
+Example: Using extract_and_jsonify with Claude.
 
 This script demonstrates:
 1. Initializing the Claude driver manually (ignoring AI_PROVIDER).
@@ -9,19 +9,12 @@ This script demonstrates:
 """
 
 import json
-from prompture import manual_extract_and_jsonify
-from prompture.drivers import get_driver
+from prompture import extract_and_jsonify
 
-# 1. Instantiate the Claude driver explicitly
-# Requires environment variables:
-# - CLAUDE_API_KEY (your Anthropic API key)
-# - CLAUDE_MODEL_NAME (optional, default: claude-3-5-haiku-20241022)
-claude_driver = get_driver("claude")
-
-# 2. Define the raw text
+# 1. Define the raw text
 text = "Maria is 32 years old and works as a software developer in New York. She loves hiking and photography."
 
-# 3. Define the JSON schema
+# 2. Define the JSON schema
 json_schema = {
     "type": "object",
     "properties": {
@@ -36,11 +29,10 @@ json_schema = {
 # === FIRST EXAMPLE: Default instruction with Claude Haiku 3.5 ===
 print("Extracting information into JSON with default instruction...")
 
-result = manual_extract_and_jsonify(
-    driver=claude_driver,
+result = extract_and_jsonify(
     text=text,
     json_schema=json_schema,
-    model_name="claude-3-5-haiku-20241022"  # explicitly select model
+    model_name="claude/claude-3-5-haiku-20241022"  # explicitly select model
 )
 
 json_output = result["json_string"]
@@ -65,12 +57,11 @@ print(f"Model used: {usage['model_name']}")
 print("\n\n=== SECOND EXAMPLE - CUSTOM INSTRUCTION & DIFFERENT MODEL ===")
 print("Extracting information with custom instruction using Claude Sonnet 3.7...")
 
-custom_result = manual_extract_and_jsonify(
-    driver=claude_driver,
+custom_result = extract_and_jsonify(
     text=text,
     json_schema=json_schema,
     instruction_template="Parse the biographical details from this text:",
-    model_name="claude-3-7-sonnet-20250219"  # override model here
+    model_name="claude/claude-3-7-sonnet-20250219"  # override model here
 )
 
 custom_json_output = custom_result["json_string"]

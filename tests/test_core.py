@@ -1,4 +1,5 @@
 import json
+import os
 import pytest
 from prompture import (
     clean_json_text,
@@ -170,7 +171,8 @@ class TestCleanJsonTextWithAi:
     def test_clean_malformed_json_with_ai_help(self, integration_driver):
         """Test using AI to clean malformed JSON."""
         malformed_json = '{"name": "Juan", "age": 28, "interests": ["basketball"]'  # Missing closing brace
-        result = clean_json_text_with_ai(integration_driver, malformed_json)
+        from tests.conftest import DEFAULT_MODEL
+        result = clean_json_text_with_ai(integration_driver, malformed_json, model_name=DEFAULT_MODEL)
         
         # Verify the result is valid JSON
         parsed = json.loads(result)
@@ -182,8 +184,9 @@ class TestCleanJsonTextWithAi:
     @pytest.mark.integration
     def test_clean_already_valid_json(self, integration_driver):
         """Test that valid JSON is returned unchanged."""
-        valid_json = '{"name": "Juan", "age": 28}'
-        result = clean_json_text_with_ai(integration_driver, valid_json)
+        valid_json = '{"name": "Juan", "age": 30}'
+        from tests.conftest import DEFAULT_MODEL
+        result = clean_json_text_with_ai(integration_driver, valid_json, model_name=DEFAULT_MODEL)
         assert json.loads(result) == json.loads(valid_json)
 
 
@@ -194,7 +197,8 @@ class TestAskForJson:
     def test_successful_json_response(self, integration_driver, sample_json_schema):
         """Test successful conversion of prompt to JSON."""
         content_prompt = "Extract user profile: Juan is 28 years old from Miami"
-        result = ask_for_json(integration_driver, content_prompt, sample_json_schema)
+        from tests.conftest import DEFAULT_MODEL
+        result = ask_for_json(integration_driver, content_prompt, sample_json_schema, model_name=DEFAULT_MODEL)
 
         # Validate response structure
         assert "json_string" in result
@@ -216,7 +220,8 @@ class TestAskForJson:
     def test_json_schema_inclusion_in_prompt(self, integration_driver, sample_json_schema):
         """Test that JSON schema is properly included in the generated prompt."""
         content_prompt = "Extract user info: Juan is 28 and lives in Miami"
-        result = ask_for_json(integration_driver, content_prompt, sample_json_schema)
+        from tests.conftest import DEFAULT_MODEL
+        result = ask_for_json(integration_driver, content_prompt, sample_json_schema, model_name=DEFAULT_MODEL)
         assert "json_string" in result
         parsed = json.loads(result["json_string"])
         assert isinstance(parsed, dict)
@@ -225,7 +230,8 @@ class TestAskForJson:
     def test_ai_cleanup_enabled(self, integration_driver, sample_json_schema):
         """Test AI cleanup when JSON parsing fails initially."""
         content_prompt = "Extract user info"
-        result = ask_for_json(integration_driver, content_prompt, sample_json_schema, ai_cleanup=True)
+        from tests.conftest import DEFAULT_MODEL
+        result = ask_for_json(integration_driver, content_prompt, sample_json_schema, ai_cleanup=True, model_name=DEFAULT_MODEL)
         assert "json_object" in result
         assert isinstance(result["json_object"], dict)
 
@@ -251,7 +257,14 @@ class TestExtractAndJsonify:
         """Test successful extraction with custom instruction template."""
         text = "Juan is 28 years old and lives in Miami."
         instruction_template = "Please extract the following information:"
-        result = extract_and_jsonify(integration_driver, text, sample_json_schema, instruction_template)
+        from tests.conftest import DEFAULT_MODEL
+        result = extract_and_jsonify(
+            text=text,
+            json_schema=sample_json_schema,
+            model_name=DEFAULT_MODEL,
+            instruction_template=instruction_template,
+            options={"driver": integration_driver}
+        )
 
         # Validate response structure
         assert_jsonify_response_structure(result)
@@ -262,34 +275,166 @@ class TestExtractAndJsonify:
     def test_default_template_usage(self, integration_driver, sample_json_schema):
         """Test using the default instruction template."""
         text = "John is 25 and from Texas."
-        result = extract_and_jsonify(integration_driver, text, sample_json_schema)
+        from tests.conftest import DEFAULT_MODEL
+        result = extract_and_jsonify(
+            text=text,
+            json_schema=sample_json_schema,
+            model_name=DEFAULT_MODEL,
+            options={"driver": integration_driver}
+        )
         assert_jsonify_response_structure(result)
 
     def test_empty_text_raises_error(self, integration_driver, sample_json_schema):
         """Test that empty text raises ValueError."""
         with pytest.raises(ValueError, match="Text input cannot be empty"):
-            extract_and_jsonify(integration_driver, "", sample_json_schema)
+            extract_and_jsonify(
+                text="",
+                json_schema=sample_json_schema,
+                options={"driver": integration_driver}
+            )
 
     def test_whitespace_only_text_raises_error(self, integration_driver, sample_json_schema):
         """Test that whitespace-only text raises ValueError."""
         with pytest.raises(ValueError, match="Text input cannot be empty"):
-            extract_and_jsonify(integration_driver, "   ", sample_json_schema)
+            extract_and_jsonify(
+                text="   ",
+                json_schema=sample_json_schema,
+                options={"driver": integration_driver}
+            )
 
     @pytest.mark.integration
     def test_with_ai_cleanup(self, integration_driver, sample_json_schema):
         """Test extraction with AI cleanup enabled."""
         text = "Juan has information to extract"
-        result = extract_and_jsonify(integration_driver, text, sample_json_schema, ai_cleanup=True)
+        from tests.conftest import DEFAULT_MODEL
+        result = extract_and_jsonify(
+            text=text,
+            json_schema=sample_json_schema,
+            model_name=DEFAULT_MODEL,
+            ai_cleanup=True,
+            options={"driver": integration_driver}
+        )
         assert_jsonify_response_structure(result)
+
+class TestModelNameParameter:
+    """Tests specifically for model_name parameter functionality."""
+
+    @pytest.mark.integration
+    def test_model_name_in_core_functions(self, integration_driver):
+        """Test model_name parameter in all core functions."""
+        from tests.conftest import DEFAULT_MODEL
+        schema = {"type": "object", "properties": {"test": {"type": "string"}}}
+        
+        # Test in clean_json_text_with_ai
+        json_text = '{"test": "value"'  # Intentionally malformed
+        result = clean_json_text_with_ai(integration_driver, json_text, model_name=DEFAULT_MODEL)
+        assert isinstance(result, str)
+        
+        # Test in ask_for_json
+        result = ask_for_json(integration_driver, "Extract test info", schema, model_name=DEFAULT_MODEL)
+        assert_jsonify_response_structure(result)
+        
+        # Test in extract_and_jsonify
+        result = extract_and_jsonify(
+            text="Test data",
+            json_schema=schema,
+            model_name=DEFAULT_MODEL,
+            options={"driver": integration_driver}
+        )
+        assert_jsonify_response_structure(result)
+
+    @pytest.mark.integration
+    def test_model_name_inheritance(self, integration_driver):
+        """Test that model_name is properly inherited through nested function calls."""
+        from tests.conftest import DEFAULT_MODEL
+        schema = {"type": "object", "properties": {"test": {"type": "string"}}}
+        
+        # Use extract_and_jsonify which internally calls ask_for_json
+        result = extract_and_jsonify(
+            text="Test data",
+            json_schema=schema,
+            model_name=DEFAULT_MODEL,
+            ai_cleanup=True,  # This will trigger clean_json_text_with_ai
+            options={"driver": integration_driver}
+        )
+        assert_jsonify_response_structure(result)
+
+    @pytest.mark.integration
+    def test_model_name_override_precedence(self, integration_driver):
+        """Test that explicitly passed model_name takes precedence."""
+        from tests.conftest import DEFAULT_MODEL
+        override_model = "ollama/mistral:latest"  # Example override
+        schema = {"type": "object", "properties": {"test": {"type": "string"}}}
+        
+        try:
+            result = ask_for_json(
+                integration_driver,
+                "Test data",
+                schema,
+                model_name=override_model
+            )
+            assert_jsonify_response_structure(result)
+        except ValueError as e:
+            if "Unsupported provider" in str(e):
+                pytest.skip("Override model not supported in test environment")
 
 
 class TestErrorHandlingAndEdgeCases:
     """Tests for error handling and edge cases."""
 
+    @pytest.mark.integration
+    def test_custom_model_name_override(self, integration_driver):
+        """Test using a custom model name that overrides the default."""
+        schema = {"type": "object", "properties": {"test": {"type": "string"}}}
+        custom_model = "ollama/mistral"  # Example model
+        result = ask_for_json(integration_driver, "Simple test", schema, model_name=custom_model)
+        assert_jsonify_response_structure(result)
+
+    @pytest.mark.integration
+    def test_invalid_model_name_format(self, integration_driver):
+        """Test handling of invalid model name format."""
+        schema = {"type": "object", "properties": {"test": {"type": "string"}}}
+        with pytest.raises(ValueError, match="Invalid model string format. Expected format: 'provider/model'"):
+            result = extract_and_jsonify(
+                text="Test data",
+                json_schema=schema,
+                model_name="invalid-model-format",  # Invalid format without provider/model separator
+                options={"driver": None}  # Don't pass driver to force model name validation
+            )
+
+    @pytest.mark.integration
+    def test_unsupported_provider_in_model_name(self, integration_driver):
+        """Test handling of unsupported provider in model name."""
+        schema = {"type": "object", "properties": {"test": {"type": "string"}}}
+        with pytest.raises(ValueError, match="Unsupported provider in model name: nonexistent/model"):
+            result = extract_and_jsonify(
+                text="Test data",
+                json_schema=schema,
+                model_name="nonexistent/model",
+                options={"driver": None}  # Don't pass driver to force provider validation
+            )
+
+    @pytest.mark.integration
+    def test_model_name_propagation(self, integration_driver):
+        """Test that model_name is properly propagated through nested calls."""
+        text = "Test data"
+        from tests.conftest import DEFAULT_MODEL
+        result = extract_and_jsonify(
+            text=text,
+            json_schema={"type": "object"},
+            model_name=DEFAULT_MODEL,
+            ai_cleanup=True,
+            options={"driver": integration_driver}
+        )
+        assert_jsonify_response_structure(result)
+        # The model should be used both for extraction and cleanup
+
+
 
     @pytest.mark.integration
     def test_very_large_json_schema(self, integration_driver):
         """Test handling of very large/complex JSON schemas."""
+        from tests.conftest import DEFAULT_MODEL
         # Create a very large schema
         large_schema = {
             "type": "object",
@@ -301,7 +446,7 @@ class TestErrorHandlingAndEdgeCases:
         for i in range(50):
             large_schema["properties"][f"field_{i}"] = {"type": "string"}
 
-        result = ask_for_json(integration_driver, "Extract info", large_schema)
+        result = ask_for_json(integration_driver, "Extract info", large_schema, model_name=DEFAULT_MODEL)
         assert_jsonify_response_structure(result)
         assert isinstance(result["json_string"], str)
 
@@ -328,20 +473,28 @@ class TestErrorHandlingAndEdgeCases:
             }
         }
 
-        result = ask_for_json(integration_driver, "Extract user profile", nested_schema)
+        from tests.conftest import DEFAULT_MODEL
+        result = ask_for_json(integration_driver, "Extract user profile", nested_schema, model_name=DEFAULT_MODEL)
         assert_jsonify_response_structure(result)
 
     @pytest.mark.integration
     def test_empty_content_prompt(self, integration_driver, sample_json_schema):
         """Test with empty content prompt."""
-        result = ask_for_json(integration_driver, "", sample_json_schema)
+        from tests.conftest import DEFAULT_MODEL
+        result = ask_for_json(integration_driver, "", sample_json_schema, model_name=DEFAULT_MODEL)
         assert_jsonify_response_structure(result)
 
     @pytest.mark.integration
     def test_very_long_text_extraction(self, integration_driver, sample_json_schema):
         """Test extraction from very long text."""
         long_text = "Some information about Juan. " * 1000 + "He is 28 years old."
-        result = extract_and_jsonify(integration_driver, long_text, sample_json_schema)
+        from tests.conftest import DEFAULT_MODEL
+        result = extract_and_jsonify(
+            text=long_text,
+            json_schema=sample_json_schema,
+            model_name=DEFAULT_MODEL,
+            options={"driver": integration_driver}
+        )
         assert_jsonify_response_structure(result)
 
     @pytest.mark.integration
@@ -350,12 +503,14 @@ class TestErrorHandlingAndEdgeCases:
         special_prompt = "Extract from: Juan's info → José María & François"
         schema = {"type": "object", "properties": {"name": {"type": "string"}}}
 
-        result = ask_for_json(integration_driver, special_prompt, schema)
+        from tests.conftest import DEFAULT_MODEL
+        result = ask_for_json(integration_driver, special_prompt, schema, model_name=DEFAULT_MODEL)
         assert_jsonify_response_structure(result)
 
     @pytest.mark.integration
     def test_minimal_schema(self, integration_driver):
         """Test with minimal possible schema."""
         minimal_schema = {"type": "string"}
-        result = ask_for_json(integration_driver, "Get some text", minimal_schema)
+        model_name = os.getenv("MODEL", "ollama/mistral")
+        result = ask_for_json(integration_driver, "Get some text", minimal_schema, model_name=model_name)
         assert_jsonify_response_structure(result, schema_type="string")

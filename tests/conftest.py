@@ -1,7 +1,9 @@
 import pytest
-import os
 from typing import Dict, Any
+from prompture.drivers import get_driver_for_model
 
+# Default model configuration for all tests
+DEFAULT_MODEL = "ollama/gpt-oss:20b"  # Change this to use a different model
 
 @pytest.fixture
 def sample_json_schema() -> Dict[str, Any]:
@@ -17,58 +19,13 @@ def sample_json_schema() -> Dict[str, Any]:
     }
 
 
-def get_provider_credentials(provider: str) -> Dict[str, Any]:
-    """Get credentials and configuration for a specific provider."""
-    credentials = {}
-    
-    if provider == "ollama":
-        # Check for endpoint using both possible env var names
-        endpoint = os.getenv("OLLAMA_ENDPOINT") or os.getenv("OLLAMA_URI")
-        if endpoint:
-            credentials = {
-                "endpoint": endpoint,
-                "model": os.getenv("OLLAMA_MODEL", "gemma:latest")
-            }
-    elif provider == "openai":
-        if api_key := os.getenv("OPENAI_API_KEY"):
-            credentials = {
-                "api_key": api_key,
-                "model": os.getenv("OPENAI_MODEL", "gpt-4-turbo-preview")
-            }
-    elif provider == "claude":
-        if api_key := os.getenv("ANTHROPIC_API_KEY"):
-            credentials = {
-                "api_key": api_key,
-                "model": os.getenv("CLAUDE_MODEL", "claude-3-sonnet-20240229")
-            }
-    
-    return credentials
-
-
 @pytest.fixture
 def integration_driver(request):
-    """Returns a real driver based on AI_PROVIDER environment variable."""
-    provider = os.getenv("AI_PROVIDER", "")
-    
-    if not provider:
-        pytest.skip("AI_PROVIDER environment variable not set")
-    
-    # Convert to lowercase after logging original value
-    provider = provider.lower()
-            
-    credentials = get_provider_credentials(provider)
-        
-    if provider == "ollama":
-        from prompture.drivers import OllamaDriver
-        return OllamaDriver(**credentials)
-    elif provider == "openai":
-        from prompture.drivers import OpenAIDriver
-        return OpenAIDriver(**credentials)
-    elif provider == "claude":
-        from prompture.drivers import ClaudeDriver
-        return ClaudeDriver(**credentials)
-    else:
-        pytest.skip(f"Unsupported provider: {provider}")
+    """Returns a driver instance with default model configuration."""
+    try:
+        return get_driver_for_model(DEFAULT_MODEL)
+    except ValueError as e:
+        pytest.skip(str(e))
 
 
 def pytest_configure(config):
@@ -77,24 +34,10 @@ def pytest_configure(config):
 
 
 def pytest_collection_modifyitems(config, items):
-    """Skip integration tests unless environment is properly configured."""
-    for item in items:
-        if "integration" in item.keywords:
-            provider = os.getenv("AI_PROVIDER", "")
-            
-            if not provider:
-                item.add_marker(pytest.mark.skip(reason="AI_PROVIDER environment variable not set"))
-                continue
-            
-            # Convert to lowercase after logging
-            provider = provider.lower()
-            credentials = get_provider_credentials(provider)
-            
-            if not credentials:
-                skip_reason = f"Missing credentials for {provider} provider - check environment variables"
-                if provider == "ollama":
-                    skip_reason += " (OLLAMA_ENDPOINT or OLLAMA_URI required)"
-                item.add_marker(pytest.mark.skip(reason=skip_reason))
+    """Configure test collection behavior."""
+    # Integration tests are controlled by the TEST_SKIP_NO_CREDENTIALS env var
+    # in test.py, no additional configuration needed here
+    pass
 
 
 def assert_valid_usage_metadata(meta: Dict[str, Any]):
