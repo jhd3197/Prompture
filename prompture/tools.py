@@ -56,6 +56,10 @@ __all__ = [
     "clean_json_text",
     "log_debug",
     "LogLevel",
+    "load_field_definitions",
+    "validate_field_definition",
+    "get_type_default",
+    "get_field_default",
 ]
 
 
@@ -140,13 +144,61 @@ _CURRENCY_PREFIX = tuple("$€£¥₿₽₹₩₫₪₴₦₲₵₡₱₺₸")  
 
 
 def parse_boolean(value: Any) -> bool:
-    """Best-effort boolean parser with multilingual variants using Tukuy."""
+    """
+    Enhanced boolean parser with multilingual variants and edge case handling.
+    
+    Supports:
+    - Standard: true/false, yes/no, on/off, 1/0
+    - Multilingual: si/no (Spanish), oui/non (French), ja/nein (German)
+    - Edge cases: empty strings, whitespace, case variations
+    
+    Uses Tukuy transformer for robust multilingual support.
+    """
     if isinstance(value, bool):
         return value
     if value is None:
         raise ValueError("Cannot parse None as boolean")
+    
+    # Handle numeric values
+    if isinstance(value, (int, float, Decimal)):
+        return bool(value)
+    
     s = str(value).strip().lower()
-    return TUKUY.transform(s, ["bool"])
+    
+    # Handle empty strings and common "falsy" representations
+    if not s or s in ("", "null", "none", "n/a", "na", "nil", "undefined"):
+        return False
+    
+    # Quick check for obvious true/false values before using Tukuy
+    if s in ("1", "true", "yes", "on", "si", "sí", "oui", "ja", "t", "y"):
+        return True
+    if s in ("0", "false", "no", "off", "non", "nein", "f", "n"):
+        return False
+    
+    # Use Tukuy for more complex cases
+    try:
+        return TUKUY.transform(s, ["bool"])
+    except Exception:
+        # Fallback for unrecognized values - try to be reasonable
+        # If it looks like a number, convert to bool
+        try:
+            num_val = float(s)
+            return bool(num_val)
+        except (ValueError, TypeError):
+            pass
+        
+        # If it contains "true", "yes", "on", etc., lean towards True
+        true_indicators = ["true", "yes", "on", "enable", "active", "si", "oui", "ja"]
+        false_indicators = ["false", "no", "off", "disable", "inactive", "non", "nein"]
+        
+        s_lower = s.lower()
+        if any(indicator in s_lower for indicator in true_indicators):
+            return True
+        if any(indicator in s_lower for indicator in false_indicators):
+            return False
+        
+        # Final fallback - raise error for truly ambiguous cases
+        raise ValueError(f"Cannot parse '{value}' as boolean")
 
 def as_list(value: Any, *, sep: str | None = None) -> List[Any]:
     """
@@ -401,133 +453,349 @@ def convert_value(
     value: Any,
     target_type: Type[Any],
     allow_shorthand: bool = True,
+    field_name: Optional[str] = None,
+    field_definitions: Optional[Dict[str, Any]] = None,
+    use_defaults_on_failure: bool = True,
 ) -> Any:
     """
+    Enhanced value converter with robust error handling and default value support.
+    
     Convert 'value' to 'target_type' with support for:
-    - Optional/Union
-    - Numeric shorthand (1.2k, $3,400, 12%)
-    - Booleans ("yes"/"no"/"on"/"off"/"si"/"sí")
-    - Datetime parsing (dateutil)
-    - Lists from comma/semicolon/pipe strings
+    - Optional/Union with intelligent type ordering
+    - Numeric shorthand (1.2k, $3,400, 12%) with better error handling
+    - Enhanced booleans with multilingual support
+    - Datetime parsing with graceful failures
+    - Lists from comma/semicolon/pipe strings with item conversion fallbacks
+    - Default value fallback system when conversion fails
 
+    Args:
+        value: Value to convert
+        target_type: Target type for conversion
+        allow_shorthand: Enable shorthand number parsing (1.2k, $100, etc.)
+        field_name: Name of field being converted (for field-specific defaults)
+        field_definitions: Field definitions dict for custom defaults/instructions
+        use_defaults_on_failure: Whether to use defaults when conversion fails
+        
+    Returns:
+        Converted value or appropriate default
+        
     Notes:
     - For List[T], a scalar becomes [T(scalar)]
     - For Decimal and floats, shorthand and currency are supported
+    - Conversion failures log warnings but continue with defaults if enabled
+    - Union types try conversions in order and use first successful result
     """
+    
+    def _get_fallback_value(error_msg: str = "") -> Any:
+        """Get appropriate fallback value when conversion fails."""
+        if not use_defaults_on_failure:
+            raise ValueError(error_msg)
+        
+        try:
+            # Try field-specific default first
+            if field_name and field_definitions:
+                field_def = field_definitions.get(field_name, {})
+                if isinstance(field_def, dict) and 'default' in field_def:
+                    log_debug(LogLevel.DEBUG, LogLevel.INFO,
+                             f"Using field default for '{field_name}': {field_def['default']}")
+                    return field_def['default']
+            
+            # Fall back to type default
+            type_default = get_type_default(target_type)
+            log_debug(LogLevel.DEBUG, LogLevel.INFO,
+                     f"Using type default for {target_type}: {type_default}")
+            return type_default
+            
+        except Exception as fallback_error:
+            log_debug(LogLevel.WARN, LogLevel.INFO,
+                     f"Failed to get fallback for {target_type}: {fallback_error}")
+            return None
+
+    def _safe_convert_recursive(val: Any, typ: Type[Any]) -> Any:
+        """Recursively convert with same parameters but no fallback to avoid infinite recursion."""
+        return convert_value(
+            val, typ,
+            allow_shorthand=allow_shorthand,
+            field_name=field_name,
+            field_definitions=field_definitions,
+            use_defaults_on_failure=False  # Avoid recursion in fallbacks
+        )
+
+    # Handle None values early
     if value is None:
-        return None
+        origin = get_origin(target_type)
+        args = get_args(target_type)
+        
+        # Check if target type is Optional (Union with None)
+        if origin is Union and type(None) in args:
+            return None
+        
+        # For non-optional types, use fallback
+        return _get_fallback_value("Cannot convert None to non-optional type")
 
     origin = get_origin(target_type)
     args = get_args(target_type)
 
-    # Optional / Union
+    # Optional / Union - Enhanced with better error recovery
     if origin is Union:
         non_none = [a for a in args if a is not type(None)]
-        if value is None:
+        is_optional = type(None) in args
+        
+        if value is None and is_optional:
             return None
-        # try each non-none type until one works
-        last_error: Optional[Exception] = None
-        for t in non_none:
+        
+        # Try each non-none type until one works
+        conversion_errors = []
+        
+        for i, t in enumerate(non_none):
             try:
-                return convert_value(value, t, allow_shorthand=allow_shorthand)
+                result = _safe_convert_recursive(value, t)
+                log_debug(LogLevel.TRACE, LogLevel.DEBUG,
+                         f"Union conversion succeeded with type {t} for value '{value}'")
+                return result
             except Exception as e:
-                last_error = e
-        # if all failed, raise last error
-        raise ValueError(f"Cannot convert '{value}' to any of {non_none}: {last_error}")
+                conversion_errors.append((t, str(e)))
+                log_debug(LogLevel.TRACE, LogLevel.DEBUG,
+                         f"Union conversion failed for type {t}: {e}")
+        
+        # All conversions failed
+        error_msg = f"Cannot convert '{value}' to any Union type {non_none}. Errors: {conversion_errors}"
+        log_debug(LogLevel.WARN, LogLevel.INFO, error_msg)
+        return _get_fallback_value(error_msg)
 
-    # Lists / Tuples
+    # Lists / Tuples - Enhanced error handling for individual items
     if origin in (list, List):
         item_t = args[0] if args else Any
-        items = as_list(value)
-        return [convert_value(v, item_t, allow_shorthand=allow_shorthand) for v in items]
+        try:
+            items = as_list(value)
+            result_items = []
+            
+            for i, item in enumerate(items):
+                try:
+                    converted_item = _safe_convert_recursive(item, item_t)
+                    result_items.append(converted_item)
+                except Exception as e:
+                    log_debug(LogLevel.WARN, LogLevel.INFO,
+                             f"Failed to convert list item {i} '{item}' to {item_t}: {e}")
+                    # Try to get default for item type
+                    try:
+                        default_item = get_type_default(item_t)
+                        result_items.append(default_item)
+                    except Exception:
+                        # Skip item if we can't get a default
+                        continue
+            
+            return result_items
+            
+        except Exception as e:
+            error_msg = f"Cannot convert '{value}' to list: {e}"
+            log_debug(LogLevel.WARN, LogLevel.INFO, error_msg)
+            return _get_fallback_value(error_msg)
 
     if origin in (tuple, Tuple):
-        if not isinstance(value, (list, tuple)):
-            value = [value]
-        if args and args[-1] is Ellipsis:
-            item_t = args[0]
-            return tuple(convert_value(v, item_t, allow_shorthand=allow_shorthand) for v in value)
-        elif args:
-            if len(value) != len(args):
-                raise ValueError(f"Expected tuple of len {len(args)}, got {len(value)}")
-            return tuple(
-                convert_value(v, t, allow_shorthand=allow_shorthand) for v, t in zip(value, args)
-            )
-        return tuple(value)
+        try:
+            if not isinstance(value, (list, tuple)):
+                value = [value]
+            if args and args[-1] is Ellipsis:
+                item_t = args[0]
+                converted_items = []
+                for item in value:
+                    try:
+                        converted_items.append(_safe_convert_recursive(item, item_t))
+                    except Exception as e:
+                        log_debug(LogLevel.WARN, LogLevel.INFO,
+                                 f"Failed to convert tuple item '{item}': {e}")
+                        converted_items.append(get_type_default(item_t))
+                return tuple(converted_items)
+            elif args:
+                if len(value) != len(args):
+                    raise ValueError(f"Expected tuple of len {len(args)}, got {len(value)}")
+                converted_items = []
+                for v, t in zip(value, args):
+                    try:
+                        converted_items.append(_safe_convert_recursive(v, t))
+                    except Exception as e:
+                        log_debug(LogLevel.WARN, LogLevel.INFO,
+                                 f"Failed to convert tuple item '{v}' to {t}: {e}")
+                        converted_items.append(get_type_default(t))
+                return tuple(converted_items)
+            return tuple(value)
+        except Exception as e:
+            error_msg = f"Cannot convert '{value}' to tuple: {e}"
+            log_debug(LogLevel.WARN, LogLevel.INFO, error_msg)
+            return _get_fallback_value(error_msg)
 
-    # Dict
+    # Dict - Enhanced error handling
     if origin in (dict, Dict):
         key_t = args[0] if args else str
         val_t = args[1] if len(args) > 1 else Any
-        if not isinstance(value, Mapping):
-            raise ValueError(f"Cannot convert non-mapping '{value}' to dict")
-        return {
-            convert_value(k, key_t, allow_shorthand=allow_shorthand):
-                convert_value(v, val_t, allow_shorthand=allow_shorthand)
-            for k, v in value.items()
-        }
-
-    # Scalars
-    # Numbers
-    if target_type is int:
-        if allow_shorthand:
-            parsed = parse_shorthand_number(value, as_decimal=False)
-            return int(parsed)
+        
         try:
-            return int(value)
-        except Exception:
-            # try float/Decimal path
-            return int(parse_shorthand_number(value, as_decimal=False, allow_percent=False))
+            if not isinstance(value, Mapping):
+                raise ValueError(f"Cannot convert non-mapping '{value}' to dict")
+            
+            result_dict = {}
+            for k, v in value.items():
+                try:
+                    converted_key = _safe_convert_recursive(k, key_t)
+                    converted_val = _safe_convert_recursive(v, val_t)
+                    result_dict[converted_key] = converted_val
+                except Exception as e:
+                    log_debug(LogLevel.WARN, LogLevel.INFO,
+                             f"Failed to convert dict item {k}:{v}: {e}")
+                    # Skip problematic items
+                    continue
+            
+            return result_dict
+            
+        except Exception as e:
+            error_msg = f"Cannot convert '{value}' to dict: {e}"
+            log_debug(LogLevel.WARN, LogLevel.INFO, error_msg)
+            return _get_fallback_value(error_msg)
+
+    # Scalars with enhanced error handling
+    
+    # Numbers - More robust handling
+    if target_type is int:
+        try:
+            # Handle common edge cases first
+            if isinstance(value, str):
+                s = value.strip()
+                if not s or s.lower() in ("", "null", "none", "n/a", "na"):
+                    return _get_fallback_value(f"Empty/null string cannot be converted to int")
+            
+            if allow_shorthand:
+                parsed = parse_shorthand_number(value, as_decimal=False)
+                return int(parsed)
+            else:
+                return int(value)
+                
+        except Exception as e:
+            # Try alternative parsing
+            try:
+                return int(parse_shorthand_number(value, as_decimal=False, allow_percent=False))
+            except Exception:
+                error_msg = f"Cannot convert '{value}' to int: {e}"
+                log_debug(LogLevel.WARN, LogLevel.INFO, error_msg)
+                return _get_fallback_value(error_msg)
 
     if target_type is float:
-        if allow_shorthand:
-            parsed = parse_shorthand_number(value, as_decimal=False)
-            return float(parsed)
-        return float(value)
+        try:
+            # Handle edge cases
+            if isinstance(value, str):
+                s = value.strip()
+                if not s or s.lower() in ("", "null", "none", "n/a", "na"):
+                    return _get_fallback_value(f"Empty/null string cannot be converted to float")
+            
+            if allow_shorthand:
+                parsed = parse_shorthand_number(value, as_decimal=False)
+                return float(parsed)
+            else:
+                return float(value)
+                
+        except Exception as e:
+            error_msg = f"Cannot convert '{value}' to float: {e}"
+            log_debug(LogLevel.WARN, LogLevel.INFO, error_msg)
+            return _get_fallback_value(error_msg)
 
     if target_type is Decimal:
-        if allow_shorthand:
-            parsed = parse_shorthand_number(value, as_decimal=True)
-            return _to_decimal(parsed)
-        return _to_decimal(value)
+        try:
+            # Handle edge cases
+            if isinstance(value, str):
+                s = value.strip()
+                if not s or s.lower() in ("", "null", "none", "n/a", "na"):
+                    return _get_fallback_value(f"Empty/null string cannot be converted to Decimal")
+            
+            if allow_shorthand:
+                parsed = parse_shorthand_number(value, as_decimal=True)
+                return _to_decimal(parsed)
+            else:
+                return _to_decimal(value)
+                
+        except Exception as e:
+            error_msg = f"Cannot convert '{value}' to Decimal: {e}"
+            log_debug(LogLevel.WARN, LogLevel.INFO, error_msg)
+            return _get_fallback_value(error_msg)
 
-    # Bool
+    # Bool - Enhanced error handling
     if target_type is bool:
-        return parse_boolean(value)
+        try:
+            return parse_boolean(value)
+        except Exception as e:
+            error_msg = f"Cannot convert '{value}' to bool: {e}"
+            log_debug(LogLevel.WARN, LogLevel.INFO, error_msg)
+            return _get_fallback_value(error_msg)
 
-    # Strings
+    # Strings - More robust handling
     if target_type is str:
-        return "" if value is None else str(value)
+        try:
+            if value is None:
+                return ""  # Standard behavior
+            return str(value)
+        except Exception as e:
+            error_msg = f"Cannot convert '{value}' to str: {e}"
+            log_debug(LogLevel.WARN, LogLevel.INFO, error_msg)
+            return _get_fallback_value(error_msg)
 
-    # Datetime / Date / Time
+    # Datetime / Date / Time - Enhanced error handling
     if target_type is datetime:
-        return parse_datetime(value)
+        try:
+            return parse_datetime(value)
+        except Exception as e:
+            error_msg = f"Cannot convert '{value}' to datetime: {e}"
+            log_debug(LogLevel.WARN, LogLevel.INFO, error_msg)
+            return _get_fallback_value(error_msg)
+            
     if target_type is date:
-        dt = parse_datetime(value)
-        return dt.date()
+        try:
+            dt = parse_datetime(value)
+            return dt.date()
+        except Exception as e:
+            error_msg = f"Cannot convert '{value}' to date: {e}"
+            log_debug(LogLevel.WARN, LogLevel.INFO, error_msg)
+            return _get_fallback_value(error_msg)
+            
     if target_type is time:
-        dt = parse_datetime(value)
-        return dt.time()
+        try:
+            dt = parse_datetime(value)
+            return dt.time()
+        except Exception as e:
+            error_msg = f"Cannot convert '{value}' to time: {e}"
+            log_debug(LogLevel.WARN, LogLevel.INFO, error_msg)
+            return _get_fallback_value(error_msg)
 
-    # UUID
+    # UUID - Enhanced error handling
     if target_type is uuid.UUID:
-        if isinstance(value, uuid.UUID):
-            return value
-        return uuid.UUID(str(value))
+        try:
+            if isinstance(value, uuid.UUID):
+                return value
+            return uuid.UUID(str(value))
+        except Exception as e:
+            error_msg = f"Cannot convert '{value}' to UUID: {e}"
+            log_debug(LogLevel.WARN, LogLevel.INFO, error_msg)
+            return _get_fallback_value(error_msg)
 
-    # Pydantic models
+    # Pydantic models - Enhanced error handling
     if isinstance(target_type, type) and issubclass(target_type, BaseModel):
-        if isinstance(value, target_type):
-            return value
-        if isinstance(value, Mapping):
-            return target_type(**value)
-        raise ValueError(f"Cannot convert non-mapping '{value}' to {target_type.__name__}")
+        try:
+            if isinstance(value, target_type):
+                return value
+            if isinstance(value, Mapping):
+                return target_type(**value)
+            else:
+                raise ValueError(f"Cannot convert non-mapping '{value}' to {target_type.__name__}")
+        except Exception as e:
+            error_msg = f"Cannot convert '{value}' to {target_type.__name__}: {e}"
+            log_debug(LogLevel.WARN, LogLevel.INFO, error_msg)
+            return _get_fallback_value(error_msg)
 
     # Fallback: direct cast if possible
     try:
         return target_type(value)  # type: ignore[call-arg]
     except Exception as e:
-        raise ValueError(f"Cannot convert '{value}' to {getattr(target_type, '__name__', target_type)}: {e}") from e
+        error_msg = f"Cannot convert '{value}' to {getattr(target_type, '__name__', target_type)}: {e}"
+        log_debug(LogLevel.WARN, LogLevel.INFO, error_msg)
+        return _get_fallback_value(error_msg)
 
 
 # ---------------------------------------------------------------------------
@@ -542,6 +810,8 @@ def extract_fields(
     strict: bool = True,
     missing: str = "skip",  # "skip" | "none" | "error"
     level: int | LogLevel = LogLevel.OFF,
+    field_definitions: Optional[Dict[str, Any]] = None,
+    use_defaults_on_failure: bool = True,
 ) -> Dict[str, Any]:
     """
     Extract and convert only specified fields based on a Pydantic model.
@@ -556,6 +826,8 @@ def extract_fields(
                  - "none": include with None
                  - "error": raise KeyError
         level: LogLevel for internal debug logs (uses log_debug).
+        field_definitions: Optional field definitions for default values and conversion hints.
+        use_defaults_on_failure: Whether to use default values when conversion fails.
 
     Returns:
         Dict of converted values suitable for instantiating the model.
@@ -594,14 +866,210 @@ def extract_fields(
 
         raw = data[source_key]
         try:
-            converted = convert_value(raw, finfo.annotation, allow_shorthand=True)
+            converted = convert_value(
+                raw,
+                finfo.annotation,
+                allow_shorthand=True,
+                field_name=fname,
+                field_definitions=field_definitions,
+                use_defaults_on_failure=use_defaults_on_failure
+            )
             result[fname] = converted
             log_debug(LogLevel.TRACE, level, {"field": fname, "raw": raw, "converted": converted})
         except Exception as e:
-            raise ValueError(f"Validation failed for field '{fname}': {e}") from e
+            # If we're not using defaults, re-raise the original error
+            if not use_defaults_on_failure:
+                raise ValueError(f"Validation failed for field '{fname}': {e}") from e
+            
+            # Try to get a fallback value using the field info
+            try:
+                fallback_value = get_field_default(fname, finfo, field_definitions)
+                result[fname] = fallback_value
+                log_debug(LogLevel.WARN, level, {
+                    "field": fname,
+                    "error": str(e),
+                    "fallback": fallback_value
+                })
+            except Exception as fallback_error:
+                # If even fallback fails, re-raise original error
+                log_debug(LogLevel.ERROR, level, {
+                    "field": fname,
+                    "conversion_error": str(e),
+                    "fallback_error": str(fallback_error)
+                })
+                raise ValueError(f"Validation failed for field '{fname}': {e}") from e
 
     return result
 
+
+# ---------------------------------------------------------------------------
+# Field Definitions
+# ---------------------------------------------------------------------------
+
+def load_field_definitions(path: str) -> Dict[str, Any]:
+    """
+    Load field definitions from a JSON or YAML file.
+
+    Args:
+        path: Path to the JSON or YAML file containing field definitions
+
+    Returns:
+        Dict[str, Any]: Loaded field definitions
+
+    Raises:
+        ValueError: If file format is not supported or content is invalid
+        FileNotFoundError: If the file doesn't exist
+    """
+    import yaml
+    from pathlib import Path
+
+    path_obj = Path(path)
+    if not path_obj.exists():
+        raise FileNotFoundError(f"Field definitions file not found: {path}")
+
+    suffix = path_obj.suffix.lower()
+    content = path_obj.read_text(encoding='utf-8')
+
+    try:
+        if suffix == '.json':
+            return json.loads(content)
+        elif suffix in ('.yaml', '.yml'):
+            return yaml.safe_load(content)
+        else:
+            raise ValueError(f"Unsupported file format: {suffix}")
+    except Exception as e:
+        raise ValueError(f"Failed to parse field definitions: {e}") from e
+
+def validate_field_definition(definition: Dict[str, Any]) -> bool:
+    """
+    Validate a field definition structure.
+
+    Args:
+        definition: Field definition dictionary to validate
+
+    Returns:
+        bool: True if valid, False otherwise
+
+    Required keys:
+    - type: The field's data type
+    - description: Human-readable description
+    - instructions: Extraction instructions
+    - default: Default value
+    - nullable: Whether field can be None
+    """
+    required_keys = {'type', 'description', 'instructions', 'default', 'nullable'}
+    
+    # Check for required keys
+    if not all(key in definition for key in required_keys):
+        return False
+        
+    # Validate type
+    if not isinstance(definition['type'], (type, str)):
+        return False
+        
+    # Validate description and instructions are strings
+    if not all(isinstance(definition[k], str) for k in ['description', 'instructions']):
+        return False
+        
+    # Validate nullable is boolean
+    if not isinstance(definition['nullable'], bool):
+        return False
+        
+    return True
+
+# ---------------------------------------------------------------------------
+# Default Value Handling
+# ---------------------------------------------------------------------------
+
+def get_type_default(field_type: Type[Any]) -> Any:
+    """
+    Get a sensible default value for a given type.
+    
+    Args:
+        field_type: The type to get a default for
+        
+    Returns:
+        A default value appropriate for the type
+    """
+    origin = get_origin(field_type)
+    args = get_args(field_type)
+    
+    # Handle Optional/Union types
+    if origin is Union:
+        non_none = [a for a in args if a is not type(None)]
+        if len(non_none) == 1:
+            # Optional[T] -> get default for T
+            return get_type_default(non_none[0])
+        # Multiple non-None types -> return None
+        return None
+    
+    # Container types
+    if origin in (list, List) or field_type is list:
+        return []
+    if origin in (tuple, Tuple) or field_type is tuple:
+        return ()
+    if origin in (dict, Dict) or field_type is dict:
+        return {}
+    
+    # Scalar types
+    if field_type is int:
+        return 0
+    if field_type in (float, Decimal):
+        return 0.0
+    if field_type is bool:
+        return False
+    if field_type is str:
+        return ""
+    if field_type is datetime:
+        return datetime.now()
+    if field_type is date:
+        return date.today()
+    if field_type is time:
+        return time(0, 0)
+    if field_type is uuid.UUID:
+        return uuid.uuid4()
+    
+    # Pydantic models - try to create empty instance
+    if isinstance(field_type, type) and issubclass(field_type, BaseModel):
+        try:
+            return field_type()
+        except Exception:
+            return None
+    
+    # Fallback
+    return None
+
+
+def get_field_default(field_name: str, field_info: Any, field_definitions: Optional[Dict[str, Any]] = None) -> Any:
+    """
+    Get the default value for a field using the priority order:
+    1. field_definitions default
+    2. Pydantic field default
+    3. Type-appropriate default
+    
+    Args:
+        field_name: Name of the field
+        field_info: Pydantic field info
+        field_definitions: Optional field definitions dict
+        
+    Returns:
+        The appropriate default value
+    """
+    # Priority 1: field_definitions
+    if field_definitions and field_name in field_definitions:
+        field_def = field_definitions[field_name]
+        if isinstance(field_def, dict) and 'default' in field_def:
+            return field_def['default']
+    
+    # Priority 2: Pydantic default - check for PydanticUndefined
+    if hasattr(field_info, 'default'):
+        default_val = field_info.default
+        # Handle PydanticUndefined (newer Pydantic) and Ellipsis (older Pydantic)
+        if default_val is not ... and str(default_val) != 'PydanticUndefined':
+            return default_val
+    
+    # Priority 3: Type default
+    return get_type_default(field_info.annotation)
 
 # ---------------------------------------------------------------------------
 # JSON text cleaning

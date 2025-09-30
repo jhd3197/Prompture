@@ -23,7 +23,8 @@ setup(
         "python-dotenv>=0.19.0",
         "requests>=2.28",
         "python-dateutil>=2.9.0",
-        "tukuy>=0.0.6"
+        "tukuy>=0.0.6",
+        "pyyaml>=6.0",
     ],
     author="Juan Denis",
     author_email="juan@vene.co",
