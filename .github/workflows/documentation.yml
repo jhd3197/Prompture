@@ -1,7 +1,9 @@
 name: documentation
 
-on: [push, pull_request, workflow_dispatch]
-
+on:
+  push:
+    branches: [ dev ]
+    
 permissions:
   contents: write
 
@@ -16,10 +18,10 @@ jobs:
           pip install -r docs/requirements.txt
       - name: Sphinx build
         run: |
-          sphinx-build doc _build
+          sphinx-build docs/source _build
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
-        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/dev' }}
         with:
           publish_branch: gh-pages
           github_token: ${{ secrets.GITHUB_TOKEN }}
