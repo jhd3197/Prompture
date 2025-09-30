@@ -9,13 +9,13 @@ import warnings
 from datetime import datetime, date
 from decimal import Decimal
 from typing import Any, Dict, Type, Optional, List, Union
-import pytest
 
 from pydantic import BaseModel, Field
 
 from .drivers import get_driver, get_driver_for_model
 from .driver import Driver
-from .tools import create_field_schema, convert_value, log_debug, clean_json_text, LogLevel
+from .tools import create_field_schema, convert_value, log_debug, clean_json_text, LogLevel, get_field_default
+from .field_definitions import get_registry_snapshot
 
 
 def clean_json_text_with_ai(driver: Driver, text: str, model_name: str = "", options: Dict[str, Any] = {}) -> str:
@@ -206,6 +206,7 @@ def extract_and_jsonify(
         return ask_for_json(driver, content_prompt, actual_schema, ai_cleanup, model_id, opts)
     except (requests.exceptions.ConnectionError, requests.exceptions.HTTPError) as e:
         if "pytest" in sys.modules:
+            import pytest
             pytest.skip(f"Connection error occurred: {e}")
         raise ConnectionError(f"Connection error occurred: {e}")
 
@@ -370,13 +371,16 @@ def stepwise_extract_with_model(
     instruction_template: str = "Extract the {field_name} from the following text:",
     ai_cleanup: bool = True,
     fields: Optional[List[str]] = None,
+    field_definitions: Optional[Dict[str, Any]] = None,
     options: Optional[Dict[str, Any]] = None,
     verbose_level: LogLevel | int = LogLevel.OFF,
 ) -> Dict[str, Union[str, Dict[str, Any]]]:
     """Extracts structured information into a Pydantic model by processing each field individually.
 
     For each field in the model, makes a separate LLM call to extract that specific field,
-    then combines the results and validates the complete model instance.
+    then combines the results and validates the complete model instance. When extraction
+    or conversion fails for individual fields, uses appropriate default values to ensure
+    partial results can still be returned.
 
     Args:
         model_cls: The Pydantic BaseModel class to extract into.
@@ -385,18 +389,25 @@ def stepwise_extract_with_model(
         instruction_template: Template for instructional text, should include {field_name} placeholder.
         ai_cleanup: Whether to attempt AI-based cleanup if JSON parsing fails.
         fields: Optional list of field names to extract. If None, extracts all fields.
+        field_definitions: Optional field definitions dict for enhanced default handling.
+                          If None, automatically uses the global field registry.
         options: Additional options to pass to the driver.
         verbose_level: Logging level for debug output (LogLevel.OFF by default).
 
     Returns:
         A dictionary containing:
-        - model: A validated instance of the Pydantic model.
+        - model: A validated instance of the Pydantic model (with defaults for failed extractions).
         - usage: Accumulated token usage and cost information across all field extractions.
+        - field_results: Dict tracking success/failure status per field.
 
     Raises:
         ValueError: If text is empty or None, or if model_name format is invalid.
-        ValidationError: If the extracted data doesn't match the model schema.
         KeyError: If a requested field doesn't exist in the model.
+        
+    Note:
+        This function now gracefully handles extraction failures by falling back to default
+        values rather than failing completely. Individual field errors are logged and
+        tracked in the usage information.
     """
     if not text or not text.strip():
         raise ValueError("Text input cannot be empty")
@@ -408,8 +419,15 @@ def stepwise_extract_with_model(
         "fields": fields,
     }, prefix="[stepwise]")
 
+    # Auto-use global field registry if no field_definitions provided
+    if field_definitions is None:
+        field_definitions = get_registry_snapshot()
+        log_debug(LogLevel.DEBUG, verbose_level, "Using global field registry", prefix="[stepwise]")
+        log_debug(LogLevel.TRACE, verbose_level, {"registry_fields": list(field_definitions.keys())}, prefix="[stepwise]")
+
     data = {}
     validation_errors = []
+    field_results = {}  # Track success/failure per field
     options = options or {}
     
     # Initialize usage accumulator
@@ -501,6 +519,7 @@ def stepwise_extract_with_model(
                     allow_shorthand=True
                 )
                 data[field_name] = converted_value
+                field_results[field_name] = {"status": "success", "used_default": False}
 
                 # Add structured logging for converted value
                 log_debug(LogLevel.DEBUG, verbose_level, f"Successfully converted {field_name}", prefix="[stepwise]")
@@ -511,23 +530,68 @@ def stepwise_extract_with_model(
                     
             except ValueError as e:
                 error_msg = f"Type conversion failed for {field_name}: {str(e)}"
-                validation_errors.append(error_msg)
+                
+                # Check if field has a default value (either explicit or from field_definitions)
+                has_default = False
+                if field_definitions and field_name in field_definitions:
+                    field_def = field_definitions[field_name]
+                    if isinstance(field_def, dict) and 'default' in field_def:
+                        has_default = True
+                
+                if not has_default and hasattr(field_info, 'default'):
+                    default_val = field_info.default
+                    # Field has default if it's not PydanticUndefined or Ellipsis
+                    if default_val is not ... and str(default_val) != 'PydanticUndefined':
+                        has_default = True
+                
+                # Only add to validation_errors if field is required (no default)
+                if not has_default:
+                    validation_errors.append(error_msg)
+                
+                # Use default value (type-appropriate if no explicit default)
+                default_value = get_field_default(field_name, field_info, field_definitions)
+                data[field_name] = default_value
+                field_results[field_name] = {"status": "conversion_failed", "error": error_msg, "used_default": True}
                 
                 # Add structured logging for conversion error
                 log_debug(LogLevel.ERROR, verbose_level, error_msg, prefix="[stepwise]")
+                log_debug(LogLevel.INFO, verbose_level, f"Using default value for {field_name}: {default_value}", prefix="[stepwise]")
                 
         except Exception as e:
             error_msg = f"Extraction failed for {field_name}: {str(e)}"
-            validation_errors.append(error_msg)
-            data[field_name] = None  # Store None for failed fields
+            
+            # Check if field has a default value (either explicit or from field_definitions)
+            has_default = False
+            if field_definitions and field_name in field_definitions:
+                field_def = field_definitions[field_name]
+                if isinstance(field_def, dict) and 'default' in field_def:
+                    has_default = True
+            
+            if not has_default and hasattr(field_info, 'default'):
+                default_val = field_info.default
+                # Field has default if it's not PydanticUndefined or Ellipsis
+                if default_val is not ... and str(default_val) != 'PydanticUndefined':
+                    has_default = True
+            
+            # Only add to validation_errors if field is required (no default)
+            if not has_default:
+                validation_errors.append(error_msg)
+            
+            # Use default value (type-appropriate if no explicit default)
+            default_value = get_field_default(field_name, field_info, field_definitions)
+            data[field_name] = default_value
+            field_results[field_name] = {"status": "extraction_failed", "error": error_msg, "used_default": True}
             
             # Add structured logging for extraction error
             log_debug(LogLevel.ERROR, verbose_level, error_msg, prefix="[stepwise]")
+            log_debug(LogLevel.INFO, verbose_level, f"Using default value for {field_name}: {default_value}", prefix="[stepwise]")
             
             # Store error details in field_usages
             accumulated_usage["field_usages"][field_name] = {
                 "error": str(e),
-                "status": "failed"
+                "status": "failed",
+                "used_default": True,
+                "default_value": default_value
             }
     
     # Add structured logging for validation errors
@@ -579,6 +643,7 @@ def stepwise_extract_with_model(
             "json_string": json_string,
             "json_object": json.loads(json_string),  # Re-parse to ensure all values are JSON serializable
             "usage": accumulated_usage,
+            "field_results": field_results,
         }
         
         # Add model instance as property and make callable
@@ -602,6 +667,7 @@ def stepwise_extract_with_model(
             "json_string": "{}",
             "json_object": {},
             "usage": accumulated_usage,
+            "field_results": field_results,
             "error": error_msg
         }
         return type("ExtractResult", (dict,), {

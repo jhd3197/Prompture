@@ -7,6 +7,7 @@ This script demonstrates:
 1. Defining a Pydantic model with Field attributes for rich schema information
 2. Using extract_with_model() with Ollama driver
 3. Using stepwise_extract_with_model() with debug output to show field-by-field extraction
+4. Default value handling when fields cannot be extracted from incomplete text
 
 The example shows how Pydantic models provide a type-safe way to extract
 structured information from text, with field-level descriptions that help
@@ -42,6 +43,32 @@ class Person(BaseModel):
     is_employed: bool = Field(
         ...,
         description="Whether the person is currently employed. True or False."
+    )
+    salary: Optional[float] = Field(
+        None,
+        description="Annual salary in USD, if available. Numbers only e.g. 75000.50"
+    )
+
+
+# Define a Person model with default values to demonstrate default handling
+class PersonWithDefaults(BaseModel):
+    name: str = Field(
+        ...,
+        description="The full name of the person."
+    )
+    age: int = Field(
+        0,
+        description="The age of the person in years. Default to 0 if not found.",
+        ge=0,
+        lt=150
+    )
+    profession: str = Field(
+        "unknown",
+        description="Their main job or role. Default to 'unknown' if not mentioned."
+    )
+    is_employed: bool = Field(
+        False,
+        description="Whether the person is currently employed. Default to False if unclear."
     )
     salary: Optional[float] = Field(
         None,
@@ -127,4 +154,32 @@ try:
     
 except Exception as e:
     print(f"\nError handling types: {str(e)}")
+
+
+print("\n=== EXAMPLE 5: Demonstrating default value handling ===")
+try:
+    # Test with incomplete/invalid text where some fields cannot be extracted
+    incomplete_text = """
+    John Doe is mentioned here but with very limited information available.
+    The document doesn't specify much else about him.
+    """
+    
+    print("\nExtracting from incomplete text (should use defaults for missing fields):")
+    result = stepwise_extract_with_model(
+        model_cls=PersonWithDefaults,
+        text=incomplete_text,
+        model_name="ollama/gpt-oss:20b",
+    )
+    
+    print("\nExtracted data with defaults applied:")
+    print(f"  Name: {result['model'].name}")
+    print(f"  Age: {result['model'].age} (default used)")
+    print(f"  Profession: {result['model'].profession} (default used)")
+    print(f"  Is Employed: {result['model'].is_employed} (default used)")
+    print(f"  Salary: {result['model'].salary} (default used)")
+    print("\nFull model:")
+    print(result["model"])
+    
+except Exception as e:
+    print(f"\nError with default handling: {str(e)}")
 

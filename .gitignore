@@ -212,3 +212,4 @@ __pycache__/
 .vscode/
 .idea/
 playground.py
+/prompture-env

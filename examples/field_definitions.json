@@ -1,0 +1,86 @@
+{
+  "name": {
+    "type": "str",
+    "description": "Full legal name of the person.",
+    "instructions": "Extract as-is, no modifications.",
+    "default": "",
+    "nullable": false
+  },
+  "age": {
+    "type": "int",
+    "description": "The age of the person in number of years.",
+    "instructions": "Calculate as {{current_year}} - birth_year if needed.",
+    "default": 0,
+    "nullable": false
+  },
+  "birth_year": {
+    "type": "int",
+    "description": "The year the person was born (YYYY).",
+    "instructions": "Extract as a 4-digit year number.",
+    "default": null,
+    "nullable": true
+  },
+  "email": {
+    "type": "str",
+    "description": "Primary email address.",
+    "instructions": "Extract in lowercase, verify basic email format.",
+    "default": "",
+    "nullable": true
+  },
+  "phone": {
+    "type": "str",
+    "description": "Primary phone number.",
+    "instructions": "Extract digits only, standardize to E.164 format if possible.",
+    "default": "",
+    "nullable": true
+  },
+  "address": {
+    "type": "str",
+    "description": "Full mailing address.",
+    "instructions": "Combine all address components into a single string.",
+    "default": "",
+    "nullable": true
+  },
+  "occupation": {
+    "type": "str",
+    "description": "Current job title or profession.",
+    "instructions": "Extract primary occupation, standardize common titles.",
+    "default": "",
+    "nullable": true
+  },
+  "company": {
+    "type": "str",
+    "description": "Current employer or company name.",
+    "instructions": "Extract organization name, remove legal suffixes.",
+    "default": "",
+    "nullable": true
+  },
+  "experience_years": {
+    "type": "int",
+    "description": "Years of professional experience.",
+    "instructions": "Calculate total years of relevant experience.",
+    "default": 0,
+    "nullable": true
+  },
+  "source": {
+    "type": "str",
+    "description": "Source of the extracted information.",
+    "instructions": "Record origin of data (e.g., 'resume', 'linkedin').",
+    "default": "unknown",
+    "nullable": false
+  },
+  "last_updated": {
+    "type": "str",
+    "description": "Last update timestamp (ISO format).",
+    "instructions": "Use ISO 8601 format or {{current_datetime}} if not specified.",
+    "default": "{{current_datetime}}",
+    "nullable": false
+  },
+  "confidence_score": {
+    "type": "float",
+    "description": "Confidence score of extraction (0.0-1.0).",
+    "instructions": "Calculate based on extraction certainty.",
+    "default": 0.0,
+    "nullable": false
+  }
+}

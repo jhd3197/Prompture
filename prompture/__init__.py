@@ -2,6 +2,11 @@
 
 from dotenv import load_dotenv
 from .core import ask_for_json, extract_and_jsonify, manual_extract_and_jsonify, Driver, clean_json_text, clean_json_text_with_ai, extract_with_model, stepwise_extract_with_model
+from .field_definitions import (
+    FIELD_DEFINITIONS, get_field_definition, get_required_fields, get_field_names,
+    field_from_registry, register_field, add_field_definition, add_field_definitions,
+    get_registry_snapshot, clear_registry, reset_registry
+)
 from .runner import run_suite_from_spec
 from .validator import validate_against_schema
 
@@ -22,4 +27,28 @@ except Exception:
     # fallback during local editable development
     __version__ = "0.0.0"
 
-__all__ = ["ask_for_json", "extract_and_jsonify", "manual_extract_and_jsonify","run_suite_from_spec", "validate_against_schema", "Driver", "clean_json_text", "clean_json_text_with_ai", "extract_with_model", "stepwise_extract_with_model"]
+__all__ = [
+    "ask_for_json",
+    "extract_and_jsonify",
+    "manual_extract_and_jsonify",
+    "run_suite_from_spec",
+    "validate_against_schema",
+    "Driver",
+    "clean_json_text",
+    "clean_json_text_with_ai",
+    "extract_with_model",
+    "stepwise_extract_with_model",
+    # Field Definitions
+    "FIELD_DEFINITIONS",
+    "get_field_definition",
+    "get_required_fields",
+    "get_field_names",
+    # New Field Registry API
+    "field_from_registry",
+    "register_field",
+    "add_field_definition",
+    "add_field_definitions",
+    "get_registry_snapshot",
+    "clear_registry",
+    "reset_registry",
+]
