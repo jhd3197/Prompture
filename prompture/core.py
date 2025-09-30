@@ -18,6 +18,75 @@ from .tools import create_field_schema, convert_value, log_debug, clean_json_tex
 from .field_definitions import get_registry_snapshot
 
 
+def normalize_field_value(value: Any, field_type: Type, field_def: Dict[str, Any]) -> Any:
+    """Normalize invalid values for fields based on their type and nullable status.
+    
+    This function handles post-processing of extracted values BEFORE Pydantic validation,
+    converting invalid values (like empty strings for booleans) to proper defaults.
+    
+    Args:
+        value: The extracted value from the LLM
+        field_type: The expected Python type for this field
+        field_def: The field definition dict containing nullable, default, etc.
+    
+    Returns:
+        A normalized value suitable for the field type
+    """
+    nullable = field_def.get("nullable", True)
+    default_value = field_def.get("default")
+    
+    # Special handling for boolean fields
+    if field_type is bool or (hasattr(field_type, '__origin__') and field_type.__origin__ is bool):
+        # If value is already a boolean, return it as-is
+        if isinstance(value, bool):
+            return value
+        
+        # For non-nullable booleans
+        if not nullable:
+            # Any non-empty string should be True, empty/None should be default
+            if isinstance(value, str):
+                return bool(value.strip()) if value.strip() else (default_value if default_value is not None else False)
+            if value in (None, [], {}):
+                return default_value if default_value is not None else False
+            # Try to coerce other types
+            return bool(value) if value else (default_value if default_value is not None else False)
+        else:
+            # For nullable booleans, preserve None
+            if value is None:
+                return None
+            if isinstance(value, str):
+                return bool(value.strip()) if value.strip() else None
+            return bool(value) if value else None
+    
+    # If the field is nullable and value is None, that's acceptable
+    if nullable and value is None:
+        return value
+    
+    # For non-nullable fields with invalid values, use the default
+    if not nullable:
+        # Check for invalid values that should be replaced
+        invalid_values = (None, "", [], {})
+        
+        if value in invalid_values or (isinstance(value, str) and not value.strip()):
+            # Use the default value if provided, otherwise use type-appropriate default
+            if default_value is not None:
+                return default_value
+            
+            # Type-specific defaults for non-nullable fields
+            if field_type is int or (hasattr(field_type, '__origin__') and field_type.__origin__ is int):
+                return 0
+            elif field_type is float or (hasattr(field_type, '__origin__') and field_type.__origin__ is float):
+                return 0.0
+            elif field_type is str or (hasattr(field_type, '__origin__') and field_type.__origin__ is str):
+                return ""
+            elif field_type is list or (hasattr(field_type, '__origin__') and field_type.__origin__ is list):
+                return []
+            elif field_type is dict or (hasattr(field_type, '__origin__') and field_type.__origin__ is dict):
+                return {}
+    
+    return value
+
+
 def clean_json_text_with_ai(driver: Driver, text: str, model_name: str = "", options: Dict[str, Any] = {}) -> str:
     """Use LLM to fix malformed JSON strings.
 
@@ -32,6 +101,13 @@ def clean_json_text_with_ai(driver: Driver, text: str, model_name: str = "", opt
     Returns:
         A cleaned string that should contain valid JSON.
     """
+    # Check if JSON is already valid - if so, return unchanged
+    try:
+        json.loads(text)
+        return text  # Already valid, no need for LLM correction
+    except json.JSONDecodeError:
+        pass  # Invalid, proceed with LLM correction
+    
     prompt = (
         "The following text is supposed to be a single JSON object, but it is malformed. "
         "Please correct it and return only the valid JSON object. Do not add any explanations or markdown. "
@@ -72,6 +148,7 @@ def ask_for_json(
     Raises:
         json.JSONDecodeError: If the response cannot be parsed as JSON and ai_cleanup is False.
     """
+
     schema_string = json.dumps(json_schema, indent=2)
     instruct = (
         "Return only a single JSON object (no markdown, no extra text) that validates against this JSON schema:\n"
@@ -344,8 +421,28 @@ def extract_with_model(
     log_debug(LogLevel.DEBUG, verbose_level, "Extraction completed successfully", prefix="[extract]")
     log_debug(LogLevel.TRACE, verbose_level, {"result": result}, prefix="[extract]")
     
+    # Post-process the extracted JSON object to normalize invalid values
+    json_object = result["json_object"]
+    schema_properties = schema.get("properties", {})
+    
+    for field_name, field_info in actual_cls.model_fields.items():
+        if field_name in json_object and field_name in schema_properties:
+            field_schema = schema_properties[field_name]
+            field_def = {
+                "nullable": not schema_properties[field_name].get("type") or
+                           "null" in (schema_properties[field_name].get("anyOf", []) if isinstance(schema_properties[field_name].get("anyOf"), list) else []),
+                "default": field_info.default if hasattr(field_info, 'default') and field_info.default is not ... else None
+            }
+            
+            # Normalize the value
+            json_object[field_name] = normalize_field_value(
+                json_object[field_name],
+                field_info.annotation,
+                field_def
+            )
+    
     # Create model instance for validation
-    model_instance = actual_cls(**result["json_object"])
+    model_instance = actual_cls(**json_object)
     
     # Return dictionary with all required fields and backwards compatibility
     result_dict = {
@@ -510,6 +607,28 @@ def stepwise_extract_with_model(
                 log_debug(LogLevel.DEBUG, verbose_level, f"Using direct value for {field_name}", prefix="[stepwise]")
             
             log_debug(LogLevel.DEBUG, verbose_level, {"field_name": field_name, "raw_value": raw_value}, prefix="[stepwise]")
+
+            # Post-process the raw value to normalize invalid values for non-nullable fields
+            field_def = {}
+            if field_definitions and field_name in field_definitions:
+                field_def = field_definitions[field_name] if isinstance(field_definitions[field_name], dict) else {}
+            
+            # Determine nullable status and default value
+            nullable = field_def.get("nullable", True)
+            default_value = field_def.get("default")
+            if default_value is None and hasattr(field_info, 'default'):
+                if field_info.default is not ... and str(field_info.default) != 'PydanticUndefined':
+                    default_value = field_info.default
+            
+            # Create field_def for normalize_field_value
+            normalize_def = {
+                "nullable": nullable,
+                "default": default_value
+            }
+            
+            # Normalize the raw value before conversion
+            raw_value = normalize_field_value(raw_value, field_info.annotation, normalize_def)
+            log_debug(LogLevel.DEBUG, verbose_level, f"Normalized value for {field_name}: {raw_value}", prefix="[stepwise]")
 
             # Convert value using tools.convert_value with logging
             try:
