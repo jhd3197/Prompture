@@ -1,5 +1,12 @@
 # Prompture
 
+[![PyPI version](https://badge.fury.io/py/prompture.svg)](https://badge.fury.io/py/prompture)
+[![Python Versions](https://img.shields.io/pypi/pyversions/prompture.svg)](https://pypi.org/project/prompture/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Downloads](https://static.pepy.tech/badge/prompture)](https://pepy.tech/project/prompture)
+![GitHub Repo stars](https://img.shields.io/github/stars/jhd3197/prompture?style=social)
+
+
 **Prompture** is an API-first library for getting **structured JSON** (or any structure) from LLMs, validating it, and benchmarking multiple models with one spec.
 
 ## ✨ Features
@@ -94,7 +101,64 @@ person = extract_with_model(Person, text, model_name="ollama/gpt-oss:20b")
 print(person.dict())
 ```
 
-**Why start here?** It’s fast (one call), cost-efficient, and returns a validated Pydantic instance.
+**Why start here?** It's fast (one call), cost-efficient, and returns a validated Pydantic instance.
+
+---
+
+## 📋 Field Definitions
+
+Prompture includes a powerful **field definitions system** that provides a centralized registry of structured data extraction fields. This system enables consistent, reusable field configurations across your data extraction workflows with built-in fields for common use cases like personal info, contact details, professional data, and more.
+
+**Key benefits:**
+- 🎯 Pre-configured fields with descriptions and extraction instructions
+- 🔄 Template variables like `{{current_year}}`, `{{current_date}}`, `{{current_datetime}}`
+- 🔌 Seamless Pydantic integration via `field_from_registry()`
+- ⚙️ Easy custom field registration
+
+### Using Built-in Fields
+
+```python
+from pydantic import BaseModel
+from prompture import field_from_registry, stepwise_extract_with_model
+
+class Person(BaseModel):
+    name: str = field_from_registry("name")
+    age: int = field_from_registry("age")
+    email: str = field_from_registry("email")
+    occupation: str = field_from_registry("occupation")
+    company: str = field_from_registry("company")
+
+# Built-in fields include: name, age, email, phone, address, city, country,
+# occupation, company, education_level, salary, and many more!
+
+result = stepwise_extract_with_model(
+    Person,
+    "John Smith is 25 years old, software engineer at TechCorp, john@example.com",
+    model_name="openai/gpt-4"
+)
+```
+
+### Registering Custom Fields
+
+```python
+from prompture import register_field, field_from_registry
+
+# Register a custom field with template variables
+register_field("document_date", {
+    "type": "str",
+    "description": "Document creation or processing date",
+    "instructions": "Use {{current_date}} if not specified in document",
+    "default": "{{current_date}}",
+    "nullable": False
+})
+
+# Use custom field in your model
+class Document(BaseModel):
+    title: str = field_from_registry("name")
+    created_date: str = field_from_registry("document_date")
+```
+
+📚 **[View Full Field Definitions Reference →](https://prompture.readthedocs.io/en/latest/field_definitions_reference.html)**
 
 ---
 

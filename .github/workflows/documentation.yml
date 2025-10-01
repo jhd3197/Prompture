@@ -3,7 +3,7 @@ name: documentation
 on:
   push:
     branches:
-      - main
+      - dev
 
     
 permissions:
@@ -18,12 +18,15 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r docs/requirements.txt
+      - name: Update documentation version
+        run: |
+          python .github/scripts/update_docs_version.py
       - name: Sphinx build
         run: |
           sphinx-build docs/source _build
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
-        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/dev' }}
         with:
           publish_branch: gh-pages
           github_token: ${{ secrets.GITHUB_TOKEN }}
