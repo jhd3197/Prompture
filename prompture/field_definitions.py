@@ -317,6 +317,14 @@ BASE_FIELD_DEFINITIONS = {
         "enum": ["minimal", "low", "moderate", "high", "critical"],
         "default": "low",
         "nullable": True,
+    },
+    "tone": {
+        "type": str,
+        "description": "Tone of the text",
+        "instructions": "Classify the tone of the text",
+        "enum": ["formal", "informal", "optimistic", "pessimistic"],
+        "default": "formal",
+        "nullable": True,
     }
 }
 
