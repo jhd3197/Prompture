@@ -14,7 +14,7 @@ import collections.abc
 import threading
 import warnings
 from datetime import datetime, date
-from typing import Dict, Any, Union, Optional, List
+from typing import Dict, Any, Union, Optional, List, Literal, get_args
 from pydantic import Field
 
 # Template variable providers
@@ -266,7 +266,8 @@ BASE_FIELD_DEFINITIONS = {
     "sentiment": {
         "type": str,
         "description": "Sentiment classification",
-        "instructions": "Classify as positive, negative, or neutral",
+        "instructions": "Classify the sentiment of the content",
+        "enum": ["positive", "negative", "neutral"],
         "default": "neutral",
         "nullable": True,
     },
@@ -289,6 +290,40 @@ BASE_FIELD_DEFINITIONS = {
         "description": "Main topic or subject",
         "instructions": "Identify primary topic or theme of content",
         "default": "",
+        "nullable": True,
+    },
+    
+    # Enum Fields for Task Management
+    "priority": {
+        "type": str,
+        "description": "Priority level",
+        "instructions": "Determine the priority level",
+        "enum": ["low", "medium", "high", "urgent"],
+        "default": "medium",
+        "nullable": True,
+    },
+    "status": {
+        "type": str,
+        "description": "Status of the item",
+        "instructions": "Identify the current status",
+        "enum": ["pending", "in_progress", "completed", "cancelled"],
+        "default": "pending",
+        "nullable": True,
+    },
+    "risk_level": {
+        "type": str,
+        "description": "Risk assessment level",
+        "instructions": "Assess the risk level",
+        "enum": ["minimal", "low", "moderate", "high", "critical"],
+        "default": "low",
+        "nullable": True,
+    },
+    "tone": {
+        "type": str,
+        "description": "Tone of the text",
+        "instructions": "Classify the tone of the text",
+        "enum": ["formal", "informal", "optimistic", "pessimistic"],
+        "default": "formal",
         "nullable": True,
     }
 }
@@ -426,8 +461,31 @@ def field_from_registry(field_name: str, apply_templates: bool = True,
     # Extract Pydantic Field parameters
     default_value = field_def.get('default')
     description = field_def.get('description', f"Extract the {field_name} from the text.")
+    instructions = field_def.get('instructions', '')
     
-    # Handle nullable/required logic
+    # Handle enum fields
+    enum_values = field_def.get('enum')
+    if enum_values:
+        # Enhance description with enum constraint information
+        enum_str = "', '".join(str(v) for v in enum_values)
+        enhanced_instructions = f"{instructions}. Must be one of: '{enum_str}'"
+        enhanced_description = f"{description}. Allowed values: {enum_str}"
+        
+        # Create json_schema_extra with enum constraint
+        json_schema_extra = {
+            "enum": enum_values,
+            "instructions": enhanced_instructions
+        }
+        
+        # Handle nullable/required logic with enum
+        if field_def.get('nullable', True) and default_value is not None:
+            return Field(default=default_value, description=enhanced_description, json_schema_extra=json_schema_extra)
+        elif field_def.get('nullable', True):
+            return Field(default=None, description=enhanced_description, json_schema_extra=json_schema_extra)
+        else:
+            return Field(description=enhanced_description, json_schema_extra=json_schema_extra)
+    
+    # Handle non-enum fields (original logic)
     if field_def.get('nullable', True) and default_value is not None:
         # Optional field with default
         return Field(default=default_value, description=description)
@@ -437,6 +495,85 @@ def field_from_registry(field_name: str, apply_templates: bool = True,
     else:
         # Required field
         return Field(description=description)
+
+def validate_enum_value(field_name: str, value: Any) -> bool:
+    """
+    Validate that a value is in the allowed enum list for a field.
+    
+    Args:
+        field_name (str): Name of the field in the registry
+        value (Any): Value to validate
+        
+    Returns:
+        bool: True if value is valid for the enum field, False otherwise
+    """
+    field_def = get_field_definition(field_name, apply_templates=False)
+    
+    if field_def is None:
+        return False
+    
+    enum_values = field_def.get('enum')
+    if not enum_values:
+        # Not an enum field, so any value is valid
+        return True
+    
+    # Check if value is in the allowed enum list
+    return value in enum_values
+
+def normalize_enum_value(field_name: str, value: Any, case_sensitive: bool = True) -> Any:
+    """
+    Normalize and validate an enum value for a field.
+    
+    Args:
+        field_name (str): Name of the field in the registry
+        value (Any): Value to normalize
+        case_sensitive (bool): Whether to perform case-sensitive matching
+        
+    Returns:
+        Any: Normalized value if valid, original value otherwise
+        
+    Raises:
+        ValueError: If value is not in the allowed enum list
+    """
+    field_def = get_field_definition(field_name, apply_templates=False)
+    
+    if field_def is None:
+        raise KeyError(f"Field '{field_name}' not found in registry")
+    
+    enum_values = field_def.get('enum')
+    if not enum_values:
+        # Not an enum field, return as-is
+        return value
+    
+    # Convert value to string for comparison
+    str_value = str(value) if value is not None else None
+    
+    if str_value is None:
+        # Handle nullable fields
+        if field_def.get('nullable', True):
+            return None
+        else:
+            raise ValueError(f"Field '{field_name}' does not allow null values")
+    
+    # Case-sensitive matching
+    if case_sensitive:
+        if str_value in enum_values:
+            return str_value
+        raise ValueError(
+            f"Invalid value '{str_value}' for field '{field_name}'. "
+            f"Must be one of: {', '.join(repr(v) for v in enum_values)}"
+        )
+    
+    # Case-insensitive matching
+    lower_value = str_value.lower()
+    for enum_val in enum_values:
+        if str(enum_val).lower() == lower_value:
+            return enum_val
+    
+    raise ValueError(
+        f"Invalid value '{str_value}' for field '{field_name}'. "
+        f"Must be one of: {', '.join(repr(v) for v in enum_values)}"
+    )
 
 def get_registry_snapshot() -> Dict[str, FieldDefinition]:
     """

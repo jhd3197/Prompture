@@ -1,92 +1,90 @@
 """
-Text Analysis Example
+Text Analysis Example with Enum Field Support
 
 This example demonstrates how to use Prompture for analyzing general text and extracting
-boolean (true/false) values. It shows how to register boolean fields for sentiment analysis,
-content type detection, and writing style assessment.
+sentiment using enum fields. It shows how enum fields restrict LLM output to specific
+predefined values (positive, negative, neutral) for sentiment analysis.
 """
 
 from pydantic import BaseModel
-from typing import Optional
-from prompture import register_field, field_from_registry, extract_with_model
+from typing import Optional, Literal
+from prompture import field_from_registry, extract_with_model, get_field_definition, validate_enum_value
 
-# Register boolean fields for text analysis
-register_field("is_positive_sentiment", {
-    "type": "bool",
-    "description": "Whether the text expresses positive sentiment",
-    "instructions": "Analyze the overall tone and determine if the sentiment is predominantly positive. Look for positive words, optimistic language, and favorable opinions.",
-    "default": False,
-    "nullable": False
-})
-
-register_field("contains_facts", {
-    "type": "bool",
-    "description": "Whether the text contains factual information or data",
-    "instructions": "Determine if the text includes verifiable facts, statistics, dates, or objective information rather than just opinions.",
-    "default": False,
-    "nullable": False
-})
-
-register_field("is_formal_tone", {
-    "type": "bool",
-    "description": "Whether the text uses formal language and professional tone",
-    "instructions": "Check if the writing style is formal, professional, and uses proper grammar. Informal language, slang, or casual expressions indicate false.",
-    "default": False,
-    "nullable": False
-})
-
-register_field("has_call_to_action", {
-    "type": "bool",
-    "description": "Whether the text includes a call to action",
-    "instructions": "Look for explicit requests or suggestions for the reader to take action, such as 'buy now', 'sign up', 'learn more', or similar directives.",
-    "default": False,
-    "nullable": False
-})
-
-register_field("is_persuasive", {
-    "type": "bool",
-    "description": "Whether the text attempts to persuade or convince the reader",
-    "instructions": "Determine if the text uses persuasive techniques, arguments, or tries to influence the reader's opinion or behavior.",
-    "default": False,
-    "nullable": False
-})
-
-# Define the Pydantic model for text analysis
+# Define the Pydantic model for text analysis using the sentiment enum field
 class TextAnalysis(BaseModel):
-    is_positive_sentiment: bool = field_from_registry("is_positive_sentiment")
-    contains_facts: bool = field_from_registry("contains_facts")
-    is_formal_tone: bool = field_from_registry("is_formal_tone")
-    has_call_to_action: bool = field_from_registry("has_call_to_action")
-    is_persuasive: bool = field_from_registry("is_persuasive")
+    sentiment: str = field_from_registry("sentiment")
+    topic: Optional[str] = field_from_registry("topic")
 
-# Sample text - a product review
-sample_text = """
-I recently purchased the TechPro Wireless Headphones and I'm absolutely thrilled with my purchase!
-The sound quality is exceptional, delivering crisp highs and deep bass that brings my music to life.
+# Sample texts to analyze
+sample_texts = [
+    """
+    I recently purchased the TechPro Wireless Headphones and I'm absolutely thrilled with my purchase!
+    The sound quality is exceptional, delivering crisp highs and deep bass that brings my music to life.
+    
+    The battery lasts for an impressive 30 hours on a single charge, and the quick-charge feature gives
+    you 5 hours of playback in just 10 minutes. The noise cancellation technology is top-notch, blocking
+    out up to 95% of ambient noise according to the manufacturer's specifications.
+    
+    At $149.99, these headphones offer incredible value for money. If you're in the market for premium
+    wireless headphones without breaking the bank, I highly recommend giving these a try. You won't be
+    disappointed! Check them out on the TechPro website today.
+    """,
+    """
+    I had a terrible experience with customer service today. I waited on hold for over an hour
+    only to be transferred three times to different departments. Nobody seemed to know how to help me,
+    and my issue remains unresolved. Very frustrating and disappointing.
+    """,
+    """
+    The weather forecast for tomorrow shows partly cloudy skies with temperatures ranging from
+    68 to 75 degrees Fahrenheit. There is a 20% chance of precipitation in the afternoon. Wind
+    speeds will be moderate at 10-15 mph from the northwest.
+    """
+]
 
-The battery lasts for an impressive 30 hours on a single charge, and the quick-charge feature gives
-you 5 hours of playback in just 10 minutes. The noise cancellation technology is top-notch, blocking
-out up to 95% of ambient noise according to the manufacturer's specifications.
+# Display enum information
+print("=" * 70)
+print("ENUM FIELD INFORMATION")
+print("=" * 70)
+sentiment_def = get_field_definition("sentiment")
+if sentiment_def and 'enum' in sentiment_def:
+    print(f"Field: sentiment")
+    print(f"Allowed values: {sentiment_def['enum']}")
+    print(f"Description: {sentiment_def['description']}")
+    print(f"Instructions: {sentiment_def['instructions']}")
+print("=" * 70)
+print()
 
-At $149.99, these headphones offer incredible value for money. If you're in the market for premium
-wireless headphones without breaking the bank, I highly recommend giving these a try. You won't be
-disappointed! Check them out on the TechPro website today.
-"""
+# Analyze each text
+for i, text in enumerate(sample_texts, 1):
+    print(f"Analyzing Text {i}...")
+    print("-" * 70)
+    
+    # Extract sentiment analysis from the text
+    analysis = extract_with_model(
+        TextAnalysis,
+        text,
+        "lmstudio/deepseek/deepseek-r1-0528-qwen3-8b"
+    )
+    
+    # Print the analysis results
+    print(f"Sentiment: {analysis.model.sentiment}")
+    print(f"Topic: {analysis.model.topic or 'N/A'}")
+    
+    # Validate the enum value
+    is_valid = validate_enum_value("sentiment", analysis.model.sentiment)
+    print(f"Valid sentiment value: {is_valid}")
+    
+    print("-" * 70)
+    print()
 
-# Extract boolean analysis from the text
-analysis = extract_with_model(
-    TextAnalysis,
-    sample_text,
-    "lmstudio/deepseek/deepseek-r1-0528-qwen3-8b"
-)
+# Demonstrate manual enum validation
+print("=" * 70)
+print("ENUM VALIDATION EXAMPLES")
+print("=" * 70)
 
-# Print the analysis results
-print("=" * 60)
-print("TEXT ANALYSIS RESULTS")
-print("=" * 60)
-print(f"Positive Sentiment:     {analysis.model.is_positive_sentiment}")
-print(f"Contains Facts:         {analysis.model.contains_facts}")
-print(f"Formal Tone:            {analysis.model.is_formal_tone}")
-print(f"Has Call to Action:     {analysis.model.has_call_to_action}")
-print(f"Is Persuasive:          {analysis.model.is_persuasive}")
-print("=" * 60)
+test_values = ["positive", "negative", "neutral", "happy", "POSITIVE"]
+for value in test_values:
+    is_valid = validate_enum_value("sentiment", value)
+    print(f"Value '{value}': {'✓ Valid' if is_valid else '✗ Invalid'}")
+
+print("=" * 70)
