@@ -1,7 +1,17 @@
 """prompture - API package to convert LLM outputs into JSON + test harness."""
 
 from dotenv import load_dotenv
-from .core import ask_for_json, extract_and_jsonify, manual_extract_and_jsonify, Driver, clean_json_text, clean_json_text_with_ai, extract_with_model, stepwise_extract_with_model
+from .core import (
+    ask_for_json,
+    extract_and_jsonify,
+    manual_extract_and_jsonify,
+    Driver,
+    clean_json_text,
+    clean_toon_text,
+    clean_json_text_with_ai,
+    extract_with_model,
+    stepwise_extract_with_model,
+)
 from .field_definitions import (
     FIELD_DEFINITIONS, get_field_definition, get_required_fields, get_field_names,
     field_from_registry, register_field, add_field_definition, add_field_definitions,
@@ -36,6 +46,7 @@ __all__ = [
     "validate_against_schema",
     "Driver",
     "clean_json_text",
+    "clean_toon_text",
     "clean_json_text_with_ai",
     "extract_with_model",
     "stepwise_extract_with_model",

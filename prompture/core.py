@@ -2,19 +2,31 @@
 """
 from __future__ import annotations
 import json
-import re
 import requests
 import sys
 import warnings
 from datetime import datetime, date
 from decimal import Decimal
-from typing import Any, Dict, Type, Optional, List, Union
+from typing import Any, Dict, Type, Optional, List, Union, Literal
+
+try:
+    import toon
+except ImportError:
+    toon = None
 
 from pydantic import BaseModel, Field
 
 from .drivers import get_driver, get_driver_for_model
 from .driver import Driver
-from .tools import create_field_schema, convert_value, log_debug, clean_json_text, LogLevel, get_field_default
+from .tools import (
+    create_field_schema,
+    convert_value,
+    log_debug,
+    clean_json_text,
+    clean_toon_text,
+    LogLevel,
+    get_field_default,
+)
 from .field_definitions import get_registry_snapshot
 
 
@@ -125,19 +137,21 @@ def ask_for_json(
     ai_cleanup: bool = True,
     model_name: str = "",
     options: Dict[str, Any] = {},
+    output_format: Literal["json", "toon"] = "json",
 ) -> Dict[str, Any]:
-    """Sends a prompt to the driver and returns both JSON output and usage metadata.
+    """Sends a prompt to the driver and returns structured output plus usage metadata.
 
     This function enforces a schema-first approach by requiring a json_schema parameter
-    and automatically generating instructions for the LLM to return valid JSON matching the schema.
+    and automatically generating instructions for the LLM to return data that matches it.
 
     Args:
         driver: Adapter that implements generate(prompt, options).
         content_prompt: Main prompt content (may include examples).
         json_schema: Required JSON schema dictionary defining the expected structure.
         ai_cleanup: Whether to attempt AI-based cleanup if JSON parsing fails.
+        model_name: Optional model identifier used in usage metadata.
         options: Additional options to pass to the driver.
-        verbose_level: Logging level for debug output (LogLevel.OFF by default).
+        output_format: Response serialization format ("json" or "toon").
 
     Returns:
         A dictionary containing:
@@ -146,22 +160,50 @@ def ask_for_json(
         - usage: token usage and cost information from the driver's meta object.
 
     Raises:
-        json.JSONDecodeError: If the response cannot be parsed as JSON and ai_cleanup is False.
+        ValueError: If an unsupported output format is provided.
+        RuntimeError: When TOON is requested but the dependency is missing.
+        json.JSONDecodeError: If JSON parsing fails and ai_cleanup is False.
+        ValueError: If TOON parsing fails.
     """
+    if output_format not in ("json", "toon"):
+        raise ValueError(f"Unsupported output_format '{output_format}'. Use 'json' or 'toon'.")
 
-    schema_string = json.dumps(json_schema, indent=2)
-    instruct = (
-        "Return only a single JSON object (no markdown, no extra text) that validates against this JSON schema:\n"
-        f"{schema_string}\n\n"
-        "If a value is unknown use null. Use double quotes for keys and strings."
-    )
+    if output_format == "toon":
+        if toon is None:
+            raise RuntimeError(
+                "TOON requested but 'python-toon' is not installed. "
+                "Install it with 'pip install python-toon'."
+            )
+        instruct = (
+            "Reply only in TOON (Token-Oriented Object Notation).\n"
+            "- Scalars: key: value\n"
+            "- Lists: list[count]: item1,item2 (comma separated, no semicolons or line breaks)\n"
+            "- Object arrays: name[count,]{f1,f2}:\n"
+            "  value1,value2\n"
+            "Use two spaces before each table row, lowercase true/false/null, include every field from the schema (use null if unknown), and output no markdown, prose, or braces beyond the headers.\n"
+            f"Schema:\n{json.dumps(json_schema, separators=(',', ':'))}"
+        )
+    else:
+        schema_string = json.dumps(json_schema, indent=2)
+        instruct = (
+            "Return only a single JSON object (no markdown, no extra text) that validates against this JSON schema:\n"
+            f"{schema_string}\n\n"
+            "If a value is unknown use null. Use double quotes for keys and strings."
+        )
+
     full_prompt = f"{content_prompt}\n\n{instruct}"
     resp = driver.generate(full_prompt, options)
     raw = resp.get("text", "")
-    cleaned = clean_json_text(raw)
+    cleaned = clean_toon_text(raw) if output_format == "toon" else clean_json_text(raw)
 
     try:
-        json_obj = json.loads(cleaned)
+        if output_format == "toon":
+            json_obj = toon.decode(cleaned)
+            json_string = json.dumps(json_obj)
+        else:
+            json_obj = json.loads(cleaned)
+            json_string = cleaned
+
         usage = {
             **resp.get("meta", {}),
             "raw_response": resp,
@@ -172,33 +214,36 @@ def ask_for_json(
             "model_name": model_name or getattr(driver, "model", "")
         }
         return {
-            "json_string": cleaned,
+            "json_string": json_string,
             "json_object": json_obj,
             "usage": usage
         }
-    except json.JSONDecodeError as e:
-        if ai_cleanup:
-            cleaned_fixed = clean_json_text_with_ai(driver, cleaned, model_name, options)
-            try:
-                json_obj = json.loads(cleaned_fixed)
-                return {
-                    "json_string": cleaned_fixed,
-                    "json_object": json_obj,
-                    "usage": {
-                        "prompt_tokens": 0,
-                        "completion_tokens": 0,
-                        "total_tokens": 0,
-                        "cost": 0.0,
-                        "model_name": options.get("model", getattr(driver, "model", "")),
-                        "raw_response": {}
-                    },
-                }
-            except json.JSONDecodeError:
-                # Re-raise the original JSONDecodeError
+    except Exception as e:
+        if output_format == "toon":
+            raise ValueError(f"Failed to parse TOON: {e}\nRaw: {cleaned}") from e
+
+        if isinstance(e, json.JSONDecodeError):
+            if ai_cleanup:
+                cleaned_fixed = clean_json_text_with_ai(driver, cleaned, model_name, options)
+                try:
+                    json_obj = json.loads(cleaned_fixed)
+                    return {
+                        "json_string": cleaned_fixed,
+                        "json_object": json_obj,
+                        "usage": {
+                            "prompt_tokens": 0,
+                            "completion_tokens": 0,
+                            "total_tokens": 0,
+                            "cost": 0.0,
+                            "model_name": options.get("model", getattr(driver, "model", "")),
+                            "raw_response": {}
+                        },
+                    }
+                except json.JSONDecodeError:
+                    raise e
+            else:
                 raise e
-        else:
-            # Explicitly re-raise the original JSONDecodeError
-            raise e
+        raise e
 
 def extract_and_jsonify(
     text: Union[str, Driver],  # Can be either text or driver for backward compatibility
@@ -207,6 +252,7 @@ def extract_and_jsonify(
     model_name: Union[str, Dict[str, Any]] = "",  # Can be schema (old) or model name (new)
     instruction_template: str = "Extract information from the following text:",
     ai_cleanup: bool = True,
+    output_format: Literal["json", "toon"] = "json",
     options: Dict[str, Any] = {},
 ) -> Dict[str, Any]:
     """Extracts structured information using automatic driver selection based on model name.
@@ -217,6 +263,7 @@ def extract_and_jsonify(
         model_name: Model identifier in format "provider/model" (e.g., "openai/gpt-4-turbo-preview").
         instruction_template: Instructional text to prepend to the content.
         ai_cleanup: Whether to attempt AI-based cleanup if JSON parsing fails.
+        output_format: Response serialization format ("json" or "toon").
         options: Additional options to pass to the driver.
     
     Returns:
@@ -230,6 +277,8 @@ def extract_and_jsonify(
         json.JSONDecodeError: If the response cannot be parsed as JSON and ai_cleanup is False.
         pytest.skip: If a ConnectionError occurs during testing (when pytest is running).
     """
+    actual_template = instruction_template
+    actual_output_format = output_format
     # Handle legacy format where first argument is driver
     # Validate text input first
     if isinstance(text, Driver):
@@ -246,7 +295,6 @@ def extract_and_jsonify(
             raise ValueError("Text input cannot be empty")
         actual_text = text
         actual_schema = json_schema
-        actual_template = instruction_template
         actual_model = model_name or options.get("model", "")
         driver = options.pop("driver", None)
 
@@ -280,7 +328,15 @@ def extract_and_jsonify(
     content_prompt = f"{actual_template} {actual_text}"
     
     try:
-        return ask_for_json(driver, content_prompt, actual_schema, ai_cleanup, model_id, opts)
+        return ask_for_json(
+            driver,
+            content_prompt,
+            actual_schema,
+            ai_cleanup,
+            model_id,
+            opts,
+            output_format=actual_output_format,
+        )
     except (requests.exceptions.ConnectionError, requests.exceptions.HTTPError) as e:
         if "pytest" in sys.modules:
             import pytest
@@ -294,6 +350,7 @@ def manual_extract_and_jsonify(
     model_name: str = "",
     instruction_template: str = "Extract information from the following text:",
     ai_cleanup: bool = True,
+    output_format: Literal["json", "toon"] = "json",
     options: Dict[str, Any] = {},
     verbose_level: LogLevel | int = LogLevel.OFF,
 ) -> Dict[str, Any]:
@@ -310,6 +367,7 @@ def manual_extract_and_jsonify(
         model_name: Optional override of the model name.
         instruction_template: Instructional text to prepend to the content.
         ai_cleanup: Whether to attempt AI-based cleanup if JSON parsing fails.
+        output_format: Response serialization format ("json" or "toon").
         options: Additional options to pass to the driver.
         verbose_level: Logging level for debug output (LogLevel.OFF by default).
 
@@ -348,7 +406,15 @@ def manual_extract_and_jsonify(
     log_debug(LogLevel.TRACE, verbose_level, {"content_prompt": content_prompt}, prefix="[manual]")
     
     # Call ask_for_json and log the result
-    result = ask_for_json(driver, content_prompt, json_schema, ai_cleanup, model_name, opts)
+    result = ask_for_json(
+        driver,
+        content_prompt,
+        json_schema,
+        ai_cleanup,
+        model_name,
+        opts,
+        output_format=output_format,
+    )
     log_debug(LogLevel.DEBUG, verbose_level, "Manual extraction completed successfully", prefix="[manual]")
     log_debug(LogLevel.TRACE, verbose_level, {"result": result}, prefix="[manual]")
     
@@ -360,6 +426,7 @@ def extract_with_model(
     model_name: Union[str, Dict[str, Any]],  # Can be model name or text for legacy support
     instruction_template: str = "Extract information from the following text:",
     ai_cleanup: bool = True,
+    output_format: Literal["json", "toon"] = "json",
     options: Dict[str, Any] = {},
     verbose_level: LogLevel | int = LogLevel.OFF,
 ) -> Dict[str, Any]:
@@ -374,6 +441,7 @@ def extract_with_model(
         model_name: Model identifier in format "provider/model" (e.g., "openai/gpt-4-turbo-preview").
         instruction_template: Instructional text to prepend to the content.
         ai_cleanup: Whether to attempt AI-based cleanup if JSON parsing fails.
+        output_format: Response serialization format ("json" or "toon").
         options: Additional options to pass to the driver.
         verbose_level: Logging level for debug output (LogLevel.OFF by default).
 
@@ -416,6 +484,7 @@ def extract_with_model(
         model_name=actual_model,
         instruction_template=instruction_template,
         ai_cleanup=ai_cleanup,
+        output_format=output_format,
         options=options
     )
     log_debug(LogLevel.DEBUG, verbose_level, "Extraction completed successfully", prefix="[extract]")

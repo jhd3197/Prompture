@@ -54,6 +54,7 @@ __all__ = [
     "parse_datetime",
     "as_list",
     "clean_json_text",
+    "clean_toon_text",
     "log_debug",
     "LogLevel",
     "load_field_definitions",
@@ -1075,6 +1076,13 @@ def get_field_default(field_name: str, field_info: Any, field_definitions: Optio
 # JSON text cleaning
 # ---------------------------------------------------------------------------
 
+def strip_think_tags(text: str) -> str:
+    """Remove <think>...</think> sections that some models emit."""
+    if not text:
+        return ""
+    return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
+
+
 def clean_json_text(text: str) -> str:
     """Attempts to extract a valid JSON object string from text.
 
@@ -1089,8 +1097,7 @@ def clean_json_text(text: str) -> str:
     Returns:
         A string that best resembles valid JSON content.
     """
-    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
-    text = text.strip()
+    text = strip_think_tags(text).strip()
 
     if text.startswith("```"):
         start_fence = text.find("```")
@@ -1109,3 +1116,41 @@ def clean_json_text(text: str) -> str:
         return text[start : end + 1]
 
     return text
+
+
+def clean_toon_text(text: str) -> str:
+    """Extract TOON content from an LLM response, removing markdown and prefixes."""
+    cleaned = strip_think_tags(text).strip()
+
+    if cleaned.startswith("```toon"):
+        cleaned = cleaned[len("```toon") :]
+    elif cleaned.startswith("```"):
+        cleaned = cleaned[len("```") :]
+
+    if cleaned.endswith("```"):
+        cleaned = cleaned[: -len("```")]
+
+    cleaned = cleaned.strip()
+
+    prefixes_to_remove = [
+        "Here is the TOON data:",
+        "Here's the TOON format:",
+        "TOON output:",
+        "Result:",
+    ]
+
+    for prefix in prefixes_to_remove:
+        if cleaned.lower().startswith(prefix.lower()):
+            cleaned = cleaned[len(prefix) :].strip()
+
+    def _normalize_simple_array(match: re.Match[str]) -> str:
+        prefix = match.group(1)
+        values = match.group(2)
+        if ";" not in values:
+            return match.group(0)
+        normalized = ",".join(part.strip() for part in values.split(";") if part.strip())
+        return f"{prefix}{normalized}"
+
+    cleaned = re.sub(r"^([^\n:]+?\[\d+\]:)([^\n]+)$", _normalize_simple_array, cleaned, flags=re.MULTILINE)
+
+    return cleaned
