@@ -17,6 +17,7 @@
 - ✅ **Usage & cost** → Token + $ tracking on every call (`usage` from driver meta)
 - ✅ **AI cleanup** → Optional LLM pass to fix malformed JSON
 - ✅ **Batch testing** → Define suites and compare models (spec-driven)
+- 🧪 **Experimental TOON output** → Request Token-Oriented Object Notation when you need ultra-compact text (see [analysis](toon_token_analysis.md))
 
 <br>
 
@@ -196,6 +197,24 @@ resp2 = extract_and_jsonify(
 )
 print(resp2["json_object"], resp2["usage"])
 ```
+
+### Experimental TOON output
+
+Prompture can ask for TOON (Token-Oriented Object Notation) instead of JSON by setting `output_format="toon"` on `ask_for_json`, `extract_and_jsonify`, `manual_extract_and_jsonify`, or `extract_with_model`. Responses are parsed back into Python dicts, so your downstream code still receives JSON-compatible structures.
+
+```python
+result = extract_and_jsonify(
+    text="Alice Johnson is a 30-year-old data scientist...",
+    json_schema=schema,
+    model_name="lmstudio/deepseek/deepseek-r1-0528-qwen3-8b",
+    output_format="toon",
+)
+print(result["json_string"])  # TOON text
+print(result["json_object"])  # regular dict
+```
+
+> [!IMPORTANT]
+> TOON output is **experimental**. General-purpose models often emit more verbose completions when asked for TOON, so total token usage can increase (see `toon_token_analysis.md`). Treat it as an opt-in mode until TOON-aware fine-tunes or adapters are available.
 
 ### Return shape (JSON helpers)
 

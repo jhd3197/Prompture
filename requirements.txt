@@ -9,3 +9,5 @@ anthropic>=0.8.0
 httpx>=0.25.0
 pytest
 tukuy>=0.0.6
+python-toon>=0.1.0
+google-generativeai>=0.3.0
