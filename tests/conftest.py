@@ -1,9 +1,23 @@
+import os
 import pytest
 from typing import Dict, Any
 from prompture.drivers import get_driver_for_model
 
+# Default to running integration tests unless the env var explicitly disables them.
+os.environ.setdefault("RUN_INTEGRATION_TESTS", "1")
+
 # Default model configuration for all tests
 DEFAULT_MODEL = "ollama/gpt-oss:20b"  # Change this to use a different model
+
+
+def pytest_addoption(parser):
+    """Add CLI flag to opt into slow integration tests."""
+    parser.addoption(
+        "--run-integration",
+        action="store_true",
+        default=False,
+        help="Run tests marked with @pytest.mark.integration (requires live LLM access)",
+    )
 
 @pytest.fixture
 def sample_json_schema() -> Dict[str, Any]:
@@ -35,9 +49,17 @@ def pytest_configure(config):
 
 def pytest_collection_modifyitems(config, items):
     """Configure test collection behavior."""
-    # Integration tests are controlled by the TEST_SKIP_NO_CREDENTIALS env var
-    # in test.py, no additional configuration needed here
-    pass
+    run_integration = config.getoption("--run-integration") or os.getenv(
+        "RUN_INTEGRATION_TESTS", ""
+    ).lower() in {"1", "true", "yes"}
+
+    if run_integration:
+        return
+
+    skip_marker = pytest.mark.skip(reason="use --run-integration to run these tests")
+    for item in items:
+        if "integration" in item.keywords:
+            item.add_marker(skip_marker)
 
 
 def assert_valid_usage_metadata(meta: Dict[str, Any]):

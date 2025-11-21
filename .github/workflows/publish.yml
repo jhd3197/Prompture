@@ -142,7 +142,7 @@ jobs:
           python -m twine upload dist/prompture/* --non-interactive
 
       # ---- NEW: Pin wrapper version & dependency so it matches prompture ------
-      - name: Pin llm_to_json version & dependency to prompture
+      - name: Pin wrapper versions & dependencies to prompture
         run: |
           NEW_VERSION=${{ steps.bump_version.outputs.new_version }}
           echo "Pinning wrapper to version $NEW_VERSION"
@@ -151,9 +151,8 @@ jobs:
 
       # Build wrapper package --------------------------------------------------
       - name: Build llm-to-json (wrapper)
-        working-directory: packages/
         run: |
-          python -m build -o ../dist/llm_to_json
+          python -m build packages/llm_to_json -o dist/llm_to_json
 
       - name: Publish llm-to-json to PyPI
         env:
@@ -161,3 +160,14 @@ jobs:
           TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN_LLM_TO_JSON }}
         run: |
           python -m twine upload dist/llm_to_json/* --non-interactive
+
+      - name: Build llm-to-toon (wrapper)
+        run: |
+          python -m build packages/llm_to_toon -o dist/llm_to_toon
+
+      - name: Publish llm-to-toon to PyPI
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN_LLM_TO_TOON }}
+        run: |
+          python -m twine upload dist/llm_to_toon/* --non-interactive

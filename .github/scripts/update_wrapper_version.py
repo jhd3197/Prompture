@@ -1,7 +1,28 @@
 import sys
+from pathlib import Path
+
 import toml
 
-PYPROJECT_PATH = "packages/pyproject.toml"
+WRAPPER_ROOT = Path("packages")
+
+
+def update_pyproject(pyproject_path: Path, new_version: str) -> None:
+    with pyproject_path.open("r", encoding="utf-8") as f:
+        data = toml.load(f)
+
+    data["project"]["version"] = new_version
+
+    if "dependencies" in data["project"]:
+        for i, dep in enumerate(data["project"]["dependencies"]):
+            if dep.startswith("prompture"):
+                data["project"]["dependencies"][i] = f"prompture>={new_version}"
+                break
+
+    with pyproject_path.open("w", encoding="utf-8") as f:
+        toml.dump(data, f)
+
+    print(f"Updated {pyproject_path}")
+
 
 def main():
     if len(sys.argv) < 2:
@@ -9,25 +30,19 @@ def main():
         sys.exit(1)
     new_version = sys.argv[1]
 
-    with open(PYPROJECT_PATH, "r", encoding="utf-8") as f:
-        data = toml.load(f)
+    candidates = sorted(
+        path / "pyproject.toml"
+        for path in WRAPPER_ROOT.iterdir()
+        if path.is_dir() and (path / "pyproject.toml").exists()
+    )
 
-    # Update version
-    data["project"]["version"] = new_version
+    if not candidates:
+        print("No wrapper pyproject.toml files found under 'packages/'.")
+        sys.exit(1)
 
-    # Update prompture dependency
-    if "dependencies" in data["project"]:
-        for i, dep in enumerate(data["project"]["dependencies"]):
-            if dep.startswith("prompture"):
-                data["project"]["dependencies"][i] = f"prompture>={new_version}"
-                break
+    for pyproject_path in candidates:
+        update_pyproject(pyproject_path, new_version)
 
-    with open(PYPROJECT_PATH, "w", encoding="utf-8") as f:
-        toml.dump(data, f)
-
-    # Print updated content for verification
-    with open(PYPROJECT_PATH, "r", encoding="utf-8") as f:
-        print(f.read())
 
 if __name__ == "__main__":
     main()

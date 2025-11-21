@@ -6,12 +6,13 @@ from .core import (
     extract_and_jsonify,
     manual_extract_and_jsonify,
     Driver,
-    clean_json_text,
-    clean_toon_text,
     clean_json_text_with_ai,
     extract_with_model,
     stepwise_extract_with_model,
+    extract_from_data,
+    extract_from_pandas,
 )
+from .tools import clean_json_text, clean_toon_text
 from .field_definitions import (
     FIELD_DEFINITIONS, get_field_definition, get_required_fields, get_field_names,
     field_from_registry, register_field, add_field_definition, add_field_definitions,
@@ -50,6 +51,9 @@ __all__ = [
     "clean_json_text_with_ai",
     "extract_with_model",
     "stepwise_extract_with_model",
+    # TOON Data Extraction Functions
+    "extract_from_data",
+    "extract_from_pandas",
     # Field Definitions
     "FIELD_DEFINITIONS",
     "get_field_definition",

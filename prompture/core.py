@@ -23,7 +23,6 @@ from .tools import (
     convert_value,
     log_debug,
     clean_json_text,
-    clean_toon_text,
     LogLevel,
     get_field_default,
 )
@@ -168,41 +167,32 @@ def ask_for_json(
     if output_format not in ("json", "toon"):
         raise ValueError(f"Unsupported output_format '{output_format}'. Use 'json' or 'toon'.")
 
+    schema_string = json.dumps(json_schema, indent=2)
+    if output_format == "toon" and toon is None:
+        raise RuntimeError(
+            "TOON requested but 'python-toon' is not installed. "
+            "Install it with 'pip install python-toon'."
+        )
+
+    instruct = (
+        "Return only a single JSON object (no markdown, no extra text) that validates against this JSON schema:\n"
+        f"{schema_string}\n\n"
+        "If a value is unknown use null. Use double quotes for keys and strings."
+    )
     if output_format == "toon":
-        if toon is None:
-            raise RuntimeError(
-                "TOON requested but 'python-toon' is not installed. "
-                "Install it with 'pip install python-toon'."
-            )
-        instruct = (
-            "Reply only in TOON (Token-Oriented Object Notation).\n"
-            "- Scalars: key: value\n"
-            "- Lists: list[count]: item1,item2 (comma separated, no semicolons or line breaks)\n"
-            "- Object arrays: name[count,]{f1,f2}:\n"
-            "  value1,value2\n"
-            "Use two spaces before each table row, lowercase true/false/null, include every field from the schema (use null if unknown), and output no markdown, prose, or braces beyond the headers.\n"
-            f"Schema:\n{json.dumps(json_schema, separators=(',', ':'))}"
-        )
-    else:
-        schema_string = json.dumps(json_schema, indent=2)
-        instruct = (
-            "Return only a single JSON object (no markdown, no extra text) that validates against this JSON schema:\n"
-            f"{schema_string}\n\n"
-            "If a value is unknown use null. Use double quotes for keys and strings."
-        )
+        instruct += "\n\n(Respond with JSON only; Prompture will convert to TOON.)"
 
     full_prompt = f"{content_prompt}\n\n{instruct}"
     resp = driver.generate(full_prompt, options)
     raw = resp.get("text", "")
-    cleaned = clean_toon_text(raw) if output_format == "toon" else clean_json_text(raw)
+    cleaned = clean_json_text(raw)
 
     try:
+        json_obj = json.loads(cleaned)
+        json_string = cleaned
+        toon_string = None
         if output_format == "toon":
-            json_obj = toon.decode(cleaned)
-            json_string = json.dumps(json_obj)
-        else:
-            json_obj = json.loads(cleaned)
-            json_string = cleaned
+            toon_string = toon.encode(json_obj)
 
         usage = {
             **resp.get("meta", {}),
@@ -213,37 +203,42 @@ def ask_for_json(
             "cost": resp.get("meta", {}).get("cost", 0.0),
             "model_name": model_name or getattr(driver, "model", "")
         }
-        return {
+        result = {
             "json_string": json_string,
             "json_object": json_obj,
             "usage": usage
         }
-    except Exception as e:
-        if output_format == "toon":
-            raise ValueError(f"Failed to parse TOON: {e}\nRaw: {cleaned}") from e
-
-        if isinstance(e, json.JSONDecodeError):
-            if ai_cleanup:
-                cleaned_fixed = clean_json_text_with_ai(driver, cleaned, model_name, options)
-                try:
-                    json_obj = json.loads(cleaned_fixed)
-                    return {
-                        "json_string": cleaned_fixed,
-                        "json_object": json_obj,
-                        "usage": {
-                            "prompt_tokens": 0,
-                            "completion_tokens": 0,
-                            "total_tokens": 0,
-                            "cost": 0.0,
-                            "model_name": options.get("model", getattr(driver, "model", "")),
-                            "raw_response": {}
-                        },
-                    }
-                except json.JSONDecodeError:
-                    raise e
-            else:
+        if toon_string is not None:
+            result["toon_string"] = toon_string
+            result["output_format"] = "toon"
+        else:
+            result["output_format"] = "json"
+        return result
+    except json.JSONDecodeError as e:
+        if ai_cleanup:
+            cleaned_fixed = clean_json_text_with_ai(driver, cleaned, model_name, options)
+            try:
+                json_obj = json.loads(cleaned_fixed)
+                result = {
+                    "json_string": cleaned_fixed,
+                    "json_object": json_obj,
+                    "usage": {
+                        "prompt_tokens": 0,
+                        "completion_tokens": 0,
+                        "total_tokens": 0,
+                        "cost": 0.0,
+                        "model_name": options.get("model", getattr(driver, "model", "")),
+                        "raw_response": {}
+                    },
+                    "output_format": "json" if output_format != "toon" else "toon",
+                }
+                if output_format == "toon":
+                    result["toon_string"] = toon.encode(json_obj)
+                return result
+            except json.JSONDecodeError:
                 raise e
-        raise e
+        else:
+            raise e
 
 def extract_and_jsonify(
     text: Union[str, Driver],  # Can be either text or driver for backward compatibility
@@ -862,3 +857,345 @@ def stepwise_extract_with_model(
             "__getattr__": lambda self, key: self.get(key),
             "__call__": lambda self: None  # Return None when called if validation failed
         })(error_result)
+
+
+
+def _json_to_toon(data: Union[List[Dict[str, Any]], Dict[str, Any]], data_key: Optional[str] = None) -> str:
+    """Convert JSON array or dict containing array to TOON format.
+    
+    Args:
+        data: List of dicts (uniform array) or dict containing array under a key
+        data_key: If data is a dict, the key containing the array
+        
+    Returns:
+        TOON formatted string
+        
+    Raises:
+        ValueError: If TOON conversion fails or data format is invalid
+        RuntimeError: If python-toon is not installed
+    """
+    if toon is None:
+        raise RuntimeError(
+            "TOON conversion requested but 'python-toon' is not installed. "
+            "Install it with 'pip install python-toon'."
+        )
+    
+    # Handle different data formats
+    if isinstance(data, list):
+        array_data = data
+    elif isinstance(data, dict):
+        if data_key:
+            if data_key not in data:
+                raise ValueError(f"Key '{data_key}' not found in data")
+            array_data = data[data_key]
+        else:
+            # Try to find the first array value in the dict
+            array_data = None
+            for key, value in data.items():
+                if isinstance(value, list) and value:
+                    array_data = value
+                    break
+            if array_data is None:
+                raise ValueError("No array found in data. Specify data_key or provide a list directly.")
+    else:
+        raise ValueError("Data must be a list of dicts or a dict containing an array")
+    
+    if not isinstance(array_data, list):
+        raise ValueError("Array data must be a list")
+    
+    if not array_data:
+        raise ValueError("Array data cannot be empty")
+    
+    # Validate that all items in array are dicts (uniform structure)
+    if not all(isinstance(item, dict) for item in array_data):
+        raise ValueError("All items in array must be dictionaries for TOON conversion")
+    
+    try:
+        return toon.encode(array_data)
+    except Exception as e:
+        raise ValueError(f"Failed to convert data to TOON format: {e}")
+
+
+def _dataframe_to_toon(df) -> str:
+    """Convert Pandas DataFrame to TOON format.
+    
+    Args:
+        df: Pandas DataFrame to convert
+        
+    Returns:
+        TOON formatted string
+        
+    Raises:
+        ValueError: If DataFrame conversion fails
+        RuntimeError: If pandas or python-toon is not installed
+    """
+    try:
+        import pandas as pd
+    except ImportError:
+        raise RuntimeError(
+            "Pandas DataFrame conversion requested but 'pandas' is not installed. "
+            "Install it with 'pip install pandas' or 'pip install prompture[pandas]'."
+        )
+    
+    if toon is None:
+        raise RuntimeError(
+            "TOON conversion requested but 'python-toon' is not installed. "
+            "Install it with 'pip install python-toon'."
+        )
+
+    dataframe_type = getattr(pd, "DataFrame", None)
+    if isinstance(dataframe_type, type):
+        if not isinstance(df, dataframe_type):
+            raise ValueError("Input must be a pandas DataFrame")
+    else:
+        # Duck-type fallback for tests that provide a lightweight mock
+        if not hasattr(df, "to_dict") or not hasattr(df, "empty"):
+            raise ValueError("Input must be a pandas DataFrame")
+    
+    if df.empty:
+        raise ValueError("DataFrame cannot be empty")
+    
+    try:
+        # Convert DataFrame to list of dicts
+        data = df.to_dict('records')
+        return toon.encode(data)
+    except Exception as e:
+        raise ValueError(f"Failed to convert DataFrame to TOON format: {e}")
+
+
+def _calculate_token_savings(json_text: str, toon_text: str) -> Dict[str, Any]:
+    """Calculate estimated token savings between JSON and TOON formats.
+    
+    This is a rough estimation based on character count ratios.
+    Actual token counts may vary by model and tokenizer.
+    
+    Args:
+        json_text: JSON formatted text
+        toon_text: TOON formatted text
+        
+    Returns:
+        Dict containing savings statistics
+    """
+    json_chars = len(json_text)
+    toon_chars = len(toon_text)
+    
+    # Rough estimation: 4 characters ≈ 1 token (varies by model)
+    json_tokens_est = json_chars // 4
+    toon_tokens_est = toon_chars // 4
+    
+    savings_chars = json_chars - toon_chars
+    savings_tokens_est = json_tokens_est - toon_tokens_est
+    
+    percentage_saved = (savings_chars / json_chars * 100) if json_chars > 0 else 0
+    
+    return {
+        "json_characters": json_chars,
+        "toon_characters": toon_chars,
+        "saved_characters": savings_chars,
+        "estimated_json_tokens": json_tokens_est,
+        "estimated_toon_tokens": toon_tokens_est,
+        "estimated_saved_tokens": savings_tokens_est,
+        "percentage_saved": round(percentage_saved, 1)
+    }
+
+
+def extract_from_data(
+    data: Union[List[Dict[str, Any]], Dict[str, Any]],
+    question: str,
+    json_schema: Dict[str, Any],
+    *,
+    model_name: str,
+    data_key: Optional[str] = None,
+    instruction_template: str = "Analyze the following data and answer: {question}",
+    ai_cleanup: bool = True,
+    options: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Extract information from structured data by converting to TOON format for token efficiency.
+    
+    This function takes JSON array data, converts it to TOON format to reduce tokens,
+    sends it to the LLM with a question, and returns the JSON response.
+    
+    Args:
+        data: List of dicts (uniform array) or dict containing array under a key
+        question: The question to ask about the data
+        json_schema: Expected JSON schema for the response
+        model_name: Model identifier in format "provider/model" (e.g., "openai/gpt-4")
+        data_key: If data is a dict, the key containing the array (e.g., "products")
+        instruction_template: Template with {question} placeholder
+        ai_cleanup: Whether to attempt AI-based cleanup if JSON parsing fails
+        options: Additional options to pass to the driver
+    
+    Returns:
+        Dict containing:
+        - json_object: The parsed JSON response
+        - json_string: The JSON string response
+        - usage: Token usage and cost information (includes token_savings)
+        - toon_data: The TOON formatted input data
+        - token_savings: Statistics about token savings vs JSON input
+    
+    Raises:
+        ValueError: If data format is invalid or conversion fails
+        RuntimeError: If required dependencies are missing
+    
+    Example:
+        >>> products = [
+        ...     {"id": 1, "name": "Laptop", "price": 999.99, "category": "electronics"},
+        ...     {"id": 2, "name": "Book", "price": 19.99, "category": "books"}
+        ... ]
+        >>> schema = {
+        ...     "type": "object", 
+        ...     "properties": {
+        ...         "average_price": {"type": "number"},
+        ...         "total_items": {"type": "integer"}
+        ...     }
+        ... }
+        >>> result = extract_from_data(
+        ...     data=products,
+        ...     question="What is the average price and total number of items?",
+        ...     json_schema=schema,
+        ...     model_name="openai/gpt-4"
+        ... )
+        >>> print(result["json_object"])
+        {'average_price': 509.99, 'total_items': 2}
+    """
+    if not question or not question.strip():
+        raise ValueError("Question cannot be empty")
+    
+    if not json_schema:
+        raise ValueError("JSON schema cannot be empty")
+    
+    if options is None:
+        options = {}
+    
+    # Convert data to TOON format
+    toon_data = _json_to_toon(data, data_key)
+    
+    # Calculate token savings (for comparison with JSON)
+    json_data = json.dumps(data if isinstance(data, list) else data.get(data_key, data), indent=2)
+    token_savings = _calculate_token_savings(json_data, toon_data)
+    
+    # Build the prompt with TOON data
+    content_prompt = instruction_template.format(question=question)
+    full_prompt = f"{content_prompt}\n\nData (in TOON format):\n{toon_data}"
+    
+    # Call the LLM
+    result = ask_for_json(
+        driver=get_driver_for_model(model_name),
+        content_prompt=full_prompt,
+        json_schema=json_schema,
+        ai_cleanup=ai_cleanup,
+        model_name=model_name.split('/')[-1] if '/' in model_name else model_name,
+        options=options,
+        output_format="json"  # Always return JSON, not TOON
+    )
+    
+    # Add our additional data to the result
+    result["toon_data"] = toon_data
+    result["token_savings"] = token_savings
+    
+    return result
+
+
+def extract_from_pandas(
+    df,  # pandas.DataFrame - optional import
+    question: str,
+    json_schema: Dict[str, Any],
+    *,
+    model_name: str,
+    instruction_template: str = "Analyze the following data and answer: {question}",
+    ai_cleanup: bool = True,
+    options: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Extract information from Pandas DataFrame by converting to TOON format for token efficiency.
+    
+    This function takes a Pandas DataFrame, converts it to TOON format to reduce tokens,
+    sends it to the LLM with a question, and returns the JSON response.
+    
+    Args:
+        df: Pandas DataFrame to analyze
+        question: The question to ask about the data
+        json_schema: Expected JSON schema for the response
+        model_name: Model identifier in format "provider/model" (e.g., "openai/gpt-4")
+        instruction_template: Template with {question} placeholder
+        ai_cleanup: Whether to attempt AI-based cleanup if JSON parsing fails
+        options: Additional options to pass to the driver
+    
+    Returns:
+        Dict containing:
+        - json_object: The parsed JSON response
+        - json_string: The JSON string response
+        - usage: Token usage and cost information (includes token_savings)
+        - toon_data: The TOON formatted input data
+        - token_savings: Statistics about token savings vs JSON input
+        - dataframe_info: Basic info about the original DataFrame
+    
+    Raises:
+        ValueError: If DataFrame is invalid or conversion fails
+        RuntimeError: If required dependencies are missing
+    
+    Example:
+        >>> import pandas as pd
+        >>> df = pd.DataFrame([
+        ...     {"id": 1, "name": "Laptop", "price": 999.99, "category": "electronics"},
+        ...     {"id": 2, "name": "Book", "price": 19.99, "category": "books"}
+        ... ])
+        >>> schema = {
+        ...     "type": "object",
+        ...     "properties": {
+        ...         "highest_priced_item": {"type": "string"},
+        ...         "price_range": {"type": "number"}
+        ...     }
+        ... }
+        >>> result = extract_from_pandas(
+        ...     df=df,
+        ...     question="What is the highest priced item and price range?",
+        ...     json_schema=schema,
+        ...     model_name="openai/gpt-4"
+        ... )
+        >>> print(result["json_object"])
+        {'highest_priced_item': 'Laptop', 'price_range': 980.0}
+    """
+    if not question or not question.strip():
+        raise ValueError("Question cannot be empty")
+    
+    if not json_schema:
+        raise ValueError("JSON schema cannot be empty")
+    
+    if options is None:
+        options = {}
+    
+    # Convert DataFrame to TOON format
+    toon_data = _dataframe_to_toon(df)
+    
+    # Calculate token savings (for comparison with JSON)
+    json_data = df.to_json(indent=2, orient='records')
+    token_savings = _calculate_token_savings(json_data, toon_data)
+    
+    # Get basic DataFrame info
+    dataframe_info = {
+        "shape": df.shape,
+        "columns": list(df.columns),
+        "dtypes": {col: str(dtype) for col, dtype in df.dtypes.items()}
+    }
+    
+    # Build the prompt with TOON data
+    content_prompt = instruction_template.format(question=question)
+    full_prompt = f"{content_prompt}\n\nData (in TOON format):\n{toon_data}"
+    
+    # Call the LLM
+    result = ask_for_json(
+        driver=get_driver_for_model(model_name),
+        content_prompt=full_prompt,
+        json_schema=json_schema,
+        ai_cleanup=ai_cleanup,
+        model_name=model_name.split('/')[-1] if '/' in model_name else model_name,
+        options=options,
+        output_format="json"  # Always return JSON, not TOON
+    )
+    
+    # Add our additional data to the result
+    result["toon_data"] = toon_data
+    result["token_savings"] = token_savings
+    result["dataframe_info"] = dataframe_info
+    
+    return result

@@ -11,3 +11,7 @@ pytest
 tukuy>=0.0.6
 python-toon>=0.1.0
 google-generativeai>=0.3.0
+python-dateutil>=2.9.0
+pyyaml>=6.0
+groq>=0.4.0
+pandas>=1.3.0
