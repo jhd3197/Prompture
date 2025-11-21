@@ -1,5 +1,7 @@
 import json
 import os
+from unittest.mock import Mock
+
 import pytest
 from prompture import (
     clean_json_text,
@@ -235,18 +237,16 @@ class TestAskForJson:
         assert "json_object" in result
         assert isinstance(result["json_object"], dict)
 
-    def test_ai_cleanup_disabled_raises_error(self, integration_driver, sample_json_schema, monkeypatch):
+    def test_ai_cleanup_disabled_raises_error(self, sample_json_schema):
         """Test that invalid JSON raises exception when AI cleanup is disabled."""
-        # Create a test response with invalid JSON
-        def mock_clean_json_text(text):
-            return '{"name": "Test", "incomplete": true'  # Intentionally invalid JSON (missing closing brace)
-        
-        # Patch the clean_json_text function to return invalid JSON
-        monkeypatch.setattr('prompture.core.clean_json_text', mock_clean_json_text)
+        mock_driver = Mock()
+        mock_driver.generate.return_value = {
+            "text": '{"name": "Test", "incomplete": true'  # Missing closing brace keeps JSON invalid
+        }
         
         content_prompt = "Extract user info"
         with pytest.raises(json.JSONDecodeError):
-            ask_for_json(integration_driver, content_prompt, sample_json_schema, ai_cleanup=False)
+            ask_for_json(mock_driver, content_prompt, sample_json_schema, ai_cleanup=False)
 
 
 class TestExtractAndJsonify:

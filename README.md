@@ -12,6 +12,7 @@
 ## ✨ Features
 
 - ✅ **Structured output** → JSON schema enforcement, or direct **Pydantic** instances
+- ✅ **TOON input conversion** → 45-60% token savings for structured data analysis with `extract_from_data()` and `extract_from_pandas()`
 - ✅ **Stepwise extraction** → Per-field prompts, with smart type conversion (incl. shorthand numbers)
 - ✅ **Multi-driver** → OpenAI, Azure, Claude, Ollama, LM Studio, Google, Groq, OpenRouter, Grok, HTTP, Mock, HuggingFace (via `get_driver()`)
 - ✅ **Usage & cost** → Token + $ tracking on every call (`usage` from driver meta)
@@ -104,6 +105,55 @@ print(person.dict())
 
 **Why start here?** It's fast (one call), cost-efficient, and returns a validated Pydantic instance.
 
+
+## 🚀 TOON Input Conversion: 45-60% Token Savings
+
+Analyze structured data with automatic TOON (Token-Oriented Object Notation) conversion for massive token savings.
+
+```python
+from prompture import extract_from_data, extract_from_pandas
+
+# Your product data
+products = [
+    {"id": 1, "name": "Laptop", "price": 999.99, "rating": 4.5},
+    {"id": 2, "name": "Book", "price": 19.99, "rating": 4.2},
+    {"id": 3, "name": "Headphones", "price": 149.99, "rating": 4.7}
+]
+
+# Ask questions about your data - automatically uses TOON format for 60%+ token savings
+result = extract_from_data(
+    data=products,
+    question="What is the average price and highest rated product?",
+    json_schema={
+        "type": "object",
+        "properties": {
+            "average_price": {"type": "number"},
+            "highest_rated": {"type": "string"}
+        }
+    },
+    model_name="openai/gpt-4"
+)
+
+print(result["json_object"])
+# {"average_price": 389.96, "highest_rated": "Headphones"}
+
+print(f"Token savings: {result['token_savings']['percentage_saved']}%")
+# Token savings: 62.3%
+
+# Works with Pandas DataFrames too!
+import pandas as pd
+df = pd.DataFrame(products)
+result = extract_from_pandas(df=df, question="...", json_schema=schema, model_name="openai/gpt-4")
+```
+
+**Preview token savings without LLM calls:**
+```bash
+python examples/token_comparison_utility.py
+```
+
+> **Note:** Both `python-toon` and `pandas` are now included by default when you install Prompture!
+
+---
 ---
 
 ## 📋 Field Definitions
@@ -200,7 +250,7 @@ print(resp2["json_object"], resp2["usage"])
 
 ### Experimental TOON output
 
-Prompture can ask for TOON (Token-Oriented Object Notation) instead of JSON by setting `output_format="toon"` on `ask_for_json`, `extract_and_jsonify`, `manual_extract_and_jsonify`, or `extract_with_model`. Responses are parsed back into Python dicts, so your downstream code still receives JSON-compatible structures.
+Prompture can ask for TOON (Token-Oriented Object Notation) instead of JSON by setting `output_format="toon"` on `ask_for_json`, `extract_and_jsonify`, `manual_extract_and_jsonify`, or `extract_with_model`. The LLM is still instructed to return JSON (for reliability); Prompture parses it and emits a TOON string via `python-toon`.
 
 ```python
 result = extract_and_jsonify(
@@ -209,8 +259,9 @@ result = extract_and_jsonify(
     model_name="lmstudio/deepseek/deepseek-r1-0528-qwen3-8b",
     output_format="toon",
 )
-print(result["json_string"])  # TOON text
-print(result["json_object"])  # regular dict
+print(result["toon_string"])  # TOON text generated locally
+print(result["json_object"])  # regular dict parsed from the JSON response
+# result["json_string"] still contains the original JSON text
 ```
 
 > [!IMPORTANT]

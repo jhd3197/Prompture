@@ -12,6 +12,7 @@ Prompture is a Python library for structured LLM data extraction. It provides an
 
 - **Multi-LLM Support**: Works with OpenAI, Anthropic, Google, Groq, and more
 - **Structured Output**: Get consistent JSON responses from any LLM
+- **TOON Input Conversion**: 45-60% token savings for structured data analysis
 - **Field Definitions**: Define your data structure with validation
 - **Cross-Model Testing**: Compare results across different models
 - **Driver Architecture**: Extensible design for adding new LLM providers
@@ -56,6 +57,7 @@ Documentation
 
    installation
    quickstart
+   toon_input_guide
    field_definitions_reference
    examples
    contributing

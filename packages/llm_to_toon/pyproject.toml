@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "llm-to-toon"
+version = "0.0.0"
+description = "Tiny wrapper exposing Prompture helpers to convert LLM output into TOON."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+keywords = ["llm", "toon", "prompt", "structured-output"]
+authors = [
+  { name="Juan Denis", email="juan@vene.co" }
+]
+
+dependencies = [
+  "prompture>=0.0.1"
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["llm_to_toon*"]

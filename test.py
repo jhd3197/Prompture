@@ -29,6 +29,9 @@ VALID_PROVIDERS = [
     'local_http'
 ]
 
+YELLOW = "\033[33m"
+RESET = "\033[0m"
+
 PROVIDER_REQUIREMENTS: Dict[str, List[str]] = {
     'openai': ['OPENAI_API_KEY'],
     'ollama': ['OLLAMA_ENDPOINT'],
@@ -109,7 +112,19 @@ def configure_test_environment(args: argparse.Namespace) -> None:
         masked_value = '***' if value else 'Not Set'
         print(f"  {var}: {masked_value}")
     print()
-    
+    server_hints = {
+        "ollama": ("Ollama", os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434")),
+        "lmstudio": ("LM Studio", os.getenv("LMSTUDIO_ENDPOINT", "http://localhost:1234")),
+    }
+    if provider in server_hints:
+        server_name, endpoint = server_hints[provider]
+        print(
+            f"{YELLOW}⚠️  Make sure your {server_name} server is running and reachable at {endpoint}.\n"
+            "   Integration tests will fail if the local inference server is stopped." 
+            f"{RESET}"
+        )
+        print()
+
     # Check credentials
     has_creds = validate_provider_credentials(provider)
     
