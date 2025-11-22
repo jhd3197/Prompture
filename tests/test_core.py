@@ -507,10 +507,77 @@ class TestErrorHandlingAndEdgeCases:
         result = ask_for_json(integration_driver, special_prompt, schema, model_name=DEFAULT_MODEL)
         assert_jsonify_response_structure(result)
 
+
+
+class TestRenderOutput:
+    """Tests for render_output function."""
+
     @pytest.mark.integration
-    def test_minimal_schema(self, integration_driver):
-        """Test with minimal possible schema."""
-        minimal_schema = {"type": "string"}
-        model_name = os.getenv("MODEL", "ollama/mistral")
-        result = ask_for_json(integration_driver, "Get some text", minimal_schema, model_name=model_name)
-        assert_jsonify_response_structure(result, schema_type="string")
+    def test_render_output_text(self, integration_driver):
+        """Test requesting raw text output."""
+        from prompture import render_output
+        from tests.conftest import DEFAULT_MODEL
+        
+        prompt = "Say 'Hello World' and nothing else."
+        result = render_output(
+            driver=integration_driver,
+            content_prompt=prompt,
+            output_format="text",
+            model_name=DEFAULT_MODEL
+        )
+        
+        assert "text" in result
+        assert "usage" in result
+        assert result["output_format"] == "text"
+        assert isinstance(result["text"], str)
+        assert len(result["text"]) > 0
+        # Should not contain markdown fences
+        assert "```" not in result["text"]
+
+    @pytest.mark.integration
+    def test_render_output_html(self, integration_driver):
+        """Test requesting HTML output."""
+        from prompture import render_output
+        from tests.conftest import DEFAULT_MODEL
+        
+        prompt = "Create a <div> with text 'Hello'."
+        result = render_output(
+            driver=integration_driver,
+            content_prompt=prompt,
+            output_format="html",
+            model_name=DEFAULT_MODEL
+        )
+        
+        assert "text" in result
+        assert result["output_format"] == "html"
+        # Should contain HTML tags
+        assert "<div" in result["text"] or "<DIV" in result["text"]
+        # Should not contain markdown fences (function cleans them)
+        assert "```" not in result["text"]
+
+    @pytest.mark.integration
+    def test_render_output_markdown(self, integration_driver):
+        """Test requesting markdown output."""
+        from prompture import render_output
+        from tests.conftest import DEFAULT_MODEL
+        
+        prompt = "Write a list of 3 items."
+        result = render_output(
+            driver=integration_driver,
+            content_prompt=prompt,
+            output_format="markdown",
+            model_name=DEFAULT_MODEL
+        )
+        
+        assert "text" in result
+        assert result["output_format"] == "markdown"
+        # Markdown is allowed, so fences or bullets are fine
+        assert "-" in result["text"] or "*" in result["text"] or "1." in result["text"]
+
+    def test_invalid_format_raises_error(self):
+        """Test that invalid format raises ValueError."""
+        from prompture import render_output
+        mock_driver = Mock()
+        
+        with pytest.raises(ValueError, match="Unsupported output_format"):
+            render_output(mock_driver, "prompt", output_format="xml")

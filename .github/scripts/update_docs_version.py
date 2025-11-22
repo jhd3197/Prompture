@@ -142,39 +142,34 @@ def update_index_rst(index_file, version):
         content = index_file.read_text(encoding='utf-8')
         lines = content.splitlines(keepends=True)
         
-        # Pattern to match the version line (line 20, 0-indexed as 19)
+        # Pattern to match the version line
         pattern = re.compile(
             r'^(\s*Prompture is currently in development \(version )'
             r'[^)]+' 
             r'(\)\. APIs may change between versions\.\s*)$'
         )
         
-        # Update line 20 (index 19)
-        if len(lines) >= 20:
-            line_idx = 19  # Line 20 is at index 19
-            original_line = lines[line_idx]
-            
-            # Check if the line matches the expected pattern
-            if pattern.match(original_line):
+        updated = False
+        for i, line in enumerate(lines):
+            if pattern.match(line):
                 # Replace with new version
                 new_line = pattern.sub(
                     rf'\g<1>{version}\g<2>',
-                    original_line
+                    line
                 )
-                lines[line_idx] = new_line
-                
-                # Write back to file
-                index_file.write_text(''.join(lines), encoding='utf-8')
-                print(f"✓ Updated version in {index_file}")
-                print(f"  Old: {original_line.strip()}")
+                lines[i] = new_line
+                print(f"✓ Updated version in {index_file} at line {i+1}")
+                print(f"  Old: {line.strip()}")
                 print(f"  New: {new_line.strip()}")
-                return True
-            else:
-                print(f"✗ Line 20 does not match expected pattern", file=sys.stderr)
-                print(f"  Found: {original_line.strip()}", file=sys.stderr)
-                return False
+                updated = True
+                break
+        
+        if updated:
+            # Write back to file
+            index_file.write_text(''.join(lines), encoding='utf-8')
+            return True
         else:
-            print(f"✗ File has fewer than 20 lines", file=sys.stderr)
+            print(f"✗ Version pattern not found in {index_file}", file=sys.stderr)
             return False
             
     except Exception as e:
