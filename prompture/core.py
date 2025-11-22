@@ -129,6 +129,90 @@ def clean_json_text_with_ai(driver: Driver, text: str, model_name: str = "", opt
     cleaned = clean_json_text(raw)
     return cleaned
 
+
+def render_output(
+    driver: Driver,
+    content_prompt: str,
+    output_format: Literal["text", "html", "markdown"] = "text",
+    model_name: str = "",
+    options: Dict[str, Any] = {},
+) -> Dict[str, Any]:
+    """Sends a prompt to the driver and returns the raw output in the requested format.
+
+    This function is designed for "no fluff" output, instructing the LLM to return
+    only the requested content without conversational filler or markdown fences
+    (unless markdown is requested).
+
+    Args:
+        driver: Adapter that implements generate(prompt, options).
+        content_prompt: Main prompt content.
+        output_format: Desired format ("text", "html", "markdown").
+        model_name: Optional model identifier used in usage metadata.
+        options: Additional options to pass to the driver.
+
+    Returns:
+        A dictionary containing:
+        - text: the raw text output.
+        - usage: token usage and cost information from the driver's meta object.
+        - output_format: the format of the output.
+
+    Raises:
+        ValueError: If an unsupported output format is provided.
+    """
+    if output_format not in ("text", "html", "markdown"):
+        raise ValueError(f"Unsupported output_format '{output_format}'. Use 'text', 'html', or 'markdown'.")
+
+    instruct = ""
+    if output_format == "text":
+        instruct = (
+            "Return ONLY the raw text content. Do not use markdown formatting, "
+            "code fences, or conversational filler. Just the text."
+        )
+    elif output_format == "html":
+        instruct = (
+            "Return ONLY valid HTML code. Do not wrap it in markdown code fences "
+            "(like ```html ... ```). Do not include conversational filler."
+        )
+    elif output_format == "markdown":
+        instruct = (
+            "Return valid markdown content. You may use standard markdown formatting."
+        )
+
+    full_prompt = f"{content_prompt}\n\nSYSTEM INSTRUCTION: {instruct}"
+    
+    # If specific options are needed for certain formats, they could be added here
+    # For now, we pass options through
+    
+    resp = driver.generate(full_prompt, options)
+    raw = resp.get("text", "")
+    
+    # Clean up potential markdown fences if the model disobeyed for text/html
+    if output_format in ("text", "html"):
+        # Simple cleanup for common fences if they appear despite instructions
+        cleaned = raw.strip()
+        if cleaned.startswith("```") and cleaned.endswith("```"):
+            # Remove first line (fence + optional language) and last line (fence)
+            lines = cleaned.splitlines()
+            if len(lines) >= 2:
+                cleaned = "\n".join(lines[1:-1])
+        raw = cleaned
+
+    usage = {
+        **resp.get("meta", {}),
+        "raw_response": resp,
+        "total_tokens": resp.get("meta", {}).get("total_tokens", 0),
+        "prompt_tokens": resp.get("meta", {}).get("prompt_tokens", 0),
+        "completion_tokens": resp.get("meta", {}).get("completion_tokens", 0),
+        "cost": resp.get("meta", {}).get("cost", 0.0),
+        "model_name": model_name or getattr(driver, "model", "")
+    }
+    
+    return {
+        "text": raw,
+        "usage": usage,
+        "output_format": output_format
+    }
+
 def ask_for_json(
     driver: Driver,
     content_prompt: str,

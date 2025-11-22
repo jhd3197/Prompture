@@ -18,8 +18,7 @@
 - ✅ **Usage & cost** → Token + $ tracking on every call (`usage` from driver meta)
 - ✅ **AI cleanup** → Optional LLM pass to fix malformed JSON
 - ✅ **Batch testing** → Define suites and compare models (spec-driven)
-- 🧪 **Experimental TOON output** → Request Token-Oriented Object Notation when you need ultra-compact text (see [analysis](toon_token_analysis.md))
-
+- 🧪 **Experimental TOON output** → Request Token-Oriented Object Notation when you need ultra-compact text
 <br>
 
 > [!TIP]
@@ -76,6 +75,25 @@ export LMSTUDIO_ENDPOINT=...
 | `lmstudio` | `lmstudio/local-model` | `$0.00` (local) |
 | `huggingface` | `hf/local-or-endpoint`            | `$0.00` (local) |
 | `http`   | `http/self-hosted`                     | `$0.00`         |
+
+---
+
+## 🔍 Model Discovery
+
+Prompture can auto-detect available models from your configured environment. This is especially useful for local setups (like Ollama) or when you want to see which models are available to your application.
+
+```python
+from prompture import get_available_models
+
+# Returns a list of strings like ["openai/gpt-4o", "ollama/llama3:latest", ...]
+models = get_available_models()
+
+for model in models:
+    print(f"Found: {model}")
+```
+
+- **Static Drivers** (OpenAI, Claude, Azure, etc.): Returns models listed in the driver's `MODEL_PRICING` configuration if the driver is configured (API key present).
+- **Dynamic Drivers** (Ollama): Queries the local endpoint (e.g., `http://localhost:11434/api/tags`) to fetch currently installed models.
 
 ---
 

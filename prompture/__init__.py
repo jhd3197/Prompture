@@ -11,7 +11,9 @@ from .core import (
     stepwise_extract_with_model,
     extract_from_data,
     extract_from_pandas,
+    render_output,
 )
+from .drivers import get_driver, get_driver_for_model, OpenAIDriver, LocalHTTPDriver, OllamaDriver, ClaudeDriver, LMStudioDriver, AzureDriver, GoogleDriver, GroqDriver, OpenRouterDriver, GrokDriver
 from .tools import clean_json_text, clean_toon_text
 from .field_definitions import (
     FIELD_DEFINITIONS, get_field_definition, get_required_fields, get_field_names,
@@ -21,6 +23,7 @@ from .field_definitions import (
 )
 from .runner import run_suite_from_spec
 from .validator import validate_against_schema
+from .discovery import get_available_models
 
 # Load environment variables from .env file
 load_dotenv()
@@ -54,6 +57,7 @@ __all__ = [
     # TOON Data Extraction Functions
     "extract_from_data",
     "extract_from_pandas",
+    "render_output",
     # Field Definitions
     "FIELD_DEFINITIONS",
     "get_field_definition",
@@ -70,4 +74,19 @@ __all__ = [
     # Enum Field Support
     "validate_enum_value",
     "normalize_enum_value",
+    # Drivers
+    "get_driver",
+    "get_driver_for_model",
+    "OpenAIDriver",
+    "LocalHTTPDriver",
+    "OllamaDriver",
+    "ClaudeDriver",
+    "LMStudioDriver",
+    "AzureDriver",
+    "GoogleDriver",
+    "GroqDriver",
+    "OpenRouterDriver",
+    "GrokDriver",
+    # Discovery
+    "get_available_models",
 ]
