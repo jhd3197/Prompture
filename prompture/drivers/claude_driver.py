@@ -2,6 +2,7 @@
 Use with API key in CLAUDE_API_KEY env var or provide directly.
 """
 
+import json
 import os
 from typing import Any
 
@@ -15,6 +16,9 @@ from ..driver import Driver
 
 
 class ClaudeDriver(CostMixin, Driver):
+    supports_json_mode = True
+    supports_json_schema = True
+
     # Claude pricing per 1000 tokens (prices should be kept current with Anthropic's pricing)
     MODEL_PRICING = {
         # Claude Opus 4.1
@@ -56,12 +60,45 @@ class ClaudeDriver(CostMixin, Driver):
         model = options.get("model", self.model)
 
         client = anthropic.Anthropic(api_key=self.api_key)
-        resp = client.messages.create(
-            model=model,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=opts["temperature"],
-            max_tokens=opts["max_tokens"],
-        )
+
+        # Native JSON mode: use tool-use for schema enforcement
+        if options.get("json_mode"):
+            json_schema = options.get("json_schema")
+            if json_schema:
+                tool_def = {
+                    "name": "extract_json",
+                    "description": "Extract structured data matching the schema",
+                    "input_schema": json_schema,
+                }
+                resp = client.messages.create(
+                    model=model,
+                    messages=[{"role": "user", "content": prompt}],
+                    tools=[tool_def],
+                    tool_choice={"type": "tool", "name": "extract_json"},
+                    temperature=opts["temperature"],
+                    max_tokens=opts["max_tokens"],
+                )
+                text = ""
+                for block in resp.content:
+                    if block.type == "tool_use":
+                        text = json.dumps(block.input)
+                        break
+            else:
+                resp = client.messages.create(
+                    model=model,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=opts["temperature"],
+                    max_tokens=opts["max_tokens"],
+                )
+                text = resp.content[0].text
+        else:
+            resp = client.messages.create(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=opts["temperature"],
+                max_tokens=opts["max_tokens"],
+            )
+            text = resp.content[0].text
 
         # Extract token usage from Claude response
         prompt_tokens = resp.usage.input_tokens
@@ -81,5 +118,4 @@ class ClaudeDriver(CostMixin, Driver):
             "model_name": model,
         }
 
-        text = resp.content[0].text
         return {"text": text, "meta": meta}

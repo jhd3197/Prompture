@@ -13,6 +13,8 @@ from .grok_driver import GrokDriver
 
 
 class AsyncGrokDriver(CostMixin, AsyncDriver):
+    supports_json_mode = True
+
     MODEL_PRICING = GrokDriver.MODEL_PRICING
     _PRICING_UNIT = 1_000_000
 
@@ -41,6 +43,10 @@ class AsyncGrokDriver(CostMixin, AsyncDriver):
 
         if supports_temperature and "temperature" in opts:
             payload["temperature"] = opts["temperature"]
+
+        # Native JSON mode support
+        if options.get("json_mode"):
+            payload["response_format"] = {"type": "json_object"}
 
         headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
 

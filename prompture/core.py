@@ -223,6 +223,7 @@ def ask_for_json(
     options: dict[str, Any] | None = None,
     output_format: Literal["json", "toon"] = "json",
     cache: bool | None = None,
+    json_mode: Literal["auto", "on", "off"] = "auto",
 ) -> dict[str, Any]:
     """Sends a prompt to the driver and returns structured output plus usage metadata.
 
@@ -283,11 +284,36 @@ def ask_for_json(
             "TOON requested but 'python-toon' is not installed. Install it with 'pip install python-toon'."
         )
 
-    instruct = (
-        "Return only a single JSON object (no markdown, no extra text) that validates against this JSON schema:\n"
-        f"{schema_string}\n\n"
-        "If a value is unknown use null. Use double quotes for keys and strings."
-    )
+    # Determine whether to use native JSON mode
+    use_json_mode = False
+    if json_mode == "on":
+        use_json_mode = True
+    elif json_mode == "auto":
+        use_json_mode = getattr(driver, "supports_json_mode", False)
+
+    if use_json_mode:
+        options = {**options, "json_mode": True}
+        if getattr(driver, "supports_json_schema", False):
+            options["json_schema"] = json_schema
+
+    # Adjust instruction prompt based on JSON mode capabilities
+    if use_json_mode and getattr(driver, "supports_json_schema", False):
+        # Schema enforced by API — minimal instruction
+        instruct = "Extract data matching the requested schema.\nIf a value is unknown use null."
+    elif use_json_mode:
+        # JSON guaranteed but schema not enforced by API
+        instruct = (
+            "Return a JSON object that validates against this schema:\n"
+            f"{schema_string}\n\n"
+            "If a value is unknown use null."
+        )
+    else:
+        # Existing prompt-based enforcement
+        instruct = (
+            "Return only a single JSON object (no markdown, no extra text) that validates against this JSON schema:\n"
+            f"{schema_string}\n\n"
+            "If a value is unknown use null. Use double quotes for keys and strings."
+        )
     if output_format == "toon":
         instruct += "\n\n(Respond with JSON only; Prompture will convert to TOON.)"
 
@@ -366,6 +392,7 @@ def extract_and_jsonify(
     ai_cleanup: bool = True,
     output_format: Literal["json", "toon"] = "json",
     options: dict[str, Any] | None = None,
+    json_mode: Literal["auto", "on", "off"] = "auto",
 ) -> dict[str, Any]:
     """Extracts structured information using automatic driver selection based on model name.
 
@@ -450,6 +477,7 @@ def extract_and_jsonify(
             model_id,
             opts,
             output_format=actual_output_format,
+            json_mode=json_mode,
         )
     except (requests.exceptions.ConnectionError, requests.exceptions.HTTPError) as e:
         if "pytest" in sys.modules:
@@ -469,6 +497,7 @@ def manual_extract_and_jsonify(
     output_format: Literal["json", "toon"] = "json",
     options: dict[str, Any] | None = None,
     verbose_level: LogLevel | int = LogLevel.OFF,
+    json_mode: Literal["auto", "on", "off"] = "auto",
 ) -> dict[str, Any]:
     """Extracts structured information using an explicitly provided driver.
 
@@ -537,6 +566,7 @@ def manual_extract_and_jsonify(
         model_name,
         opts,
         output_format=output_format,
+        json_mode=json_mode,
     )
     log_debug(LogLevel.DEBUG, verbose_level, "Manual extraction completed successfully", prefix="[manual]")
     log_debug(LogLevel.TRACE, verbose_level, {"result": result}, prefix="[manual]")
@@ -554,6 +584,7 @@ def extract_with_model(
     options: dict[str, Any] | None = None,
     verbose_level: LogLevel | int = LogLevel.OFF,
     cache: bool | None = None,
+    json_mode: Literal["auto", "on", "off"] = "auto",
 ) -> dict[str, Any]:
     """Extracts structured information into a Pydantic model instance.
 
@@ -644,6 +675,7 @@ def extract_with_model(
         ai_cleanup=ai_cleanup,
         output_format=output_format,
         options=options,
+        json_mode=json_mode,
     )
     log_debug(LogLevel.DEBUG, verbose_level, "Extraction completed successfully", prefix="[extract]")
     log_debug(LogLevel.TRACE, verbose_level, {"result": result}, prefix="[extract]")
@@ -708,6 +740,7 @@ def stepwise_extract_with_model(
     field_definitions: dict[str, Any] | None = None,
     options: dict[str, Any] | None = None,
     verbose_level: LogLevel | int = LogLevel.OFF,
+    json_mode: Literal["auto", "on", "off"] = "auto",
 ) -> dict[str, Union[str, dict[str, Any]]]:
     """Extracts structured information into a Pydantic model by processing each field individually.
 
@@ -827,6 +860,7 @@ def stepwise_extract_with_model(
                 instruction_template=instruction_template.format(field_name=field_name),
                 ai_cleanup=ai_cleanup,
                 options=options,
+                json_mode=json_mode,
             )
 
             # Add structured logging for extraction result

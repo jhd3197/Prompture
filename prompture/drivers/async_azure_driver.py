@@ -16,6 +16,9 @@ from .azure_driver import AzureDriver
 
 
 class AsyncAzureDriver(CostMixin, AsyncDriver):
+    supports_json_mode = True
+    supports_json_schema = True
+
     MODEL_PRICING = AzureDriver.MODEL_PRICING
 
     def __init__(
@@ -66,6 +69,21 @@ class AsyncAzureDriver(CostMixin, AsyncDriver):
 
         if supports_temperature and "temperature" in opts:
             kwargs["temperature"] = opts["temperature"]
+
+        # Native JSON mode support
+        if options.get("json_mode"):
+            json_schema = options.get("json_schema")
+            if json_schema:
+                kwargs["response_format"] = {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "extraction",
+                        "strict": True,
+                        "schema": json_schema,
+                    },
+                }
+            else:
+                kwargs["response_format"] = {"type": "json_object"}
 
         resp = await self.client.chat.completions.create(**kwargs)
 

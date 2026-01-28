@@ -13,6 +13,8 @@ from .openrouter_driver import OpenRouterDriver
 
 
 class AsyncOpenRouterDriver(CostMixin, AsyncDriver):
+    supports_json_mode = True
+
     MODEL_PRICING = OpenRouterDriver.MODEL_PRICING
 
     def __init__(self, api_key: str | None = None, model: str = "openai/gpt-3.5-turbo"):
@@ -44,6 +46,10 @@ class AsyncOpenRouterDriver(CostMixin, AsyncDriver):
 
         if supports_temperature and "temperature" in opts:
             data["temperature"] = opts["temperature"]
+
+        # Native JSON mode support
+        if options.get("json_mode"):
+            data["response_format"] = {"type": "json_object"}
 
         async with httpx.AsyncClient() as client:
             try:

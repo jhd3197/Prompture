@@ -30,6 +30,7 @@ _CACHE_RELEVANT_OPTIONS = frozenset(
         "presence_penalty",
         "stop",
         "seed",
+        "json_mode",
     }
 )
 

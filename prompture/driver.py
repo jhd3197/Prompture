@@ -23,5 +23,8 @@ class Driver:
     standardized access to token usage and cost information.
     """
 
+    supports_json_mode: bool = False
+    supports_json_schema: bool = False
+
     def generate(self, prompt: str, options: dict[str, Any]) -> dict[str, Any]:
         raise NotImplementedError

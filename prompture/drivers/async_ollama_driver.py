@@ -14,6 +14,8 @@ logger = logging.getLogger(__name__)
 
 
 class AsyncOllamaDriver(AsyncDriver):
+    supports_json_mode = True
+
     MODEL_PRICING = {"default": {"prompt": 0.0, "completion": 0.0}}
 
     def __init__(self, endpoint: str | None = None, model: str = "llama3"):
@@ -31,6 +33,10 @@ class AsyncOllamaDriver(AsyncDriver):
             "model": merged_options.get("model", self.model),
             "stream": False,
         }
+
+        # Native JSON mode support
+        if merged_options.get("json_mode"):
+            payload["format"] = "json"
 
         if "temperature" in merged_options:
             payload["temperature"] = merged_options["temperature"]

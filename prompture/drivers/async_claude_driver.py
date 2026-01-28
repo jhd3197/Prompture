@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from typing import Any
 
@@ -16,6 +17,9 @@ from .claude_driver import ClaudeDriver
 
 
 class AsyncClaudeDriver(CostMixin, AsyncDriver):
+    supports_json_mode = True
+    supports_json_schema = True
+
     MODEL_PRICING = ClaudeDriver.MODEL_PRICING
 
     def __init__(self, api_key: str | None = None, model: str = "claude-3-5-haiku-20241022"):
@@ -30,12 +34,45 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
         model = options.get("model", self.model)
 
         client = anthropic.AsyncAnthropic(api_key=self.api_key)
-        resp = await client.messages.create(
-            model=model,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=opts["temperature"],
-            max_tokens=opts["max_tokens"],
-        )
+
+        # Native JSON mode: use tool-use for schema enforcement
+        if options.get("json_mode"):
+            json_schema = options.get("json_schema")
+            if json_schema:
+                tool_def = {
+                    "name": "extract_json",
+                    "description": "Extract structured data matching the schema",
+                    "input_schema": json_schema,
+                }
+                resp = await client.messages.create(
+                    model=model,
+                    messages=[{"role": "user", "content": prompt}],
+                    tools=[tool_def],
+                    tool_choice={"type": "tool", "name": "extract_json"},
+                    temperature=opts["temperature"],
+                    max_tokens=opts["max_tokens"],
+                )
+                text = ""
+                for block in resp.content:
+                    if block.type == "tool_use":
+                        text = json.dumps(block.input)
+                        break
+            else:
+                resp = await client.messages.create(
+                    model=model,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=opts["temperature"],
+                    max_tokens=opts["max_tokens"],
+                )
+                text = resp.content[0].text
+        else:
+            resp = await client.messages.create(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=opts["temperature"],
+                max_tokens=opts["max_tokens"],
+            )
+            text = resp.content[0].text
 
         prompt_tokens = resp.usage.input_tokens
         completion_tokens = resp.usage.output_tokens
@@ -52,5 +89,4 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
             "model_name": model,
         }
 
-        text = resp.content[0].text
         return {"text": text, "meta": meta}

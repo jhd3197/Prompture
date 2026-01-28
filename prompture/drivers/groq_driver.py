@@ -15,6 +15,8 @@ from ..driver import Driver
 
 
 class GroqDriver(CostMixin, Driver):
+    supports_json_mode = True
+
     # Approximate pricing per 1K tokens (to be updated with official pricing)
     # Each model entry defines token parameters and temperature support
     MODEL_PRICING = {
@@ -85,6 +87,10 @@ class GroqDriver(CostMixin, Driver):
         # Only include temperature if model supports it
         if supports_temperature and "temperature" in opts:
             kwargs["temperature"] = opts["temperature"]
+
+        # Native JSON mode support
+        if options.get("json_mode"):
+            kwargs["response_format"] = {"type": "json_object"}
 
         try:
             resp = self.client.chat.completions.create(**kwargs)

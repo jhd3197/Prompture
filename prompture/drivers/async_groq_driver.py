@@ -16,6 +16,8 @@ from .groq_driver import GroqDriver
 
 
 class AsyncGroqDriver(CostMixin, AsyncDriver):
+    supports_json_mode = True
+
     MODEL_PRICING = GroqDriver.MODEL_PRICING
 
     def __init__(self, api_key: str | None = None, model: str = "llama2-70b-4096"):
@@ -46,6 +48,10 @@ class AsyncGroqDriver(CostMixin, AsyncDriver):
 
         if supports_temperature and "temperature" in opts:
             kwargs["temperature"] = opts["temperature"]
+
+        # Native JSON mode support
+        if options.get("json_mode"):
+            kwargs["response_format"] = {"type": "json_object"}
 
         resp = await self.client.chat.completions.create(**kwargs)
 

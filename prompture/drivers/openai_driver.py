@@ -15,6 +15,9 @@ from ..driver import Driver
 
 
 class OpenAIDriver(CostMixin, Driver):
+    supports_json_mode = True
+    supports_json_schema = True
+
     # Approximate pricing per 1K tokens (keep updated with OpenAI's official pricing)
     # Each model entry also defines which token parameter it supports and
     # whether it accepts temperature.
@@ -91,6 +94,21 @@ class OpenAIDriver(CostMixin, Driver):
         # Only include temperature if the model supports it
         if supports_temperature and "temperature" in opts:
             kwargs["temperature"] = opts["temperature"]
+
+        # Native JSON mode support
+        if options.get("json_mode"):
+            json_schema = options.get("json_schema")
+            if json_schema:
+                kwargs["response_format"] = {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "extraction",
+                        "strict": True,
+                        "schema": json_schema,
+                    },
+                }
+            else:
+                kwargs["response_format"] = {"type": "json_object"}
 
         resp = self.client.chat.completions.create(**kwargs)
 

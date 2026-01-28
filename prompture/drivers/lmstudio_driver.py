@@ -11,6 +11,8 @@ logger = logging.getLogger(__name__)
 
 
 class LMStudioDriver(Driver):
+    supports_json_mode = True
+
     # LM Studio is local – costs are always zero.
     MODEL_PRICING = {"default": {"prompt": 0.0, "completion": 0.0}}
 
@@ -46,6 +48,10 @@ class LMStudioDriver(Driver):
             "messages": [{"role": "user", "content": prompt}],
             "temperature": merged_options.get("temperature", 0.7),
         }
+
+        # Native JSON mode support
+        if merged_options.get("json_mode"):
+            payload["response_format"] = {"type": "json_object"}
 
         try:
             logger.debug(f"Sending request to LM Studio endpoint: {self.endpoint}")

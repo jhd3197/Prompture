@@ -15,6 +15,9 @@ from ..driver import Driver
 
 
 class AzureDriver(CostMixin, Driver):
+    supports_json_mode = True
+    supports_json_schema = True
+
     # Pricing per 1K tokens (adjust if your Azure pricing differs from OpenAI defaults)
     MODEL_PRICING = {
         "gpt-5-mini": {
@@ -105,6 +108,21 @@ class AzureDriver(CostMixin, Driver):
 
         if supports_temperature and "temperature" in opts:
             kwargs["temperature"] = opts["temperature"]
+
+        # Native JSON mode support
+        if options.get("json_mode"):
+            json_schema = options.get("json_schema")
+            if json_schema:
+                kwargs["response_format"] = {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "extraction",
+                        "strict": True,
+                        "schema": json_schema,
+                    },
+                }
+            else:
+                kwargs["response_format"] = {"type": "json_object"}
 
         resp = self.client.chat.completions.create(**kwargs)
 

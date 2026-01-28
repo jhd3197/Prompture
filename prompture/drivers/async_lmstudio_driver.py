@@ -14,6 +14,8 @@ logger = logging.getLogger(__name__)
 
 
 class AsyncLMStudioDriver(AsyncDriver):
+    supports_json_mode = True
+
     MODEL_PRICING = {"default": {"prompt": 0.0, "completion": 0.0}}
 
     def __init__(self, endpoint: str | None = None, model: str = "deepseek/deepseek-r1-0528-qwen3-8b"):
@@ -31,6 +33,10 @@ class AsyncLMStudioDriver(AsyncDriver):
             "messages": [{"role": "user", "content": prompt}],
             "temperature": merged_options.get("temperature", 0.7),
         }
+
+        # Native JSON mode support
+        if merged_options.get("json_mode"):
+            payload["response_format"] = {"type": "json_object"}
 
         async with httpx.AsyncClient() as client:
             try:

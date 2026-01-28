@@ -22,5 +22,8 @@ class AsyncDriver:
         }
     """
 
+    supports_json_mode: bool = False
+    supports_json_schema: bool = False
+
     async def generate(self, prompt: str, options: dict[str, Any]) -> dict[str, Any]:
         raise NotImplementedError

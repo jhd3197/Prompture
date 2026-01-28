@@ -13,6 +13,9 @@ logger = logging.getLogger(__name__)
 class GoogleDriver(CostMixin, Driver):
     """Driver for Google's Generative AI API (Gemini)."""
 
+    supports_json_mode = True
+    supports_json_schema = True
+
     # Based on current Gemini pricing (as of 2025)
     # Source: https://cloud.google.com/vertex-ai/pricing#gemini_models
     _PRICING_UNIT = 1_000_000
@@ -129,6 +132,13 @@ class GoogleDriver(CostMixin, Driver):
             generation_config["top_p"] = merged_options["top_p"]
         if "top_k" in merged_options and "top_k" not in generation_config:
             generation_config["top_k"] = merged_options["top_k"]
+
+        # Native JSON mode support
+        if merged_options.get("json_mode"):
+            generation_config["response_mime_type"] = "application/json"
+            json_schema = merged_options.get("json_schema")
+            if json_schema:
+                generation_config["response_schema"] = json_schema
 
         try:
             logger.debug(f"Initializing {self.model} for generation")

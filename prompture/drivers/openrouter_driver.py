@@ -12,6 +12,8 @@ from ..driver import Driver
 
 
 class OpenRouterDriver(CostMixin, Driver):
+    supports_json_mode = True
+
     # Approximate pricing per 1K tokens based on OpenRouter's pricing
     # https://openrouter.ai/docs#pricing
     MODEL_PRICING = {
@@ -97,6 +99,10 @@ class OpenRouterDriver(CostMixin, Driver):
         # Only include temperature if model supports it
         if supports_temperature and "temperature" in opts:
             data["temperature"] = opts["temperature"]
+
+        # Native JSON mode support
+        if options.get("json_mode"):
+            data["response_format"] = {"type": "json_object"}
 
         try:
             response = requests.post(
