@@ -13,7 +13,7 @@ from .core import (
     extract_from_pandas,
     render_output,
 )
-from .drivers import get_driver, get_driver_for_model, OpenAIDriver, LocalHTTPDriver, OllamaDriver, ClaudeDriver, LMStudioDriver, AzureDriver, GoogleDriver, GroqDriver, OpenRouterDriver, GrokDriver
+from .drivers import get_driver, get_driver_for_model, OpenAIDriver, LocalHTTPDriver, OllamaDriver, ClaudeDriver, LMStudioDriver, AzureDriver, GoogleDriver, GroqDriver, OpenRouterDriver, GrokDriver, AirLLMDriver
 from .tools import clean_json_text, clean_toon_text
 from .field_definitions import (
     FIELD_DEFINITIONS, get_field_definition, get_required_fields, get_field_names,
@@ -24,6 +24,7 @@ from .field_definitions import (
 from .runner import run_suite_from_spec
 from .validator import validate_against_schema
 from .discovery import get_available_models
+from .model_rates import get_model_rates, get_model_info, refresh_rates_cache
 
 # Load environment variables from .env file
 load_dotenv()
@@ -87,6 +88,11 @@ __all__ = [
     "GroqDriver",
     "OpenRouterDriver",
     "GrokDriver",
+    "AirLLMDriver",
     # Discovery
     "get_available_models",
+    # Model Rates
+    "get_model_rates",
+    "get_model_info",
+    "refresh_rates_cache",
 ]
