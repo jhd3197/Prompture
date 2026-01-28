@@ -10,10 +10,11 @@ try:
 except Exception:
     OpenAI = None
 
+from ..cost_mixin import CostMixin
 from ..driver import Driver
 
 
-class OpenAIDriver(Driver):
+class OpenAIDriver(CostMixin, Driver):
     # Approximate pricing per 1K tokens (keep updated with OpenAI's official pricing)
     # Each model entry also defines which token parameter it supports and
     # whether it accepts temperature.
@@ -99,18 +100,8 @@ class OpenAIDriver(Driver):
         completion_tokens = getattr(usage, "completion_tokens", 0)
         total_tokens = getattr(usage, "total_tokens", 0)
 
-        # Calculate cost — try live rates first (per 1M tokens), fall back to hardcoded (per 1K tokens)
-        from ..model_rates import get_model_rates
-
-        live_rates = get_model_rates("openai", model)
-        if live_rates:
-            prompt_cost = (prompt_tokens / 1_000_000) * live_rates["input"]
-            completion_cost = (completion_tokens / 1_000_000) * live_rates["output"]
-        else:
-            model_pricing = self.MODEL_PRICING.get(model, {"prompt": 0, "completion": 0})
-            prompt_cost = (prompt_tokens / 1000) * model_pricing["prompt"]
-            completion_cost = (completion_tokens / 1000) * model_pricing["completion"]
-        total_cost = prompt_cost + completion_cost
+        # Calculate cost via shared mixin
+        total_cost = self._calculate_cost("openai", model, prompt_tokens, completion_tokens)
 
         # Standardized meta object
         meta = {

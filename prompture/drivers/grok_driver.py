@@ -7,11 +7,13 @@ from typing import Any
 
 import requests
 
+from ..cost_mixin import CostMixin
 from ..driver import Driver
 
 
-class GrokDriver(Driver):
+class GrokDriver(CostMixin, Driver):
     # Pricing per 1M tokens based on xAI's documentation
+    _PRICING_UNIT = 1_000_000
     MODEL_PRICING = {
         "grok-code-fast-1": {
             "prompt": 0.20,
@@ -128,18 +130,8 @@ class GrokDriver(Driver):
         completion_tokens = usage.get("completion_tokens", 0)
         total_tokens = usage.get("total_tokens", 0)
 
-        # Calculate cost — try live rates first (per 1M tokens), fall back to hardcoded (per 1M tokens)
-        from ..model_rates import get_model_rates
-
-        live_rates = get_model_rates("grok", model)
-        if live_rates:
-            prompt_cost = (prompt_tokens / 1_000_000) * live_rates["input"]
-            completion_cost = (completion_tokens / 1_000_000) * live_rates["output"]
-        else:
-            model_pricing = self.MODEL_PRICING.get(model, {"prompt": 0, "completion": 0})
-            prompt_cost = (prompt_tokens / 1_000_000) * model_pricing["prompt"]
-            completion_cost = (completion_tokens / 1_000_000) * model_pricing["completion"]
-        total_cost = prompt_cost + completion_cost
+        # Calculate cost via shared mixin
+        total_cost = self._calculate_cost("grok", model, prompt_tokens, completion_tokens)
 
         # Standardized meta object
         meta = {

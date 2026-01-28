@@ -2,6 +2,16 @@
 
 from dotenv import load_dotenv
 
+from .async_driver import AsyncDriver
+from .cache import (
+    CacheBackend,
+    MemoryCacheBackend,
+    RedisCacheBackend,
+    ResponseCache,
+    SQLiteCacheBackend,
+    configure_cache,
+    get_cache,
+)
 from .core import (
     Driver,
     ask_for_json,
@@ -47,11 +57,23 @@ from .field_definitions import (
 )
 from .model_rates import get_model_info, get_model_rates, refresh_rates_cache
 from .runner import run_suite_from_spec
+from .settings import settings as _settings
 from .tools import clean_json_text, clean_toon_text
 from .validator import validate_against_schema
 
 # Load environment variables from .env file
 load_dotenv()
+
+# Auto-configure cache from settings if enabled
+if _settings.cache_enabled:
+    configure_cache(
+        backend=_settings.cache_backend,
+        enabled=True,
+        ttl=_settings.cache_ttl_seconds,
+        maxsize=_settings.cache_memory_maxsize,
+        db_path=_settings.cache_sqlite_path,
+        redis_url=_settings.cache_redis_url,
+    )
 
 # runtime package version (from installed metadata)
 try:
@@ -68,10 +90,11 @@ except Exception:
     __version__ = "0.0.0"
 
 __all__ = [
-    # Field Definitions
     "FIELD_DEFINITIONS",
     "AirLLMDriver",
+    "AsyncDriver",
     "AzureDriver",
+    "CacheBackend",
     "ClaudeDriver",
     "Driver",
     "GoogleDriver",
@@ -79,9 +102,13 @@ __all__ = [
     "GroqDriver",
     "LMStudioDriver",
     "LocalHTTPDriver",
+    "MemoryCacheBackend",
     "OllamaDriver",
     "OpenAIDriver",
     "OpenRouterDriver",
+    "RedisCacheBackend",
+    "ResponseCache",
+    "SQLiteCacheBackend",
     "add_field_definition",
     "add_field_definitions",
     "ask_for_json",
@@ -89,22 +116,19 @@ __all__ = [
     "clean_json_text_with_ai",
     "clean_toon_text",
     "clear_registry",
+    "configure_cache",
     "extract_and_jsonify",
-    # TOON Data Extraction Functions
     "extract_from_data",
     "extract_from_pandas",
     "extract_with_model",
-    # New Field Registry API
     "field_from_registry",
-    # Discovery
     "get_available_models",
-    # Drivers
+    "get_cache",
     "get_driver",
     "get_driver_for_model",
     "get_field_definition",
     "get_field_names",
     "get_model_info",
-    # Model Rates
     "get_model_rates",
     "get_registry_snapshot",
     "get_required_fields",
@@ -117,6 +141,5 @@ __all__ = [
     "run_suite_from_spec",
     "stepwise_extract_with_model",
     "validate_against_schema",
-    # Enum Field Support
     "validate_enum_value",
 ]

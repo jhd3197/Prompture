@@ -1,0 +1,65 @@
+"""Async Ollama driver using httpx."""
+
+from __future__ import annotations
+
+import logging
+import os
+from typing import Any
+
+import httpx
+
+from ..async_driver import AsyncDriver
+
+logger = logging.getLogger(__name__)
+
+
+class AsyncOllamaDriver(AsyncDriver):
+    MODEL_PRICING = {"default": {"prompt": 0.0, "completion": 0.0}}
+
+    def __init__(self, endpoint: str | None = None, model: str = "llama3"):
+        self.endpoint = endpoint or os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434/api/generate")
+        self.model = model
+        self.options: dict[str, Any] = {}
+
+    async def generate(self, prompt: str, options: dict[str, Any] | None = None) -> dict[str, Any]:
+        merged_options = self.options.copy()
+        if options:
+            merged_options.update(options)
+
+        payload = {
+            "prompt": prompt,
+            "model": merged_options.get("model", self.model),
+            "stream": False,
+        }
+
+        if "temperature" in merged_options:
+            payload["temperature"] = merged_options["temperature"]
+        if "top_p" in merged_options:
+            payload["top_p"] = merged_options["top_p"]
+        if "top_k" in merged_options:
+            payload["top_k"] = merged_options["top_k"]
+
+        async with httpx.AsyncClient() as client:
+            try:
+                r = await client.post(self.endpoint, json=payload, timeout=120)
+                r.raise_for_status()
+                response_data = r.json()
+            except httpx.HTTPStatusError as e:
+                raise RuntimeError(f"Ollama request failed: {e}") from e
+            except Exception as e:
+                raise RuntimeError(f"Ollama request failed: {e}") from e
+
+        prompt_tokens = response_data.get("prompt_eval_count", 0)
+        completion_tokens = response_data.get("eval_count", 0)
+        total_tokens = prompt_tokens + completion_tokens
+
+        meta = {
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": total_tokens,
+            "cost": 0.0,
+            "raw_response": response_data,
+            "model_name": merged_options.get("model", self.model),
+        }
+
+        return {"text": response_data.get("response", ""), "meta": meta}

@@ -34,9 +34,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-test = ["pytest>=7.0"]
-dev = ["pytest>=7.0", "ruff>=0.8.0"]
+test = ["pytest>=7.0", "pytest-asyncio>=0.23.0"]
+dev = ["pytest>=7.0", "pytest-asyncio>=0.23.0", "ruff>=0.8.0"]
 airllm = ["airllm>=2.8.0"]
+redis = ["redis>=4.0"]
 
 [project.scripts]
 prompture = "prompture.cli:cli"
@@ -76,3 +77,4 @@ indent-style = "space"
 testpaths = ["tests"]
 markers = ["integration: marks tests that use real LLM APIs"]
 addopts = "-v"
+asyncio_mode = "auto"

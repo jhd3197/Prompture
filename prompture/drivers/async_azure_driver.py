@@ -1,59 +1,22 @@
-"""Driver for Azure OpenAI Service (migrated to openai>=1.0.0).
-Requires the `openai` package.
-"""
+"""Async Azure OpenAI driver. Requires the ``openai`` package (>=1.0.0)."""
+
+from __future__ import annotations
 
 import os
 from typing import Any
 
 try:
-    from openai import AzureOpenAI
+    from openai import AsyncAzureOpenAI
 except Exception:
-    AzureOpenAI = None
+    AsyncAzureOpenAI = None
 
+from ..async_driver import AsyncDriver
 from ..cost_mixin import CostMixin
-from ..driver import Driver
+from .azure_driver import AzureDriver
 
 
-class AzureDriver(CostMixin, Driver):
-    # Pricing per 1K tokens (adjust if your Azure pricing differs from OpenAI defaults)
-    MODEL_PRICING = {
-        "gpt-5-mini": {
-            "prompt": 0.0003,
-            "completion": 0.0006,
-            "tokens_param": "max_completion_tokens",
-            "supports_temperature": False,
-        },
-        "gpt-4o": {
-            "prompt": 0.005,
-            "completion": 0.015,
-            "tokens_param": "max_completion_tokens",
-            "supports_temperature": True,
-        },
-        "gpt-4o-mini": {
-            "prompt": 0.00015,
-            "completion": 0.0006,
-            "tokens_param": "max_completion_tokens",
-            "supports_temperature": True,
-        },
-        "gpt-4": {
-            "prompt": 0.03,
-            "completion": 0.06,
-            "tokens_param": "max_tokens",
-            "supports_temperature": True,
-        },
-        "gpt-4-turbo": {
-            "prompt": 0.01,
-            "completion": 0.03,
-            "tokens_param": "max_tokens",
-            "supports_temperature": True,
-        },
-        "gpt-4.1": {
-            "prompt": 0.03,
-            "completion": 0.06,
-            "tokens_param": "max_tokens",
-            "supports_temperature": True,
-        },
-    }
+class AsyncAzureDriver(CostMixin, AsyncDriver):
+    MODEL_PRICING = AzureDriver.MODEL_PRICING
 
     def __init__(
         self,
@@ -68,7 +31,6 @@ class AzureDriver(CostMixin, Driver):
         self.api_version = os.getenv("AZURE_API_VERSION", "2023-07-01-preview")
         self.model = model
 
-        # Validate required configuration
         if not self.api_key:
             raise ValueError("Missing Azure API key (AZURE_API_KEY).")
         if not self.endpoint:
@@ -76,8 +38,8 @@ class AzureDriver(CostMixin, Driver):
         if not self.deployment_id:
             raise ValueError("Missing Azure deployment ID (AZURE_DEPLOYMENT_ID).")
 
-        if AzureOpenAI:
-            self.client = AzureOpenAI(
+        if AsyncAzureOpenAI:
+            self.client = AsyncAzureOpenAI(
                 api_key=self.api_key,
                 api_version=self.api_version,
                 azure_endpoint=self.endpoint,
@@ -85,9 +47,9 @@ class AzureDriver(CostMixin, Driver):
         else:
             self.client = None
 
-    def generate(self, prompt: str, options: dict[str, Any]) -> dict[str, Any]:
+    async def generate(self, prompt: str, options: dict[str, Any]) -> dict[str, Any]:
         if self.client is None:
-            raise RuntimeError("openai package (>=1.0.0) with AzureOpenAI not installed")
+            raise RuntimeError("openai package (>=1.0.0) with AsyncAzureOpenAI not installed")
 
         model = options.get("model", self.model)
         model_info = self.MODEL_PRICING.get(model, {})
@@ -96,9 +58,8 @@ class AzureDriver(CostMixin, Driver):
 
         opts = {"temperature": 1.0, "max_tokens": 512, **options}
 
-        # Build request kwargs
         kwargs = {
-            "model": self.deployment_id,  # for Azure, use deployment name
+            "model": self.deployment_id,
             "messages": [{"role": "user", "content": prompt}],
         }
         kwargs[tokens_param] = opts.get("max_tokens", 512)
@@ -106,23 +67,20 @@ class AzureDriver(CostMixin, Driver):
         if supports_temperature and "temperature" in opts:
             kwargs["temperature"] = opts["temperature"]
 
-        resp = self.client.chat.completions.create(**kwargs)
+        resp = await self.client.chat.completions.create(**kwargs)
 
-        # Extract usage
         usage = getattr(resp, "usage", None)
         prompt_tokens = getattr(usage, "prompt_tokens", 0)
         completion_tokens = getattr(usage, "completion_tokens", 0)
         total_tokens = getattr(usage, "total_tokens", 0)
 
-        # Calculate cost via shared mixin
         total_cost = self._calculate_cost("azure", model, prompt_tokens, completion_tokens)
 
-        # Standardized meta object
         meta = {
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
             "total_tokens": total_tokens,
-            "cost": round(total_cost, 6),
+            "cost": total_cost,
             "raw_response": resp.model_dump(),
             "model_name": model,
             "deployment_id": self.deployment_id,

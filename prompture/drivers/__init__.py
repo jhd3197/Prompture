@@ -2,6 +2,19 @@ from typing import Optional
 
 from ..settings import settings
 from .airllm_driver import AirLLMDriver
+from .async_airllm_driver import AsyncAirLLMDriver
+from .async_azure_driver import AsyncAzureDriver
+from .async_claude_driver import AsyncClaudeDriver
+from .async_google_driver import AsyncGoogleDriver
+from .async_grok_driver import AsyncGrokDriver
+from .async_groq_driver import AsyncGroqDriver
+from .async_hugging_driver import AsyncHuggingFaceDriver
+from .async_lmstudio_driver import AsyncLMStudioDriver
+from .async_local_http_driver import AsyncLocalHTTPDriver
+from .async_ollama_driver import AsyncOllamaDriver
+from .async_openai_driver import AsyncOpenAIDriver
+from .async_openrouter_driver import AsyncOpenRouterDriver
+from .async_registry import ASYNC_DRIVER_REGISTRY, get_async_driver, get_async_driver_for_model
 from .azure_driver import AzureDriver
 from .claude_driver import ClaudeDriver
 from .google_driver import GoogleDriver
@@ -86,7 +99,22 @@ def get_driver_for_model(model_str: str):
 
 
 __all__ = [
+    # Async drivers
+    "ASYNC_DRIVER_REGISTRY",
+    # Sync drivers
     "AirLLMDriver",
+    "AsyncAirLLMDriver",
+    "AsyncAzureDriver",
+    "AsyncClaudeDriver",
+    "AsyncGoogleDriver",
+    "AsyncGrokDriver",
+    "AsyncGroqDriver",
+    "AsyncHuggingFaceDriver",
+    "AsyncLMStudioDriver",
+    "AsyncLocalHTTPDriver",
+    "AsyncOllamaDriver",
+    "AsyncOpenAIDriver",
+    "AsyncOpenRouterDriver",
     "AzureDriver",
     "ClaudeDriver",
     "GoogleDriver",
@@ -97,6 +125,8 @@ __all__ = [
     "OllamaDriver",
     "OpenAIDriver",
     "OpenRouterDriver",
+    "get_async_driver",
+    "get_async_driver_for_model",
     "get_driver",
     "get_driver_for_model",
 ]

@@ -4,16 +4,18 @@ from typing import Any, Optional
 
 import google.generativeai as genai
 
+from ..cost_mixin import CostMixin
 from ..driver import Driver
 
 logger = logging.getLogger(__name__)
 
 
-class GoogleDriver(Driver):
+class GoogleDriver(CostMixin, Driver):
     """Driver for Google's Generative AI API (Gemini)."""
 
     # Based on current Gemini pricing (as of 2025)
     # Source: https://cloud.google.com/vertex-ai/pricing#gemini_models
+    _PRICING_UNIT = 1_000_000
     MODEL_PRICING = {
         "gemini-1.5-pro": {
             "prompt": 0.00025,  # $0.25/1M chars input
@@ -80,6 +82,26 @@ class GoogleDriver(Driver):
             logger.warning(f"Could not validate connection to Google API: {e}")
             raise
 
+    def _calculate_cost_chars(self, prompt_chars: int, completion_chars: int) -> float:
+        """Calculate cost from character counts.
+
+        Live rates use token-based pricing (estimate ~4 chars/token).
+        Hardcoded MODEL_PRICING uses per-1M-character rates.
+        """
+        from ..model_rates import get_model_rates
+
+        live_rates = get_model_rates("google", self.model)
+        if live_rates:
+            est_prompt_tokens = prompt_chars / 4
+            est_completion_tokens = completion_chars / 4
+            prompt_cost = (est_prompt_tokens / 1_000_000) * live_rates["input"]
+            completion_cost = (est_completion_tokens / 1_000_000) * live_rates["output"]
+        else:
+            model_pricing = self.MODEL_PRICING.get(self.model, {"prompt": 0, "completion": 0})
+            prompt_cost = (prompt_chars / 1_000_000) * model_pricing["prompt"]
+            completion_cost = (completion_chars / 1_000_000) * model_pricing["completion"]
+        return round(prompt_cost + completion_cost, 6)
+
     def generate(self, prompt: str, options: Optional[dict[str, Any]] = None) -> dict[str, Any]:
         """Generate text using Google's Generative AI.
 
@@ -127,21 +149,8 @@ class GoogleDriver(Driver):
             prompt_chars = len(prompt)
             completion_chars = len(response.text)
 
-            # Try live rates first (per 1M tokens), fall back to hardcoded character-based pricing
-            from ..model_rates import get_model_rates
-
-            live_rates = get_model_rates("google", self.model)
-            if live_rates:
-                # models.dev reports token-based pricing; estimate tokens from chars (~4 chars/token)
-                est_prompt_tokens = prompt_chars / 4
-                est_completion_tokens = completion_chars / 4
-                prompt_cost = (est_prompt_tokens / 1_000_000) * live_rates["input"]
-                completion_cost = (est_completion_tokens / 1_000_000) * live_rates["output"]
-            else:
-                model_pricing = self.MODEL_PRICING.get(self.model, {"prompt": 0, "completion": 0})
-                prompt_cost = (prompt_chars / 1_000_000) * model_pricing["prompt"]
-                completion_cost = (completion_chars / 1_000_000) * model_pricing["completion"]
-            total_cost = prompt_cost + completion_cost
+            # Google uses character-based cost estimation
+            total_cost = self._calculate_cost_chars(prompt_chars, completion_chars)
 
             meta = {
                 "prompt_chars": prompt_chars,

@@ -222,6 +222,7 @@ def ask_for_json(
     model_name: str = "",
     options: dict[str, Any] | None = None,
     output_format: Literal["json", "toon"] = "json",
+    cache: bool | None = None,
 ) -> dict[str, Any]:
     """Sends a prompt to the driver and returns structured output plus usage metadata.
 
@@ -236,6 +237,8 @@ def ask_for_json(
         model_name: Optional model identifier used in usage metadata.
         options: Additional options to pass to the driver.
         output_format: Response serialization format ("json" or "toon").
+        cache: Override for response caching.  ``True`` forces caching on,
+            ``False`` forces it off, ``None`` defers to the global setting.
 
     Returns:
         A dictionary containing:
@@ -253,6 +256,26 @@ def ask_for_json(
         options = {}
     if output_format not in ("json", "toon"):
         raise ValueError(f"Unsupported output_format '{output_format}'. Use 'json' or 'toon'.")
+
+    # --- cache lookup ---
+    from .cache import get_cache, make_cache_key
+
+    _cache = get_cache()
+    use_cache = cache if cache is not None else _cache.enabled
+    _force = cache is True  # explicit per-call override
+    cache_key: str | None = None
+    if use_cache:
+        cache_key = make_cache_key(
+            prompt=content_prompt,
+            model_name=model_name,
+            schema=json_schema,
+            options=options,
+            output_format=output_format,
+        )
+        cached = _cache.get(cache_key, force=_force)
+        if cached is not None:
+            cached["usage"]["cache_hit"] = True
+            return cached
 
     schema_string = json.dumps(json_schema, indent=2)
     if output_format == "toon" and toon is None:
@@ -295,6 +318,12 @@ def ask_for_json(
             result["output_format"] = "toon"
         else:
             result["output_format"] = "json"
+
+        # --- cache store ---
+        if use_cache and cache_key is not None:
+            cached_copy = {**result, "usage": {**result["usage"], "raw_response": {}}}
+            _cache.set(cache_key, cached_copy, force=_force)
+
         return result
     except json.JSONDecodeError as e:
         if ai_cleanup:
@@ -316,6 +345,11 @@ def ask_for_json(
                 }
                 if output_format == "toon":
                     result["toon_string"] = toon.encode(json_obj)
+
+                # --- cache store (ai cleanup path) ---
+                if use_cache and cache_key is not None:
+                    _cache.set(cache_key, result, force=_force)
+
                 return result
             except json.JSONDecodeError:
                 raise e from None
@@ -519,6 +553,7 @@ def extract_with_model(
     output_format: Literal["json", "toon"] = "json",
     options: dict[str, Any] | None = None,
     verbose_level: LogLevel | int = LogLevel.OFF,
+    cache: bool | None = None,
 ) -> dict[str, Any]:
     """Extracts structured information into a Pydantic model instance.
 
@@ -534,6 +569,8 @@ def extract_with_model(
         output_format: Response serialization format ("json" or "toon").
         options: Additional options to pass to the driver.
         verbose_level: Logging level for debug output (LogLevel.OFF by default).
+        cache: Override for response caching.  ``True`` forces caching on,
+            ``False`` forces it off, ``None`` defers to the global setting.
 
     Returns:
         A validated instance of the Pydantic model.
@@ -557,6 +594,34 @@ def extract_with_model(
 
     if not isinstance(actual_text, str) or not actual_text.strip():
         raise ValueError("Text input cannot be empty")
+
+    # --- cache lookup ---
+    from .cache import get_cache, make_cache_key
+
+    _cache = get_cache()
+    use_cache = cache if cache is not None else _cache.enabled
+    _force = cache is True
+    cache_key: str | None = None
+    if use_cache:
+        schema_for_key = actual_cls.model_json_schema()
+        cache_key = make_cache_key(
+            prompt=f"{instruction_template} {actual_text}",
+            model_name=actual_model if isinstance(actual_model, str) else "",
+            schema=schema_for_key,
+            options=options,
+            output_format=output_format,
+            pydantic_qualname=actual_cls.__qualname__,
+        )
+        cached = _cache.get(cache_key, force=_force)
+        if cached is not None:
+            cached["usage"]["cache_hit"] = True
+            # Reconstruct Pydantic model instance from cached JSON
+            cached["model"] = actual_cls(**cached["json_object"])
+            return type(
+                "ExtractResult",
+                (dict,),
+                {"__getattr__": lambda self, key: self.get(key), "__call__": lambda self: self["model"]},
+            )(cached)
 
     # Add function entry logging
     log_debug(LogLevel.INFO, verbose_level, "Starting extract_with_model", prefix="[extract]")
@@ -611,6 +676,15 @@ def extract_with_model(
 
     # Return dictionary with all required fields and backwards compatibility
     result_dict = {"json_string": result["json_string"], "json_object": result["json_object"], "usage": result["usage"]}
+
+    # --- cache store ---
+    if use_cache and cache_key is not None:
+        cached_copy = {
+            "json_string": result_dict["json_string"],
+            "json_object": result_dict["json_object"],
+            "usage": {**result_dict["usage"], "raw_response": {}},
+        }
+        _cache.set(cache_key, cached_copy, force=_force)
 
     # Add backwards compatibility property
     result_dict["model"] = model_instance

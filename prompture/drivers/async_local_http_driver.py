@@ -1,0 +1,44 @@
+"""Async LocalHTTP driver using httpx."""
+
+from __future__ import annotations
+
+import os
+from typing import Any
+
+import httpx
+
+from ..async_driver import AsyncDriver
+
+
+class AsyncLocalHTTPDriver(AsyncDriver):
+    MODEL_PRICING = {"default": {"prompt": 0.0, "completion": 0.0}}
+
+    def __init__(self, endpoint: str | None = None, model: str = "local-model"):
+        self.endpoint = endpoint or os.getenv("LOCAL_HTTP_ENDPOINT", "http://localhost:8000/generate")
+        self.model = model
+
+    async def generate(self, prompt: str, options: dict[str, Any]) -> dict[str, Any]:
+        payload = {"prompt": prompt, "options": options}
+
+        async with httpx.AsyncClient() as client:
+            try:
+                r = await client.post(self.endpoint, json=payload, timeout=options.get("timeout", 30))
+                r.raise_for_status()
+                response_data = r.json()
+            except Exception as e:
+                raise RuntimeError(f"AsyncLocalHTTPDriver request failed: {e}") from e
+
+        if "text" in response_data and "meta" in response_data:
+            return response_data
+
+        meta = {
+            "prompt_tokens": response_data.get("prompt_tokens", 0),
+            "completion_tokens": response_data.get("completion_tokens", 0),
+            "total_tokens": response_data.get("total_tokens", 0),
+            "cost": 0.0,
+            "raw_response": response_data,
+            "model_name": options.get("model", self.model),
+        }
+
+        text = response_data.get("text") or response_data.get("response") or str(response_data)
+        return {"text": text, "meta": meta}
