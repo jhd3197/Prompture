@@ -52,7 +52,16 @@ class ClaudeDriver(CostMixin, Driver):
         self.api_key = api_key or os.getenv("CLAUDE_API_KEY")
         self.model = model or os.getenv("CLAUDE_MODEL_NAME", "claude-3-5-haiku-20241022")
 
+    supports_messages = True
+
     def generate(self, prompt: str, options: dict[str, Any]) -> dict[str, Any]:
+        messages = [{"role": "user", "content": prompt}]
+        return self._do_generate(messages, options)
+
+    def generate_messages(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
+        return self._do_generate(messages, options)
+
+    def _do_generate(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
         if anthropic is None:
             raise RuntimeError("anthropic package not installed")
 
@@ -60,6 +69,25 @@ class ClaudeDriver(CostMixin, Driver):
         model = options.get("model", self.model)
 
         client = anthropic.Anthropic(api_key=self.api_key)
+
+        # Anthropic requires system messages as a top-level parameter
+        system_content = None
+        api_messages = []
+        for msg in messages:
+            if msg.get("role") == "system":
+                system_content = msg.get("content", "")
+            else:
+                api_messages.append(msg)
+
+        # Build common kwargs
+        common_kwargs: dict[str, Any] = {
+            "model": model,
+            "messages": api_messages,
+            "temperature": opts["temperature"],
+            "max_tokens": opts["max_tokens"],
+        }
+        if system_content:
+            common_kwargs["system"] = system_content
 
         # Native JSON mode: use tool-use for schema enforcement
         if options.get("json_mode"):
@@ -71,12 +99,9 @@ class ClaudeDriver(CostMixin, Driver):
                     "input_schema": json_schema,
                 }
                 resp = client.messages.create(
-                    model=model,
-                    messages=[{"role": "user", "content": prompt}],
+                    **common_kwargs,
                     tools=[tool_def],
                     tool_choice={"type": "tool", "name": "extract_json"},
-                    temperature=opts["temperature"],
-                    max_tokens=opts["max_tokens"],
                 )
                 text = ""
                 for block in resp.content:
@@ -84,20 +109,10 @@ class ClaudeDriver(CostMixin, Driver):
                         text = json.dumps(block.input)
                         break
             else:
-                resp = client.messages.create(
-                    model=model,
-                    messages=[{"role": "user", "content": prompt}],
-                    temperature=opts["temperature"],
-                    max_tokens=opts["max_tokens"],
-                )
+                resp = client.messages.create(**common_kwargs)
                 text = resp.content[0].text
         else:
-            resp = client.messages.create(
-                model=model,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=opts["temperature"],
-                max_tokens=opts["max_tokens"],
-            )
+            resp = client.messages.create(**common_kwargs)
             text = resp.content[0].text
 
         # Extract token usage from Claude response

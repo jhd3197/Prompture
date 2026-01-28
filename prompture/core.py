@@ -140,6 +140,7 @@ def render_output(
     output_format: Literal["text", "html", "markdown"] = "text",
     model_name: str = "",
     options: dict[str, Any] | None = None,
+    system_prompt: str | None = None,
 ) -> dict[str, Any]:
     """Sends a prompt to the driver and returns the raw output in the requested format.
 
@@ -184,10 +185,15 @@ def render_output(
 
     full_prompt = f"{content_prompt}\n\nSYSTEM INSTRUCTION: {instruct}"
 
-    # If specific options are needed for certain formats, they could be added here
-    # For now, we pass options through
-
-    resp = driver.generate(full_prompt, options)
+    # Use generate_messages when system_prompt is provided
+    if system_prompt is not None:
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": full_prompt},
+        ]
+        resp = driver.generate_messages(messages, options)
+    else:
+        resp = driver.generate(full_prompt, options)
     raw = resp.get("text", "")
 
     # Clean up potential markdown fences if the model disobeyed for text/html
@@ -224,6 +230,7 @@ def ask_for_json(
     output_format: Literal["json", "toon"] = "json",
     cache: bool | None = None,
     json_mode: Literal["auto", "on", "off"] = "auto",
+    system_prompt: str | None = None,
 ) -> dict[str, Any]:
     """Sends a prompt to the driver and returns structured output plus usage metadata.
 
@@ -318,7 +325,16 @@ def ask_for_json(
         instruct += "\n\n(Respond with JSON only; Prompture will convert to TOON.)"
 
     full_prompt = f"{content_prompt}\n\n{instruct}"
-    resp = driver.generate(full_prompt, options)
+
+    # Use generate_messages when system_prompt is provided
+    if system_prompt is not None:
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": full_prompt},
+        ]
+        resp = driver.generate_messages(messages, options)
+    else:
+        resp = driver.generate(full_prompt, options)
     raw = resp.get("text", "")
     cleaned = clean_json_text(raw)
 
@@ -393,6 +409,7 @@ def extract_and_jsonify(
     output_format: Literal["json", "toon"] = "json",
     options: dict[str, Any] | None = None,
     json_mode: Literal["auto", "on", "off"] = "auto",
+    system_prompt: str | None = None,
 ) -> dict[str, Any]:
     """Extracts structured information using automatic driver selection based on model name.
 
@@ -478,6 +495,7 @@ def extract_and_jsonify(
             opts,
             output_format=actual_output_format,
             json_mode=json_mode,
+            system_prompt=system_prompt,
         )
     except (requests.exceptions.ConnectionError, requests.exceptions.HTTPError) as e:
         if "pytest" in sys.modules:
@@ -498,6 +516,7 @@ def manual_extract_and_jsonify(
     options: dict[str, Any] | None = None,
     verbose_level: LogLevel | int = LogLevel.OFF,
     json_mode: Literal["auto", "on", "off"] = "auto",
+    system_prompt: str | None = None,
 ) -> dict[str, Any]:
     """Extracts structured information using an explicitly provided driver.
 
@@ -567,6 +586,7 @@ def manual_extract_and_jsonify(
         opts,
         output_format=output_format,
         json_mode=json_mode,
+        system_prompt=system_prompt,
     )
     log_debug(LogLevel.DEBUG, verbose_level, "Manual extraction completed successfully", prefix="[manual]")
     log_debug(LogLevel.TRACE, verbose_level, {"result": result}, prefix="[manual]")
@@ -585,6 +605,7 @@ def extract_with_model(
     verbose_level: LogLevel | int = LogLevel.OFF,
     cache: bool | None = None,
     json_mode: Literal["auto", "on", "off"] = "auto",
+    system_prompt: str | None = None,
 ) -> dict[str, Any]:
     """Extracts structured information into a Pydantic model instance.
 
@@ -676,6 +697,7 @@ def extract_with_model(
         output_format=output_format,
         options=options,
         json_mode=json_mode,
+        system_prompt=system_prompt,
     )
     log_debug(LogLevel.DEBUG, verbose_level, "Extraction completed successfully", prefix="[extract]")
     log_debug(LogLevel.TRACE, verbose_level, {"result": result}, prefix="[extract]")
@@ -741,6 +763,8 @@ def stepwise_extract_with_model(
     options: dict[str, Any] | None = None,
     verbose_level: LogLevel | int = LogLevel.OFF,
     json_mode: Literal["auto", "on", "off"] = "auto",
+    system_prompt: str | None = None,
+    share_context: bool = False,
 ) -> dict[str, Union[str, dict[str, Any]]]:
     """Extracts structured information into a Pydantic model by processing each field individually.
 
@@ -778,6 +802,23 @@ def stepwise_extract_with_model(
     """
     if not text or not text.strip():
         raise ValueError("Text input cannot be empty")
+
+    # When share_context=True, delegate to Conversation-based extraction
+    if share_context:
+        from .conversation import Conversation
+
+        conv = Conversation(model_name=model_name, system_prompt=system_prompt, options=options)
+        return conv._stepwise_extract(
+            model_cls=model_cls,
+            text=text,
+            instruction_template=instruction_template,
+            ai_cleanup=ai_cleanup,
+            fields=fields,
+            field_definitions=field_definitions,
+            verbose_level=verbose_level,
+            json_mode=json_mode,
+        )
+
     # Add function entry logging
     log_debug(LogLevel.INFO, verbose_level, "Starting stepwise extraction", prefix="[stepwise]")
     log_debug(
@@ -861,6 +902,7 @@ def stepwise_extract_with_model(
                 ai_cleanup=ai_cleanup,
                 options=options,
                 json_mode=json_mode,
+                system_prompt=system_prompt,
             )
 
             # Add structured logging for extraction result
@@ -1248,6 +1290,7 @@ def extract_from_data(
     instruction_template: str = "Analyze the following data and answer: {question}",
     ai_cleanup: bool = True,
     options: dict[str, Any] | None = None,
+    system_prompt: str | None = None,
 ) -> dict[str, Any]:
     """Extract information from structured data by converting to TOON format for token efficiency.
 
@@ -1326,6 +1369,7 @@ def extract_from_data(
         model_name=model_name.split("/")[-1] if "/" in model_name else model_name,
         options=options,
         output_format="json",  # Always return JSON, not TOON
+        system_prompt=system_prompt,
     )
 
     # Add our additional data to the result
@@ -1344,6 +1388,7 @@ def extract_from_pandas(
     instruction_template: str = "Analyze the following data and answer: {question}",
     ai_cleanup: bool = True,
     options: dict[str, Any] | None = None,
+    system_prompt: str | None = None,
 ) -> dict[str, Any]:
     """Extract information from Pandas DataFrame by converting to TOON format for token efficiency.
 
@@ -1430,6 +1475,7 @@ def extract_from_pandas(
         model_name=model_name.split("/")[-1] if "/" in model_name else model_name,
         options=options,
         output_format="json",  # Always return JSON, not TOON
+        system_prompt=system_prompt,
     )
 
     # Add our additional data to the result

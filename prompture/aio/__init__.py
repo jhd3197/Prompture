@@ -8,6 +8,7 @@ All functions mirror their synchronous counterparts in ``prompture.core``
 but are ``async def`` and must be ``await``-ed.
 """
 
+from ..async_conversation import AsyncConversation
 from ..async_core import (
     ask_for_json,
     clean_json_text_with_ai,
@@ -43,6 +44,8 @@ __all__ = [
     "AsyncAirLLMDriver",
     "AsyncAzureDriver",
     "AsyncClaudeDriver",
+    # Async conversation
+    "AsyncConversation",
     # Async base class
     "AsyncDriver",
     "AsyncGoogleDriver",

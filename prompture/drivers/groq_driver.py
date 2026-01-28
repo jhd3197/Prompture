@@ -48,20 +48,16 @@ class GroqDriver(CostMixin, Driver):
         else:
             self.client = None
 
+    supports_messages = True
+
     def generate(self, prompt: str, options: dict[str, Any]) -> dict[str, Any]:
-        """Generate completion using Groq API.
+        messages = [{"role": "user", "content": prompt}]
+        return self._do_generate(messages, options)
 
-        Args:
-            prompt: Input prompt
-            options: Generation options
+    def generate_messages(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
+        return self._do_generate(messages, options)
 
-        Returns:
-            Dict containing generated text and metadata
-
-        Raises:
-            RuntimeError: If groq package is not installed
-            groq.error.*: Various Groq API errors
-        """
+    def _do_generate(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
         if self.client is None:
             raise RuntimeError("groq package is not installed")
 
@@ -78,7 +74,7 @@ class GroqDriver(CostMixin, Driver):
         # Base kwargs for API call
         kwargs = {
             "model": model,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": messages,
         }
 
         # Set token limit with correct parameter name

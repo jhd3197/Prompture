@@ -105,16 +105,16 @@ class GoogleDriver(CostMixin, Driver):
             completion_cost = (completion_chars / 1_000_000) * model_pricing["completion"]
         return round(prompt_cost + completion_cost, 6)
 
+    supports_messages = True
+
     def generate(self, prompt: str, options: Optional[dict[str, Any]] = None) -> dict[str, Any]:
-        """Generate text using Google's Generative AI.
+        messages = [{"role": "user", "content": prompt}]
+        return self._do_generate(messages, options)
 
-        Args:
-            prompt: The input prompt
-            options: Additional options to pass to the model
+    def generate_messages(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
+        return self._do_generate(messages, options)
 
-        Returns:
-            Dict containing generated text and metadata
-        """
+    def _do_generate(self, messages: list[dict[str, str]], options: Optional[dict[str, Any]] = None) -> dict[str, Any]:
         merged_options = self.options.copy()
         if options:
             merged_options.update(options)
@@ -140,14 +140,32 @@ class GoogleDriver(CostMixin, Driver):
             if json_schema:
                 generation_config["response_schema"] = json_schema
 
+        # Convert messages to Gemini format
+        system_instruction = None
+        contents: list[dict[str, Any]] = []
+        for msg in messages:
+            role = msg.get("role", "user")
+            content = msg.get("content", "")
+            if role == "system":
+                system_instruction = content
+            else:
+                # Gemini uses "model" for assistant role
+                gemini_role = "model" if role == "assistant" else "user"
+                contents.append({"role": gemini_role, "parts": [content]})
+
         try:
             logger.debug(f"Initializing {self.model} for generation")
-            model = genai.GenerativeModel(self.model)
+            model_kwargs: dict[str, Any] = {}
+            if system_instruction:
+                model_kwargs["system_instruction"] = system_instruction
+            model = genai.GenerativeModel(self.model, **model_kwargs)
 
             # Generate response
-            logger.debug(f"Generating with prompt: {prompt}")
+            logger.debug(f"Generating with {len(contents)} content parts")
+            # If single user message, pass content directly for backward compatibility
+            gen_input: Any = contents if len(contents) != 1 else contents[0]["parts"][0]
             response = model.generate_content(
-                prompt,
+                gen_input,
                 generation_config=generation_config if generation_config else None,
                 safety_settings=safety_settings if safety_settings else None,
             )
@@ -156,16 +174,16 @@ class GoogleDriver(CostMixin, Driver):
                 raise ValueError("Empty response from model")
 
             # Calculate token usage and cost
-            prompt_chars = len(prompt)
+            total_prompt_chars = sum(len(msg.get("content", "")) for msg in messages)
             completion_chars = len(response.text)
 
             # Google uses character-based cost estimation
-            total_cost = self._calculate_cost_chars(prompt_chars, completion_chars)
+            total_cost = self._calculate_cost_chars(total_prompt_chars, completion_chars)
 
             meta = {
-                "prompt_chars": prompt_chars,
+                "prompt_chars": total_prompt_chars,
                 "completion_chars": completion_chars,
-                "total_chars": prompt_chars + completion_chars,
+                "total_chars": total_prompt_chars + completion_chars,
                 "cost": total_cost,
                 "raw_response": response.prompt_feedback if hasattr(response, "prompt_feedback") else None,
                 "model_name": self.model,

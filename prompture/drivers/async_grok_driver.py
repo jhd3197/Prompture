@@ -23,7 +23,16 @@ class AsyncGrokDriver(CostMixin, AsyncDriver):
         self.model = model
         self.api_base = "https://api.x.ai/v1"
 
+    supports_messages = True
+
     async def generate(self, prompt: str, options: dict[str, Any]) -> dict[str, Any]:
+        messages = [{"role": "user", "content": prompt}]
+        return await self._do_generate(messages, options)
+
+    async def generate_messages(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
+        return await self._do_generate(messages, options)
+
+    async def _do_generate(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
         if not self.api_key:
             raise RuntimeError("GROK_API_KEY environment variable is required")
 
@@ -37,7 +46,7 @@ class AsyncGrokDriver(CostMixin, AsyncDriver):
 
         payload = {
             "model": model,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": messages,
         }
         payload[tokens_param] = opts.get("max_tokens", 512)
 

@@ -88,7 +88,16 @@ class AzureDriver(CostMixin, Driver):
         else:
             self.client = None
 
+    supports_messages = True
+
     def generate(self, prompt: str, options: dict[str, Any]) -> dict[str, Any]:
+        messages = [{"role": "user", "content": prompt}]
+        return self._do_generate(messages, options)
+
+    def generate_messages(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
+        return self._do_generate(messages, options)
+
+    def _do_generate(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
         if self.client is None:
             raise RuntimeError("openai package (>=1.0.0) with AzureOpenAI not installed")
 
@@ -102,7 +111,7 @@ class AzureDriver(CostMixin, Driver):
         # Build request kwargs
         kwargs = {
             "model": self.deployment_id,  # for Azure, use deployment name
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": messages,
         }
         kwargs[tokens_param] = opts.get("max_tokens", 512)
 

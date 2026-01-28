@@ -2,6 +2,7 @@
 
 from dotenv import load_dotenv
 
+from .async_conversation import AsyncConversation
 from .async_driver import AsyncDriver
 from .cache import (
     CacheBackend,
@@ -12,6 +13,7 @@ from .cache import (
     configure_cache,
     get_cache,
 )
+from .conversation import Conversation
 from .core import (
     Driver,
     ask_for_json,
@@ -92,10 +94,12 @@ except Exception:
 __all__ = [
     "FIELD_DEFINITIONS",
     "AirLLMDriver",
+    "AsyncConversation",
     "AsyncDriver",
     "AzureDriver",
     "CacheBackend",
     "ClaudeDriver",
+    "Conversation",
     "Driver",
     "GoogleDriver",
     "GrokDriver",

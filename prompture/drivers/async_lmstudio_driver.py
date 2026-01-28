@@ -23,14 +23,25 @@ class AsyncLMStudioDriver(AsyncDriver):
         self.model = model
         self.options: dict[str, Any] = {}
 
+    supports_messages = True
+
     async def generate(self, prompt: str, options: dict[str, Any] | None = None) -> dict[str, Any]:
+        messages = [{"role": "user", "content": prompt}]
+        return await self._do_generate(messages, options)
+
+    async def generate_messages(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
+        return await self._do_generate(messages, options)
+
+    async def _do_generate(
+        self, messages: list[dict[str, str]], options: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         merged_options = self.options.copy()
         if options:
             merged_options.update(options)
 
         payload = {
             "model": merged_options.get("model", self.model),
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": messages,
             "temperature": merged_options.get("temperature", 0.7),
         }
 

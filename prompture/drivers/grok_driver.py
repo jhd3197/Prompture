@@ -78,19 +78,16 @@ class GrokDriver(CostMixin, Driver):
         self.model = model
         self.api_base = "https://api.x.ai/v1"
 
+    supports_messages = True
+
     def generate(self, prompt: str, options: dict[str, Any]) -> dict[str, Any]:
-        """Generate completion using Grok API.
+        messages = [{"role": "user", "content": prompt}]
+        return self._do_generate(messages, options)
 
-        Args:
-            prompt: Input prompt
-            options: Generation options
+    def generate_messages(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
+        return self._do_generate(messages, options)
 
-        Returns:
-            Dict containing generated text and metadata
-
-        Raises:
-            RuntimeError: If API key is missing or request fails
-        """
+    def _do_generate(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
         if not self.api_key:
             raise RuntimeError("GROK_API_KEY environment variable is required")
 
@@ -107,7 +104,7 @@ class GrokDriver(CostMixin, Driver):
         # Base request payload
         payload = {
             "model": model,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": messages,
         }
 
         # Add token limit with correct parameter name

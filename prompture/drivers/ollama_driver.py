@@ -42,6 +42,8 @@ class OllamaDriver(Driver):
             # We don't raise an error here to allow for delayed server startup
             # The actual error will be raised when generate() is called
 
+    supports_messages = True
+
     def generate(self, prompt: str, options: Optional[dict[str, Any]] = None) -> dict[str, Any]:
         # Merge instance options with call-specific options
         merged_options = self.options.copy()
@@ -118,3 +120,64 @@ class OllamaDriver(Driver):
 
         # Ollama returns text in "response"
         return {"text": response_data.get("response", ""), "meta": meta}
+
+    def generate_messages(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
+        """Use Ollama's /api/chat endpoint for multi-turn conversations."""
+        merged_options = self.options.copy()
+        if options:
+            merged_options.update(options)
+
+        # Derive the chat endpoint from the generate endpoint
+        chat_endpoint = self.endpoint.replace("/api/generate", "/api/chat")
+
+        payload: dict[str, Any] = {
+            "model": merged_options.get("model", self.model),
+            "messages": messages,
+            "stream": False,
+        }
+
+        # Native JSON mode support
+        if merged_options.get("json_mode"):
+            payload["format"] = "json"
+
+        if "temperature" in merged_options:
+            payload["temperature"] = merged_options["temperature"]
+        if "top_p" in merged_options:
+            payload["top_p"] = merged_options["top_p"]
+        if "top_k" in merged_options:
+            payload["top_k"] = merged_options["top_k"]
+
+        try:
+            logger.debug(f"Sending chat request to Ollama endpoint: {chat_endpoint}")
+            r = requests.post(chat_endpoint, json=payload, timeout=120)
+            r.raise_for_status()
+            response_data = r.json()
+
+            if not isinstance(response_data, dict):
+                raise ValueError(f"Expected dict response, got {type(response_data)}")
+        except requests.exceptions.ConnectionError:
+            raise
+        except requests.exceptions.HTTPError:
+            raise
+        except json.JSONDecodeError as e:
+            raise json.JSONDecodeError(f"Invalid JSON response from Ollama: {e.msg}", e.doc, e.pos) from e
+        except Exception as e:
+            raise RuntimeError(f"Ollama chat request failed: {e}") from e
+
+        prompt_tokens = response_data.get("prompt_eval_count", 0)
+        completion_tokens = response_data.get("eval_count", 0)
+        total_tokens = prompt_tokens + completion_tokens
+
+        meta = {
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": total_tokens,
+            "cost": 0.0,
+            "raw_response": response_data,
+            "model_name": merged_options.get("model", self.model),
+        }
+
+        # Chat endpoint returns response in message.content
+        message = response_data.get("message", {})
+        text = message.get("content", "")
+        return {"text": text, "meta": meta}

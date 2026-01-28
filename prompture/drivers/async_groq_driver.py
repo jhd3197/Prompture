@@ -28,7 +28,16 @@ class AsyncGroqDriver(CostMixin, AsyncDriver):
         else:
             self.client = None
 
+    supports_messages = True
+
     async def generate(self, prompt: str, options: dict[str, Any]) -> dict[str, Any]:
+        messages = [{"role": "user", "content": prompt}]
+        return await self._do_generate(messages, options)
+
+    async def generate_messages(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
+        return await self._do_generate(messages, options)
+
+    async def _do_generate(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
         if self.client is None:
             raise RuntimeError("groq package is not installed")
 
@@ -42,7 +51,7 @@ class AsyncGroqDriver(CostMixin, AsyncDriver):
 
         kwargs = {
             "model": model,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": messages,
         }
         kwargs[tokens_param] = opts.get("max_tokens", 512)
 

@@ -38,14 +38,23 @@ class LMStudioDriver(Driver):
         except requests.exceptions.RequestException as e:
             logger.warning(f"Could not validate connection to LM Studio server: {e}")
 
+    supports_messages = True
+
     def generate(self, prompt: str, options: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+        messages = [{"role": "user", "content": prompt}]
+        return self._do_generate(messages, options)
+
+    def generate_messages(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
+        return self._do_generate(messages, options)
+
+    def _do_generate(self, messages: list[dict[str, str]], options: Optional[dict[str, Any]] = None) -> dict[str, Any]:
         merged_options = self.options.copy()
         if options:
             merged_options.update(options)
 
         payload = {
             "model": merged_options.get("model", self.model),
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": messages,
             "temperature": merged_options.get("temperature", 0.7),
         }
 

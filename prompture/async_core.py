@@ -63,6 +63,7 @@ async def render_output(
     output_format: Literal["text", "html", "markdown"] = "text",
     model_name: str = "",
     options: dict[str, Any] | None = None,
+    system_prompt: str | None = None,
 ) -> dict[str, Any]:
     """Send a prompt and return the raw output in the requested format (async version)."""
     if options is None:
@@ -86,7 +87,15 @@ async def render_output(
 
     full_prompt = f"{content_prompt}\n\nSYSTEM INSTRUCTION: {instruct}"
 
-    resp = await driver.generate(full_prompt, options)
+    # Use generate_messages when system_prompt is provided
+    if system_prompt is not None:
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": full_prompt},
+        ]
+        resp = await driver.generate_messages(messages, options)
+    else:
+        resp = await driver.generate(full_prompt, options)
     raw = resp.get("text", "")
 
     if output_format in ("text", "html"):
@@ -120,6 +129,7 @@ async def ask_for_json(
     output_format: Literal["json", "toon"] = "json",
     cache: bool | None = None,
     json_mode: Literal["auto", "on", "off"] = "auto",
+    system_prompt: str | None = None,
 ) -> dict[str, Any]:
     """Send a prompt and return structured JSON output plus usage metadata (async version)."""
     if options is None:
@@ -187,7 +197,16 @@ async def ask_for_json(
         instruct += "\n\n(Respond with JSON only; Prompture will convert to TOON.)"
 
     full_prompt = f"{content_prompt}\n\n{instruct}"
-    resp = await driver.generate(full_prompt, options)
+
+    # Use generate_messages when system_prompt is provided
+    if system_prompt is not None:
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": full_prompt},
+        ]
+        resp = await driver.generate_messages(messages, options)
+    else:
+        resp = await driver.generate(full_prompt, options)
     raw = resp.get("text", "")
     cleaned = clean_json_text(raw)
 
@@ -262,6 +281,7 @@ async def extract_and_jsonify(
     output_format: Literal["json", "toon"] = "json",
     options: dict[str, Any] | None = None,
     json_mode: Literal["auto", "on", "off"] = "auto",
+    system_prompt: str | None = None,
 ) -> dict[str, Any]:
     """Extract structured information using automatic async driver selection (async version)."""
     if options is None:
@@ -306,6 +326,7 @@ async def extract_and_jsonify(
             opts,
             output_format=output_format,
             json_mode=json_mode,
+            system_prompt=system_prompt,
         )
     except Exception as e:
         if "pytest" in sys.modules:
@@ -326,6 +347,7 @@ async def manual_extract_and_jsonify(
     options: dict[str, Any] | None = None,
     verbose_level: LogLevel | int = LogLevel.OFF,
     json_mode: Literal["auto", "on", "off"] = "auto",
+    system_prompt: str | None = None,
 ) -> dict[str, Any]:
     """Extract structured information using an explicitly provided async driver."""
     if options is None:
@@ -352,6 +374,7 @@ async def manual_extract_and_jsonify(
         opts,
         output_format=output_format,
         json_mode=json_mode,
+        system_prompt=system_prompt,
     )
     return result
 
@@ -367,6 +390,7 @@ async def extract_with_model(
     verbose_level: LogLevel | int = LogLevel.OFF,
     cache: bool | None = None,
     json_mode: Literal["auto", "on", "off"] = "auto",
+    system_prompt: str | None = None,
 ) -> dict[str, Any]:
     """Extract structured information into a Pydantic model instance (async version)."""
     if options is None:
@@ -414,6 +438,7 @@ async def extract_with_model(
         output_format=output_format,
         options=options,
         json_mode=json_mode,
+        system_prompt=system_prompt,
     )
 
     json_object = result["json_object"]
@@ -469,10 +494,28 @@ async def stepwise_extract_with_model(
     options: dict[str, Any] | None = None,
     verbose_level: LogLevel | int = LogLevel.OFF,
     json_mode: Literal["auto", "on", "off"] = "auto",
+    system_prompt: str | None = None,
+    share_context: bool = False,
 ) -> dict[str, Union[str, dict[str, Any]]]:
     """Extract information field-by-field using sequential async LLM calls."""
     if not text or not text.strip():
         raise ValueError("Text input cannot be empty")
+
+    # When share_context=True, delegate to AsyncConversation-based extraction
+    if share_context:
+        from .async_conversation import AsyncConversation
+
+        conv = AsyncConversation(model_name=model_name, system_prompt=system_prompt, options=options)
+        return await conv._stepwise_extract(
+            model_cls=model_cls,
+            text=text,
+            instruction_template=instruction_template,
+            ai_cleanup=ai_cleanup,
+            fields=fields,
+            field_definitions=field_definitions,
+            verbose_level=verbose_level,
+            json_mode=json_mode,
+        )
 
     if field_definitions is None:
         field_definitions = get_registry_snapshot()
@@ -518,6 +561,7 @@ async def stepwise_extract_with_model(
                 ai_cleanup=ai_cleanup,
                 options=options,
                 json_mode=json_mode,
+                system_prompt=system_prompt,
             )
 
             field_usage = result.get("usage", {})
@@ -637,6 +681,7 @@ async def extract_from_data(
     instruction_template: str = "Analyze the following data and answer: {question}",
     ai_cleanup: bool = True,
     options: dict[str, Any] | None = None,
+    system_prompt: str | None = None,
 ) -> dict[str, Any]:
     """Extract information from structured data via TOON format (async version)."""
     if not question or not question.strip():
@@ -663,6 +708,7 @@ async def extract_from_data(
         model_name=model_name.split("/")[-1] if "/" in model_name else model_name,
         options=options,
         output_format="json",
+        system_prompt=system_prompt,
     )
 
     result["toon_data"] = toon_data
@@ -679,6 +725,7 @@ async def extract_from_pandas(
     instruction_template: str = "Analyze the following data and answer: {question}",
     ai_cleanup: bool = True,
     options: dict[str, Any] | None = None,
+    system_prompt: str | None = None,
 ) -> dict[str, Any]:
     """Extract information from a Pandas DataFrame via TOON format (async version)."""
     if not question or not question.strip():
@@ -711,6 +758,7 @@ async def extract_from_pandas(
         model_name=model_name.split("/")[-1] if "/" in model_name else model_name,
         options=options,
         output_format="json",
+        system_prompt=system_prompt,
     )
 
     result["toon_data"] = toon_data

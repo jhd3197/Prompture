@@ -68,7 +68,16 @@ class OpenAIDriver(CostMixin, Driver):
         else:
             self.client = None
 
+    supports_messages = True
+
     def generate(self, prompt: str, options: dict[str, Any]) -> dict[str, Any]:
+        messages = [{"role": "user", "content": prompt}]
+        return self._do_generate(messages, options)
+
+    def generate_messages(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
+        return self._do_generate(messages, options)
+
+    def _do_generate(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
         if self.client is None:
             raise RuntimeError("openai package (>=1.0.0) is not installed")
 
@@ -85,7 +94,7 @@ class OpenAIDriver(CostMixin, Driver):
         # Base kwargs
         kwargs = {
             "model": model,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": messages,
         }
 
         # Assign token limit with the correct parameter name

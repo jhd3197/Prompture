@@ -25,6 +25,36 @@ class Driver:
 
     supports_json_mode: bool = False
     supports_json_schema: bool = False
+    supports_messages: bool = False
 
     def generate(self, prompt: str, options: dict[str, Any]) -> dict[str, Any]:
         raise NotImplementedError
+
+    def generate_messages(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
+        """Generate a response from a list of conversation messages.
+
+        Each message is a dict with ``"role"`` (``"system"``, ``"user"``, or
+        ``"assistant"``) and ``"content"`` keys.
+
+        The default implementation flattens the messages into a single prompt
+        string and delegates to :meth:`generate`.  Drivers that natively
+        support message arrays should override this method and set
+        ``supports_messages = True``.
+        """
+        prompt = self._flatten_messages(messages)
+        return self.generate(prompt, options)
+
+    @staticmethod
+    def _flatten_messages(messages: list[dict[str, str]]) -> str:
+        """Join messages into a single prompt string with role prefixes."""
+        parts: list[str] = []
+        for msg in messages:
+            role = msg.get("role", "user")
+            content = msg.get("content", "")
+            if role == "system":
+                parts.append(f"[System]: {content}")
+            elif role == "assistant":
+                parts.append(f"[Assistant]: {content}")
+            else:
+                parts.append(f"[User]: {content}")
+        return "\n\n".join(parts)
