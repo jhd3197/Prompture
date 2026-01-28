@@ -8,7 +8,6 @@ This module provides utilities for:
 3. Exclusive field extraction against Pydantic models
 4. Safe JSON text extraction from messy LLM output
 5. Small parsing helpers (booleans, lists, datetimes)
-6. Lightweight, flexible debug logging with levels
 
 Notes:
 - Only standard lib + pydantic + python-dateutil are required.
@@ -18,13 +17,12 @@ Notes:
 from __future__ import annotations
 
 import json
+import logging
 import re
-import sys
 import uuid
-from collections.abc import Iterable, Mapping
+from collections.abc import Mapping
 from datetime import date, datetime, time, timezone
 from decimal import Decimal, InvalidOperation
-from enum import Enum
 from typing import (
     Any,
     Union,
@@ -36,11 +34,12 @@ import dateutil.parser
 from pydantic import BaseModel
 from tukuy import TukuyTransformer
 
+logger = logging.getLogger("prompture.tools")
+
 # Initialize Tukuy transformer
 TUKUY = TukuyTransformer()
 
 __all__ = [
-    "LogLevel",
     "as_list",
     "clean_json_text",
     "clean_toon_text",
@@ -50,87 +49,11 @@ __all__ = [
     "get_field_default",
     "get_type_default",
     "load_field_definitions",
-    "log_debug",
     "parse_boolean",
     "parse_datetime",
     "parse_shorthand_number",
     "validate_field_definition",
 ]
-
-
-# ---------------------------------------------------------------------------
-# Logging
-# ---------------------------------------------------------------------------
-
-
-class LogLevel(int, Enum):
-    OFF = 1000
-    ERROR = 40
-    WARN = 30
-    INFO = 20
-    DEBUG = 10
-    TRACE = 5  # very verbose
-
-
-def log_debug(
-    level: int | LogLevel,
-    current_level: int | LogLevel,
-    msg: str | Mapping[str, Any] | Iterable[tuple[str, Any]],
-    *,
-    prefix: str = "",
-    stream=None,
-    ts: bool = False,
-    json_mode: bool = False,
-) -> None:
-    """
-    Simple leveled logger.
-
-    Args:
-        level: Level of this message.
-        current_level: Minimum level that should be emitted.
-        msg: Message string OR a mapping/iterable of (key, value) to print.
-        prefix: Optional prefix (e.g., "[extractor] ").
-        stream: File-like stream; defaults to sys.stderr.
-        ts: If True, prepend ISO timestamp.
-        json_mode: If True, print as a single JSON object line.
-
-    Examples:
-        log_debug(LogLevel.DEBUG, current, "Parsed field X")
-        log_debug(LogLevel.INFO, current, {"field": "age", "value": 42})
-    """
-    if int(current_level) > int(level):
-        return
-
-    stream = stream or sys.stderr
-    parts: list[str] = []
-
-    if ts:
-        parts.append(datetime.now(timezone.utc).isoformat())
-
-    if prefix:
-        parts.append(prefix.rstrip())
-
-    if json_mode:
-        if isinstance(msg, str):
-            payload = {"message": msg}
-        elif isinstance(msg, Mapping):
-            payload = dict(msg)
-        else:
-            payload = dict(msg)  # try to coerce iterable of pairs
-        out = " ".join([*parts, json.dumps(payload, default=str, ensure_ascii=False)])
-        stream.write(out + "\n")
-        return
-
-    if isinstance(msg, str):
-        parts.append(msg)
-    elif isinstance(msg, Mapping):
-        kv = " ".join(f"{k}={json.dumps(v, default=str, ensure_ascii=False)}" for k, v in msg.items())
-        parts.append(kv)
-    else:
-        kv = " ".join(f"{k}={json.dumps(v, default=str, ensure_ascii=False)}" for k, v in msg)
-        parts.append(kv)
-
-    stream.write(" ".join(parts) + "\n")
 
 
 # ---------------------------------------------------------------------------
@@ -494,18 +417,16 @@ def convert_value(
             if field_name and field_definitions:
                 field_def = field_definitions.get(field_name, {})
                 if isinstance(field_def, dict) and "default" in field_def:
-                    log_debug(
-                        LogLevel.DEBUG, LogLevel.INFO, f"Using field default for '{field_name}': {field_def['default']}"
-                    )
+                    logger.debug("Using field default for '%s': %s", field_name, field_def["default"])
                     return field_def["default"]
 
             # Fall back to type default
             type_default = get_type_default(target_type)
-            log_debug(LogLevel.DEBUG, LogLevel.INFO, f"Using type default for {target_type}: {type_default}")
+            logger.debug("Using type default for %s: %s", target_type, type_default)
             return type_default
 
         except Exception as fallback_error:
-            log_debug(LogLevel.WARN, LogLevel.INFO, f"Failed to get fallback for {target_type}: {fallback_error}")
+            logger.warning("Failed to get fallback for %s: %s", target_type, fallback_error)
             return None
 
     def _safe_convert_recursive(val: Any, typ: type[Any]) -> Any:
@@ -548,17 +469,15 @@ def convert_value(
         for _i, t in enumerate(non_none):
             try:
                 result = _safe_convert_recursive(value, t)
-                log_debug(
-                    LogLevel.TRACE, LogLevel.DEBUG, f"Union conversion succeeded with type {t} for value '{value}'"
-                )
+                logger.debug("Union conversion succeeded with type %s for value '%s'", t, value)
                 return result
             except Exception as e:
                 conversion_errors.append((t, str(e)))
-                log_debug(LogLevel.TRACE, LogLevel.DEBUG, f"Union conversion failed for type {t}: {e}")
+                logger.debug("Union conversion failed for type %s: %s", t, e)
 
         # All conversions failed
         error_msg = f"Cannot convert '{value}' to any Union type {non_none}. Errors: {conversion_errors}"
-        log_debug(LogLevel.WARN, LogLevel.INFO, error_msg)
+        logger.warning("%s", error_msg)
         return _get_fallback_value(error_msg)
 
     # Lists / Tuples - Enhanced error handling for individual items
@@ -573,9 +492,7 @@ def convert_value(
                     converted_item = _safe_convert_recursive(item, item_t)
                     result_items.append(converted_item)
                 except Exception as e:
-                    log_debug(
-                        LogLevel.WARN, LogLevel.INFO, f"Failed to convert list item {i} '{item}' to {item_t}: {e}"
-                    )
+                    logger.warning("Failed to convert list item %d '%s' to %s: %s", i, item, item_t, e)
                     # Try to get default for item type
                     try:
                         default_item = get_type_default(item_t)
@@ -588,7 +505,7 @@ def convert_value(
 
         except Exception as e:
             error_msg = f"Cannot convert '{value}' to list: {e}"
-            log_debug(LogLevel.WARN, LogLevel.INFO, error_msg)
+            logger.warning("%s", error_msg)
             return _get_fallback_value(error_msg)
 
     if origin in (tuple, tuple):
@@ -602,7 +519,7 @@ def convert_value(
                     try:
                         converted_items.append(_safe_convert_recursive(item, item_t))
                     except Exception as e:
-                        log_debug(LogLevel.WARN, LogLevel.INFO, f"Failed to convert tuple item '{item}': {e}")
+                        logger.warning("Failed to convert tuple item '%s': %s", item, e)
                         converted_items.append(get_type_default(item_t))
                 return tuple(converted_items)
             elif args:
@@ -613,13 +530,13 @@ def convert_value(
                     try:
                         converted_items.append(_safe_convert_recursive(v, t))
                     except Exception as e:
-                        log_debug(LogLevel.WARN, LogLevel.INFO, f"Failed to convert tuple item '{v}' to {t}: {e}")
+                        logger.warning("Failed to convert tuple item '%s' to %s: %s", v, t, e)
                         converted_items.append(get_type_default(t))
                 return tuple(converted_items)
             return tuple(value)
         except Exception as e:
             error_msg = f"Cannot convert '{value}' to tuple: {e}"
-            log_debug(LogLevel.WARN, LogLevel.INFO, error_msg)
+            logger.warning("%s", error_msg)
             return _get_fallback_value(error_msg)
 
     # Dict - Enhanced error handling
@@ -638,7 +555,7 @@ def convert_value(
                     converted_val = _safe_convert_recursive(v, val_t)
                     result_dict[converted_key] = converted_val
                 except Exception as e:
-                    log_debug(LogLevel.WARN, LogLevel.INFO, f"Failed to convert dict item {k}:{v}: {e}")
+                    logger.warning("Failed to convert dict item %s:%s: %s", k, v, e)
                     # Skip problematic items
                     continue
 
@@ -646,7 +563,7 @@ def convert_value(
 
         except Exception as e:
             error_msg = f"Cannot convert '{value}' to dict: {e}"
-            log_debug(LogLevel.WARN, LogLevel.INFO, error_msg)
+            logger.warning("%s", error_msg)
             return _get_fallback_value(error_msg)
 
     # Scalars with enhanced error handling
@@ -672,7 +589,7 @@ def convert_value(
                 return int(parse_shorthand_number(value, as_decimal=False, allow_percent=False))
             except Exception:
                 error_msg = f"Cannot convert '{value}' to int: {e}"
-                log_debug(LogLevel.WARN, LogLevel.INFO, error_msg)
+                logger.warning("%s", error_msg)
                 return _get_fallback_value(error_msg)
 
     if target_type is float:
@@ -691,7 +608,7 @@ def convert_value(
 
         except Exception as e:
             error_msg = f"Cannot convert '{value}' to float: {e}"
-            log_debug(LogLevel.WARN, LogLevel.INFO, error_msg)
+            logger.warning("%s", error_msg)
             return _get_fallback_value(error_msg)
 
     if target_type is Decimal:
@@ -710,7 +627,7 @@ def convert_value(
 
         except Exception as e:
             error_msg = f"Cannot convert '{value}' to Decimal: {e}"
-            log_debug(LogLevel.WARN, LogLevel.INFO, error_msg)
+            logger.warning("%s", error_msg)
             return _get_fallback_value(error_msg)
 
     # Bool - Enhanced error handling
@@ -719,7 +636,7 @@ def convert_value(
             return parse_boolean(value)
         except Exception as e:
             error_msg = f"Cannot convert '{value}' to bool: {e}"
-            log_debug(LogLevel.WARN, LogLevel.INFO, error_msg)
+            logger.warning("%s", error_msg)
             return _get_fallback_value(error_msg)
 
     # Strings - More robust handling
@@ -730,7 +647,7 @@ def convert_value(
             return str(value)
         except Exception as e:
             error_msg = f"Cannot convert '{value}' to str: {e}"
-            log_debug(LogLevel.WARN, LogLevel.INFO, error_msg)
+            logger.warning("%s", error_msg)
             return _get_fallback_value(error_msg)
 
     # Datetime / Date / Time - Enhanced error handling
@@ -739,7 +656,7 @@ def convert_value(
             return parse_datetime(value)
         except Exception as e:
             error_msg = f"Cannot convert '{value}' to datetime: {e}"
-            log_debug(LogLevel.WARN, LogLevel.INFO, error_msg)
+            logger.warning("%s", error_msg)
             return _get_fallback_value(error_msg)
 
     if target_type is date:
@@ -748,7 +665,7 @@ def convert_value(
             return dt.date()
         except Exception as e:
             error_msg = f"Cannot convert '{value}' to date: {e}"
-            log_debug(LogLevel.WARN, LogLevel.INFO, error_msg)
+            logger.warning("%s", error_msg)
             return _get_fallback_value(error_msg)
 
     if target_type is time:
@@ -757,7 +674,7 @@ def convert_value(
             return dt.time()
         except Exception as e:
             error_msg = f"Cannot convert '{value}' to time: {e}"
-            log_debug(LogLevel.WARN, LogLevel.INFO, error_msg)
+            logger.warning("%s", error_msg)
             return _get_fallback_value(error_msg)
 
     # UUID - Enhanced error handling
@@ -768,7 +685,7 @@ def convert_value(
             return uuid.UUID(str(value))
         except Exception as e:
             error_msg = f"Cannot convert '{value}' to UUID: {e}"
-            log_debug(LogLevel.WARN, LogLevel.INFO, error_msg)
+            logger.warning("%s", error_msg)
             return _get_fallback_value(error_msg)
 
     # Pydantic models - Enhanced error handling
@@ -782,7 +699,7 @@ def convert_value(
                 raise ValueError(f"Cannot convert non-mapping '{value}' to {target_type.__name__}")
         except Exception as e:
             error_msg = f"Cannot convert '{value}' to {target_type.__name__}: {e}"
-            log_debug(LogLevel.WARN, LogLevel.INFO, error_msg)
+            logger.warning("%s", error_msg)
             return _get_fallback_value(error_msg)
 
     # Fallback: direct cast if possible
@@ -790,7 +707,7 @@ def convert_value(
         return target_type(value)  # type: ignore[call-arg]
     except Exception as e:
         error_msg = f"Cannot convert '{value}' to {getattr(target_type, '__name__', target_type)}: {e}"
-        log_debug(LogLevel.WARN, LogLevel.INFO, error_msg)
+        logger.warning("%s", error_msg)
         return _get_fallback_value(error_msg)
 
 
@@ -806,7 +723,6 @@ def extract_fields(
     *,
     strict: bool = True,
     missing: str = "skip",  # "skip" | "none" | "error"
-    level: int | LogLevel = LogLevel.OFF,
     field_definitions: dict[str, Any] | None = None,
     use_defaults_on_failure: bool = True,
 ) -> dict[str, Any]:
@@ -822,7 +738,6 @@ def extract_fields(
                  - "skip": drop it
                  - "none": include with None
                  - "error": raise KeyError
-        level: LogLevel for internal debug logs (uses log_debug).
         field_definitions: Optional field definitions for default values and conversion hints.
         use_defaults_on_failure: Whether to use default values when conversion fails.
 
@@ -853,11 +768,11 @@ def extract_fields(
 
         if source_key not in data:
             if missing == "skip":
-                log_debug(LogLevel.DEBUG, level, {"skip_missing": fname})
+                logger.debug("Skipping missing field: %s", fname)
                 continue
             if missing == "none":
                 result[fname] = None
-                log_debug(LogLevel.DEBUG, level, {"missing_none": fname})
+                logger.debug("Missing field set to None: %s", fname)
                 continue
             raise KeyError(f"Missing required field in data: {source_key}")
 
@@ -872,7 +787,7 @@ def extract_fields(
                 use_defaults_on_failure=use_defaults_on_failure,
             )
             result[fname] = converted
-            log_debug(LogLevel.TRACE, level, {"field": fname, "raw": raw, "converted": converted})
+            logger.debug("Converted field %s: %s -> %s", fname, raw, converted)
         except Exception as e:
             # If we're not using defaults, re-raise the original error
             if not use_defaults_on_failure:
@@ -882,14 +797,10 @@ def extract_fields(
             try:
                 fallback_value = get_field_default(fname, finfo, field_definitions)
                 result[fname] = fallback_value
-                log_debug(LogLevel.WARN, level, {"field": fname, "error": str(e), "fallback": fallback_value})
+                logger.warning("Field %s conversion error: %s, using fallback: %s", fname, e, fallback_value)
             except Exception as fallback_error:
                 # If even fallback fails, re-raise original error
-                log_debug(
-                    LogLevel.ERROR,
-                    level,
-                    {"field": fname, "conversion_error": str(e), "fallback_error": str(fallback_error)},
-                )
+                logger.error("Field %s conversion error: %s, fallback error: %s", fname, e, fallback_error)
                 raise ValueError(f"Validation failed for field '{fname}': {e}") from e
 
     return result

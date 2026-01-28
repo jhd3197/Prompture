@@ -3,22 +3,24 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Literal, Union
 
 from pydantic import BaseModel
 
+from .callbacks import DriverCallbacks
 from .driver import Driver
 from .drivers import get_driver_for_model
 from .field_definitions import get_registry_snapshot
 from .tools import (
-    LogLevel,
     clean_json_text,
     convert_value,
     get_field_default,
-    log_debug,
 )
+
+logger = logging.getLogger("prompture.conversation")
 
 
 class Conversation:
@@ -41,6 +43,7 @@ class Conversation:
         driver: Driver | None = None,
         system_prompt: str | None = None,
         options: dict[str, Any] | None = None,
+        callbacks: DriverCallbacks | None = None,
     ) -> None:
         if model_name is None and driver is None:
             raise ValueError("Either model_name or driver must be provided")
@@ -49,6 +52,9 @@ class Conversation:
             self._driver = driver
         else:
             self._driver = get_driver_for_model(model_name)
+
+        if callbacks is not None:
+            self._driver.callbacks = callbacks
 
         self._model_name = model_name or ""
         self._system_prompt = system_prompt
@@ -86,6 +92,11 @@ class Conversation:
             raise ValueError("role must be 'user' or 'assistant'")
         self._messages.append({"role": role, "content": content})
 
+    def usage_summary(self) -> str:
+        """Human-readable summary of accumulated usage."""
+        u = self._usage
+        return f"Conversation: {u['total_tokens']:,} tokens across {u['turns']} turn(s) costing ${u['cost']:.4f}"
+
     # ------------------------------------------------------------------
     # Core methods
     # ------------------------------------------------------------------
@@ -117,7 +128,7 @@ class Conversation:
         """
         merged = {**self._options, **(options or {})}
         messages = self._build_messages(content)
-        resp = self._driver.generate_messages(messages, merged)
+        resp = self._driver.generate_messages_with_hooks(messages, merged)
 
         text = resp.get("text", "")
         meta = resp.get("meta", {})
@@ -183,7 +194,7 @@ class Conversation:
         full_user_content = f"{content}\n\n{instruct}"
 
         messages = self._build_messages(full_user_content)
-        resp = self._driver.generate_messages(messages, merged)
+        resp = self._driver.generate_messages_with_hooks(messages, merged)
 
         text = resp.get("text", "")
         meta = resp.get("meta", {})
@@ -313,7 +324,6 @@ class Conversation:
         ai_cleanup: bool,
         fields: list[str] | None,
         field_definitions: dict[str, Any] | None,
-        verbose_level: LogLevel | int,
         json_mode: Literal["auto", "on", "off"],
     ) -> dict[str, Union[str, dict[str, Any]]]:
         """Stepwise extraction using conversation context between fields."""
@@ -349,7 +359,7 @@ class Conversation:
         )
 
         for field_name, field_info in field_items:
-            log_debug(LogLevel.DEBUG, verbose_level, f"Extracting field: {field_name}", prefix="[stepwise-conv]")
+            logger.debug("[stepwise-conv] Extracting field: %s", field_name)
 
             field_schema = {
                 "value": {

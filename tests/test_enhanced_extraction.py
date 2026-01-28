@@ -13,7 +13,6 @@ from pydantic import BaseModel, Field
 
 from prompture.core import stepwise_extract_with_model
 from prompture.field_definitions import FIELD_DEFINITIONS
-from prompture.tools import LogLevel
 
 
 # Test models for extraction
@@ -402,7 +401,6 @@ class TestStepwiseExtractionBackwardCompatibility:
             fields=["name"],  # Only extract name
             field_definitions=FIELD_DEFINITIONS,
             options={"temperature": 0.7},
-            verbose_level=LogLevel.DEBUG,
         )
 
         # Should work with new parameters

@@ -63,7 +63,10 @@ Configuration is in `pyproject.toml` under `[tool.ruff]`.
 - **`prompture/core.py`** — Primary business logic. All extraction functions live here: `ask_for_json()` (low-level schema enforcement), `extract_and_jsonify()` / `manual_extract_and_jsonify()` (text-to-JSON), `extract_with_model()` / `stepwise_extract_with_model()` (Pydantic-based), `extract_from_data()` / `extract_from_pandas()` (TOON input), `render_output()` (raw text formatting).
 - **`prompture/drivers/`** — One module per LLM provider (openai, claude, google, groq, grok, azure, ollama, lmstudio, openrouter, local_http, huggingface, airllm). Each driver implements `generate(prompt, options)` returning a standardized response with token/cost metadata.
 - **`prompture/drivers/__init__.py`** — Central `DRIVER_REGISTRY` dict mapping provider name to factory lambda. `get_driver_for_model("provider/model")` parses the string and instantiates the right driver. `get_driver("provider")` is the legacy interface.
-- **`prompture/tools.py`** — Utilities: JSON/TOON text cleanup, type conversion (shorthand numbers, multilingual booleans, datetimes), field schema generation, custom `LogLevel` enum (not stdlib logging).
+- **`prompture/tools.py`** — Utilities: JSON/TOON text cleanup, type conversion (shorthand numbers, multilingual booleans, datetimes), field schema generation.
+- **`prompture/logging.py`** — Library logging configuration: `JSONFormatter` for structured JSON-lines output, `configure_logging()` for enabling library-level logging via Python stdlib `logging`.
+- **`prompture/callbacks.py`** — `DriverCallbacks` dataclass with `on_request`, `on_response`, `on_error` hooks for driver-level observability.
+- **`prompture/session.py`** — `UsageSession` dataclass for tracking token counts, costs, and errors across multiple driver calls.
 - **`prompture/field_definitions.py`** — Thread-safe global field registry with 50+ predefined fields, template variable substitution (`{{current_year}}`, `{{current_date}}`), and Pydantic Field generation via `field_from_registry()`.
 - **`prompture/settings.py`** — Pydantic-settings `Settings` class loading provider API keys/endpoints from `.env`.
 - **`prompture/discovery.py`** — `get_available_models()` auto-detects models from configured providers (static pricing tables + dynamic Ollama endpoint query).

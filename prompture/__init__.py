@@ -13,6 +13,7 @@ from .cache import (
     configure_cache,
     get_cache,
 )
+from .callbacks import DriverCallbacks
 from .conversation import Conversation
 from .core import (
     Driver,
@@ -57,8 +58,10 @@ from .field_definitions import (
     reset_registry,
     validate_enum_value,
 )
+from .logging import JSONFormatter, configure_logging
 from .model_rates import get_model_info, get_model_rates, refresh_rates_cache
 from .runner import run_suite_from_spec
+from .session import UsageSession
 from .settings import settings as _settings
 from .tools import clean_json_text, clean_toon_text
 from .validator import validate_against_schema
@@ -101,9 +104,11 @@ __all__ = [
     "ClaudeDriver",
     "Conversation",
     "Driver",
+    "DriverCallbacks",
     "GoogleDriver",
     "GrokDriver",
     "GroqDriver",
+    "JSONFormatter",
     "LMStudioDriver",
     "LocalHTTPDriver",
     "MemoryCacheBackend",
@@ -113,6 +118,7 @@ __all__ = [
     "RedisCacheBackend",
     "ResponseCache",
     "SQLiteCacheBackend",
+    "UsageSession",
     "add_field_definition",
     "add_field_definitions",
     "ask_for_json",
@@ -121,6 +127,7 @@ __all__ = [
     "clean_toon_text",
     "clear_registry",
     "configure_cache",
+    "configure_logging",
     "extract_and_jsonify",
     "extract_from_data",
     "extract_from_pandas",

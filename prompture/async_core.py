@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import sys
 from datetime import date, datetime
 from decimal import Decimal
@@ -26,12 +27,12 @@ from .core import (
 from .drivers.async_registry import get_async_driver_for_model
 from .field_definitions import get_registry_snapshot
 from .tools import (
-    LogLevel,
     clean_json_text,
     convert_value,
     get_field_default,
-    log_debug,
 )
+
+logger = logging.getLogger("prompture.async_core")
 
 
 async def clean_json_text_with_ai(
@@ -345,7 +346,6 @@ async def manual_extract_and_jsonify(
     ai_cleanup: bool = True,
     output_format: Literal["json", "toon"] = "json",
     options: dict[str, Any] | None = None,
-    verbose_level: LogLevel | int = LogLevel.OFF,
     json_mode: Literal["auto", "on", "off"] = "auto",
     system_prompt: str | None = None,
 ) -> dict[str, Any]:
@@ -357,7 +357,7 @@ async def manual_extract_and_jsonify(
     if not text or not text.strip():
         raise ValueError("Text input cannot be empty")
 
-    log_debug(LogLevel.INFO, verbose_level, "Starting async manual extraction", prefix="[async-manual]")
+    logger.info("[async-manual] Starting async manual extraction")
 
     opts = dict(options)
     if model_name:
@@ -387,7 +387,6 @@ async def extract_with_model(
     ai_cleanup: bool = True,
     output_format: Literal["json", "toon"] = "json",
     options: dict[str, Any] | None = None,
-    verbose_level: LogLevel | int = LogLevel.OFF,
     cache: bool | None = None,
     json_mode: Literal["auto", "on", "off"] = "auto",
     system_prompt: str | None = None,
@@ -425,7 +424,7 @@ async def extract_with_model(
                 {"__getattr__": lambda self, key: self.get(key), "__call__": lambda self: self["model"]},
             )(cached)
 
-    log_debug(LogLevel.INFO, verbose_level, "Starting async extract_with_model", prefix="[async-extract]")
+    logger.info("[async-extract] Starting async extract_with_model")
 
     schema = model_cls.model_json_schema()
 
@@ -492,7 +491,6 @@ async def stepwise_extract_with_model(
     fields: list[str] | None = None,
     field_definitions: dict[str, Any] | None = None,
     options: dict[str, Any] | None = None,
-    verbose_level: LogLevel | int = LogLevel.OFF,
     json_mode: Literal["auto", "on", "off"] = "auto",
     system_prompt: str | None = None,
     share_context: bool = False,
@@ -513,7 +511,6 @@ async def stepwise_extract_with_model(
             ai_cleanup=ai_cleanup,
             fields=fields,
             field_definitions=field_definitions,
-            verbose_level=verbose_level,
             json_mode=json_mode,
         )
 

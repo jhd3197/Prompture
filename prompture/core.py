@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import sys
 from datetime import date, datetime
 from decimal import Decimal
@@ -21,12 +22,12 @@ from .driver import Driver
 from .drivers import get_driver_for_model
 from .field_definitions import get_registry_snapshot
 from .tools import (
-    LogLevel,
     clean_json_text,
     convert_value,
     get_field_default,
-    log_debug,
 )
+
+logger = logging.getLogger("prompture.core")
 
 
 def normalize_field_value(value: Any, field_type: type, field_def: dict[str, Any]) -> Any:
@@ -514,7 +515,6 @@ def manual_extract_and_jsonify(
     ai_cleanup: bool = True,
     output_format: Literal["json", "toon"] = "json",
     options: dict[str, Any] | None = None,
-    verbose_level: LogLevel | int = LogLevel.OFF,
     json_mode: Literal["auto", "on", "off"] = "auto",
     system_prompt: str | None = None,
 ) -> dict[str, Any]:
@@ -533,7 +533,6 @@ def manual_extract_and_jsonify(
         ai_cleanup: Whether to attempt AI-based cleanup if JSON parsing fails.
         output_format: Response serialization format ("json" or "toon").
         options: Additional options to pass to the driver.
-        verbose_level: Logging level for debug output (LogLevel.OFF by default).
 
     Returns:
         A dictionary containing:
@@ -552,31 +551,23 @@ def manual_extract_and_jsonify(
 
     if not text or not text.strip():
         raise ValueError("Text input cannot be empty")
-    # Add function entry logging
-    log_debug(LogLevel.INFO, verbose_level, "Starting manual extraction", prefix="[manual]")
-    log_debug(
-        LogLevel.DEBUG,
-        verbose_level,
-        {
-            "text_length": len(text),
-            "model_name": model_name,
-            "schema_keys": list(json_schema.keys()) if json_schema else [],
-        },
-        prefix="[manual]",
+
+    logger.info("[manual] Starting manual extraction")
+    logger.debug(
+        "[manual] text_length=%d model_name=%s schema_keys=%s",
+        len(text),
+        model_name,
+        list(json_schema.keys()) if json_schema else [],
     )
 
     opts = dict(options)
     if model_name:
         opts["model"] = model_name
 
-    # Generate the content prompt
     content_prompt = f"{instruction_template} {text}"
 
-    # Add logging for prompt generation
-    log_debug(LogLevel.DEBUG, verbose_level, "Generated prompt for extraction", prefix="[manual]")
-    log_debug(LogLevel.TRACE, verbose_level, {"content_prompt": content_prompt}, prefix="[manual]")
+    logger.debug("[manual] Generated prompt for extraction")
 
-    # Call ask_for_json and log the result
     result = ask_for_json(
         driver,
         content_prompt,
@@ -588,8 +579,7 @@ def manual_extract_and_jsonify(
         json_mode=json_mode,
         system_prompt=system_prompt,
     )
-    log_debug(LogLevel.DEBUG, verbose_level, "Manual extraction completed successfully", prefix="[manual]")
-    log_debug(LogLevel.TRACE, verbose_level, {"result": result}, prefix="[manual]")
+    logger.debug("[manual] Manual extraction completed successfully")
 
     return result
 
@@ -602,7 +592,6 @@ def extract_with_model(
     ai_cleanup: bool = True,
     output_format: Literal["json", "toon"] = "json",
     options: dict[str, Any] | None = None,
-    verbose_level: LogLevel | int = LogLevel.OFF,
     cache: bool | None = None,
     json_mode: Literal["auto", "on", "off"] = "auto",
     system_prompt: str | None = None,
@@ -620,7 +609,6 @@ def extract_with_model(
         ai_cleanup: Whether to attempt AI-based cleanup if JSON parsing fails.
         output_format: Response serialization format ("json" or "toon").
         options: Additional options to pass to the driver.
-        verbose_level: Logging level for debug output (LogLevel.OFF by default).
         cache: Override for response caching.  ``True`` forces caching on,
             ``False`` forces it off, ``None`` defers to the global setting.
 
@@ -675,18 +663,16 @@ def extract_with_model(
                 {"__getattr__": lambda self, key: self.get(key), "__call__": lambda self: self["model"]},
             )(cached)
 
-    # Add function entry logging
-    log_debug(LogLevel.INFO, verbose_level, "Starting extract_with_model", prefix="[extract]")
-    log_debug(
-        LogLevel.DEBUG,
-        verbose_level,
-        {"model_cls": actual_cls.__name__, "text_length": len(actual_text), "model_name": actual_model},
-        prefix="[extract]",
+    logger.info("[extract] Starting extract_with_model")
+    logger.debug(
+        "[extract] model_cls=%s text_length=%d model_name=%s",
+        actual_cls.__name__,
+        len(actual_text),
+        actual_model,
     )
 
     schema = actual_cls.model_json_schema()
-    log_debug(LogLevel.DEBUG, verbose_level, "Generated JSON schema", prefix="[extract]")
-    log_debug(LogLevel.TRACE, verbose_level, {"schema": schema}, prefix="[extract]")
+    logger.debug("[extract] Generated JSON schema")
 
     result = extract_and_jsonify(
         text=actual_text,
@@ -699,8 +685,7 @@ def extract_with_model(
         json_mode=json_mode,
         system_prompt=system_prompt,
     )
-    log_debug(LogLevel.DEBUG, verbose_level, "Extraction completed successfully", prefix="[extract]")
-    log_debug(LogLevel.TRACE, verbose_level, {"result": result}, prefix="[extract]")
+    logger.debug("[extract] Extraction completed successfully")
 
     # Post-process the extracted JSON object to normalize invalid values
     json_object = result["json_object"]
@@ -761,7 +746,6 @@ def stepwise_extract_with_model(
     fields: list[str] | None = None,
     field_definitions: dict[str, Any] | None = None,
     options: dict[str, Any] | None = None,
-    verbose_level: LogLevel | int = LogLevel.OFF,
     json_mode: Literal["auto", "on", "off"] = "auto",
     system_prompt: str | None = None,
     share_context: bool = False,
@@ -783,7 +767,6 @@ def stepwise_extract_with_model(
         field_definitions: Optional field definitions dict for enhanced default handling.
                           If None, automatically uses the global field registry.
         options: Additional options to pass to the driver.
-        verbose_level: Logging level for debug output (LogLevel.OFF by default).
 
     Returns:
         A dictionary containing:
@@ -815,30 +798,21 @@ def stepwise_extract_with_model(
             ai_cleanup=ai_cleanup,
             fields=fields,
             field_definitions=field_definitions,
-            verbose_level=verbose_level,
             json_mode=json_mode,
         )
 
-    # Add function entry logging
-    log_debug(LogLevel.INFO, verbose_level, "Starting stepwise extraction", prefix="[stepwise]")
-    log_debug(
-        LogLevel.DEBUG,
-        verbose_level,
-        {
-            "model_cls": model_cls.__name__,
-            "text_length": len(text),
-            "fields": fields,
-        },
-        prefix="[stepwise]",
+    logger.info("[stepwise] Starting stepwise extraction")
+    logger.debug(
+        "[stepwise] model_cls=%s text_length=%d fields=%s",
+        model_cls.__name__,
+        len(text),
+        fields,
     )
 
     # Auto-use global field registry if no field_definitions provided
     if field_definitions is None:
         field_definitions = get_registry_snapshot()
-        log_debug(LogLevel.DEBUG, verbose_level, "Using global field registry", prefix="[stepwise]")
-        log_debug(
-            LogLevel.TRACE, verbose_level, {"registry_fields": list(field_definitions.keys())}, prefix="[stepwise]"
-        )
+        logger.debug("[stepwise] Using global field registry")
 
     data = {}
     validation_errors = []
@@ -868,14 +842,7 @@ def stepwise_extract_with_model(
         field_items = model_cls.model_fields.items()
 
     for field_name, field_info in field_items:
-        # Add structured logging for field extraction
-        log_debug(LogLevel.DEBUG, verbose_level, f"Extracting field: {field_name}", prefix="[stepwise]")
-        log_debug(
-            LogLevel.TRACE,
-            verbose_level,
-            {"field_name": field_name, "field_info": str(field_info), "field_type": str(field_info.annotation)},
-            prefix="[stepwise]",
-        )
+        logger.debug("[stepwise] Extracting field: %s", field_name)
 
         # Create field schema that expects a direct value rather than a dict
         field_schema = {
@@ -884,14 +851,6 @@ def stepwise_extract_with_model(
                 "description": field_info.description or f"Value for {field_name}",
             }
         }
-
-        # Add structured logging for field schema and prompt
-        log_debug(
-            LogLevel.TRACE,
-            verbose_level,
-            {"field_schema": field_schema, "prompt_template": instruction_template.format(field_name=field_name)},
-            prefix="[stepwise]",
-        )
 
         try:
             result = extract_and_jsonify(
@@ -905,9 +864,7 @@ def stepwise_extract_with_model(
                 system_prompt=system_prompt,
             )
 
-            # Add structured logging for extraction result
-            log_debug(LogLevel.DEBUG, verbose_level, f"Raw extraction result for {field_name}", prefix="[stepwise]")
-            log_debug(LogLevel.TRACE, verbose_level, {"result": result}, prefix="[stepwise]")
+            logger.debug("[stepwise] Raw extraction result for %s", field_name)
 
             # Accumulate usage data from this field extraction
             field_usage = result.get("usage", {})
@@ -919,24 +876,14 @@ def stepwise_extract_with_model(
 
             # Extract the raw value from the response - handle both dict and direct value formats
             extracted_value = result["json_object"]["value"]
-            log_debug(LogLevel.DEBUG, verbose_level, f"Raw extracted value for {field_name}", prefix="[stepwise]")
-            log_debug(LogLevel.DEBUG, verbose_level, {"extracted_value": extracted_value}, prefix="[stepwise]")
+            logger.debug("[stepwise] Raw extracted value for %s: %s", field_name, extracted_value)
 
             if isinstance(extracted_value, dict) and "value" in extracted_value:
                 raw_value = extracted_value["value"]
-                log_debug(
-                    LogLevel.DEBUG,
-                    verbose_level,
-                    f"Extracted inner value from dict for {field_name}",
-                    prefix="[stepwise]",
-                )
+                logger.debug("[stepwise] Extracted inner value from dict for %s", field_name)
             else:
                 raw_value = extracted_value
-                log_debug(LogLevel.DEBUG, verbose_level, f"Using direct value for {field_name}", prefix="[stepwise]")
-
-            log_debug(
-                LogLevel.DEBUG, verbose_level, {"field_name": field_name, "raw_value": raw_value}, prefix="[stepwise]"
-            )
+                logger.debug("[stepwise] Using direct value for %s", field_name)
 
             # Post-process the raw value to normalize invalid values for non-nullable fields
             field_def = {}
@@ -959,9 +906,7 @@ def stepwise_extract_with_model(
 
             # Normalize the raw value before conversion
             raw_value = normalize_field_value(raw_value, field_info.annotation, normalize_def)
-            log_debug(
-                LogLevel.DEBUG, verbose_level, f"Normalized value for {field_name}: {raw_value}", prefix="[stepwise]"
-            )
+            logger.debug("[stepwise] Normalized value for %s: %s", field_name, raw_value)
 
             # Convert value using tools.convert_value with logging
             try:
@@ -969,14 +914,7 @@ def stepwise_extract_with_model(
                 data[field_name] = converted_value
                 field_results[field_name] = {"status": "success", "used_default": False}
 
-                # Add structured logging for converted value
-                log_debug(LogLevel.DEBUG, verbose_level, f"Successfully converted {field_name}", prefix="[stepwise]")
-                log_debug(
-                    LogLevel.TRACE,
-                    verbose_level,
-                    {"field_name": field_name, "converted_value": converted_value},
-                    prefix="[stepwise]",
-                )
+                logger.debug("[stepwise] Successfully converted %s", field_name)
 
             except ValueError as e:
                 error_msg = f"Type conversion failed for {field_name}: {e!s}"
@@ -1003,14 +941,8 @@ def stepwise_extract_with_model(
                 data[field_name] = default_value
                 field_results[field_name] = {"status": "conversion_failed", "error": error_msg, "used_default": True}
 
-                # Add structured logging for conversion error
-                log_debug(LogLevel.ERROR, verbose_level, error_msg, prefix="[stepwise]")
-                log_debug(
-                    LogLevel.INFO,
-                    verbose_level,
-                    f"Using default value for {field_name}: {default_value}",
-                    prefix="[stepwise]",
-                )
+                logger.error("[stepwise] %s", error_msg)
+                logger.info("[stepwise] Using default value for %s: %s", field_name, default_value)
 
         except Exception as e:
             error_msg = f"Extraction failed for {field_name}: {e!s}"
@@ -1037,14 +969,8 @@ def stepwise_extract_with_model(
             data[field_name] = default_value
             field_results[field_name] = {"status": "extraction_failed", "error": error_msg, "used_default": True}
 
-            # Add structured logging for extraction error
-            log_debug(LogLevel.ERROR, verbose_level, error_msg, prefix="[stepwise]")
-            log_debug(
-                LogLevel.INFO,
-                verbose_level,
-                f"Using default value for {field_name}: {default_value}",
-                prefix="[stepwise]",
-            )
+            logger.error("[stepwise] %s", error_msg)
+            logger.info("[stepwise] Using default value for %s: %s", field_name, default_value)
 
             # Store error details in field_usages
             accumulated_usage["field_usages"][field_name] = {
@@ -1054,13 +980,10 @@ def stepwise_extract_with_model(
                 "default_value": default_value,
             }
 
-    # Add structured logging for validation errors
     if validation_errors:
-        log_debug(
-            LogLevel.WARN, verbose_level, f"Found {len(validation_errors)} validation errors", prefix="[stepwise]"
-        )
+        logger.warning("[stepwise] Found %d validation errors", len(validation_errors))
         for error in validation_errors:
-            log_debug(LogLevel.ERROR, verbose_level, error, prefix="[stepwise]")
+            logger.error("[stepwise] %s", error)
 
     # If there are validation errors, include them in the result
     if validation_errors:
@@ -1122,8 +1045,7 @@ def stepwise_extract_with_model(
             accumulated_usage["validation_errors"] = []
         accumulated_usage["validation_errors"].append(error_msg)
 
-        # Add structured logging
-        log_debug(LogLevel.ERROR, verbose_level, error_msg, prefix="[stepwise]")
+        logger.error("[stepwise] %s", error_msg)
 
         # Create error result with partial data
         error_result = {
