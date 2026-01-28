@@ -8,6 +8,7 @@ from .google_driver import GoogleDriver
 from .groq_driver import GroqDriver
 from .openrouter_driver import OpenRouterDriver
 from .grok_driver import GrokDriver
+from .airllm_driver import AirLLMDriver
 from ..settings import settings
 
 
@@ -53,6 +54,10 @@ DRIVER_REGISTRY = {
     "grok": lambda model=None: GrokDriver(
         api_key=settings.grok_api_key,
         model=model or settings.grok_model
+    ),
+    "airllm": lambda model=None: AirLLMDriver(
+        model=model or settings.airllm_model,
+        compression=settings.airllm_compression,
     ),
 }
 
@@ -115,6 +120,7 @@ __all__ = [
     "GroqDriver",
     "OpenRouterDriver",
     "GrokDriver",
+    "AirLLMDriver",
     "get_driver",
     "get_driver_for_model",
 ]

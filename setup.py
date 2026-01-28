@@ -47,5 +47,6 @@ setup(
     },
     extras_require={
         "test": ["pytest>=7.0"],
+        "airllm": ["airllm>=2.8.0"],
     },
 )

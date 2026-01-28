@@ -13,7 +13,7 @@ from .core import (
     extract_from_pandas,
     render_output,
 )
-from .drivers import get_driver, get_driver_for_model, OpenAIDriver, LocalHTTPDriver, OllamaDriver, ClaudeDriver, LMStudioDriver, AzureDriver, GoogleDriver, GroqDriver, OpenRouterDriver, GrokDriver
+from .drivers import get_driver, get_driver_for_model, OpenAIDriver, LocalHTTPDriver, OllamaDriver, ClaudeDriver, LMStudioDriver, AzureDriver, GoogleDriver, GroqDriver, OpenRouterDriver, GrokDriver, AirLLMDriver
 from .tools import clean_json_text, clean_toon_text
 from .field_definitions import (
     FIELD_DEFINITIONS, get_field_definition, get_required_fields, get_field_names,
@@ -87,6 +87,7 @@ __all__ = [
     "GroqDriver",
     "OpenRouterDriver",
     "GrokDriver",
+    "AirLLMDriver",
     # Discovery
     "get_available_models",
 ]

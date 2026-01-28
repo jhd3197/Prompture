@@ -48,6 +48,10 @@ class Settings(BaseSettings):
     grok_api_key: Optional[str] = None
     grok_model: str = "grok-4-fast-reasoning"
 
+    # AirLLM
+    airllm_model: str = "meta-llama/Llama-2-7b-hf"
+    airllm_compression: Optional[str] = None  # "4bit" or "8bit"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         extra="ignore",
