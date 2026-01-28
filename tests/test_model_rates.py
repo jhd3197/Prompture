@@ -1,14 +1,12 @@
 """Tests for the model_rates module (caching, lookup, fallback)."""
 
 import json
-import os
+from datetime import datetime, timedelta, timezone
+from unittest.mock import patch
+
 import pytest
-from pathlib import Path
-from unittest.mock import patch, MagicMock
-from datetime import datetime, timezone, timedelta
 
 import prompture.model_rates as mr
-
 
 # Sample API data mimicking models.dev structure
 SAMPLE_API_DATA = {
@@ -62,9 +60,11 @@ def tmp_cache_dir(tmp_path):
     """Override cache dir to a temp directory."""
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir()
-    with patch.object(mr, "_CACHE_DIR", cache_dir), \
-         patch.object(mr, "_CACHE_FILE", cache_dir / "models_dev.json"), \
-         patch.object(mr, "_META_FILE", cache_dir / "models_dev_meta.json"):
+    with (
+        patch.object(mr, "_CACHE_DIR", cache_dir),
+        patch.object(mr, "_CACHE_FILE", cache_dir / "models_dev.json"),
+        patch.object(mr, "_META_FILE", cache_dir / "models_dev_meta.json"),
+    ):
         yield cache_dir
 
 

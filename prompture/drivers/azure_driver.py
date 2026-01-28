@@ -1,8 +1,10 @@
 """Driver for Azure OpenAI Service (migrated to openai>=1.0.0).
 Requires the `openai` package.
 """
+
 import os
-from typing import Any, Dict
+from typing import Any
+
 try:
     from openai import AzureOpenAI
 except Exception:
@@ -82,7 +84,7 @@ class AzureDriver(Driver):
         else:
             self.client = None
 
-    def generate(self, prompt: str, options: Dict[str, Any]) -> Dict[str, Any]:
+    def generate(self, prompt: str, options: dict[str, Any]) -> dict[str, Any]:
         if self.client is None:
             raise RuntimeError("openai package (>=1.0.0) with AzureOpenAI not installed")
 
@@ -113,6 +115,7 @@ class AzureDriver(Driver):
 
         # Calculate cost — try live rates first (per 1M tokens), fall back to hardcoded (per 1K tokens)
         from ..model_rates import get_model_rates
+
         live_rates = get_model_rates("azure", model)
         if live_rates:
             prompt_cost = (prompt_tokens / 1_000_000) * live_rates["input"]

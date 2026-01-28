@@ -10,7 +10,7 @@ Prompture is a Python library for extracting structured JSON output from LLMs, w
 
 ```bash
 # Install in development mode
-pip install -e ".[test]"
+pip install -e ".[test,dev]"
 
 # Run all tests (uses DEFAULT_MODEL from tests/conftest.py)
 python test.py
@@ -38,7 +38,23 @@ python -m build
 prompture run <spec-file>
 ```
 
-There is no configured linter or formatter.
+### Linting & Formatting (ruff)
+
+```bash
+# Format all files
+ruff format .
+
+# Check for lint violations
+ruff check .
+
+# Auto-fix lint violations
+ruff check --fix .
+
+# Auto-fix including unsafe fixes (e.g., typing modernization)
+ruff check --fix --unsafe-fixes .
+```
+
+Configuration is in `pyproject.toml` under `[tool.ruff]`.
 
 ## Architecture
 

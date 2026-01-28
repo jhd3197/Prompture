@@ -1,13 +1,9 @@
-import os
 import logging
-import google.generativeai as genai
-from typing import Any, Dict
-from ..driver import Driver
+import os
+from typing import Any, Optional
 
-import os
-import logging
 import google.generativeai as genai
-from typing import Any, Dict
+
 from ..driver import Driver
 
 logger = logging.getLogger(__name__)
@@ -21,40 +17,34 @@ class GoogleDriver(Driver):
     MODEL_PRICING = {
         "gemini-1.5-pro": {
             "prompt": 0.00025,  # $0.25/1M chars input
-            "completion": 0.0005  # $0.50/1M chars output
+            "completion": 0.0005,  # $0.50/1M chars output
         },
         "gemini-1.5-pro-vision": {
             "prompt": 0.00025,  # $0.25/1M chars input
-            "completion": 0.0005  # $0.50/1M chars output
+            "completion": 0.0005,  # $0.50/1M chars output
         },
         "gemini-2.5-pro": {
             "prompt": 0.0004,  # $0.40/1M chars input
-            "completion": 0.0008  # $0.80/1M chars output
+            "completion": 0.0008,  # $0.80/1M chars output
         },
         "gemini-2.5-flash": {
             "prompt": 0.0004,  # $0.40/1M chars input
-            "completion": 0.0008  # $0.80/1M chars output
+            "completion": 0.0008,  # $0.80/1M chars output
         },
         "gemini-2.5-flash-lite": {
             "prompt": 0.0002,  # $0.20/1M chars input
-            "completion": 0.0004  # $0.40/1M chars output
+            "completion": 0.0004,  # $0.40/1M chars output
         },
-         "gemini-2.0-flash": {
+        "gemini-2.0-flash": {
             "prompt": 0.0004,  # $0.40/1M chars input
-            "completion": 0.0008  # $0.80/1M chars output
+            "completion": 0.0008,  # $0.80/1M chars output
         },
         "gemini-2.0-flash-lite": {
             "prompt": 0.0002,  # $0.20/1M chars input
-            "completion": 0.0004  # $0.40/1M chars output
+            "completion": 0.0004,  # $0.40/1M chars output
         },
-        "gemini-1.5-flash": {
-            "prompt": 0.00001875,
-            "completion": 0.000075
-        },
-        "gemini-1.5-flash-8b": {
-            "prompt": 0.00001,
-            "completion": 0.00004
-        }
+        "gemini-1.5-flash": {"prompt": 0.00001875, "completion": 0.000075},
+        "gemini-1.5-flash-8b": {"prompt": 0.00001, "completion": 0.00004},
     }
 
     def __init__(self, api_key: str | None = None, model: str = "gemini-1.5-pro"):
@@ -75,8 +65,8 @@ class GoogleDriver(Driver):
 
         # Configure google.generativeai
         genai.configure(api_key=self.api_key)
-        self.options: Dict[str, Any] = {}
-        
+        self.options: dict[str, Any] = {}
+
         # Validate connection and model availability
         self._validate_connection()
 
@@ -90,7 +80,7 @@ class GoogleDriver(Driver):
             logger.warning(f"Could not validate connection to Google API: {e}")
             raise
 
-    def generate(self, prompt: str, options: Dict[str, Any] = None) -> Dict[str, Any]:
+    def generate(self, prompt: str, options: Optional[dict[str, Any]] = None) -> dict[str, Any]:
         """Generate text using Google's Generative AI.
 
         Args:
@@ -107,7 +97,7 @@ class GoogleDriver(Driver):
         # Extract specific options for Google's API
         generation_config = merged_options.get("generation_config", {})
         safety_settings = merged_options.get("safety_settings", {})
-        
+
         # Map common options to generation_config if not present
         if "temperature" in merged_options and "temperature" not in generation_config:
             generation_config["temperature"] = merged_options["temperature"]
@@ -127,9 +117,9 @@ class GoogleDriver(Driver):
             response = model.generate_content(
                 prompt,
                 generation_config=generation_config if generation_config else None,
-                safety_settings=safety_settings if safety_settings else None
+                safety_settings=safety_settings if safety_settings else None,
             )
-            
+
             if not response.text:
                 raise ValueError("Empty response from model")
 
@@ -139,6 +129,7 @@ class GoogleDriver(Driver):
 
             # Try live rates first (per 1M tokens), fall back to hardcoded character-based pricing
             from ..model_rates import get_model_rates
+
             live_rates = get_model_rates("google", self.model)
             if live_rates:
                 # models.dev reports token-based pricing; estimate tokens from chars (~4 chars/token)
@@ -165,4 +156,4 @@ class GoogleDriver(Driver):
 
         except Exception as e:
             logger.error(f"Google API request failed: {e}")
-            raise RuntimeError(f"Google API request failed: {e}")
+            raise RuntimeError(f"Google API request failed: {e}") from e

@@ -1,6 +1,7 @@
 import logging
+from typing import Any, Optional
+
 from ..driver import Driver
-from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -13,12 +14,9 @@ class AirLLMDriver(Driver):
     ``generate()`` call so the rest of Prompture works without it installed.
     """
 
-    MODEL_PRICING = {
-        "default": {"prompt": 0.0, "completion": 0.0}
-    }
+    MODEL_PRICING = {"default": {"prompt": 0.0, "completion": 0.0}}
 
-    def __init__(self, model: str = "meta-llama/Llama-2-7b-hf",
-                 compression: Optional[str] = None):
+    def __init__(self, model: str = "meta-llama/Llama-2-7b-hf", compression: Optional[str] = None):
         """
         Args:
             model: HuggingFace repo ID (e.g. ``"meta-llama/Llama-2-70b-hf"``).
@@ -26,7 +24,7 @@ class AirLLMDriver(Driver):
         """
         self.model = model
         self.compression = compression
-        self.options: Dict[str, Any] = {}
+        self.options: dict[str, Any] = {}
         self._llm = None
         self._tokenizer = None
 
@@ -42,9 +40,8 @@ class AirLLMDriver(Driver):
             from airllm import AutoModel
         except ImportError:
             raise ImportError(
-                "The 'airllm' package is required for the AirLLM driver. "
-                "Install it with: pip install prompture[airllm]"
-            )
+                "The 'airllm' package is required for the AirLLM driver. Install it with: pip install prompture[airllm]"
+            ) from None
 
         try:
             from transformers import AutoTokenizer
@@ -52,12 +49,11 @@ class AirLLMDriver(Driver):
             raise ImportError(
                 "The 'transformers' package is required for the AirLLM driver. "
                 "Install it with: pip install transformers"
-            )
+            ) from None
 
-        logger.info(f"Loading AirLLM model: {self.model} "
-                     f"(compression={self.compression})")
+        logger.info(f"Loading AirLLM model: {self.model} (compression={self.compression})")
 
-        load_kwargs: Dict[str, Any] = {}
+        load_kwargs: dict[str, Any] = {}
         if self.compression:
             load_kwargs["compression"] = self.compression
 
@@ -68,7 +64,7 @@ class AirLLMDriver(Driver):
     # ------------------------------------------------------------------
     # Driver interface
     # ------------------------------------------------------------------
-    def generate(self, prompt: str, options: Dict[str, Any] = None) -> Dict[str, Any]:
+    def generate(self, prompt: str, options: Optional[dict[str, Any]] = None) -> dict[str, Any]:
         self._ensure_loaded()
 
         merged_options = self.options.copy()
@@ -78,14 +74,11 @@ class AirLLMDriver(Driver):
         max_new_tokens = merged_options.get("max_new_tokens", 256)
 
         # Tokenize
-        input_ids = self._tokenizer(
-            prompt, return_tensors="pt"
-        ).input_ids
+        input_ids = self._tokenizer(prompt, return_tensors="pt").input_ids
 
         prompt_tokens = input_ids.shape[1]
 
-        logger.debug(f"AirLLM generating with max_new_tokens={max_new_tokens}, "
-                      f"prompt_tokens={prompt_tokens}")
+        logger.debug(f"AirLLM generating with max_new_tokens={max_new_tokens}, prompt_tokens={prompt_tokens}")
 
         # Generate
         output_ids = self._llm.generate(

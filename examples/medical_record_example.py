@@ -6,50 +6,66 @@ It demonstrates registration of medical-specific fields and structured extractio
 including conditions, medications, and allergies.
 """
 
+from typing import Optional
+
 from pydantic import BaseModel
-from typing import List, Optional
-from prompture import register_field, field_from_registry, extract_with_model
+
+from prompture import extract_with_model, field_from_registry, register_field
 
 # Medical-specific field definitions
-register_field("medical_conditions", {
-    "type": "list",
-    "description": "List of diagnosed medical conditions",
-    "instructions": "Extract diagnosed conditions, symptoms, and medical issues",
-    "default": [],
-    "nullable": True
-})
+register_field(
+    "medical_conditions",
+    {
+        "type": "list",
+        "description": "List of diagnosed medical conditions",
+        "instructions": "Extract diagnosed conditions, symptoms, and medical issues",
+        "default": [],
+        "nullable": True,
+    },
+)
 
-register_field("medications", {
-    "type": "list",
-    "description": "Current medications and prescriptions", 
-    "instructions": "Extract medication names, dosages, and frequencies",
-    "default": [],
-    "nullable": True
-})
+register_field(
+    "medications",
+    {
+        "type": "list",
+        "description": "Current medications and prescriptions",
+        "instructions": "Extract medication names, dosages, and frequencies",
+        "default": [],
+        "nullable": True,
+    },
+)
 
-register_field("allergies", {
-    "type": "list",
-    "description": "Known allergies and adverse reactions",
-    "instructions": "Extract all known allergies, food sensitivities, drug reactions",
-    "default": [],
-    "nullable": True
-})
+register_field(
+    "allergies",
+    {
+        "type": "list",
+        "description": "Known allergies and adverse reactions",
+        "instructions": "Extract all known allergies, food sensitivities, drug reactions",
+        "default": [],
+        "nullable": True,
+    },
+)
 
-register_field("date_of_birth", {
-    "type": "str",
-    "description": "Date of birth in ISO format",
-    "instructions": "Extract date of birth as YYYY-MM-DD format",
-    "default": "",
-    "nullable": True
-})
+register_field(
+    "date_of_birth",
+    {
+        "type": "str",
+        "description": "Date of birth in ISO format",
+        "instructions": "Extract date of birth as YYYY-MM-DD format",
+        "default": "",
+        "nullable": True,
+    },
+)
+
 
 class PatientRecord(BaseModel):
     name: str = field_from_registry("name")
     age: int = field_from_registry("age")
     date_of_birth: Optional[str] = field_from_registry("date_of_birth")
-    medical_conditions: Optional[List[str]] = field_from_registry("medical_conditions")
-    medications: Optional[List[str]] = field_from_registry("medications")
-    allergies: Optional[List[str]] = field_from_registry("allergies")
+    medical_conditions: Optional[list[str]] = field_from_registry("medical_conditions")
+    medications: Optional[list[str]] = field_from_registry("medications")
+    allergies: Optional[list[str]] = field_from_registry("allergies")
+
 
 # Sample medical record
 medical_text = """
@@ -62,7 +78,7 @@ MEDICAL HISTORY:
 
 CURRENT MEDICATIONS:
 - Metformin 500mg twice daily
-- Lisinopril 10mg once daily  
+- Lisinopril 10mg once daily
 - CPAP therapy for sleep apnea
 
 ALLERGIES:
@@ -71,11 +87,7 @@ ALLERGIES:
 """
 
 # Extract patient data
-patient = extract_with_model(
-    PatientRecord,
-    medical_text,
-    "lmstudio/deepseek/deepseek-r1-0528-qwen3-8b"
-)
+patient = extract_with_model(PatientRecord, medical_text, "lmstudio/deepseek/deepseek-r1-0528-qwen3-8b")
 
 print(f"Patient: {patient.model.name}, Age: {patient.model.age}")
 print(f"Conditions: {patient.model.medical_conditions}")

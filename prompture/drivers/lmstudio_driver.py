@@ -1,26 +1,24 @@
-import os
 import json
-import requests
 import logging
+import os
+from typing import Any, Optional
+
+import requests
+
 from ..driver import Driver
-from typing import Any, Dict
 
 logger = logging.getLogger(__name__)
 
 
 class LMStudioDriver(Driver):
     # LM Studio is local – costs are always zero.
-    MODEL_PRICING = {
-        "default": {"prompt": 0.0, "completion": 0.0}
-    }
+    MODEL_PRICING = {"default": {"prompt": 0.0, "completion": 0.0}}
 
     def __init__(self, endpoint: str | None = None, model: str = "deepseek/deepseek-r1-0528-qwen3-8b"):
         # Allow override via env var
-        self.endpoint = endpoint or os.getenv(
-            "LMSTUDIO_ENDPOINT", "http://127.0.0.1:1234/v1/chat/completions"
-        )
+        self.endpoint = endpoint or os.getenv("LMSTUDIO_ENDPOINT", "http://127.0.0.1:1234/v1/chat/completions")
         self.model = model
-        self.options: Dict[str, Any] = {}
+        self.options: dict[str, Any] = {}
 
         # Validate connection to LM Studio server
         self._validate_connection()
@@ -38,7 +36,7 @@ class LMStudioDriver(Driver):
         except requests.exceptions.RequestException as e:
             logger.warning(f"Could not validate connection to LM Studio server: {e}")
 
-    def generate(self, prompt: str, options: Dict[str, Any] = None) -> Dict[str, Any]:
+    def generate(self, prompt: str, options: Optional[dict[str, Any]] = None) -> dict[str, Any]:
         merged_options = self.options.copy()
         if options:
             merged_options.update(options)
@@ -70,7 +68,7 @@ class LMStudioDriver(Driver):
             raise
         except Exception as e:
             logger.error(f"Unexpected error in LM Studio request: {e}")
-            raise RuntimeError(f"LM Studio request failed: {e}")
+            raise RuntimeError(f"LM Studio request failed: {e}") from e
 
         # Extract text
         text = response_data["choices"][0]["message"]["content"]

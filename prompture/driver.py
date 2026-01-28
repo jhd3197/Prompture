@@ -1,7 +1,9 @@
-"""Driver base class for LLM adapters.
-"""
+"""Driver base class for LLM adapters."""
+
 from __future__ import annotations
-from typing import Any, Dict
+
+from typing import Any
+
 
 class Driver:
     """Adapter base. Implementar generate(prompt, options) -> {"text": ... , "meta": {...}}
@@ -20,5 +22,6 @@ class Driver:
     additional provider-specific metadata while the core fields provide
     standardized access to token usage and cost information.
     """
-    def generate(self, prompt: str, options: Dict[str,Any]) -> Dict[str,Any]:
+
+    def generate(self, prompt: str, options: dict[str, Any]) -> dict[str, Any]:
         raise NotImplementedError

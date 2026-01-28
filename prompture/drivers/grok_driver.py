@@ -1,8 +1,10 @@
 """xAI Grok driver.
 Requires the `requests` package. Uses GROK_API_KEY env var.
 """
+
 import os
-from typing import Any, Dict
+from typing import Any
+
 import requests
 
 from ..driver import Driver
@@ -72,7 +74,7 @@ class GrokDriver(Driver):
         self.model = model
         self.api_base = "https://api.x.ai/v1"
 
-    def generate(self, prompt: str, options: Dict[str, Any]) -> Dict[str, Any]:
+    def generate(self, prompt: str, options: dict[str, Any]) -> dict[str, Any]:
         """Generate completion using Grok API.
 
         Args:
@@ -81,7 +83,7 @@ class GrokDriver(Driver):
 
         Returns:
             Dict containing generated text and metadata
-        
+
         Raises:
             RuntimeError: If API key is missing or request fails
         """
@@ -111,30 +113,24 @@ class GrokDriver(Driver):
         if supports_temperature and "temperature" in opts:
             payload["temperature"] = opts["temperature"]
 
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
-        }
+        headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
 
         try:
-            response = requests.post(
-                f"{self.api_base}/chat/completions",
-                headers=headers,
-                json=payload
-            )
+            response = requests.post(f"{self.api_base}/chat/completions", headers=headers, json=payload)
             response.raise_for_status()
             resp = response.json()
         except requests.exceptions.RequestException as e:
-            raise RuntimeError(f"Grok API request failed: {str(e)}")
+            raise RuntimeError(f"Grok API request failed: {e!s}") from e
 
         # Extract usage info
         usage = resp.get("usage", {})
         prompt_tokens = usage.get("prompt_tokens", 0)
-        completion_tokens = usage.get("completion_tokens", 0) 
+        completion_tokens = usage.get("completion_tokens", 0)
         total_tokens = usage.get("total_tokens", 0)
 
         # Calculate cost — try live rates first (per 1M tokens), fall back to hardcoded (per 1M tokens)
         from ..model_rates import get_model_rates
+
         live_rates = get_model_rates("grok", model)
         if live_rates:
             prompt_cost = (prompt_tokens / 1_000_000) * live_rates["input"]

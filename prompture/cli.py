@@ -1,19 +1,23 @@
 import json
+
 import click
-from .runner import run_suite_from_spec
+
 from .drivers import OllamaDriver
+from .runner import run_suite_from_spec
+
 
 @click.group()
 def cli():
     """Simple CLI to run JSON specs"""
     pass
 
+
 @cli.command()
 @click.argument("specfile", type=click.Path(exists=True))
 @click.argument("outfile", type=click.Path())
 def run(specfile, outfile):
     """Run a spec JSON and save report."""
-    with open(specfile, "r", encoding="utf-8") as fh:
+    with open(specfile, encoding="utf-8") as fh:
         spec = json.load(fh)
     # Use Ollama as default driver since it can run locally
     drivers = {"ollama": OllamaDriver(endpoint="http://localhost:11434", model="gemma:latest")}

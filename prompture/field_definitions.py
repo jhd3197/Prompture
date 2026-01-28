@@ -10,19 +10,21 @@ Features:
 - Pydantic integration via field_from_registry()
 - Clean registration API with register_field() and add_field_definition()
 """
+
 import collections.abc
 import threading
-import warnings
-from datetime import datetime, date
-from typing import Dict, Any, Union, Optional, List, Literal, get_args
+from datetime import date, datetime
+from typing import Any, Optional, Union
+
 from pydantic import Field
 
+
 # Template variable providers
-def _get_template_variables() -> Dict[str, Any]:
+def _get_template_variables() -> dict[str, Any]:
     """Get current template variables for field definitions."""
     now = datetime.now()
     today = date.today()
-    
+
     return {
         "current_year": now.year,
         "current_date": today.isoformat(),
@@ -30,30 +32,32 @@ def _get_template_variables() -> Dict[str, Any]:
         "current_timestamp": int(now.timestamp()),
         "current_month": now.month,
         "current_day": now.day,
-        "current_weekday": now.strftime("%A"),       # e.g. "Monday"
+        "current_weekday": now.strftime("%A"),  # e.g. "Monday"
         "current_iso_week": now.isocalendar().week,  # ISO week number
     }
 
-def _apply_templates(text: str, custom_vars: Optional[Dict[str, Any]] = None) -> str:
+
+def _apply_templates(text: str, custom_vars: Optional[dict[str, Any]] = None) -> str:
     """Apply template variable substitution to a text string."""
     if not isinstance(text, str):
         return text
-        
+
     variables = _get_template_variables()
     if custom_vars:
         variables.update(custom_vars)
-    
+
     # Simple template replacement
     result = text
     for key, value in variables.items():
         placeholder = f"{{{{{key}}}}}"
         result = result.replace(placeholder, str(value))
-    
+
     return result
+
 
 # Thread-safe global registry
 _registry_lock = threading.Lock()
-_global_registry: Dict[str, Dict[str, Any]] = {}
+_global_registry: dict[str, dict[str, Any]] = {}
 
 # Base field definitions dictionary containing all supported fields
 BASE_FIELD_DEFINITIONS = {
@@ -79,7 +83,6 @@ BASE_FIELD_DEFINITIONS = {
         "default": None,
         "nullable": True,
     },
-    
     # Contact Information
     "email": {
         "type": str,
@@ -102,7 +105,6 @@ BASE_FIELD_DEFINITIONS = {
         "default": "",
         "nullable": True,
     },
-
     # Professional Information
     "occupation": {
         "type": str,
@@ -125,7 +127,6 @@ BASE_FIELD_DEFINITIONS = {
         "default": 0,
         "nullable": True,
     },
-
     # Metadata Fields
     "source": {
         "type": str,
@@ -148,7 +149,6 @@ BASE_FIELD_DEFINITIONS = {
         "default": 0.0,
         "nullable": False,
     },
-
     # Location Fields
     "city": {
         "type": str,
@@ -185,7 +185,6 @@ BASE_FIELD_DEFINITIONS = {
         "default": "",
         "nullable": True,
     },
-
     # Demographic Fields
     "gender": {
         "type": str,
@@ -215,7 +214,6 @@ BASE_FIELD_DEFINITIONS = {
         "default": "",
         "nullable": True,
     },
-
     # Education Fields
     "education_level": {
         "type": str,
@@ -238,7 +236,6 @@ BASE_FIELD_DEFINITIONS = {
         "default": None,
         "nullable": True,
     },
-
     # Financial Fields
     "salary": {
         "type": float,
@@ -261,7 +258,6 @@ BASE_FIELD_DEFINITIONS = {
         "default": None,
         "nullable": True,
     },
-
     # Social Media Fields
     "sentiment": {
         "type": str,
@@ -292,7 +288,6 @@ BASE_FIELD_DEFINITIONS = {
         "default": "",
         "nullable": True,
     },
-    
     # Enum Fields for Task Management
     "priority": {
         "type": str,
@@ -325,8 +320,9 @@ BASE_FIELD_DEFINITIONS = {
         "enum": ["formal", "informal", "optimistic", "pessimistic"],
         "default": "formal",
         "nullable": True,
-    }
+    },
 }
+
 
 def _initialize_registry() -> None:
     """Initialize the global registry with base field definitions."""
@@ -334,19 +330,22 @@ def _initialize_registry() -> None:
         if not _global_registry:
             _global_registry.update(BASE_FIELD_DEFINITIONS)
 
+
 # Initialize registry on import
 _initialize_registry()
 
 # Type hints for field definition structure
 FieldType = Union[type, str]
-FieldDefinition = Dict[str, Union[FieldType, str, Any, bool]]
-FieldDefinitions = Dict[str, FieldDefinition]
+FieldDefinition = dict[str, Union[FieldType, str, Any, bool]]
+FieldDefinitions = dict[str, FieldDefinition]
 
 # Maintain backward compatibility
 FIELD_DEFINITIONS = _global_registry
 
-def get_field_definition(field_name: str, apply_templates: bool = True, 
-                        custom_template_vars: Optional[Dict[str, Any]] = None) -> Optional[FieldDefinition]:
+
+def get_field_definition(
+    field_name: str, apply_templates: bool = True, custom_template_vars: Optional[dict[str, Any]] = None
+) -> Optional[FieldDefinition]:
     """
     Retrieve the definition for a specific field from the global registry.
 
@@ -360,22 +359,23 @@ def get_field_definition(field_name: str, apply_templates: bool = True,
     """
     with _registry_lock:
         field_def = _global_registry.get(field_name)
-    
+
     if field_def is None:
         return None
-    
+
     # Make a copy to avoid modifying the original
     result = field_def.copy()
-    
+
     if apply_templates:
         # Apply templates to string values
         for key, value in result.items():
             if isinstance(value, str):
                 result[key] = _apply_templates(value, custom_template_vars)
-    
+
     return result
 
-def get_required_fields() -> List[str]:
+
+def get_required_fields() -> list[str]:
     """
     Get a list of all required (non-nullable) fields.
 
@@ -384,11 +384,11 @@ def get_required_fields() -> List[str]:
     """
     with _registry_lock:
         return [
-            field_name for field_name, definition in _global_registry.items()
-            if not definition.get('nullable', True)
+            field_name for field_name, definition in _global_registry.items() if not definition.get("nullable", True)
         ]
 
-def get_field_names() -> List[str]:
+
+def get_field_names() -> list[str]:
     """
     Get a list of all defined field names.
 
@@ -398,163 +398,167 @@ def get_field_names() -> List[str]:
     with _registry_lock:
         return list(_global_registry.keys())
 
+
 def register_field(field_name: str, field_definition: FieldDefinition) -> None:
     """
     Register a single field definition in the global registry.
-    
+
     Args:
         field_name (str): Name of the field
         field_definition (FieldDefinition): Field definition dictionary
-        
+
     Raises:
         ValueError: If field definition is invalid
     """
     from .tools import validate_field_definition
-    
+
     if not validate_field_definition(field_definition):
         raise ValueError(f"Invalid field definition for '{field_name}'")
-    
+
     with _registry_lock:
         _global_registry[field_name] = field_definition.copy()
+
 
 def add_field_definition(field_name: str, field_definition: FieldDefinition) -> None:
     """
     Add a field definition to the global registry (alias for register_field).
-    
+
     Args:
         field_name (str): Name of the field
         field_definition (FieldDefinition): Field definition dictionary
     """
     register_field(field_name, field_definition)
 
-def add_field_definitions(field_definitions: Dict[str, FieldDefinition]) -> None:
+
+def add_field_definitions(field_definitions: dict[str, FieldDefinition]) -> None:
     """
     Add multiple field definitions to the global registry.
-    
+
     Args:
         field_definitions (Dict[str, FieldDefinition]): Dictionary of field definitions
     """
     for field_name, field_def in field_definitions.items():
         register_field(field_name, field_def)
 
-def field_from_registry(field_name: str, apply_templates: bool = True,
-                       custom_template_vars: Optional[Dict[str, Any]] = None) -> Field:
+
+def field_from_registry(
+    field_name: str, apply_templates: bool = True, custom_template_vars: Optional[dict[str, Any]] = None
+) -> Field:
     """
     Create a Pydantic Field from a field definition in the global registry.
-    
+
     Args:
         field_name (str): Name of the field in the registry
         apply_templates (bool): Whether to apply template variable substitution
         custom_template_vars (Optional[Dict[str, Any]]): Custom template variables
-        
+
     Returns:
         pydantic.Field: Configured Pydantic Field object
-        
+
     Raises:
         KeyError: If field_name is not found in the registry
     """
     field_def = get_field_definition(field_name, apply_templates, custom_template_vars)
-    
+
     if field_def is None:
         raise KeyError(f"Field '{field_name}' not found in registry. Available fields: {', '.join(get_field_names())}")
-    
+
     # Extract Pydantic Field parameters
-    default_value = field_def.get('default')
-    description = field_def.get('description', f"Extract the {field_name} from the text.")
-    instructions = field_def.get('instructions', '')
-    
+    default_value = field_def.get("default")
+    description = field_def.get("description", f"Extract the {field_name} from the text.")
+    instructions = field_def.get("instructions", "")
+
     # Handle enum fields
-    enum_values = field_def.get('enum')
+    enum_values = field_def.get("enum")
     if enum_values:
         # Enhance description with enum constraint information
         enum_str = "', '".join(str(v) for v in enum_values)
         enhanced_instructions = f"{instructions}. Must be one of: '{enum_str}'"
         enhanced_description = f"{description}. Allowed values: {enum_str}"
-        
+
         # Create json_schema_extra with enum constraint
-        json_schema_extra = {
-            "enum": enum_values,
-            "instructions": enhanced_instructions
-        }
-        
+        json_schema_extra = {"enum": enum_values, "instructions": enhanced_instructions}
+
         # Handle nullable/required logic with enum
-        if field_def.get('nullable', True) and default_value is not None:
+        if field_def.get("nullable", True) and default_value is not None:
             return Field(default=default_value, description=enhanced_description, json_schema_extra=json_schema_extra)
-        elif field_def.get('nullable', True):
+        elif field_def.get("nullable", True):
             return Field(default=None, description=enhanced_description, json_schema_extra=json_schema_extra)
         else:
             return Field(description=enhanced_description, json_schema_extra=json_schema_extra)
-    
+
     # Handle non-enum fields (original logic)
-    if field_def.get('nullable', True) and default_value is not None:
+    if field_def.get("nullable", True) and default_value is not None:
         # Optional field with default
         return Field(default=default_value, description=description)
-    elif field_def.get('nullable', True):
+    elif field_def.get("nullable", True):
         # Optional field without default (None)
         return Field(default=None, description=description)
     else:
         # Required field
         return Field(description=description)
 
+
 def validate_enum_value(field_name: str, value: Any) -> bool:
     """
     Validate that a value is in the allowed enum list for a field.
-    
+
     Args:
         field_name (str): Name of the field in the registry
         value (Any): Value to validate
-        
+
     Returns:
         bool: True if value is valid for the enum field, False otherwise
     """
     field_def = get_field_definition(field_name, apply_templates=False)
-    
+
     if field_def is None:
         return False
-    
-    enum_values = field_def.get('enum')
+
+    enum_values = field_def.get("enum")
     if not enum_values:
         # Not an enum field, so any value is valid
         return True
-    
+
     # Check if value is in the allowed enum list
     return value in enum_values
+
 
 def normalize_enum_value(field_name: str, value: Any, case_sensitive: bool = True) -> Any:
     """
     Normalize and validate an enum value for a field.
-    
+
     Args:
         field_name (str): Name of the field in the registry
         value (Any): Value to normalize
         case_sensitive (bool): Whether to perform case-sensitive matching
-        
+
     Returns:
         Any: Normalized value if valid, original value otherwise
-        
+
     Raises:
         ValueError: If value is not in the allowed enum list
     """
     field_def = get_field_definition(field_name, apply_templates=False)
-    
+
     if field_def is None:
         raise KeyError(f"Field '{field_name}' not found in registry")
-    
-    enum_values = field_def.get('enum')
+
+    enum_values = field_def.get("enum")
     if not enum_values:
         # Not an enum field, return as-is
         return value
-    
+
     # Convert value to string for comparison
     str_value = str(value) if value is not None else None
-    
+
     if str_value is None:
         # Handle nullable fields
-        if field_def.get('nullable', True):
+        if field_def.get("nullable", True):
             return None
         else:
             raise ValueError(f"Field '{field_name}' does not allow null values")
-    
+
     # Case-sensitive matching
     if case_sensitive:
         if str_value in enum_values:
@@ -563,27 +567,29 @@ def normalize_enum_value(field_name: str, value: Any, case_sensitive: bool = Tru
             f"Invalid value '{str_value}' for field '{field_name}'. "
             f"Must be one of: {', '.join(repr(v) for v in enum_values)}"
         )
-    
+
     # Case-insensitive matching
     lower_value = str_value.lower()
     for enum_val in enum_values:
         if str(enum_val).lower() == lower_value:
             return enum_val
-    
+
     raise ValueError(
         f"Invalid value '{str_value}' for field '{field_name}'. "
         f"Must be one of: {', '.join(repr(v) for v in enum_values)}"
     )
 
-def get_registry_snapshot() -> Dict[str, FieldDefinition]:
+
+def get_registry_snapshot() -> dict[str, FieldDefinition]:
     """
     Get a snapshot of the current global registry.
-    
+
     Returns:
         Dict[str, FieldDefinition]: Copy of the current registry
     """
     with _registry_lock:
         return _global_registry.copy()
+
 
 def clear_registry() -> None:
     """
@@ -593,6 +599,7 @@ def clear_registry() -> None:
     with _registry_lock:
         _global_registry.clear()
 
+
 def reset_registry() -> None:
     """
     Reset the global registry to contain only the base field definitions.
@@ -601,22 +608,24 @@ def reset_registry() -> None:
         _global_registry.clear()
         _global_registry.update(BASE_FIELD_DEFINITIONS)
 
+
 # For backward compatibility, keep the old FIELD_DEFINITIONS reference
 # but make it point to the global registry
 def _get_field_definitions():
     """Backward compatibility getter for FIELD_DEFINITIONS."""
     return get_registry_snapshot()
 
+
 # Create a property-like access to maintain backward compatibility
 class _FieldDefinitionsProxy(dict, collections.abc.MutableMapping):
     """Proxy class to maintain backward compatibility with FIELD_DEFINITIONS."""
-    
+
     def __getitem__(self, key):
         return get_field_definition(key)
-    
+
     def __setitem__(self, key, value):
         register_field(key, value)
-    
+
     def __delitem__(self, key):
         """Remove a field from the registry."""
         with _registry_lock:
@@ -624,37 +633,38 @@ class _FieldDefinitionsProxy(dict, collections.abc.MutableMapping):
                 del _global_registry[key]
             else:
                 raise KeyError(f"Field '{key}' not found in registry")
-    
+
     def __contains__(self, key):
         return key in get_field_names()
-    
+
     def __iter__(self):
         return iter(get_field_names())
-    
+
     def keys(self):
         return get_field_names()
-    
+
     def values(self):
         with _registry_lock:
             return list(_global_registry.values())
-    
+
     def items(self):
         with _registry_lock:
             return list(_global_registry.items())
-    
+
     def __len__(self):
         with _registry_lock:
             return len(_global_registry)
-    
+
     def get(self, key, default=None):
         field_def = get_field_definition(key)
         return field_def if field_def is not None else default
-    
+
     def update(self, other):
-        if hasattr(other, 'items'):
+        if hasattr(other, "items"):
             add_field_definitions(dict(other.items()))
         else:
             add_field_definitions(dict(other))
+
 
 # Replace FIELD_DEFINITIONS with the proxy for backward compatibility
 FIELD_DEFINITIONS = _FieldDefinitionsProxy()

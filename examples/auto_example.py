@@ -17,6 +17,7 @@ Because AI_PROVIDER=ollama, the script will automatically use the Ollama driver.
 """
 
 import json
+
 from prompture import extract_and_jsonify
 
 # 1. Define the raw text to parse
@@ -30,8 +31,8 @@ json_schema = {
         "age": {"type": "integer"},
         "profession": {"type": "string"},
         "city": {"type": "string"},
-        "hobbies": {"type": "array", "items": {"type": "string"}}
-    }
+        "hobbies": {"type": "array", "items": {"type": "string"}},
+    },
 }
 
 # 3. Define llm models to test
@@ -40,7 +41,7 @@ llm_models = [
     "ollama/qwen2.5:3b",
     "ollama/mistral:latest",
     "azure/gpt-4",
-    "lmstudio/deepseek/deepseek-r1-0528-qwen3-8b"
+    "lmstudio/deepseek/deepseek-r1-0528-qwen3-8b",
 ]
 
 # 4. Run extraction for each model
@@ -51,7 +52,7 @@ for model in llm_models:
             text=text,
             json_schema=json_schema,
             instruction_template="Extract the biographical details from this text:",
-            model_name=model
+            model_name=model,
         )
 
         # Access results
@@ -73,4 +74,4 @@ for model in llm_models:
         print(f"Model used: {usage['model_name']}")
 
     except Exception as e:
-        print(f"Error running model {model}: {str(e)}")
+        print(f"Error running model {model}: {e!s}")

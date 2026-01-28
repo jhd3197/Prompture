@@ -1,8 +1,9 @@
 """Groq driver for prompture.
 Requires the `groq` package. Uses GROQ_API_KEY env var.
 """
+
 import os
-from typing import Any, Dict
+from typing import Any
 
 try:
     import groq
@@ -32,7 +33,7 @@ class GroqDriver(Driver):
 
     def __init__(self, api_key: str | None = None, model: str = "llama2-70b-4096"):
         """Initialize Groq driver.
-        
+
         Args:
             api_key: Groq API key (defaults to GROQ_API_KEY env var)
             model: Model to use (defaults to llama2-70b-4096)
@@ -44,16 +45,16 @@ class GroqDriver(Driver):
         else:
             self.client = None
 
-    def generate(self, prompt: str, options: Dict[str, Any]) -> Dict[str, Any]:
+    def generate(self, prompt: str, options: dict[str, Any]) -> dict[str, Any]:
         """Generate completion using Groq API.
-        
+
         Args:
             prompt: Input prompt
             options: Generation options
-            
+
         Returns:
             Dict containing generated text and metadata
-            
+
         Raises:
             RuntimeError: If groq package is not installed
             groq.error.*: Various Groq API errors
@@ -86,18 +87,19 @@ class GroqDriver(Driver):
 
         try:
             resp = self.client.chat.completions.create(**kwargs)
-        except Exception as e:
+        except Exception:
             # Re-raise any Groq API errors
             raise
 
         # Extract usage statistics
         usage = getattr(resp, "usage", None)
         prompt_tokens = getattr(usage, "prompt_tokens", 0)
-        completion_tokens = getattr(usage, "completion_tokens", 0) 
+        completion_tokens = getattr(usage, "completion_tokens", 0)
         total_tokens = getattr(usage, "total_tokens", 0)
 
         # Calculate costs — try live rates first (per 1M tokens), fall back to hardcoded (per 1K tokens)
         from ..model_rates import get_model_rates
+
         live_rates = get_model_rates("groq", model)
         if live_rates:
             prompt_cost = (prompt_tokens / 1_000_000) * live_rates["input"]

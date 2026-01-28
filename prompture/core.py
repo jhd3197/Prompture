@@ -1,57 +1,57 @@
-"""Core utilities: Helpers for requesting JSON from LLM.
-"""
+"""Core utilities: Helpers for requesting JSON from LLM."""
+
 from __future__ import annotations
+
 import json
-import requests
 import sys
-import warnings
-from datetime import datetime, date
+from datetime import date, datetime
 from decimal import Decimal
-from typing import Any, Dict, Type, Optional, List, Union, Literal
+from typing import Any, Literal, Union
+
+import requests
 
 try:
     import toon
 except ImportError:
     toon = None
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
-from .drivers import get_driver, get_driver_for_model
 from .driver import Driver
-from .tools import (
-    create_field_schema,
-    convert_value,
-    log_debug,
-    clean_json_text,
-    LogLevel,
-    get_field_default,
-)
+from .drivers import get_driver_for_model
 from .field_definitions import get_registry_snapshot
+from .tools import (
+    LogLevel,
+    clean_json_text,
+    convert_value,
+    get_field_default,
+    log_debug,
+)
 
 
-def normalize_field_value(value: Any, field_type: Type, field_def: Dict[str, Any]) -> Any:
+def normalize_field_value(value: Any, field_type: type, field_def: dict[str, Any]) -> Any:
     """Normalize invalid values for fields based on their type and nullable status.
-    
+
     This function handles post-processing of extracted values BEFORE Pydantic validation,
     converting invalid values (like empty strings for booleans) to proper defaults.
-    
+
     Args:
         value: The extracted value from the LLM
         field_type: The expected Python type for this field
         field_def: The field definition dict containing nullable, default, etc.
-    
+
     Returns:
         A normalized value suitable for the field type
     """
     nullable = field_def.get("nullable", True)
     default_value = field_def.get("default")
-    
+
     # Special handling for boolean fields
-    if field_type is bool or (hasattr(field_type, '__origin__') and field_type.__origin__ is bool):
+    if field_type is bool or (hasattr(field_type, "__origin__") and field_type.__origin__ is bool):
         # If value is already a boolean, return it as-is
         if isinstance(value, bool):
             return value
-        
+
         # For non-nullable booleans
         if not nullable:
             # Any non-empty string should be True, empty/None should be default
@@ -68,37 +68,39 @@ def normalize_field_value(value: Any, field_type: Type, field_def: Dict[str, Any
             if isinstance(value, str):
                 return bool(value.strip()) if value.strip() else None
             return bool(value) if value else None
-    
+
     # If the field is nullable and value is None, that's acceptable
     if nullable and value is None:
         return value
-    
+
     # For non-nullable fields with invalid values, use the default
     if not nullable:
         # Check for invalid values that should be replaced
         invalid_values = (None, "", [], {})
-        
+
         if value in invalid_values or (isinstance(value, str) and not value.strip()):
             # Use the default value if provided, otherwise use type-appropriate default
             if default_value is not None:
                 return default_value
-            
+
             # Type-specific defaults for non-nullable fields
-            if field_type is int or (hasattr(field_type, '__origin__') and field_type.__origin__ is int):
+            if field_type is int or (hasattr(field_type, "__origin__") and field_type.__origin__ is int):
                 return 0
-            elif field_type is float or (hasattr(field_type, '__origin__') and field_type.__origin__ is float):
+            elif field_type is float or (hasattr(field_type, "__origin__") and field_type.__origin__ is float):
                 return 0.0
-            elif field_type is str or (hasattr(field_type, '__origin__') and field_type.__origin__ is str):
+            elif field_type is str or (hasattr(field_type, "__origin__") and field_type.__origin__ is str):
                 return ""
-            elif field_type is list or (hasattr(field_type, '__origin__') and field_type.__origin__ is list):
+            elif field_type is list or (hasattr(field_type, "__origin__") and field_type.__origin__ is list):
                 return []
-            elif field_type is dict or (hasattr(field_type, '__origin__') and field_type.__origin__ is dict):
+            elif field_type is dict or (hasattr(field_type, "__origin__") and field_type.__origin__ is dict):
                 return {}
-    
+
     return value
 
 
-def clean_json_text_with_ai(driver: Driver, text: str, model_name: str = "", options: Dict[str, Any] = {}) -> str:
+def clean_json_text_with_ai(
+    driver: Driver, text: str, model_name: str = "", options: dict[str, Any] | None = None
+) -> str:
     """Use LLM to fix malformed JSON strings.
 
     Generates a specialized prompt instructing the LLM to correct the
@@ -113,12 +115,14 @@ def clean_json_text_with_ai(driver: Driver, text: str, model_name: str = "", opt
         A cleaned string that should contain valid JSON.
     """
     # Check if JSON is already valid - if so, return unchanged
+    if options is None:
+        options = {}
     try:
         json.loads(text)
         return text  # Already valid, no need for LLM correction
     except json.JSONDecodeError:
         pass  # Invalid, proceed with LLM correction
-    
+
     prompt = (
         "The following text is supposed to be a single JSON object, but it is malformed. "
         "Please correct it and return only the valid JSON object. Do not add any explanations or markdown. "
@@ -135,8 +139,8 @@ def render_output(
     content_prompt: str,
     output_format: Literal["text", "html", "markdown"] = "text",
     model_name: str = "",
-    options: Dict[str, Any] = {},
-) -> Dict[str, Any]:
+    options: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Sends a prompt to the driver and returns the raw output in the requested format.
 
     This function is designed for "no fluff" output, instructing the LLM to return
@@ -159,6 +163,8 @@ def render_output(
     Raises:
         ValueError: If an unsupported output format is provided.
     """
+    if options is None:
+        options = {}
     if output_format not in ("text", "html", "markdown"):
         raise ValueError(f"Unsupported output_format '{output_format}'. Use 'text', 'html', or 'markdown'.")
 
@@ -174,18 +180,16 @@ def render_output(
             "(like ```html ... ```). Do not include conversational filler."
         )
     elif output_format == "markdown":
-        instruct = (
-            "Return valid markdown content. You may use standard markdown formatting."
-        )
+        instruct = "Return valid markdown content. You may use standard markdown formatting."
 
     full_prompt = f"{content_prompt}\n\nSYSTEM INSTRUCTION: {instruct}"
-    
+
     # If specific options are needed for certain formats, they could be added here
     # For now, we pass options through
-    
+
     resp = driver.generate(full_prompt, options)
     raw = resp.get("text", "")
-    
+
     # Clean up potential markdown fences if the model disobeyed for text/html
     if output_format in ("text", "html"):
         # Simple cleanup for common fences if they appear despite instructions
@@ -204,24 +208,21 @@ def render_output(
         "prompt_tokens": resp.get("meta", {}).get("prompt_tokens", 0),
         "completion_tokens": resp.get("meta", {}).get("completion_tokens", 0),
         "cost": resp.get("meta", {}).get("cost", 0.0),
-        "model_name": model_name or getattr(driver, "model", "")
+        "model_name": model_name or getattr(driver, "model", ""),
     }
-    
-    return {
-        "text": raw,
-        "usage": usage,
-        "output_format": output_format
-    }
+
+    return {"text": raw, "usage": usage, "output_format": output_format}
+
 
 def ask_for_json(
     driver: Driver,
     content_prompt: str,
-    json_schema: Dict[str, Any],
+    json_schema: dict[str, Any],
     ai_cleanup: bool = True,
     model_name: str = "",
-    options: Dict[str, Any] = {},
+    options: dict[str, Any] | None = None,
     output_format: Literal["json", "toon"] = "json",
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Sends a prompt to the driver and returns structured output plus usage metadata.
 
     This function enforces a schema-first approach by requiring a json_schema parameter
@@ -248,14 +249,15 @@ def ask_for_json(
         json.JSONDecodeError: If JSON parsing fails and ai_cleanup is False.
         ValueError: If TOON parsing fails.
     """
+    if options is None:
+        options = {}
     if output_format not in ("json", "toon"):
         raise ValueError(f"Unsupported output_format '{output_format}'. Use 'json' or 'toon'.")
 
     schema_string = json.dumps(json_schema, indent=2)
     if output_format == "toon" and toon is None:
         raise RuntimeError(
-            "TOON requested but 'python-toon' is not installed. "
-            "Install it with 'pip install python-toon'."
+            "TOON requested but 'python-toon' is not installed. Install it with 'pip install python-toon'."
         )
 
     instruct = (
@@ -285,13 +287,9 @@ def ask_for_json(
             "prompt_tokens": resp.get("meta", {}).get("prompt_tokens", 0),
             "completion_tokens": resp.get("meta", {}).get("completion_tokens", 0),
             "cost": resp.get("meta", {}).get("cost", 0.0),
-            "model_name": model_name or getattr(driver, "model", "")
+            "model_name": model_name or getattr(driver, "model", ""),
         }
-        result = {
-            "json_string": json_string,
-            "json_object": json_obj,
-            "usage": usage
-        }
+        result = {"json_string": json_string, "json_object": json_obj, "usage": usage}
         if toon_string is not None:
             result["toon_string"] = toon_string
             result["output_format"] = "toon"
@@ -312,7 +310,7 @@ def ask_for_json(
                         "total_tokens": 0,
                         "cost": 0.0,
                         "model_name": options.get("model", getattr(driver, "model", "")),
-                        "raw_response": {}
+                        "raw_response": {},
                     },
                     "output_format": "json" if output_format != "toon" else "toon",
                 }
@@ -320,22 +318,23 @@ def ask_for_json(
                     result["toon_string"] = toon.encode(json_obj)
                 return result
             except json.JSONDecodeError:
-                raise e
+                raise e from None
         else:
             raise e
 
+
 def extract_and_jsonify(
     text: Union[str, Driver],  # Can be either text or driver for backward compatibility
-    json_schema: Dict[str, Any],
+    json_schema: dict[str, Any],
     *,  # Force keyword arguments for remaining params
-    model_name: Union[str, Dict[str, Any]] = "",  # Can be schema (old) or model name (new)
+    model_name: Union[str, dict[str, Any]] = "",  # Can be schema (old) or model name (new)
     instruction_template: str = "Extract information from the following text:",
     ai_cleanup: bool = True,
     output_format: Literal["json", "toon"] = "json",
-    options: Dict[str, Any] = {},
-) -> Dict[str, Any]:
+    options: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Extracts structured information using automatic driver selection based on model name.
-    
+
     Args:
         text: The raw text to extract information from.
         json_schema: JSON schema dictionary defining the expected structure.
@@ -344,18 +343,20 @@ def extract_and_jsonify(
         ai_cleanup: Whether to attempt AI-based cleanup if JSON parsing fails.
         output_format: Response serialization format ("json" or "toon").
         options: Additional options to pass to the driver.
-    
+
     Returns:
         A dictionary containing:
         - json_string: the JSON string output.
         - json_object: the parsed JSON object.
         - usage: token usage and cost information from the driver's meta object.
-    
+
     Raises:
         ValueError: If text is empty or None, or if model_name format is invalid.
         json.JSONDecodeError: If the response cannot be parsed as JSON and ai_cleanup is False.
         pytest.skip: If a ConnectionError occurs during testing (when pytest is running).
     """
+    if options is None:
+        options = {}
     actual_template = instruction_template
     actual_output_format = output_format
     # Handle legacy format where first argument is driver
@@ -381,18 +382,18 @@ def extract_and_jsonify(
     if driver is None:
         if not actual_model:
             raise ValueError("Model name cannot be empty")
-            
+
         # First validate model format
         if "/" not in actual_model:
             raise ValueError("Invalid model string format. Expected format: 'provider/model'")
-            
+
         try:
             driver = get_driver_for_model(actual_model)
         except ValueError as e:
             if "Unsupported provider" in str(e):
-                raise ValueError(f"Unsupported provider in model name: {actual_model}")
+                raise ValueError(f"Unsupported provider in model name: {actual_model}") from e
             raise  # Re-raise any other ValueError
-    
+
     # Extract model parts for other validation
     try:
         provider, model_id = actual_model.split("/", 1)
@@ -401,11 +402,11 @@ def extract_and_jsonify(
     except ValueError:
         # If no "/" in model string, use entire string as both provider and model_id
         provider = model_id = actual_model
-        
+
     opts = {**options, "model": model_id}
-    
+
     content_prompt = f"{actual_template} {actual_text}"
-    
+
     try:
         return ask_for_json(
             driver,
@@ -419,20 +420,22 @@ def extract_and_jsonify(
     except (requests.exceptions.ConnectionError, requests.exceptions.HTTPError) as e:
         if "pytest" in sys.modules:
             import pytest
+
             pytest.skip(f"Connection error occurred: {e}")
-        raise ConnectionError(f"Connection error occurred: {e}")
+        raise ConnectionError(f"Connection error occurred: {e}") from e
+
 
 def manual_extract_and_jsonify(
     driver: Driver,
     text: str,
-    json_schema: Dict[str, Any],
+    json_schema: dict[str, Any],
     model_name: str = "",
     instruction_template: str = "Extract information from the following text:",
     ai_cleanup: bool = True,
     output_format: Literal["json", "toon"] = "json",
-    options: Dict[str, Any] = {},
+    options: dict[str, Any] | None = None,
     verbose_level: LogLevel | int = LogLevel.OFF,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Extracts structured information using an explicitly provided driver.
 
     This variant is useful when you want to directly control which driver
@@ -460,18 +463,25 @@ def manual_extract_and_jsonify(
         ValueError: If text is empty or None.
         json.JSONDecodeError: If the response cannot be parsed as JSON and ai_cleanup is False.
     """
+    if options is None:
+        options = {}
     if not isinstance(text, str):
         raise ValueError("Text input must be a string")
-    
+
     if not text or not text.strip():
         raise ValueError("Text input cannot be empty")
     # Add function entry logging
     log_debug(LogLevel.INFO, verbose_level, "Starting manual extraction", prefix="[manual]")
-    log_debug(LogLevel.DEBUG, verbose_level, {
-        "text_length": len(text),
-        "model_name": model_name,
-        "schema_keys": list(json_schema.keys()) if json_schema else []
-    }, prefix="[manual]")
+    log_debug(
+        LogLevel.DEBUG,
+        verbose_level,
+        {
+            "text_length": len(text),
+            "model_name": model_name,
+            "schema_keys": list(json_schema.keys()) if json_schema else [],
+        },
+        prefix="[manual]",
+    )
 
     opts = dict(options)
     if model_name:
@@ -479,11 +489,11 @@ def manual_extract_and_jsonify(
 
     # Generate the content prompt
     content_prompt = f"{instruction_template} {text}"
-    
+
     # Add logging for prompt generation
     log_debug(LogLevel.DEBUG, verbose_level, "Generated prompt for extraction", prefix="[manual]")
     log_debug(LogLevel.TRACE, verbose_level, {"content_prompt": content_prompt}, prefix="[manual]")
-    
+
     # Call ask_for_json and log the result
     result = ask_for_json(
         driver,
@@ -496,19 +506,20 @@ def manual_extract_and_jsonify(
     )
     log_debug(LogLevel.DEBUG, verbose_level, "Manual extraction completed successfully", prefix="[manual]")
     log_debug(LogLevel.TRACE, verbose_level, {"result": result}, prefix="[manual]")
-    
+
     return result
 
+
 def extract_with_model(
-    model_cls: Union[Type[BaseModel], str],  # Can be model class or model name string for legacy support
-    text: Union[str, Dict[str, Any]],  # Can be text or schema for legacy support
-    model_name: Union[str, Dict[str, Any]],  # Can be model name or text for legacy support
+    model_cls: Union[type[BaseModel], str],  # Can be model class or model name string for legacy support
+    text: Union[str, dict[str, Any]],  # Can be text or schema for legacy support
+    model_name: Union[str, dict[str, Any]],  # Can be model name or text for legacy support
     instruction_template: str = "Extract information from the following text:",
     ai_cleanup: bool = True,
     output_format: Literal["json", "toon"] = "json",
-    options: Dict[str, Any] = {},
+    options: dict[str, Any] | None = None,
     verbose_level: LogLevel | int = LogLevel.OFF,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Extracts structured information into a Pydantic model instance.
 
     Converts the Pydantic model to its JSON schema and uses auto-resolved driver based on model_name
@@ -532,6 +543,8 @@ def extract_with_model(
         ValidationError: If the extracted data doesn't match the model schema.
     """
     # Handle legacy format where first arg is model class
+    if options is None:
+        options = {}
     if isinstance(model_cls, type) and issubclass(model_cls, BaseModel):
         actual_cls = model_cls
         actual_text = text
@@ -544,19 +557,20 @@ def extract_with_model(
 
     if not isinstance(actual_text, str) or not actual_text.strip():
         raise ValueError("Text input cannot be empty")
-    
+
     # Add function entry logging
     log_debug(LogLevel.INFO, verbose_level, "Starting extract_with_model", prefix="[extract]")
-    log_debug(LogLevel.DEBUG, verbose_level, {
-        "model_cls": actual_cls.__name__,
-        "text_length": len(actual_text),
-        "model_name": actual_model
-    }, prefix="[extract]")
+    log_debug(
+        LogLevel.DEBUG,
+        verbose_level,
+        {"model_cls": actual_cls.__name__, "text_length": len(actual_text), "model_name": actual_model},
+        prefix="[extract]",
+    )
 
     schema = actual_cls.model_json_schema()
     log_debug(LogLevel.DEBUG, verbose_level, "Generated JSON schema", prefix="[extract]")
     log_debug(LogLevel.TRACE, verbose_level, {"schema": schema}, prefix="[extract]")
-    
+
     result = extract_and_jsonify(
         text=actual_text,
         json_schema=schema,
@@ -564,62 +578,63 @@ def extract_with_model(
         instruction_template=instruction_template,
         ai_cleanup=ai_cleanup,
         output_format=output_format,
-        options=options
+        options=options,
     )
     log_debug(LogLevel.DEBUG, verbose_level, "Extraction completed successfully", prefix="[extract]")
     log_debug(LogLevel.TRACE, verbose_level, {"result": result}, prefix="[extract]")
-    
+
     # Post-process the extracted JSON object to normalize invalid values
     json_object = result["json_object"]
     schema_properties = schema.get("properties", {})
-    
+
     for field_name, field_info in actual_cls.model_fields.items():
         if field_name in json_object and field_name in schema_properties:
-            field_schema = schema_properties[field_name]
+            schema_properties[field_name]
             field_def = {
-                "nullable": not schema_properties[field_name].get("type") or
-                           "null" in (schema_properties[field_name].get("anyOf", []) if isinstance(schema_properties[field_name].get("anyOf"), list) else []),
-                "default": field_info.default if hasattr(field_info, 'default') and field_info.default is not ... else None
+                "nullable": not schema_properties[field_name].get("type")
+                or "null"
+                in (
+                    schema_properties[field_name].get("anyOf", [])
+                    if isinstance(schema_properties[field_name].get("anyOf"), list)
+                    else []
+                ),
+                "default": field_info.default
+                if hasattr(field_info, "default") and field_info.default is not ...
+                else None,
             }
-            
+
             # Normalize the value
-            json_object[field_name] = normalize_field_value(
-                json_object[field_name],
-                field_info.annotation,
-                field_def
-            )
-    
+            json_object[field_name] = normalize_field_value(json_object[field_name], field_info.annotation, field_def)
+
     # Create model instance for validation
     model_instance = actual_cls(**json_object)
-    
+
     # Return dictionary with all required fields and backwards compatibility
-    result_dict = {
-        "json_string": result["json_string"],
-        "json_object": result["json_object"],
-        "usage": result["usage"]
-    }
-    
+    result_dict = {"json_string": result["json_string"], "json_object": result["json_object"], "usage": result["usage"]}
+
     # Add backwards compatibility property
     result_dict["model"] = model_instance
-    
+
     # Return value can be used both as a dict and accessed as model directly
-    return type("ExtractResult", (dict,), {
-        "__getattr__": lambda self, key: self.get(key),
-        "__call__": lambda self: self["model"]
-    })(result_dict)
+    return type(
+        "ExtractResult",
+        (dict,),
+        {"__getattr__": lambda self, key: self.get(key), "__call__": lambda self: self["model"]},
+    )(result_dict)
+
 
 def stepwise_extract_with_model(
-    model_cls: Type[BaseModel],
+    model_cls: type[BaseModel],
     text: str,
     *,  # Force keyword arguments for remaining params
     model_name: str,
     instruction_template: str = "Extract the {field_name} from the following text:",
     ai_cleanup: bool = True,
-    fields: Optional[List[str]] = None,
-    field_definitions: Optional[Dict[str, Any]] = None,
-    options: Optional[Dict[str, Any]] = None,
+    fields: list[str] | None = None,
+    field_definitions: dict[str, Any] | None = None,
+    options: dict[str, Any] | None = None,
     verbose_level: LogLevel | int = LogLevel.OFF,
-) -> Dict[str, Union[str, Dict[str, Any]]]:
+) -> dict[str, Union[str, dict[str, Any]]]:
     """Extracts structured information into a Pydantic model by processing each field individually.
 
     For each field in the model, makes a separate LLM call to extract that specific field,
@@ -648,7 +663,7 @@ def stepwise_extract_with_model(
     Raises:
         ValueError: If text is empty or None, or if model_name format is invalid.
         KeyError: If a requested field doesn't exist in the model.
-        
+
     Note:
         This function now gracefully handles extraction failures by falling back to default
         values rather than failing completely. Individual field errors are logged and
@@ -658,23 +673,30 @@ def stepwise_extract_with_model(
         raise ValueError("Text input cannot be empty")
     # Add function entry logging
     log_debug(LogLevel.INFO, verbose_level, "Starting stepwise extraction", prefix="[stepwise]")
-    log_debug(LogLevel.DEBUG, verbose_level, {
-        "model_cls": model_cls.__name__,
-        "text_length": len(text),
-        "fields": fields,
-    }, prefix="[stepwise]")
+    log_debug(
+        LogLevel.DEBUG,
+        verbose_level,
+        {
+            "model_cls": model_cls.__name__,
+            "text_length": len(text),
+            "fields": fields,
+        },
+        prefix="[stepwise]",
+    )
 
     # Auto-use global field registry if no field_definitions provided
     if field_definitions is None:
         field_definitions = get_registry_snapshot()
         log_debug(LogLevel.DEBUG, verbose_level, "Using global field registry", prefix="[stepwise]")
-        log_debug(LogLevel.TRACE, verbose_level, {"registry_fields": list(field_definitions.keys())}, prefix="[stepwise]")
+        log_debug(
+            LogLevel.TRACE, verbose_level, {"registry_fields": list(field_definitions.keys())}, prefix="[stepwise]"
+        )
 
     data = {}
     validation_errors = []
     field_results = {}  # Track success/failure per field
     options = options or {}
-    
+
     # Initialize usage accumulator
     accumulated_usage = {
         "prompt_tokens": 0,
@@ -682,7 +704,7 @@ def stepwise_extract_with_model(
         "total_tokens": 0,
         "cost": 0.0,
         "model_name": model_name,  # Use provided model_name directly
-        "field_usages": {}
+        "field_usages": {},
     }
 
     # Get valid field names from the model
@@ -700,25 +722,28 @@ def stepwise_extract_with_model(
     for field_name, field_info in field_items:
         # Add structured logging for field extraction
         log_debug(LogLevel.DEBUG, verbose_level, f"Extracting field: {field_name}", prefix="[stepwise]")
-        log_debug(LogLevel.TRACE, verbose_level, {
-            "field_name": field_name,
-            "field_info": str(field_info),
-            "field_type": str(field_info.annotation)
-        }, prefix="[stepwise]")
+        log_debug(
+            LogLevel.TRACE,
+            verbose_level,
+            {"field_name": field_name, "field_info": str(field_info), "field_type": str(field_info.annotation)},
+            prefix="[stepwise]",
+        )
 
         # Create field schema that expects a direct value rather than a dict
         field_schema = {
             "value": {
-                "type": "integer" if field_info.annotation == int else "string",
-                "description": field_info.description or f"Value for {field_name}"
+                "type": "integer" if field_info.annotation is int else "string",
+                "description": field_info.description or f"Value for {field_name}",
             }
         }
 
         # Add structured logging for field schema and prompt
-        log_debug(LogLevel.TRACE, verbose_level, {
-            "field_schema": field_schema,
-            "prompt_template": instruction_template.format(field_name=field_name)
-        }, prefix="[stepwise]")
+        log_debug(
+            LogLevel.TRACE,
+            verbose_level,
+            {"field_schema": field_schema, "prompt_template": instruction_template.format(field_name=field_name)},
+            prefix="[stepwise]",
+        )
 
         try:
             result = extract_and_jsonify(
@@ -727,7 +752,7 @@ def stepwise_extract_with_model(
                 model_name=model_name,
                 instruction_template=instruction_template.format(field_name=field_name),
                 ai_cleanup=ai_cleanup,
-                options=options
+                options=options,
             )
 
             # Add structured logging for extraction result
@@ -746,137 +771,157 @@ def stepwise_extract_with_model(
             extracted_value = result["json_object"]["value"]
             log_debug(LogLevel.DEBUG, verbose_level, f"Raw extracted value for {field_name}", prefix="[stepwise]")
             log_debug(LogLevel.DEBUG, verbose_level, {"extracted_value": extracted_value}, prefix="[stepwise]")
-            
+
             if isinstance(extracted_value, dict) and "value" in extracted_value:
                 raw_value = extracted_value["value"]
-                log_debug(LogLevel.DEBUG, verbose_level, f"Extracted inner value from dict for {field_name}", prefix="[stepwise]")
+                log_debug(
+                    LogLevel.DEBUG,
+                    verbose_level,
+                    f"Extracted inner value from dict for {field_name}",
+                    prefix="[stepwise]",
+                )
             else:
                 raw_value = extracted_value
                 log_debug(LogLevel.DEBUG, verbose_level, f"Using direct value for {field_name}", prefix="[stepwise]")
-            
-            log_debug(LogLevel.DEBUG, verbose_level, {"field_name": field_name, "raw_value": raw_value}, prefix="[stepwise]")
+
+            log_debug(
+                LogLevel.DEBUG, verbose_level, {"field_name": field_name, "raw_value": raw_value}, prefix="[stepwise]"
+            )
 
             # Post-process the raw value to normalize invalid values for non-nullable fields
             field_def = {}
             if field_definitions and field_name in field_definitions:
                 field_def = field_definitions[field_name] if isinstance(field_definitions[field_name], dict) else {}
-            
+
             # Determine nullable status and default value
             nullable = field_def.get("nullable", True)
             default_value = field_def.get("default")
-            if default_value is None and hasattr(field_info, 'default'):
-                if field_info.default is not ... and str(field_info.default) != 'PydanticUndefined':
-                    default_value = field_info.default
-            
+            if (
+                default_value is None
+                and hasattr(field_info, "default")
+                and field_info.default is not ...
+                and str(field_info.default) != "PydanticUndefined"
+            ):
+                default_value = field_info.default
+
             # Create field_def for normalize_field_value
-            normalize_def = {
-                "nullable": nullable,
-                "default": default_value
-            }
-            
+            normalize_def = {"nullable": nullable, "default": default_value}
+
             # Normalize the raw value before conversion
             raw_value = normalize_field_value(raw_value, field_info.annotation, normalize_def)
-            log_debug(LogLevel.DEBUG, verbose_level, f"Normalized value for {field_name}: {raw_value}", prefix="[stepwise]")
+            log_debug(
+                LogLevel.DEBUG, verbose_level, f"Normalized value for {field_name}: {raw_value}", prefix="[stepwise]"
+            )
 
             # Convert value using tools.convert_value with logging
             try:
-                converted_value = convert_value(
-                    raw_value,
-                    field_info.annotation,
-                    allow_shorthand=True
-                )
+                converted_value = convert_value(raw_value, field_info.annotation, allow_shorthand=True)
                 data[field_name] = converted_value
                 field_results[field_name] = {"status": "success", "used_default": False}
 
                 # Add structured logging for converted value
                 log_debug(LogLevel.DEBUG, verbose_level, f"Successfully converted {field_name}", prefix="[stepwise]")
-                log_debug(LogLevel.TRACE, verbose_level, {
-                    "field_name": field_name,
-                    "converted_value": converted_value
-                }, prefix="[stepwise]")
-                    
+                log_debug(
+                    LogLevel.TRACE,
+                    verbose_level,
+                    {"field_name": field_name, "converted_value": converted_value},
+                    prefix="[stepwise]",
+                )
+
             except ValueError as e:
-                error_msg = f"Type conversion failed for {field_name}: {str(e)}"
-                
+                error_msg = f"Type conversion failed for {field_name}: {e!s}"
+
                 # Check if field has a default value (either explicit or from field_definitions)
                 has_default = False
                 if field_definitions and field_name in field_definitions:
                     field_def = field_definitions[field_name]
-                    if isinstance(field_def, dict) and 'default' in field_def:
+                    if isinstance(field_def, dict) and "default" in field_def:
                         has_default = True
-                
-                if not has_default and hasattr(field_info, 'default'):
+
+                if not has_default and hasattr(field_info, "default"):
                     default_val = field_info.default
                     # Field has default if it's not PydanticUndefined or Ellipsis
-                    if default_val is not ... and str(default_val) != 'PydanticUndefined':
+                    if default_val is not ... and str(default_val) != "PydanticUndefined":
                         has_default = True
-                
+
                 # Only add to validation_errors if field is required (no default)
                 if not has_default:
                     validation_errors.append(error_msg)
-                
+
                 # Use default value (type-appropriate if no explicit default)
                 default_value = get_field_default(field_name, field_info, field_definitions)
                 data[field_name] = default_value
                 field_results[field_name] = {"status": "conversion_failed", "error": error_msg, "used_default": True}
-                
+
                 # Add structured logging for conversion error
                 log_debug(LogLevel.ERROR, verbose_level, error_msg, prefix="[stepwise]")
-                log_debug(LogLevel.INFO, verbose_level, f"Using default value for {field_name}: {default_value}", prefix="[stepwise]")
-                
+                log_debug(
+                    LogLevel.INFO,
+                    verbose_level,
+                    f"Using default value for {field_name}: {default_value}",
+                    prefix="[stepwise]",
+                )
+
         except Exception as e:
-            error_msg = f"Extraction failed for {field_name}: {str(e)}"
-            
+            error_msg = f"Extraction failed for {field_name}: {e!s}"
+
             # Check if field has a default value (either explicit or from field_definitions)
             has_default = False
             if field_definitions and field_name in field_definitions:
                 field_def = field_definitions[field_name]
-                if isinstance(field_def, dict) and 'default' in field_def:
+                if isinstance(field_def, dict) and "default" in field_def:
                     has_default = True
-            
-            if not has_default and hasattr(field_info, 'default'):
+
+            if not has_default and hasattr(field_info, "default"):
                 default_val = field_info.default
                 # Field has default if it's not PydanticUndefined or Ellipsis
-                if default_val is not ... and str(default_val) != 'PydanticUndefined':
+                if default_val is not ... and str(default_val) != "PydanticUndefined":
                     has_default = True
-            
+
             # Only add to validation_errors if field is required (no default)
             if not has_default:
                 validation_errors.append(error_msg)
-            
+
             # Use default value (type-appropriate if no explicit default)
             default_value = get_field_default(field_name, field_info, field_definitions)
             data[field_name] = default_value
             field_results[field_name] = {"status": "extraction_failed", "error": error_msg, "used_default": True}
-            
+
             # Add structured logging for extraction error
             log_debug(LogLevel.ERROR, verbose_level, error_msg, prefix="[stepwise]")
-            log_debug(LogLevel.INFO, verbose_level, f"Using default value for {field_name}: {default_value}", prefix="[stepwise]")
-            
+            log_debug(
+                LogLevel.INFO,
+                verbose_level,
+                f"Using default value for {field_name}: {default_value}",
+                prefix="[stepwise]",
+            )
+
             # Store error details in field_usages
             accumulated_usage["field_usages"][field_name] = {
                 "error": str(e),
                 "status": "failed",
                 "used_default": True,
-                "default_value": default_value
+                "default_value": default_value,
             }
-    
+
     # Add structured logging for validation errors
     if validation_errors:
-        log_debug(LogLevel.WARN, verbose_level, f"Found {len(validation_errors)} validation errors", prefix="[stepwise]")
+        log_debug(
+            LogLevel.WARN, verbose_level, f"Found {len(validation_errors)} validation errors", prefix="[stepwise]"
+        )
         for error in validation_errors:
             log_debug(LogLevel.ERROR, verbose_level, error, prefix="[stepwise]")
-    
+
     # If there are validation errors, include them in the result
     if validation_errors:
         accumulated_usage["validation_errors"] = validation_errors
-    
+
     try:
         # Create model instance with collected data
         # Create model instance with collected data
         model_instance = model_cls(**data)
         model_dict = model_instance.model_dump()
-        
+
         # Enhanced DateTimeEncoder to handle both datetime and date objects
         class ExtendedJSONEncoder(json.JSONEncoder):
             def default(self, obj):
@@ -885,14 +930,14 @@ def stepwise_extract_with_model(
                 if isinstance(obj, Decimal):
                     return str(obj)
                 return super().default(obj)
-        
+
         # Use enhanced encoder for JSON serialization
         json_string = json.dumps(model_dict, cls=ExtendedJSONEncoder)
 
         # Also modify return value to use ExtendedJSONEncoder
-        if 'json_string' in result:
-            result['json_string'] = json.dumps(result['json_object'], cls=ExtendedJSONEncoder)
-        
+        if "json_string" in result:
+            result["json_string"] = json.dumps(result["json_object"], cls=ExtendedJSONEncoder)
+
         # Define ExtendedJSONEncoder for handling special types
         class ExtendedJSONEncoder(json.JSONEncoder):
             def default(self, obj):
@@ -901,10 +946,10 @@ def stepwise_extract_with_model(
                 if isinstance(obj, Decimal):
                     return str(obj)
                 return super().default(obj)
-        
+
         # Create json string with custom encoder
         json_string = json.dumps(model_dict, cls=ExtendedJSONEncoder)
-        
+
         # Create result matching extract_with_model format
         result = {
             "json_string": json_string,
@@ -912,58 +957,61 @@ def stepwise_extract_with_model(
             "usage": accumulated_usage,
             "field_results": field_results,
         }
-        
+
         # Add model instance as property and make callable
         result["model"] = model_instance
-        return type("ExtractResult", (dict,), {
-            "__getattr__": lambda self, key: self.get(key),
-            "__call__": lambda self: self["model"]
-        })(result)
+        return type(
+            "ExtractResult",
+            (dict,),
+            {"__getattr__": lambda self, key: self.get(key), "__call__": lambda self: self["model"]},
+        )(result)
     except Exception as e:
-        error_msg = f"Model validation error: {str(e)}"
+        error_msg = f"Model validation error: {e!s}"
         # Add validation error to accumulated usage
         if "validation_errors" not in accumulated_usage:
             accumulated_usage["validation_errors"] = []
         accumulated_usage["validation_errors"].append(error_msg)
-        
+
         # Add structured logging
         log_debug(LogLevel.ERROR, verbose_level, error_msg, prefix="[stepwise]")
-        
+
         # Create error result with partial data
         error_result = {
             "json_string": "{}",
             "json_object": {},
             "usage": accumulated_usage,
             "field_results": field_results,
-            "error": error_msg
+            "error": error_msg,
         }
-        return type("ExtractResult", (dict,), {
-            "__getattr__": lambda self, key: self.get(key),
-            "__call__": lambda self: None  # Return None when called if validation failed
-        })(error_result)
+        return type(
+            "ExtractResult",
+            (dict,),
+            {
+                "__getattr__": lambda self, key: self.get(key),
+                "__call__": lambda self: None,  # Return None when called if validation failed
+            },
+        )(error_result)
 
 
-
-def _json_to_toon(data: Union[List[Dict[str, Any]], Dict[str, Any]], data_key: Optional[str] = None) -> str:
+def _json_to_toon(data: Union[list[dict[str, Any]], dict[str, Any]], data_key: str | None = None) -> str:
     """Convert JSON array or dict containing array to TOON format.
-    
+
     Args:
         data: List of dicts (uniform array) or dict containing array under a key
         data_key: If data is a dict, the key containing the array
-        
+
     Returns:
         TOON formatted string
-        
+
     Raises:
         ValueError: If TOON conversion fails or data format is invalid
         RuntimeError: If python-toon is not installed
     """
     if toon is None:
         raise RuntimeError(
-            "TOON conversion requested but 'python-toon' is not installed. "
-            "Install it with 'pip install python-toon'."
+            "TOON conversion requested but 'python-toon' is not installed. Install it with 'pip install python-toon'."
         )
-    
+
     # Handle different data formats
     if isinstance(data, list):
         array_data = data
@@ -975,7 +1023,7 @@ def _json_to_toon(data: Union[List[Dict[str, Any]], Dict[str, Any]], data_key: O
         else:
             # Try to find the first array value in the dict
             array_data = None
-            for key, value in data.items():
+            for _key, value in data.items():
                 if isinstance(value, list) and value:
                     array_data = value
                     break
@@ -983,32 +1031,32 @@ def _json_to_toon(data: Union[List[Dict[str, Any]], Dict[str, Any]], data_key: O
                 raise ValueError("No array found in data. Specify data_key or provide a list directly.")
     else:
         raise ValueError("Data must be a list of dicts or a dict containing an array")
-    
+
     if not isinstance(array_data, list):
         raise ValueError("Array data must be a list")
-    
+
     if not array_data:
         raise ValueError("Array data cannot be empty")
-    
+
     # Validate that all items in array are dicts (uniform structure)
     if not all(isinstance(item, dict) for item in array_data):
         raise ValueError("All items in array must be dictionaries for TOON conversion")
-    
+
     try:
         return toon.encode(array_data)
     except Exception as e:
-        raise ValueError(f"Failed to convert data to TOON format: {e}")
+        raise ValueError(f"Failed to convert data to TOON format: {e}") from e
 
 
 def _dataframe_to_toon(df) -> str:
     """Convert Pandas DataFrame to TOON format.
-    
+
     Args:
         df: Pandas DataFrame to convert
-        
+
     Returns:
         TOON formatted string
-        
+
     Raises:
         ValueError: If DataFrame conversion fails
         RuntimeError: If pandas or python-toon is not installed
@@ -1019,12 +1067,11 @@ def _dataframe_to_toon(df) -> str:
         raise RuntimeError(
             "Pandas DataFrame conversion requested but 'pandas' is not installed. "
             "Install it with 'pip install pandas' or 'pip install prompture[pandas]'."
-        )
-    
+        ) from None
+
     if toon is None:
         raise RuntimeError(
-            "TOON conversion requested but 'python-toon' is not installed. "
-            "Install it with 'pip install python-toon'."
+            "TOON conversion requested but 'python-toon' is not installed. Install it with 'pip install python-toon'."
         )
 
     dataframe_type = getattr(pd, "DataFrame", None)
@@ -1035,43 +1082,43 @@ def _dataframe_to_toon(df) -> str:
         # Duck-type fallback for tests that provide a lightweight mock
         if not hasattr(df, "to_dict") or not hasattr(df, "empty"):
             raise ValueError("Input must be a pandas DataFrame")
-    
+
     if df.empty:
         raise ValueError("DataFrame cannot be empty")
-    
+
     try:
         # Convert DataFrame to list of dicts
-        data = df.to_dict('records')
+        data = df.to_dict("records")
         return toon.encode(data)
     except Exception as e:
-        raise ValueError(f"Failed to convert DataFrame to TOON format: {e}")
+        raise ValueError(f"Failed to convert DataFrame to TOON format: {e}") from e
 
 
-def _calculate_token_savings(json_text: str, toon_text: str) -> Dict[str, Any]:
+def _calculate_token_savings(json_text: str, toon_text: str) -> dict[str, Any]:
     """Calculate estimated token savings between JSON and TOON formats.
-    
+
     This is a rough estimation based on character count ratios.
     Actual token counts may vary by model and tokenizer.
-    
+
     Args:
         json_text: JSON formatted text
         toon_text: TOON formatted text
-        
+
     Returns:
         Dict containing savings statistics
     """
     json_chars = len(json_text)
     toon_chars = len(toon_text)
-    
+
     # Rough estimation: 4 characters ≈ 1 token (varies by model)
     json_tokens_est = json_chars // 4
     toon_tokens_est = toon_chars // 4
-    
+
     savings_chars = json_chars - toon_chars
     savings_tokens_est = json_tokens_est - toon_tokens_est
-    
+
     percentage_saved = (savings_chars / json_chars * 100) if json_chars > 0 else 0
-    
+
     return {
         "json_characters": json_chars,
         "toon_characters": toon_chars,
@@ -1079,26 +1126,26 @@ def _calculate_token_savings(json_text: str, toon_text: str) -> Dict[str, Any]:
         "estimated_json_tokens": json_tokens_est,
         "estimated_toon_tokens": toon_tokens_est,
         "estimated_saved_tokens": savings_tokens_est,
-        "percentage_saved": round(percentage_saved, 1)
+        "percentage_saved": round(percentage_saved, 1),
     }
 
 
 def extract_from_data(
-    data: Union[List[Dict[str, Any]], Dict[str, Any]],
+    data: Union[list[dict[str, Any]], dict[str, Any]],
     question: str,
-    json_schema: Dict[str, Any],
+    json_schema: dict[str, Any],
     *,
     model_name: str,
-    data_key: Optional[str] = None,
+    data_key: str | None = None,
     instruction_template: str = "Analyze the following data and answer: {question}",
     ai_cleanup: bool = True,
-    options: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Any]:
+    options: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Extract information from structured data by converting to TOON format for token efficiency.
-    
+
     This function takes JSON array data, converts it to TOON format to reduce tokens,
     sends it to the LLM with a question, and returns the JSON response.
-    
+
     Args:
         data: List of dicts (uniform array) or dict containing array under a key
         question: The question to ask about the data
@@ -1108,7 +1155,7 @@ def extract_from_data(
         instruction_template: Template with {question} placeholder
         ai_cleanup: Whether to attempt AI-based cleanup if JSON parsing fails
         options: Additional options to pass to the driver
-    
+
     Returns:
         Dict containing:
         - json_object: The parsed JSON response
@@ -1116,18 +1163,18 @@ def extract_from_data(
         - usage: Token usage and cost information (includes token_savings)
         - toon_data: The TOON formatted input data
         - token_savings: Statistics about token savings vs JSON input
-    
+
     Raises:
         ValueError: If data format is invalid or conversion fails
         RuntimeError: If required dependencies are missing
-    
+
     Example:
         >>> products = [
         ...     {"id": 1, "name": "Laptop", "price": 999.99, "category": "electronics"},
         ...     {"id": 2, "name": "Book", "price": 19.99, "category": "books"}
         ... ]
         >>> schema = {
-        ...     "type": "object", 
+        ...     "type": "object",
         ...     "properties": {
         ...         "average_price": {"type": "number"},
         ...         "total_items": {"type": "integer"}
@@ -1144,57 +1191,57 @@ def extract_from_data(
     """
     if not question or not question.strip():
         raise ValueError("Question cannot be empty")
-    
+
     if not json_schema:
         raise ValueError("JSON schema cannot be empty")
-    
+
     if options is None:
         options = {}
-    
+
     # Convert data to TOON format
     toon_data = _json_to_toon(data, data_key)
-    
+
     # Calculate token savings (for comparison with JSON)
     json_data = json.dumps(data if isinstance(data, list) else data.get(data_key, data), indent=2)
     token_savings = _calculate_token_savings(json_data, toon_data)
-    
+
     # Build the prompt with TOON data
     content_prompt = instruction_template.format(question=question)
     full_prompt = f"{content_prompt}\n\nData (in TOON format):\n{toon_data}"
-    
+
     # Call the LLM
     result = ask_for_json(
         driver=get_driver_for_model(model_name),
         content_prompt=full_prompt,
         json_schema=json_schema,
         ai_cleanup=ai_cleanup,
-        model_name=model_name.split('/')[-1] if '/' in model_name else model_name,
+        model_name=model_name.split("/")[-1] if "/" in model_name else model_name,
         options=options,
-        output_format="json"  # Always return JSON, not TOON
+        output_format="json",  # Always return JSON, not TOON
     )
-    
+
     # Add our additional data to the result
     result["toon_data"] = toon_data
     result["token_savings"] = token_savings
-    
+
     return result
 
 
 def extract_from_pandas(
     df,  # pandas.DataFrame - optional import
     question: str,
-    json_schema: Dict[str, Any],
+    json_schema: dict[str, Any],
     *,
     model_name: str,
     instruction_template: str = "Analyze the following data and answer: {question}",
     ai_cleanup: bool = True,
-    options: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Any]:
+    options: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Extract information from Pandas DataFrame by converting to TOON format for token efficiency.
-    
+
     This function takes a Pandas DataFrame, converts it to TOON format to reduce tokens,
     sends it to the LLM with a question, and returns the JSON response.
-    
+
     Args:
         df: Pandas DataFrame to analyze
         question: The question to ask about the data
@@ -1203,7 +1250,7 @@ def extract_from_pandas(
         instruction_template: Template with {question} placeholder
         ai_cleanup: Whether to attempt AI-based cleanup if JSON parsing fails
         options: Additional options to pass to the driver
-    
+
     Returns:
         Dict containing:
         - json_object: The parsed JSON response
@@ -1212,11 +1259,11 @@ def extract_from_pandas(
         - toon_data: The TOON formatted input data
         - token_savings: Statistics about token savings vs JSON input
         - dataframe_info: Basic info about the original DataFrame
-    
+
     Raises:
         ValueError: If DataFrame is invalid or conversion fails
         RuntimeError: If required dependencies are missing
-    
+
     Example:
         >>> import pandas as pd
         >>> df = pd.DataFrame([
@@ -1241,45 +1288,45 @@ def extract_from_pandas(
     """
     if not question or not question.strip():
         raise ValueError("Question cannot be empty")
-    
+
     if not json_schema:
         raise ValueError("JSON schema cannot be empty")
-    
+
     if options is None:
         options = {}
-    
+
     # Convert DataFrame to TOON format
     toon_data = _dataframe_to_toon(df)
-    
+
     # Calculate token savings (for comparison with JSON)
-    json_data = df.to_json(indent=2, orient='records')
+    json_data = df.to_json(indent=2, orient="records")
     token_savings = _calculate_token_savings(json_data, toon_data)
-    
+
     # Get basic DataFrame info
     dataframe_info = {
         "shape": df.shape,
         "columns": list(df.columns),
-        "dtypes": {col: str(dtype) for col, dtype in df.dtypes.items()}
+        "dtypes": {col: str(dtype) for col, dtype in df.dtypes.items()},
     }
-    
+
     # Build the prompt with TOON data
     content_prompt = instruction_template.format(question=question)
     full_prompt = f"{content_prompt}\n\nData (in TOON format):\n{toon_data}"
-    
+
     # Call the LLM
     result = ask_for_json(
         driver=get_driver_for_model(model_name),
         content_prompt=full_prompt,
         json_schema=json_schema,
         ai_cleanup=ai_cleanup,
-        model_name=model_name.split('/')[-1] if '/' in model_name else model_name,
+        model_name=model_name.split("/")[-1] if "/" in model_name else model_name,
         options=options,
-        output_format="json"  # Always return JSON, not TOON
+        output_format="json",  # Always return JSON, not TOON
     )
-    
+
     # Add our additional data to the result
     result["toon_data"] = toon_data
     result["token_savings"] = token_savings
     result["dataframe_info"] = dataframe_info
-    
+
     return result

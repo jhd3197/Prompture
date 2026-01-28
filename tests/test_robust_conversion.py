@@ -4,13 +4,15 @@ Tests for the enhanced convert_value function in prompture/tools.py.
 This module tests the robust type conversion functionality with multilingual
 support, fallback mechanisms, and integration with field definitions.
 """
-import pytest
-from decimal import Decimal
-from datetime import datetime, date
-from typing import List, Union, Optional, Dict, Any
 
-from prompture.tools import convert_value, parse_boolean, LogLevel
+from datetime import datetime
+from decimal import Decimal
+from typing import Optional, Union
+
+import pytest
+
 from prompture.field_definitions import FIELD_DEFINITIONS
+from prompture.tools import convert_value, parse_boolean
 
 
 class TestParseBoolean:
@@ -21,39 +23,39 @@ class TestParseBoolean:
         # Standard true values
         true_values = [True, 1, "true", "True", "TRUE", "yes", "Yes", "YES", "on", "On", "ON"]
         for value in true_values:
-            assert parse_boolean(value) == True, f"Failed for value: {value}"
+            assert parse_boolean(value), f"Failed for value: {value}"
 
         # Standard false values
         false_values = [False, 0, "false", "False", "FALSE", "no", "No", "NO", "off", "Off", "OFF"]
         for value in false_values:
-            assert parse_boolean(value) == False, f"Failed for value: {value}"
+            assert not parse_boolean(value), f"Failed for value: {value}"
 
     def test_multilingual_boolean_values(self):
         """Test multilingual boolean support."""
         # Spanish
-        assert parse_boolean("sí") == True
-        assert parse_boolean("si") == True
-        assert parse_boolean("no") == False  # Same in English and Spanish
+        assert parse_boolean("sí")
+        assert parse_boolean("si")
+        assert not parse_boolean("no")  # Same in English and Spanish
 
-        # French  
-        assert parse_boolean("oui") == True
-        assert parse_boolean("non") == False
+        # French
+        assert parse_boolean("oui")
+        assert not parse_boolean("non")
 
         # German
-        assert parse_boolean("ja") == True
-        assert parse_boolean("nein") == False
+        assert parse_boolean("ja")
+        assert not parse_boolean("nein")
 
     def test_edge_case_boolean_values(self):
         """Test edge cases for boolean parsing."""
         # Empty and null-like values should be False
         false_edge_cases = ["", "   ", "null", "none", "n/a", "na", "nil", "undefined"]
         for value in false_edge_cases:
-            assert parse_boolean(value) == False, f"Failed for value: '{value}'"
+            assert not parse_boolean(value), f"Failed for value: '{value}'"
 
         # Numeric values
-        assert parse_boolean(42) == True
-        assert parse_boolean(0.0) == False
-        assert parse_boolean(Decimal("1.5")) == True
+        assert parse_boolean(42)
+        assert not parse_boolean(0.0)
+        assert parse_boolean(Decimal("1.5"))
 
     def test_boolean_parsing_errors(self):
         """Test error cases for boolean parsing."""
@@ -86,7 +88,7 @@ class TestConvertValueBasic:
         assert convert_value("123", int) == 123
         assert convert_value(123.7, int) == 123
         assert convert_value("42", int) == 42
-        
+
         # Test shorthand numbers
         assert convert_value("1k", int, allow_shorthand=True) == 1000
         assert convert_value("2.5k", int, allow_shorthand=True) == 2500
@@ -99,23 +101,23 @@ class TestConvertValueBasic:
 
     def test_convert_to_bool(self):
         """Test conversion to boolean type."""
-        assert convert_value("true", bool) == True
-        assert convert_value("false", bool) == False
-        assert convert_value("sí", bool) == True  # Spanish
-        assert convert_value("nein", bool) == False  # German
+        assert convert_value("true", bool)
+        assert not convert_value("false", bool)
+        assert convert_value("sí", bool)  # Spanish
+        assert not convert_value("nein", bool)  # German
 
     def test_convert_to_list(self):
         """Test conversion to list type."""
-        assert convert_value("a,b,c", List[str]) == ["a", "b", "c"]
-        assert convert_value(["x", "y"], List[str]) == ["x", "y"]
-        assert convert_value("1;2;3", List[int]) == [1, 2, 3]
-        assert convert_value("single", List[str]) == ["single"]
+        assert convert_value("a,b,c", list[str]) == ["a", "b", "c"]
+        assert convert_value(["x", "y"], list[str]) == ["x", "y"]
+        assert convert_value("1;2;3", list[int]) == [1, 2, 3]
+        assert convert_value("single", list[str]) == ["single"]
 
     def test_convert_none_values(self):
         """Test conversion of None values."""
         assert convert_value(None, str) == ""  # Type default for str
-        assert convert_value(None, int) == 0   # Type default for int
-        assert convert_value(None, List[str]) == []  # Type default for list
+        assert convert_value(None, int) == 0  # Type default for int
+        assert convert_value(None, list[str]) == []  # Type default for list
 
 
 class TestConvertValueWithDefaults:
@@ -124,31 +126,25 @@ class TestConvertValueWithDefaults:
     def test_field_definitions_integration(self):
         """Test conversion with field definitions providing defaults."""
         field_definitions = {
-            "name": {
-                "type": "str",
-                "default": "Unknown Person",
-                "nullable": False
-            },
-            "age": {
-                "type": "int", 
-                "default": 25,
-                "nullable": True
-            }
+            "name": {"type": "str", "default": "Unknown Person", "nullable": False},
+            "age": {"type": "int", "default": 25, "nullable": True},
         }
-        
+
         # Test successful conversion - should not use defaults
         result = convert_value("John Doe", str, field_name="name", field_definitions=field_definitions)
         assert result == "John Doe"
-        
+
         # Test conversion failure with use_defaults_on_failure=True
-        result = convert_value("invalid_age", int, field_name="age", 
-                             field_definitions=field_definitions, use_defaults_on_failure=True)
+        result = convert_value(
+            "invalid_age", int, field_name="age", field_definitions=field_definitions, use_defaults_on_failure=True
+        )
         assert result == 25  # Should use field definition default
-        
+
         # Test conversion failure with use_defaults_on_failure=False
         with pytest.raises(ValueError):
-            convert_value("invalid_age", int, field_name="age", 
-                         field_definitions=field_definitions, use_defaults_on_failure=False)
+            convert_value(
+                "invalid_age", int, field_name="age", field_definitions=field_definitions, use_defaults_on_failure=False
+            )
 
     def test_default_priority_system(self):
         """Test that defaults are applied in correct priority order."""
@@ -156,18 +152,24 @@ class TestConvertValueWithDefaults:
             "test_field": {
                 "type": "int",
                 "default": 100,  # Field definition default
-                "nullable": True
+                "nullable": True,
             }
         }
-        
+
         # Field definition default should be used
-        result = convert_value("invalid", int, field_name="test_field", 
-                             field_definitions=field_definitions, use_defaults_on_failure=True)
+        result = convert_value(
+            "invalid", int, field_name="test_field", field_definitions=field_definitions, use_defaults_on_failure=True
+        )
         assert result == 100
-        
+
         # Type default should be used if no field definition
-        result = convert_value("invalid", int, field_name="unknown_field", 
-                             field_definitions=field_definitions, use_defaults_on_failure=True)
+        result = convert_value(
+            "invalid",
+            int,
+            field_name="unknown_field",
+            field_definitions=field_definitions,
+            use_defaults_on_failure=True,
+        )
         assert result == 0  # int type default
 
 
@@ -179,7 +181,7 @@ class TestConvertValueUnionTypes:
         # Union[str, int] - should try str first, then int
         result = convert_value("hello", Union[str, int])
         assert result == "hello"
-        
+
         result = convert_value("123", Union[str, int])
         assert result == "123"  # str conversion succeeds first
 
@@ -194,7 +196,7 @@ class TestConvertValueUnionTypes:
         # Optional[int] is Union[int, None]
         result = convert_value("42", Optional[int])
         assert result == 42
-        
+
         result = convert_value(None, Optional[int])
         assert result is None
 
@@ -219,7 +221,7 @@ class TestConvertValueRobustness:
     def test_list_conversion_with_item_failures(self):
         """Test list conversion when some items fail to convert."""
         # Test with mixed valid/invalid items
-        result = convert_value("1,invalid,3", List[int], use_defaults_on_failure=True)
+        result = convert_value("1,invalid,3", list[int], use_defaults_on_failure=True)
         # Should convert valid items and use default for invalid ones
         assert isinstance(result, list)
         assert 1 in result
@@ -230,7 +232,7 @@ class TestConvertValueRobustness:
         # Valid datetime string
         result = convert_value("2023-12-25T10:30:00", datetime)
         assert isinstance(result, datetime)
-        
+
         # Invalid datetime with fallback
         try:
             result = convert_value("invalid-date", datetime, use_defaults_on_failure=True)
@@ -245,7 +247,7 @@ class TestConvertValueRobustness:
         result = convert_value("123.456", Decimal)
         assert isinstance(result, Decimal)
         assert result == Decimal("123.456")
-        
+
         # Test with shorthand
         result = convert_value("1.5k", Decimal)
         assert isinstance(result, Decimal)
@@ -258,35 +260,33 @@ class TestConvertValueWithBuiltinDefinitions:
     def test_name_field_conversion(self):
         """Test conversion for the name field."""
         # Should work normally
-        result = convert_value("John Doe", str, field_name="name", 
-                             field_definitions=FIELD_DEFINITIONS)
+        result = convert_value("John Doe", str, field_name="name", field_definitions=FIELD_DEFINITIONS)
         assert result == "John Doe"
-        
+
         # Test with failure and default
-        result = convert_value(None, str, field_name="name", 
-                             field_definitions=FIELD_DEFINITIONS, use_defaults_on_failure=True)
+        result = convert_value(
+            None, str, field_name="name", field_definitions=FIELD_DEFINITIONS, use_defaults_on_failure=True
+        )
         assert result == ""  # Default from FIELD_DEFINITIONS
 
     def test_age_field_conversion(self):
         """Test conversion for the age field."""
-        result = convert_value("30", int, field_name="age", 
-                             field_definitions=FIELD_DEFINITIONS)
+        result = convert_value("30", int, field_name="age", field_definitions=FIELD_DEFINITIONS)
         assert result == 30
-        
+
         # Test with default
-        result = convert_value("invalid", int, field_name="age", 
-                             field_definitions=FIELD_DEFINITIONS, use_defaults_on_failure=True)
+        result = convert_value(
+            "invalid", int, field_name="age", field_definitions=FIELD_DEFINITIONS, use_defaults_on_failure=True
+        )
         assert result == 0  # Default from FIELD_DEFINITIONS
 
     def test_confidence_score_conversion(self):
         """Test conversion for confidence_score field."""
-        result = convert_value("0.85", float, field_name="confidence_score", 
-                             field_definitions=FIELD_DEFINITIONS)
+        result = convert_value("0.85", float, field_name="confidence_score", field_definitions=FIELD_DEFINITIONS)
         assert result == 0.85
-        
+
         # Test with percentage input
-        result = convert_value("85%", float, field_name="confidence_score", 
-                             field_definitions=FIELD_DEFINITIONS)
+        result = convert_value("85%", float, field_name="confidence_score", field_definitions=FIELD_DEFINITIONS)
         assert result == 0.85
 
 
@@ -297,7 +297,7 @@ class TestConvertValueEdgeCases:
         """Test conversion of empty strings."""
         assert convert_value("", str) == ""
         assert convert_value("", int, use_defaults_on_failure=True) == 0
-        assert convert_value("", List[str]) == []
+        assert convert_value("", list[str]) == []
 
     def test_whitespace_handling(self):
         """Test conversion with whitespace."""
@@ -317,15 +317,15 @@ class TestConvertValueEdgeCases:
         """Test conversion with unicode characters."""
         unicode_str = "café naïve résumé"
         assert convert_value(unicode_str, str) == unicode_str
-        
+
         # Unicode in boolean values
-        assert parse_boolean("sí") == True  # Spanish yes with accent
+        assert parse_boolean("sí")  # Spanish yes with accent
 
     def test_nested_data_structures(self):
         """Test conversion with nested data structures."""
         # Dict conversion
         dict_data = {"key": "value"}
-        result = convert_value(dict_data, Dict[str, str])
+        result = convert_value(dict_data, dict[str, str])
         assert result == dict_data
 
     def test_conversion_logging(self):
@@ -343,8 +343,8 @@ class TestBackwardCompatibility:
         """Test that existing ways of calling convert_value still work."""
         # Basic conversion without new parameters
         assert convert_value("123", int) == 123
-        assert convert_value("true", bool) == True
-        assert convert_value("a,b,c", List[str]) == ["a", "b", "c"]
+        assert convert_value("true", bool)
+        assert convert_value("a,b,c", list[str]) == ["a", "b", "c"]
 
     def test_allow_shorthand_parameter(self):
         """Test that allow_shorthand parameter works as before."""

@@ -1,8 +1,10 @@
 """OpenRouter driver implementation.
 Requires the `requests` package. Uses OPENROUTER_API_KEY env var.
 """
+
 import os
-from typing import Any, Dict
+from typing import Any
+
 import requests
 
 from ..driver import Driver
@@ -40,7 +42,7 @@ class OpenRouterDriver(Driver):
 
     def __init__(self, api_key: str | None = None, model: str = "openai/gpt-3.5-turbo"):
         """Initialize OpenRouter driver.
-        
+
         Args:
             api_key: OpenRouter API key. If not provided, will look for OPENROUTER_API_KEY env var
             model: Model to use. Defaults to openai/gpt-3.5-turbo
@@ -48,10 +50,10 @@ class OpenRouterDriver(Driver):
         self.api_key = api_key or os.getenv("OPENROUTER_API_KEY")
         if not self.api_key:
             raise ValueError("OpenRouter API key not found. Set OPENROUTER_API_KEY env var.")
-        
+
         self.model = model
         self.base_url = "https://openrouter.ai/api/v1"
-        
+
         # Required headers for OpenRouter
         self.headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -59,13 +61,13 @@ class OpenRouterDriver(Driver):
             "Content-Type": "application/json",
         }
 
-    def generate(self, prompt: str, options: Dict[str, Any]) -> Dict[str, Any]:
+    def generate(self, prompt: str, options: dict[str, Any]) -> dict[str, Any]:
         """Generate completion using OpenRouter API.
-        
+
         Args:
             prompt: The prompt text
             options: Generation options
-            
+
         Returns:
             Dict containing generated text and metadata
         """
@@ -73,7 +75,7 @@ class OpenRouterDriver(Driver):
             raise RuntimeError("OpenRouter API key not found")
 
         model = options.get("model", self.model)
-        
+
         # Lookup model-specific config
         model_info = self.MODEL_PRICING.get(model, {})
         tokens_param = model_info.get("tokens_param", "max_tokens")
@@ -112,6 +114,7 @@ class OpenRouterDriver(Driver):
 
             # Calculate cost — try live rates first (per 1M tokens), fall back to hardcoded (per 1K tokens)
             from ..model_rates import get_model_rates
+
             live_rates = get_model_rates("openrouter", model)
             if live_rates:
                 prompt_cost = (prompt_tokens / 1_000_000) * live_rates["input"]
@@ -136,8 +139,8 @@ class OpenRouterDriver(Driver):
             return {"text": text, "meta": meta}
 
         except requests.exceptions.RequestException as e:
-            error_msg = f"OpenRouter API request failed: {str(e)}"
-            if hasattr(e.response, 'json'):
+            error_msg = f"OpenRouter API request failed: {e!s}"
+            if hasattr(e.response, "json"):
                 try:
                     error_details = e.response.json()
                     error_msg = f"{error_msg} - {error_details.get('error', {}).get('message', '')}"

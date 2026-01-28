@@ -19,6 +19,7 @@ The `usage` metadata returned includes:
 """
 
 import json
+
 from prompture import extract_and_jsonify
 
 # 1. Define the raw text to be processed
@@ -33,8 +34,8 @@ json_schema = {
         "age": {"type": "integer"},
         "profession": {"type": "string"},
         "city": {"type": "string"},
-        "hobbies": {"type": "array", "items": {"type": "string"}}
-    }
+        "hobbies": {"type": "array", "items": {"type": "string"}},
+    },
 }
 
 # === FIRST EXAMPLE: Default instruction template ===
@@ -44,7 +45,7 @@ print("Extracting information into JSON with default instruction...")
 result = extract_and_jsonify(
     text=text,
     json_schema=json_schema,
-    model_name="openai/gpt-4o-mini"  # model is explicitly chosen here
+    model_name="openai/gpt-4o-mini",  # model is explicitly chosen here
 )
 
 # Extract JSON output and metadata
