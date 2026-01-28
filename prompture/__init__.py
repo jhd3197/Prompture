@@ -24,6 +24,7 @@ from .field_definitions import (
 from .runner import run_suite_from_spec
 from .validator import validate_against_schema
 from .discovery import get_available_models
+from .model_rates import get_model_rates, get_model_info, refresh_rates_cache
 
 # Load environment variables from .env file
 load_dotenv()
@@ -90,4 +91,8 @@ __all__ = [
     "AirLLMDriver",
     # Discovery
     "get_available_models",
+    # Model Rates
+    "get_model_rates",
+    "get_model_info",
+    "refresh_rates_cache",
 ]

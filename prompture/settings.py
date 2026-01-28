@@ -52,6 +52,9 @@ class Settings(BaseSettings):
     airllm_model: str = "meta-llama/Llama-2-7b-hf"
     airllm_compression: Optional[str] = None  # "4bit" or "8bit"
 
+    # Model rates cache
+    model_rates_ttl_days: int = 7  # How often to refresh models.dev cache
+
     model_config = SettingsConfigDict(
         env_file=".env",
         extra="ignore",

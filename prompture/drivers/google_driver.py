@@ -134,14 +134,22 @@ class GoogleDriver(Driver):
                 raise ValueError("Empty response from model")
 
             # Calculate token usage and cost
-            # Note: Using character count as proxy since Google charges per character
             prompt_chars = len(prompt)
             completion_chars = len(response.text)
-            
-            # Calculate costs
-            model_pricing = self.MODEL_PRICING.get(self.model, {"prompt": 0, "completion": 0})
-            prompt_cost = (prompt_chars / 1_000_000) * model_pricing["prompt"]
-            completion_cost = (completion_chars / 1_000_000) * model_pricing["completion"]
+
+            # Try live rates first (per 1M tokens), fall back to hardcoded character-based pricing
+            from ..model_rates import get_model_rates
+            live_rates = get_model_rates("google", self.model)
+            if live_rates:
+                # models.dev reports token-based pricing; estimate tokens from chars (~4 chars/token)
+                est_prompt_tokens = prompt_chars / 4
+                est_completion_tokens = completion_chars / 4
+                prompt_cost = (est_prompt_tokens / 1_000_000) * live_rates["input"]
+                completion_cost = (est_completion_tokens / 1_000_000) * live_rates["output"]
+            else:
+                model_pricing = self.MODEL_PRICING.get(self.model, {"prompt": 0, "completion": 0})
+                prompt_cost = (prompt_chars / 1_000_000) * model_pricing["prompt"]
+                completion_cost = (completion_chars / 1_000_000) * model_pricing["completion"]
             total_cost = prompt_cost + completion_cost
 
             meta = {

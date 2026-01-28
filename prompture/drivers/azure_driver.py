@@ -111,10 +111,16 @@ class AzureDriver(Driver):
         completion_tokens = getattr(usage, "completion_tokens", 0)
         total_tokens = getattr(usage, "total_tokens", 0)
 
-        # Calculate cost
-        model_pricing = self.MODEL_PRICING.get(model, {"prompt": 0, "completion": 0})
-        prompt_cost = (prompt_tokens / 1000) * model_pricing["prompt"]
-        completion_cost = (completion_tokens / 1000) * model_pricing["completion"]
+        # Calculate cost — try live rates first (per 1M tokens), fall back to hardcoded (per 1K tokens)
+        from ..model_rates import get_model_rates
+        live_rates = get_model_rates("azure", model)
+        if live_rates:
+            prompt_cost = (prompt_tokens / 1_000_000) * live_rates["input"]
+            completion_cost = (completion_tokens / 1_000_000) * live_rates["output"]
+        else:
+            model_pricing = self.MODEL_PRICING.get(model, {"prompt": 0, "completion": 0})
+            prompt_cost = (prompt_tokens / 1000) * model_pricing["prompt"]
+            completion_cost = (completion_tokens / 1000) * model_pricing["completion"]
         total_cost = prompt_cost + completion_cost
 
         # Standardized meta object

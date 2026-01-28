@@ -33,7 +33,8 @@ def get_available_models() -> List[str]:
         A list of unique model strings in the format "provider/model_id".
     """
     available_models: Set[str] = set()
-    
+    configured_providers: Set[str] = set()
+
     # Map of provider name to driver class
     # We need to map the registry keys to the actual classes to check MODEL_PRICING
     # and instantiate for dynamic checks if needed.
@@ -96,6 +97,8 @@ def get_available_models() -> List[str]:
             if not is_configured:
                 continue
 
+            configured_providers.add(provider)
+
             # 2. Static Detection: Get models from MODEL_PRICING
             if hasattr(driver_cls, "MODEL_PRICING"):
                 pricing = driver_cls.MODEL_PRICING
@@ -145,5 +148,12 @@ def get_available_models() -> List[str]:
         except Exception as e:
             logger.warning(f"Error detecting models for provider {provider}: {e}")
             continue
+
+    # Enrich with live model list from models.dev cache
+    from .model_rates import get_all_provider_models, PROVIDER_MAP
+    for prompture_name, api_name in PROVIDER_MAP.items():
+        if prompture_name in configured_providers:
+            for model_id in get_all_provider_models(api_name):
+                available_models.add(f"{prompture_name}/{model_id}")
 
     return sorted(list(available_models))

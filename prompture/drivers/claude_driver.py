@@ -64,10 +64,16 @@ class ClaudeDriver(Driver):
         completion_tokens = resp.usage.output_tokens
         total_tokens = prompt_tokens + completion_tokens
         
-        # Calculate cost based on model pricing
-        model_pricing = self.MODEL_PRICING.get(model, {"prompt": 0, "completion": 0})
-        prompt_cost = (prompt_tokens / 1000) * model_pricing["prompt"]
-        completion_cost = (completion_tokens / 1000) * model_pricing["completion"]
+        # Calculate cost — try live rates first (per 1M tokens), fall back to hardcoded (per 1K tokens)
+        from ..model_rates import get_model_rates
+        live_rates = get_model_rates("claude", model)
+        if live_rates:
+            prompt_cost = (prompt_tokens / 1_000_000) * live_rates["input"]
+            completion_cost = (completion_tokens / 1_000_000) * live_rates["output"]
+        else:
+            model_pricing = self.MODEL_PRICING.get(model, {"prompt": 0, "completion": 0})
+            prompt_cost = (prompt_tokens / 1000) * model_pricing["prompt"]
+            completion_cost = (completion_tokens / 1000) * model_pricing["completion"]
         total_cost = prompt_cost + completion_cost
         
         # Create standardized meta object
