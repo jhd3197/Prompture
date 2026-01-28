@@ -1,17 +1,23 @@
 """Driver for Azure OpenAI Service (migrated to openai>=1.0.0).
 Requires the `openai` package.
 """
+
 import os
-from typing import Any, Dict
+from typing import Any
+
 try:
     from openai import AzureOpenAI
 except Exception:
     AzureOpenAI = None
 
+from ..cost_mixin import CostMixin
 from ..driver import Driver
 
 
-class AzureDriver(Driver):
+class AzureDriver(CostMixin, Driver):
+    supports_json_mode = True
+    supports_json_schema = True
+
     # Pricing per 1K tokens (adjust if your Azure pricing differs from OpenAI defaults)
     MODEL_PRICING = {
         "gpt-5-mini": {
@@ -82,7 +88,16 @@ class AzureDriver(Driver):
         else:
             self.client = None
 
-    def generate(self, prompt: str, options: Dict[str, Any]) -> Dict[str, Any]:
+    supports_messages = True
+
+    def generate(self, prompt: str, options: dict[str, Any]) -> dict[str, Any]:
+        messages = [{"role": "user", "content": prompt}]
+        return self._do_generate(messages, options)
+
+    def generate_messages(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
+        return self._do_generate(messages, options)
+
+    def _do_generate(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
         if self.client is None:
             raise RuntimeError("openai package (>=1.0.0) with AzureOpenAI not installed")
 
@@ -96,12 +111,27 @@ class AzureDriver(Driver):
         # Build request kwargs
         kwargs = {
             "model": self.deployment_id,  # for Azure, use deployment name
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": messages,
         }
         kwargs[tokens_param] = opts.get("max_tokens", 512)
 
         if supports_temperature and "temperature" in opts:
             kwargs["temperature"] = opts["temperature"]
+
+        # Native JSON mode support
+        if options.get("json_mode"):
+            json_schema = options.get("json_schema")
+            if json_schema:
+                kwargs["response_format"] = {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "extraction",
+                        "strict": True,
+                        "schema": json_schema,
+                    },
+                }
+            else:
+                kwargs["response_format"] = {"type": "json_object"}
 
         resp = self.client.chat.completions.create(**kwargs)
 
@@ -111,17 +141,8 @@ class AzureDriver(Driver):
         completion_tokens = getattr(usage, "completion_tokens", 0)
         total_tokens = getattr(usage, "total_tokens", 0)
 
-        # Calculate cost — try live rates first (per 1M tokens), fall back to hardcoded (per 1K tokens)
-        from ..model_rates import get_model_rates
-        live_rates = get_model_rates("azure", model)
-        if live_rates:
-            prompt_cost = (prompt_tokens / 1_000_000) * live_rates["input"]
-            completion_cost = (completion_tokens / 1_000_000) * live_rates["output"]
-        else:
-            model_pricing = self.MODEL_PRICING.get(model, {"prompt": 0, "completion": 0})
-            prompt_cost = (prompt_tokens / 1000) * model_pricing["prompt"]
-            completion_cost = (completion_tokens / 1000) * model_pricing["completion"]
-        total_cost = prompt_cost + completion_cost
+        # Calculate cost via shared mixin
+        total_cost = self._calculate_cost("azure", model, prompt_tokens, completion_tokens)
 
         # Standardized meta object
         meta = {

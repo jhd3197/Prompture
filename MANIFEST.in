@@ -1,5 +1,4 @@
 # MANIFEST.in
-exclude *.toml
 exclude *.yml
 exclude *.yaml
 exclude .gitignore

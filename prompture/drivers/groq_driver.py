@@ -1,18 +1,22 @@
 """Groq driver for prompture.
 Requires the `groq` package. Uses GROQ_API_KEY env var.
 """
+
 import os
-from typing import Any, Dict
+from typing import Any
 
 try:
     import groq
 except Exception:
     groq = None
 
+from ..cost_mixin import CostMixin
 from ..driver import Driver
 
 
-class GroqDriver(Driver):
+class GroqDriver(CostMixin, Driver):
+    supports_json_mode = True
+
     # Approximate pricing per 1K tokens (to be updated with official pricing)
     # Each model entry defines token parameters and temperature support
     MODEL_PRICING = {
@@ -32,7 +36,7 @@ class GroqDriver(Driver):
 
     def __init__(self, api_key: str | None = None, model: str = "llama2-70b-4096"):
         """Initialize Groq driver.
-        
+
         Args:
             api_key: Groq API key (defaults to GROQ_API_KEY env var)
             model: Model to use (defaults to llama2-70b-4096)
@@ -44,20 +48,16 @@ class GroqDriver(Driver):
         else:
             self.client = None
 
-    def generate(self, prompt: str, options: Dict[str, Any]) -> Dict[str, Any]:
-        """Generate completion using Groq API.
-        
-        Args:
-            prompt: Input prompt
-            options: Generation options
-            
-        Returns:
-            Dict containing generated text and metadata
-            
-        Raises:
-            RuntimeError: If groq package is not installed
-            groq.error.*: Various Groq API errors
-        """
+    supports_messages = True
+
+    def generate(self, prompt: str, options: dict[str, Any]) -> dict[str, Any]:
+        messages = [{"role": "user", "content": prompt}]
+        return self._do_generate(messages, options)
+
+    def generate_messages(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
+        return self._do_generate(messages, options)
+
+    def _do_generate(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
         if self.client is None:
             raise RuntimeError("groq package is not installed")
 
@@ -74,7 +74,7 @@ class GroqDriver(Driver):
         # Base kwargs for API call
         kwargs = {
             "model": model,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": messages,
         }
 
         # Set token limit with correct parameter name
@@ -84,29 +84,24 @@ class GroqDriver(Driver):
         if supports_temperature and "temperature" in opts:
             kwargs["temperature"] = opts["temperature"]
 
+        # Native JSON mode support
+        if options.get("json_mode"):
+            kwargs["response_format"] = {"type": "json_object"}
+
         try:
             resp = self.client.chat.completions.create(**kwargs)
-        except Exception as e:
+        except Exception:
             # Re-raise any Groq API errors
             raise
 
         # Extract usage statistics
         usage = getattr(resp, "usage", None)
         prompt_tokens = getattr(usage, "prompt_tokens", 0)
-        completion_tokens = getattr(usage, "completion_tokens", 0) 
+        completion_tokens = getattr(usage, "completion_tokens", 0)
         total_tokens = getattr(usage, "total_tokens", 0)
 
-        # Calculate costs — try live rates first (per 1M tokens), fall back to hardcoded (per 1K tokens)
-        from ..model_rates import get_model_rates
-        live_rates = get_model_rates("groq", model)
-        if live_rates:
-            prompt_cost = (prompt_tokens / 1_000_000) * live_rates["input"]
-            completion_cost = (completion_tokens / 1_000_000) * live_rates["output"]
-        else:
-            model_pricing = self.MODEL_PRICING.get(model, {"prompt": 0, "completion": 0})
-            prompt_cost = (prompt_tokens / 1000) * model_pricing["prompt"]
-            completion_cost = (completion_tokens / 1000) * model_pricing["completion"]
-        total_cost = prompt_cost + completion_cost
+        # Calculate cost via shared mixin
+        total_cost = self._calculate_cost("groq", model, prompt_tokens, completion_tokens)
 
         # Standard metadata object
         meta = {

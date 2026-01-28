@@ -1,14 +1,19 @@
 """OpenRouter driver implementation.
 Requires the `requests` package. Uses OPENROUTER_API_KEY env var.
 """
+
 import os
-from typing import Any, Dict
+from typing import Any
+
 import requests
 
+from ..cost_mixin import CostMixin
 from ..driver import Driver
 
 
-class OpenRouterDriver(Driver):
+class OpenRouterDriver(CostMixin, Driver):
+    supports_json_mode = True
+
     # Approximate pricing per 1K tokens based on OpenRouter's pricing
     # https://openrouter.ai/docs#pricing
     MODEL_PRICING = {
@@ -40,7 +45,7 @@ class OpenRouterDriver(Driver):
 
     def __init__(self, api_key: str | None = None, model: str = "openai/gpt-3.5-turbo"):
         """Initialize OpenRouter driver.
-        
+
         Args:
             api_key: OpenRouter API key. If not provided, will look for OPENROUTER_API_KEY env var
             model: Model to use. Defaults to openai/gpt-3.5-turbo
@@ -48,10 +53,10 @@ class OpenRouterDriver(Driver):
         self.api_key = api_key or os.getenv("OPENROUTER_API_KEY")
         if not self.api_key:
             raise ValueError("OpenRouter API key not found. Set OPENROUTER_API_KEY env var.")
-        
+
         self.model = model
         self.base_url = "https://openrouter.ai/api/v1"
-        
+
         # Required headers for OpenRouter
         self.headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -59,21 +64,21 @@ class OpenRouterDriver(Driver):
             "Content-Type": "application/json",
         }
 
-    def generate(self, prompt: str, options: Dict[str, Any]) -> Dict[str, Any]:
-        """Generate completion using OpenRouter API.
-        
-        Args:
-            prompt: The prompt text
-            options: Generation options
-            
-        Returns:
-            Dict containing generated text and metadata
-        """
+    supports_messages = True
+
+    def generate(self, prompt: str, options: dict[str, Any]) -> dict[str, Any]:
+        messages = [{"role": "user", "content": prompt}]
+        return self._do_generate(messages, options)
+
+    def generate_messages(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
+        return self._do_generate(messages, options)
+
+    def _do_generate(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
         if not self.api_key:
             raise RuntimeError("OpenRouter API key not found")
 
         model = options.get("model", self.model)
-        
+
         # Lookup model-specific config
         model_info = self.MODEL_PRICING.get(model, {})
         tokens_param = model_info.get("tokens_param", "max_tokens")
@@ -85,7 +90,7 @@ class OpenRouterDriver(Driver):
         # Base request data
         data = {
             "model": model,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": messages,
         }
 
         # Add token limit with correct parameter name
@@ -94,6 +99,10 @@ class OpenRouterDriver(Driver):
         # Only include temperature if model supports it
         if supports_temperature and "temperature" in opts:
             data["temperature"] = opts["temperature"]
+
+        # Native JSON mode support
+        if options.get("json_mode"):
+            data["response_format"] = {"type": "json_object"}
 
         try:
             response = requests.post(
@@ -110,17 +119,8 @@ class OpenRouterDriver(Driver):
             completion_tokens = usage.get("completion_tokens", 0)
             total_tokens = usage.get("total_tokens", 0)
 
-            # Calculate cost — try live rates first (per 1M tokens), fall back to hardcoded (per 1K tokens)
-            from ..model_rates import get_model_rates
-            live_rates = get_model_rates("openrouter", model)
-            if live_rates:
-                prompt_cost = (prompt_tokens / 1_000_000) * live_rates["input"]
-                completion_cost = (completion_tokens / 1_000_000) * live_rates["output"]
-            else:
-                model_pricing = self.MODEL_PRICING.get(model, {"prompt": 0, "completion": 0})
-                prompt_cost = (prompt_tokens / 1000) * model_pricing["prompt"]
-                completion_cost = (completion_tokens / 1000) * model_pricing["completion"]
-            total_cost = prompt_cost + completion_cost
+            # Calculate cost via shared mixin
+            total_cost = self._calculate_cost("openrouter", model, prompt_tokens, completion_tokens)
 
             # Standardized meta object
             meta = {
@@ -136,8 +136,8 @@ class OpenRouterDriver(Driver):
             return {"text": text, "meta": meta}
 
         except requests.exceptions.RequestException as e:
-            error_msg = f"OpenRouter API request failed: {str(e)}"
-            if hasattr(e.response, 'json'):
+            error_msg = f"OpenRouter API request failed: {e!s}"
+            if hasattr(e.response, "json"):
                 try:
                     error_details = e.response.json()
                     error_msg = f"{error_msg} - {error_details.get('error', {}).get('message', '')}"

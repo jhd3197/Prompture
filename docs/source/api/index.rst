@@ -421,6 +421,6 @@ Core Modules
 Utility Modules
 ~~~~~~~~~~~~~~~
 
-- **Tools** (:doc:`tools`) - Utility functions: [`convert_value()`](tools.rst#convert_value), [`log_debug()`](tools.rst#log_debug), [`clean_json_text()`](tools.rst#clean_json_text)
+- **Tools** (:doc:`tools`) - Utility functions: [`convert_value()`](tools.rst#convert_value), [`clean_json_text()`](tools.rst#clean_json_text)
 - **Runner** (:doc:`runner`) - Test suite and batch processing utilities
 - **Validator** (:doc:`validator`) - Data validation and schema checking utilities

@@ -1,15 +1,21 @@
 """xAI Grok driver.
 Requires the `requests` package. Uses GROK_API_KEY env var.
 """
+
 import os
-from typing import Any, Dict
+from typing import Any
+
 import requests
 
+from ..cost_mixin import CostMixin
 from ..driver import Driver
 
 
-class GrokDriver(Driver):
+class GrokDriver(CostMixin, Driver):
+    supports_json_mode = True
+
     # Pricing per 1M tokens based on xAI's documentation
+    _PRICING_UNIT = 1_000_000
     MODEL_PRICING = {
         "grok-code-fast-1": {
             "prompt": 0.20,
@@ -72,19 +78,16 @@ class GrokDriver(Driver):
         self.model = model
         self.api_base = "https://api.x.ai/v1"
 
-    def generate(self, prompt: str, options: Dict[str, Any]) -> Dict[str, Any]:
-        """Generate completion using Grok API.
+    supports_messages = True
 
-        Args:
-            prompt: Input prompt
-            options: Generation options
+    def generate(self, prompt: str, options: dict[str, Any]) -> dict[str, Any]:
+        messages = [{"role": "user", "content": prompt}]
+        return self._do_generate(messages, options)
 
-        Returns:
-            Dict containing generated text and metadata
-        
-        Raises:
-            RuntimeError: If API key is missing or request fails
-        """
+    def generate_messages(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
+        return self._do_generate(messages, options)
+
+    def _do_generate(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
         if not self.api_key:
             raise RuntimeError("GROK_API_KEY environment variable is required")
 
@@ -101,7 +104,7 @@ class GrokDriver(Driver):
         # Base request payload
         payload = {
             "model": model,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": messages,
         }
 
         # Add token limit with correct parameter name
@@ -111,39 +114,27 @@ class GrokDriver(Driver):
         if supports_temperature and "temperature" in opts:
             payload["temperature"] = opts["temperature"]
 
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
-        }
+        # Native JSON mode support
+        if options.get("json_mode"):
+            payload["response_format"] = {"type": "json_object"}
+
+        headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
 
         try:
-            response = requests.post(
-                f"{self.api_base}/chat/completions",
-                headers=headers,
-                json=payload
-            )
+            response = requests.post(f"{self.api_base}/chat/completions", headers=headers, json=payload)
             response.raise_for_status()
             resp = response.json()
         except requests.exceptions.RequestException as e:
-            raise RuntimeError(f"Grok API request failed: {str(e)}")
+            raise RuntimeError(f"Grok API request failed: {e!s}") from e
 
         # Extract usage info
         usage = resp.get("usage", {})
         prompt_tokens = usage.get("prompt_tokens", 0)
-        completion_tokens = usage.get("completion_tokens", 0) 
+        completion_tokens = usage.get("completion_tokens", 0)
         total_tokens = usage.get("total_tokens", 0)
 
-        # Calculate cost — try live rates first (per 1M tokens), fall back to hardcoded (per 1M tokens)
-        from ..model_rates import get_model_rates
-        live_rates = get_model_rates("grok", model)
-        if live_rates:
-            prompt_cost = (prompt_tokens / 1_000_000) * live_rates["input"]
-            completion_cost = (completion_tokens / 1_000_000) * live_rates["output"]
-        else:
-            model_pricing = self.MODEL_PRICING.get(model, {"prompt": 0, "completion": 0})
-            prompt_cost = (prompt_tokens / 1_000_000) * model_pricing["prompt"]
-            completion_cost = (completion_tokens / 1_000_000) * model_pricing["completion"]
-        total_cost = prompt_cost + completion_cost
+        # Calculate cost via shared mixin
+        total_cost = self._calculate_cost("grok", model, prompt_tokens, completion_tokens)
 
         # Standardized meta object
         meta = {

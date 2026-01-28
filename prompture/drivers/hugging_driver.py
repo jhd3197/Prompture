@@ -1,14 +1,14 @@
 import os
+from typing import Any
+
 import requests
+
 from ..driver import Driver
-from typing import Any, Dict
 
 
 class HuggingFaceDriver(Driver):
     # Hugging Face is usage-based (credits/subscription), but we set costs to 0 for now.
-    MODEL_PRICING = {
-        "default": {"prompt": 0.0, "completion": 0.0}
-    }
+    MODEL_PRICING = {"default": {"prompt": 0.0, "completion": 0.0}}
 
     def __init__(self, endpoint: str | None = None, token: str | None = None, model: str = "bert-base-uncased"):
         self.endpoint = endpoint or os.getenv("HF_ENDPOINT")
@@ -22,7 +22,7 @@ class HuggingFaceDriver(Driver):
 
         self.headers = {"Authorization": f"Bearer {self.token}"}
 
-    def generate(self, prompt: str, options: Dict[str, Any]) -> Dict[str, Any]:
+    def generate(self, prompt: str, options: dict[str, Any]) -> dict[str, Any]:
         payload = {
             "inputs": prompt,
             "parameters": options,  # HF allows temperature, max_new_tokens, etc. here
@@ -32,7 +32,7 @@ class HuggingFaceDriver(Driver):
             r.raise_for_status()
             response_data = r.json()
         except Exception as e:
-            raise RuntimeError(f"HuggingFaceDriver request failed: {e}")
+            raise RuntimeError(f"HuggingFaceDriver request failed: {e}") from e
 
         # Different HF models return slightly different response formats
         # Text-generation models usually return [{"generated_text": "..."}]

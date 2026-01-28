@@ -1,60 +1,55 @@
-import os
 import logging
-import google.generativeai as genai
-from typing import Any, Dict
-from ..driver import Driver
+import os
+from typing import Any, Optional
 
-import os
-import logging
 import google.generativeai as genai
-from typing import Any, Dict
+
+from ..cost_mixin import CostMixin
 from ..driver import Driver
 
 logger = logging.getLogger(__name__)
 
 
-class GoogleDriver(Driver):
+class GoogleDriver(CostMixin, Driver):
     """Driver for Google's Generative AI API (Gemini)."""
+
+    supports_json_mode = True
+    supports_json_schema = True
 
     # Based on current Gemini pricing (as of 2025)
     # Source: https://cloud.google.com/vertex-ai/pricing#gemini_models
+    _PRICING_UNIT = 1_000_000
     MODEL_PRICING = {
         "gemini-1.5-pro": {
             "prompt": 0.00025,  # $0.25/1M chars input
-            "completion": 0.0005  # $0.50/1M chars output
+            "completion": 0.0005,  # $0.50/1M chars output
         },
         "gemini-1.5-pro-vision": {
             "prompt": 0.00025,  # $0.25/1M chars input
-            "completion": 0.0005  # $0.50/1M chars output
+            "completion": 0.0005,  # $0.50/1M chars output
         },
         "gemini-2.5-pro": {
             "prompt": 0.0004,  # $0.40/1M chars input
-            "completion": 0.0008  # $0.80/1M chars output
+            "completion": 0.0008,  # $0.80/1M chars output
         },
         "gemini-2.5-flash": {
             "prompt": 0.0004,  # $0.40/1M chars input
-            "completion": 0.0008  # $0.80/1M chars output
+            "completion": 0.0008,  # $0.80/1M chars output
         },
         "gemini-2.5-flash-lite": {
             "prompt": 0.0002,  # $0.20/1M chars input
-            "completion": 0.0004  # $0.40/1M chars output
+            "completion": 0.0004,  # $0.40/1M chars output
         },
-         "gemini-2.0-flash": {
+        "gemini-2.0-flash": {
             "prompt": 0.0004,  # $0.40/1M chars input
-            "completion": 0.0008  # $0.80/1M chars output
+            "completion": 0.0008,  # $0.80/1M chars output
         },
         "gemini-2.0-flash-lite": {
             "prompt": 0.0002,  # $0.20/1M chars input
-            "completion": 0.0004  # $0.40/1M chars output
+            "completion": 0.0004,  # $0.40/1M chars output
         },
-        "gemini-1.5-flash": {
-            "prompt": 0.00001875,
-            "completion": 0.000075
-        },
-        "gemini-1.5-flash-8b": {
-            "prompt": 0.00001,
-            "completion": 0.00004
-        }
+        "gemini-1.5-flash": {"prompt": 0.00001875, "completion": 0.000075},
+        "gemini-1.5-flash-8b": {"prompt": 0.00001, "completion": 0.00004},
     }
 
     def __init__(self, api_key: str | None = None, model: str = "gemini-1.5-pro"):
@@ -75,8 +70,8 @@ class GoogleDriver(Driver):
 
         # Configure google.generativeai
         genai.configure(api_key=self.api_key)
-        self.options: Dict[str, Any] = {}
-        
+        self.options: dict[str, Any] = {}
+
         # Validate connection and model availability
         self._validate_connection()
 
@@ -90,16 +85,36 @@ class GoogleDriver(Driver):
             logger.warning(f"Could not validate connection to Google API: {e}")
             raise
 
-    def generate(self, prompt: str, options: Dict[str, Any] = None) -> Dict[str, Any]:
-        """Generate text using Google's Generative AI.
+    def _calculate_cost_chars(self, prompt_chars: int, completion_chars: int) -> float:
+        """Calculate cost from character counts.
 
-        Args:
-            prompt: The input prompt
-            options: Additional options to pass to the model
-
-        Returns:
-            Dict containing generated text and metadata
+        Live rates use token-based pricing (estimate ~4 chars/token).
+        Hardcoded MODEL_PRICING uses per-1M-character rates.
         """
+        from ..model_rates import get_model_rates
+
+        live_rates = get_model_rates("google", self.model)
+        if live_rates:
+            est_prompt_tokens = prompt_chars / 4
+            est_completion_tokens = completion_chars / 4
+            prompt_cost = (est_prompt_tokens / 1_000_000) * live_rates["input"]
+            completion_cost = (est_completion_tokens / 1_000_000) * live_rates["output"]
+        else:
+            model_pricing = self.MODEL_PRICING.get(self.model, {"prompt": 0, "completion": 0})
+            prompt_cost = (prompt_chars / 1_000_000) * model_pricing["prompt"]
+            completion_cost = (completion_chars / 1_000_000) * model_pricing["completion"]
+        return round(prompt_cost + completion_cost, 6)
+
+    supports_messages = True
+
+    def generate(self, prompt: str, options: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+        messages = [{"role": "user", "content": prompt}]
+        return self._do_generate(messages, options)
+
+    def generate_messages(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
+        return self._do_generate(messages, options)
+
+    def _do_generate(self, messages: list[dict[str, str]], options: Optional[dict[str, Any]] = None) -> dict[str, Any]:
         merged_options = self.options.copy()
         if options:
             merged_options.update(options)
@@ -107,7 +122,7 @@ class GoogleDriver(Driver):
         # Extract specific options for Google's API
         generation_config = merged_options.get("generation_config", {})
         safety_settings = merged_options.get("safety_settings", {})
-        
+
         # Map common options to generation_config if not present
         if "temperature" in merged_options and "temperature" not in generation_config:
             generation_config["temperature"] = merged_options["temperature"]
@@ -118,44 +133,57 @@ class GoogleDriver(Driver):
         if "top_k" in merged_options and "top_k" not in generation_config:
             generation_config["top_k"] = merged_options["top_k"]
 
+        # Native JSON mode support
+        if merged_options.get("json_mode"):
+            generation_config["response_mime_type"] = "application/json"
+            json_schema = merged_options.get("json_schema")
+            if json_schema:
+                generation_config["response_schema"] = json_schema
+
+        # Convert messages to Gemini format
+        system_instruction = None
+        contents: list[dict[str, Any]] = []
+        for msg in messages:
+            role = msg.get("role", "user")
+            content = msg.get("content", "")
+            if role == "system":
+                system_instruction = content
+            else:
+                # Gemini uses "model" for assistant role
+                gemini_role = "model" if role == "assistant" else "user"
+                contents.append({"role": gemini_role, "parts": [content]})
+
         try:
             logger.debug(f"Initializing {self.model} for generation")
-            model = genai.GenerativeModel(self.model)
+            model_kwargs: dict[str, Any] = {}
+            if system_instruction:
+                model_kwargs["system_instruction"] = system_instruction
+            model = genai.GenerativeModel(self.model, **model_kwargs)
 
             # Generate response
-            logger.debug(f"Generating with prompt: {prompt}")
+            logger.debug(f"Generating with {len(contents)} content parts")
+            # If single user message, pass content directly for backward compatibility
+            gen_input: Any = contents if len(contents) != 1 else contents[0]["parts"][0]
             response = model.generate_content(
-                prompt,
+                gen_input,
                 generation_config=generation_config if generation_config else None,
-                safety_settings=safety_settings if safety_settings else None
+                safety_settings=safety_settings if safety_settings else None,
             )
-            
+
             if not response.text:
                 raise ValueError("Empty response from model")
 
             # Calculate token usage and cost
-            prompt_chars = len(prompt)
+            total_prompt_chars = sum(len(msg.get("content", "")) for msg in messages)
             completion_chars = len(response.text)
 
-            # Try live rates first (per 1M tokens), fall back to hardcoded character-based pricing
-            from ..model_rates import get_model_rates
-            live_rates = get_model_rates("google", self.model)
-            if live_rates:
-                # models.dev reports token-based pricing; estimate tokens from chars (~4 chars/token)
-                est_prompt_tokens = prompt_chars / 4
-                est_completion_tokens = completion_chars / 4
-                prompt_cost = (est_prompt_tokens / 1_000_000) * live_rates["input"]
-                completion_cost = (est_completion_tokens / 1_000_000) * live_rates["output"]
-            else:
-                model_pricing = self.MODEL_PRICING.get(self.model, {"prompt": 0, "completion": 0})
-                prompt_cost = (prompt_chars / 1_000_000) * model_pricing["prompt"]
-                completion_cost = (completion_chars / 1_000_000) * model_pricing["completion"]
-            total_cost = prompt_cost + completion_cost
+            # Google uses character-based cost estimation
+            total_cost = self._calculate_cost_chars(total_prompt_chars, completion_chars)
 
             meta = {
-                "prompt_chars": prompt_chars,
+                "prompt_chars": total_prompt_chars,
                 "completion_chars": completion_chars,
-                "total_chars": prompt_chars + completion_chars,
+                "total_chars": total_prompt_chars + completion_chars,
                 "cost": total_cost,
                 "raw_response": response.prompt_feedback if hasattr(response, "prompt_feedback") else None,
                 "model_name": self.model,
@@ -165,4 +193,4 @@ class GoogleDriver(Driver):
 
         except Exception as e:
             logger.error(f"Google API request failed: {e}")
-            raise RuntimeError(f"Google API request failed: {e}")
+            raise RuntimeError(f"Google API request failed: {e}") from e

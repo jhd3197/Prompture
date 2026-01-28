@@ -339,12 +339,15 @@ print(res["usage"])  # includes per-field usage and totals
 
 ## Manual control with logging
 
-`manual_extract_and_jsonify` is like `extract_and_jsonify` but adds structured debug logging.
+`manual_extract_and_jsonify` is like `extract_and_jsonify` but lets you provide your own driver.
+Enable library logging via Python's standard `logging` module:
 
 ```python
-from prompture import manual_extract_and_jsonify
+import logging
+from prompture import manual_extract_and_jsonify, configure_logging
 from prompture.drivers import get_driver
-from prompture.tools import LogLevel
+
+configure_logging(logging.DEBUG)  # see internal debug output
 
 driver = get_driver("ollama")
 res = manual_extract_and_jsonify(
@@ -357,7 +360,6 @@ res = manual_extract_and_jsonify(
     },
     model_name="llama3.1:8b",
     options={"temperature": 0.2},
-    verbose_level=LogLevel.DEBUG  # TRACE for full prompts/results
 )
 print(res["json_object"])
 ```
@@ -406,7 +408,7 @@ This example script compares multiple Ollama models on a complex task of extract
 * Add `description` to schema fields (or Pydantic field metadata) for better extractions.
 * Start with **one-shot Pydantic**; switch specific fields to **stepwise** if they’re noisy.
 * Track usage/cost before scaling; tweak `temperature` in `options` if consistency wobbles.
-* Use `verbose_level=TRACE` in dev to see prompts/results and tighten your specs.
+* Use `configure_logging(logging.DEBUG)` in dev to see internal debug output and tighten your specs.
 
 ---
 

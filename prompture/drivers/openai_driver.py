@@ -1,17 +1,23 @@
 """Minimal OpenAI driver (migrated to openai>=1.0.0).
 Requires the `openai` package. Uses OPENAI_API_KEY env var.
 """
+
 import os
-from typing import Any, Dict
+from typing import Any
+
 try:
     from openai import OpenAI
 except Exception:
     OpenAI = None
 
+from ..cost_mixin import CostMixin
 from ..driver import Driver
 
 
-class OpenAIDriver(Driver):
+class OpenAIDriver(CostMixin, Driver):
+    supports_json_mode = True
+    supports_json_schema = True
+
     # Approximate pricing per 1K tokens (keep updated with OpenAI's official pricing)
     # Each model entry also defines which token parameter it supports and
     # whether it accepts temperature.
@@ -62,7 +68,16 @@ class OpenAIDriver(Driver):
         else:
             self.client = None
 
-    def generate(self, prompt: str, options: Dict[str, Any]) -> Dict[str, Any]:
+    supports_messages = True
+
+    def generate(self, prompt: str, options: dict[str, Any]) -> dict[str, Any]:
+        messages = [{"role": "user", "content": prompt}]
+        return self._do_generate(messages, options)
+
+    def generate_messages(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
+        return self._do_generate(messages, options)
+
+    def _do_generate(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
         if self.client is None:
             raise RuntimeError("openai package (>=1.0.0) is not installed")
 
@@ -79,7 +94,7 @@ class OpenAIDriver(Driver):
         # Base kwargs
         kwargs = {
             "model": model,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": messages,
         }
 
         # Assign token limit with the correct parameter name
@@ -89,6 +104,21 @@ class OpenAIDriver(Driver):
         if supports_temperature and "temperature" in opts:
             kwargs["temperature"] = opts["temperature"]
 
+        # Native JSON mode support
+        if options.get("json_mode"):
+            json_schema = options.get("json_schema")
+            if json_schema:
+                kwargs["response_format"] = {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "extraction",
+                        "strict": True,
+                        "schema": json_schema,
+                    },
+                }
+            else:
+                kwargs["response_format"] = {"type": "json_object"}
+
         resp = self.client.chat.completions.create(**kwargs)
 
         # Extract usage info
@@ -97,17 +127,8 @@ class OpenAIDriver(Driver):
         completion_tokens = getattr(usage, "completion_tokens", 0)
         total_tokens = getattr(usage, "total_tokens", 0)
 
-        # Calculate cost — try live rates first (per 1M tokens), fall back to hardcoded (per 1K tokens)
-        from ..model_rates import get_model_rates
-        live_rates = get_model_rates("openai", model)
-        if live_rates:
-            prompt_cost = (prompt_tokens / 1_000_000) * live_rates["input"]
-            completion_cost = (completion_tokens / 1_000_000) * live_rates["output"]
-        else:
-            model_pricing = self.MODEL_PRICING.get(model, {"prompt": 0, "completion": 0})
-            prompt_cost = (prompt_tokens / 1000) * model_pricing["prompt"]
-            completion_cost = (completion_tokens / 1000) * model_pricing["completion"]
-        total_cost = prompt_cost + completion_cost
+        # Calculate cost via shared mixin
+        total_cost = self._calculate_cost("openai", model, prompt_tokens, completion_tokens)
 
         # Standardized meta object
         meta = {

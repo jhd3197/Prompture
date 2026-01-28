@@ -1,6 +1,8 @@
 import os
+from typing import Any
+
 import pytest
-from typing import Dict, Any
+
 from prompture.drivers import get_driver_for_model
 
 # Default to running integration tests unless the env var explicitly disables them.
@@ -19,17 +21,18 @@ def pytest_addoption(parser):
         help="Run tests marked with @pytest.mark.integration (requires live LLM access)",
     )
 
+
 @pytest.fixture
-def sample_json_schema() -> Dict[str, Any]:
+def sample_json_schema() -> dict[str, Any]:
     """Sample JSON schema for testing core functions."""
     return {
         "type": "object",
         "properties": {
             "name": {"type": "string"},
             "age": {"type": "integer"},
-            "interests": {"type": "array", "items": {"type": "string"}}
+            "interests": {"type": "array", "items": {"type": "string"}},
         },
-        "required": ["name"]
+        "required": ["name"],
     }
 
 
@@ -49,9 +52,11 @@ def pytest_configure(config):
 
 def pytest_collection_modifyitems(config, items):
     """Configure test collection behavior."""
-    run_integration = config.getoption("--run-integration") or os.getenv(
-        "RUN_INTEGRATION_TESTS", ""
-    ).lower() in {"1", "true", "yes"}
+    run_integration = config.getoption("--run-integration") or os.getenv("RUN_INTEGRATION_TESTS", "").lower() in {
+        "1",
+        "true",
+        "yes",
+    }
 
     if run_integration:
         return
@@ -62,7 +67,7 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(skip_marker)
 
 
-def assert_valid_usage_metadata(meta: Dict[str, Any]):
+def assert_valid_usage_metadata(meta: dict[str, Any]):
     """Helper function to validate usage metadata structure."""
     required_keys = {"prompt_tokens", "completion_tokens", "total_tokens", "cost", "raw_response"}
 
@@ -77,10 +82,12 @@ def assert_valid_usage_metadata(meta: Dict[str, Any]):
     assert isinstance(meta["raw_response"], dict), "raw_response must be dict"
 
     # Validate reasonable totals
-    assert meta["total_tokens"] == meta["prompt_tokens"] + meta["completion_tokens"], "total_tokens should equal prompt + completion"
+    assert meta["total_tokens"] == meta["prompt_tokens"] + meta["completion_tokens"], (
+        "total_tokens should equal prompt + completion"
+    )
 
 
-def assert_jsonify_response_structure(response: Dict[str, Any]):
+def assert_jsonify_response_structure(response: dict[str, Any]):
     """Helper function to validate the structure of jsonify responses."""
     required_keys = {"json_string", "json_object", "usage"}
 

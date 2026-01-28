@@ -5,27 +5,20 @@ This module tests the field definitions in prompture/field_definitions.py
 and the utility functions in prompture/tools.py for loading, merging,
 and validating field definitions.
 """
-import pytest
-import tempfile
-import os
+
 import json
-import yaml
-from typing import Dict, Any, Union
+import os
+import tempfile
+
+import pytest
 
 from prompture.field_definitions import (
     FIELD_DEFINITIONS,
     get_field_definition,
-    get_required_fields,
     get_field_names,
-    FieldDefinition,
-    FieldDefinitions
+    get_required_fields,
 )
-from prompture.tools import (
-    load_field_definitions,
-    validate_field_definition,
-    get_type_default,
-    get_field_default
-)
+from prompture.tools import get_field_default, get_type_default, load_field_definitions, validate_field_definition
 
 
 class TestFieldDefinitionsModule:
@@ -35,7 +28,7 @@ class TestFieldDefinitionsModule:
         """Test that FIELD_DEFINITIONS has the expected structure."""
         assert isinstance(FIELD_DEFINITIONS, dict)
         assert len(FIELD_DEFINITIONS) > 0
-        
+
         # Test a few key fields exist
         expected_fields = ["name", "age", "email", "phone", "occupation"]
         for field in expected_fields:
@@ -45,12 +38,12 @@ class TestFieldDefinitionsModule:
         """Test that each field definition has the required structure."""
         for field_name, definition in FIELD_DEFINITIONS.items():
             assert isinstance(definition, dict), f"Field {field_name} definition must be dict"
-            
+
             # Required keys
             required_keys = ["type", "description", "instructions", "default", "nullable"]
             for key in required_keys:
                 assert key in definition, f"Field {field_name} missing key: {key}"
-            
+
             # Type validation
             assert definition["type"] in [str, int, float, bool], f"Field {field_name} has invalid type"
             assert isinstance(definition["description"], str), f"Field {field_name} description must be string"
@@ -62,9 +55,9 @@ class TestFieldDefinitionsModule:
         # Test existing field
         name_def = get_field_definition("name")
         assert name_def is not None
-        assert name_def["type"] == str
-        assert name_def["nullable"] == False
-        
+        assert name_def["type"] is str
+        assert not name_def["nullable"]
+
         # Test non-existent field
         assert get_field_definition("nonexistent") is None
 
@@ -73,8 +66,8 @@ class TestFieldDefinitionsModule:
         required = get_required_fields()
         assert isinstance(required, list)
         assert "name" in required  # name is non-nullable
-        assert "age" in required   # age is non-nullable
-        
+        assert "age" in required  # age is non-nullable
+
         # Check that nullable fields are not in required
         nullable_fields = [name for name, def_ in FIELD_DEFINITIONS.items() if def_.get("nullable", True)]
         for field in nullable_fields:
@@ -108,10 +101,10 @@ age:
   default: 0
   nullable: true
 """
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write(yaml_content)
             temp_file = f.name
-            
+
         try:
             definitions = load_field_definitions(temp_file)
             assert isinstance(definitions, dict)
@@ -133,28 +126,28 @@ age:
                 "description": "Person's name",
                 "instructions": "Extract full name",
                 "default": "",
-                "nullable": False
+                "nullable": False,
             },
             "email": {
                 "type": "str",
                 "description": "Email address",
                 "instructions": "Extract email",
                 "default": "",
-                "nullable": True
-            }
+                "nullable": True,
+            },
         }
-        
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             json.dump(json_content, f)
             temp_file = f.name
-            
+
         try:
             definitions = load_field_definitions(temp_file)
             assert isinstance(definitions, dict)
             assert "name" in definitions
             assert "email" in definitions
             assert definitions["name"]["type"] == "str"
-            assert definitions["email"]["nullable"] == True
+            assert definitions["email"]["nullable"]
         finally:
             try:
                 os.unlink(temp_file)
@@ -168,10 +161,10 @@ age:
 
     def test_load_field_definitions_invalid_format(self):
         """Test loading field definitions from invalid file format."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
             f.write("invalid content")
             temp_file = f.name
-            
+
         try:
             with pytest.raises(ValueError, match="Unsupported file format"):
                 load_field_definitions(temp_file)
@@ -186,19 +179,19 @@ age:
         valid_def = {
             "type": "str",
             "description": "Test field",
-            "instructions": "Extract test data", 
+            "instructions": "Extract test data",
             "default": "",
-            "nullable": True
+            "nullable": True,
         }
-        
-        assert validate_field_definition(valid_def) == True
+
+        assert validate_field_definition(valid_def)
 
     def test_validate_field_definition_invalid(self):
         """Test validation of invalid field definitions."""
         # Missing required keys
         invalid_def1 = {"type": "str"}
-        assert validate_field_definition(invalid_def1) == False
-        
+        assert not validate_field_definition(invalid_def1)
+
         # Invalid type - the validation function accepts both type objects and strings
         # so this test needs to be updated to reflect that string types are valid
         invalid_def2 = {
@@ -206,29 +199,29 @@ age:
             "description": "Test",
             "instructions": "Test",
             "default": "",
-            "nullable": True
+            "nullable": True,
         }
-        assert validate_field_definition(invalid_def2) == False
-        
+        assert not validate_field_definition(invalid_def2)
+
         # Wrong value types
         invalid_def3 = {
             "type": "str",
             "description": 123,  # Should be string
             "instructions": "Test",
             "default": "",
-            "nullable": True
+            "nullable": True,
         }
-        assert validate_field_definition(invalid_def3) == False
+        assert not validate_field_definition(invalid_def3)
 
     def test_get_type_default(self):
         """Test getting default values for different types."""
         assert get_type_default(str) == ""
         assert get_type_default(int) == 0
         assert get_type_default(float) == 0.0
-        assert get_type_default(bool) == False
+        assert not get_type_default(bool)
         assert get_type_default(list) == []
         assert get_type_default(dict) == {}
-        
+
         # Test with type strings - the function doesn't handle string types
         # Only handles actual type objects, so these should return None
         assert get_type_default("str") is None
@@ -238,35 +231,27 @@ age:
 
     def test_get_field_default_priority_system(self):
         """Test the priority system for field defaults."""
-        from pydantic import BaseModel, Field
-        from typing import Optional
-        
+
         # Create a mock field info object that mimics Pydantic FieldInfo
         class MockFieldInfo:
             def __init__(self, default=..., annotation=str):
                 self.default = default
                 self.annotation = annotation
-        
-        field_definitions = {
-            "test_field": {
-                "type": "str",
-                "default": "field_def_default",
-                "nullable": True
-            }
-        }
-        
+
+        field_definitions = {"test_field": {"type": "str", "default": "field_def_default", "nullable": True}}
+
         # Test priority: field_definitions > model default > type default
-        
+
         # 1. Field definitions should win
         field_info = MockFieldInfo(default="model_default")
         result = get_field_default("test_field", field_info, field_definitions)
         assert result == "field_def_default"
-        
+
         # 2. Model default should be used if no field definition
         field_info = MockFieldInfo(default="model_default")
         result = get_field_default("unknown_field", field_info, field_definitions)
         assert result == "model_default"
-        
+
         # 3. Type default should be used if no other defaults
         field_info = MockFieldInfo(default=..., annotation=int)  # Ellipsis means no default
         result = get_field_default("unknown_field", field_info, None)
@@ -280,20 +265,20 @@ class TestFieldDefinitionsExamples:
         """Test loading the example YAML field definitions."""
         try:
             definitions = load_field_definitions("examples/field_definitions.yaml")
-            
+
             # Should load successfully
             assert isinstance(definitions, dict)
             assert len(definitions) > 0
-            
+
             # Check some expected fields
             expected_fields = ["name", "age", "email", "occupation"]
             for field in expected_fields:
                 assert field in definitions
-                
+
             # Validate structure
             for field_name, definition in definitions.items():
                 assert validate_field_definition(definition), f"Invalid definition for {field_name}"
-                
+
         except FileNotFoundError:
             pytest.skip("Example YAML file not found")
 
@@ -301,17 +286,18 @@ class TestFieldDefinitionsExamples:
         """Test loading the example JSON field definitions."""
         try:
             definitions = load_field_definitions("examples/field_definitions.json")
-            
+
             # Should load successfully
             assert isinstance(definitions, dict)
             assert len(definitions) > 0
-            
+
             # Validate structure
             for field_name, definition in definitions.items():
                 assert validate_field_definition(definition), f"Invalid definition for {field_name}"
-                
+
         except FileNotFoundError:
             pytest.skip("Example JSON file not found")
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

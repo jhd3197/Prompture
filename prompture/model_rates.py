@@ -5,17 +5,18 @@ caches locally with TTL-based auto-refresh, and provides lookup functions
 used by drivers for cost calculations.
 """
 
+import contextlib
 import json
 import logging
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
 # Maps prompture provider names to models.dev provider names
-PROVIDER_MAP: Dict[str, str] = {
+PROVIDER_MAP: dict[str, str] = {
     "openai": "openai",
     "claude": "anthropic",
     "google": "google",
@@ -31,7 +32,7 @@ _CACHE_FILE = _CACHE_DIR / "models_dev.json"
 _META_FILE = _CACHE_DIR / "models_dev_meta.json"
 
 _lock = threading.Lock()
-_data: Optional[Dict[str, Any]] = None
+_data: Optional[dict[str, Any]] = None
 _loaded = False
 
 
@@ -39,6 +40,7 @@ def _get_ttl_days() -> int:
     """Get TTL from settings if available, otherwise default to 7."""
     try:
         from .settings import settings
+
         return getattr(settings, "model_rates_ttl_days", 7)
     except Exception:
         return 7
@@ -58,7 +60,7 @@ def _cache_is_valid() -> bool:
         return False
 
 
-def _write_cache(data: Dict[str, Any]) -> None:
+def _write_cache(data: dict[str, Any]) -> None:
     """Write API data and metadata to local cache."""
     try:
         _CACHE_DIR.mkdir(parents=True, exist_ok=True)
@@ -72,7 +74,7 @@ def _write_cache(data: Dict[str, Any]) -> None:
         logger.debug("Failed to write model rates cache: %s", exc)
 
 
-def _read_cache() -> Optional[Dict[str, Any]]:
+def _read_cache() -> Optional[dict[str, Any]]:
     """Read cached API data from disk."""
     try:
         return json.loads(_CACHE_FILE.read_text(encoding="utf-8"))
@@ -80,10 +82,11 @@ def _read_cache() -> Optional[Dict[str, Any]]:
         return None
 
 
-def _fetch_from_api() -> Optional[Dict[str, Any]]:
+def _fetch_from_api() -> Optional[dict[str, Any]]:
     """Fetch fresh data from models.dev API."""
     try:
         import requests
+
         resp = requests.get(_API_URL, timeout=15)
         resp.raise_for_status()
         return resp.json()
@@ -92,7 +95,7 @@ def _fetch_from_api() -> Optional[Dict[str, Any]]:
         return None
 
 
-def _ensure_loaded() -> Optional[Dict[str, Any]]:
+def _ensure_loaded() -> Optional[dict[str, Any]]:
     """Lazy-load data: use cache if valid, otherwise fetch from API."""
     global _data, _loaded
     if _loaded:
@@ -122,7 +125,7 @@ def _ensure_loaded() -> Optional[Dict[str, Any]]:
         return _data
 
 
-def _lookup_model(provider: str, model_id: str) -> Optional[Dict[str, Any]]:
+def _lookup_model(provider: str, model_id: str) -> Optional[dict[str, Any]]:
     """Find a model entry in the cached data.
 
     The API structure is ``{provider: {model_id: {...}, ...}, ...}``.
@@ -142,7 +145,7 @@ def _lookup_model(provider: str, model_id: str) -> Optional[Dict[str, Any]]:
 # ── Public API ──────────────────────────────────────────────────────────────
 
 
-def get_model_rates(provider: str, model_id: str) -> Optional[Dict[str, float]]:
+def get_model_rates(provider: str, model_id: str) -> Optional[dict[str, float]]:
     """Return pricing dict for a model, or ``None`` if unavailable.
 
     Returned keys mirror models.dev cost fields (per 1M tokens):
@@ -157,14 +160,12 @@ def get_model_rates(provider: str, model_id: str) -> Optional[Dict[str, float]]:
     if not isinstance(cost, dict):
         return None
 
-    rates: Dict[str, float] = {}
+    rates: dict[str, float] = {}
     for key in ("input", "output", "cache_read", "cache_write", "reasoning"):
         val = cost.get(key)
         if val is not None:
-            try:
+            with contextlib.suppress(TypeError, ValueError):
                 rates[key] = float(val)
-            except (TypeError, ValueError):
-                pass
 
     # Must have at least input and output to be useful
     if "input" in rates and "output" in rates:
@@ -172,12 +173,12 @@ def get_model_rates(provider: str, model_id: str) -> Optional[Dict[str, float]]:
     return None
 
 
-def get_model_info(provider: str, model_id: str) -> Optional[Dict[str, Any]]:
+def get_model_info(provider: str, model_id: str) -> Optional[dict[str, Any]]:
     """Return full model metadata (cost, limits, capabilities), or ``None``."""
     return _lookup_model(provider, model_id)
 
 
-def get_all_provider_models(provider: str) -> List[str]:
+def get_all_provider_models(provider: str) -> list[str]:
     """Return list of model IDs available for a provider."""
     data = _ensure_loaded()
     if data is None:

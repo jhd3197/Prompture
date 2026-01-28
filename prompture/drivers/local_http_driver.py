@@ -1,27 +1,27 @@
 import os
+from typing import Any
+
 import requests
+
 from ..driver import Driver
-from typing import Any, Dict
 
 
 class LocalHTTPDriver(Driver):
     # Default: no cost; extend if your local service has pricing logic
-    MODEL_PRICING = {
-        "default": {"prompt": 0.0, "completion": 0.0}
-    }
+    MODEL_PRICING = {"default": {"prompt": 0.0, "completion": 0.0}}
 
     def __init__(self, endpoint: str | None = None, model: str = "local-model"):
         self.endpoint = endpoint or os.getenv("LOCAL_HTTP_ENDPOINT", "http://localhost:8000/generate")
         self.model = model
 
-    def generate(self, prompt: str, options: Dict[str, Any]) -> Dict[str, Any]:
+    def generate(self, prompt: str, options: dict[str, Any]) -> dict[str, Any]:
         payload = {"prompt": prompt, "options": options}
         try:
             r = requests.post(self.endpoint, json=payload, timeout=options.get("timeout", 30))
             r.raise_for_status()
             response_data = r.json()
         except Exception as e:
-            raise RuntimeError(f"LocalHTTPDriver request failed: {e}")
+            raise RuntimeError(f"LocalHTTPDriver request failed: {e}") from e
 
         # If the local API already provides {"text": "...", "meta": {...}}, just return it
         if "text" in response_data and "meta" in response_data:

@@ -1,5 +1,7 @@
 import os
+
 import pytest
+
 from prompture import run_suite_from_spec
 
 
@@ -13,11 +15,7 @@ def test_run_suite_from_spec(integration_driver):
     # Test spec with real model and simple user info extraction test
     spec = {
         "meta": {"project": "test"},
-        "models": [{
-            "id": "test-model",
-            "driver": provider,
-            "options": integration_driver.options
-        }],
+        "models": [{"id": "test-model", "driver": provider, "options": integration_driver.options}],
         "tests": [
             {
                 "id": "t1",
@@ -29,29 +27,29 @@ def test_run_suite_from_spec(integration_driver):
                         "name": {"type": "string"},
                         "age": {"type": "integer"},
                         "location": {"type": "string"},
-                        "interests": {"type": "array", "items": {"type": "string"}}
+                        "interests": {"type": "array", "items": {"type": "string"}},
                     },
-                    "required": ["name", "interests"]
-                }
+                    "required": ["name", "interests"],
+                },
             }
-        ]
+        ],
     }
-    
+
     # Setup drivers with real driver
     drivers = {provider: integration_driver}
-    
+
     # Run the test suite
     report = run_suite_from_spec(spec, drivers)
-    
+
     # Verify report structure and content
     assert report["meta"]["project"] == "test"
     assert len(report["results"]) == 1
-    
+
     result = report["results"][0]
     assert result["test_id"] == "t1"
     assert result["model_id"] == "test-model"
     assert result["validation"]["ok"] is True
-    
+
     # Verify response structure
     response = result["response"]
     assert "name" in response

@@ -1,5 +1,5 @@
 import json
-from typing import Any, Dict
+from typing import Any
 
 try:
     import jsonschema
@@ -7,7 +7,7 @@ except Exception:
     jsonschema = None
 
 
-def validate_against_schema(instance_json: str, schema: Dict[str,Any]) -> Dict[str,Any]:
+def validate_against_schema(instance_json: str, schema: dict[str, Any]) -> dict[str, Any]:
     """Valida el JSON (string) contra un JSON Schema.
     Devuelve dict con ok: bool y detalles.
     """

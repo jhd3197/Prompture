@@ -1,5 +1,7 @@
-from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables or .env file."""
@@ -54,6 +56,14 @@ class Settings(BaseSettings):
 
     # Model rates cache
     model_rates_ttl_days: int = 7  # How often to refresh models.dev cache
+
+    # Response cache
+    cache_enabled: bool = False
+    cache_backend: str = "memory"
+    cache_ttl_seconds: int = 3600
+    cache_memory_maxsize: int = 256
+    cache_sqlite_path: Optional[str] = None
+    cache_redis_url: Optional[str] = None
 
     model_config = SettingsConfigDict(
         env_file=".env",

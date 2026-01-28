@@ -1,10 +1,11 @@
 """Example script demonstrating TOON output format."""
+
 from __future__ import annotations
 
 import os
 import sys
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any
 
 EXAMPLES_DIR = Path(__file__).resolve().parent
 REPO_ROOT = EXAMPLES_DIR.parent
@@ -25,7 +26,7 @@ She is available for freelance consulting. She is reachable at alice@example.com
 lists Python, SQL, and prompt engineering as core skills.
 """
 
-EXTRACTION_SCHEMA: Dict[str, Any] = {
+EXTRACTION_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
         "name": {"type": "string"},
@@ -41,10 +42,7 @@ EXTRACTION_SCHEMA: Dict[str, Any] = {
     "required": ["name", "age", "skills"],
 }
 
-MODEL_TO_TEST = os.getenv(
-    "PROMPTURE_TEST_MODEL",
-    "lmstudio/deepseek/deepseek-r1-0528-qwen3-8b"
-)
+MODEL_TO_TEST = os.getenv("PROMPTURE_TEST_MODEL", "lmstudio/deepseek/deepseek-r1-0528-qwen3-8b")
 
 
 def demonstrate_toon_output():
@@ -53,33 +51,31 @@ def demonstrate_toon_output():
     print("=" * 50)
     print(f"Model: {MODEL_TO_TEST}")
     print()
-    
+
     try:
         print("Running extraction with TOON output format...")
         result = extract_and_jsonify(
-            text=SAMPLE_TEXT,
-            json_schema=EXTRACTION_SCHEMA,
-            model_name=MODEL_TO_TEST,
-            output_format="toon"
+            text=SAMPLE_TEXT, json_schema=EXTRACTION_SCHEMA, model_name=MODEL_TO_TEST, output_format="toon"
         )
-        
+
         print("✓ Extraction successful!")
         print()
-        
+
         # Show the extracted data
         print("Extracted Data (JSON object):")
         print("-" * 30)
         import json
+
         print(json.dumps(result["json_object"], indent=2))
         print()
-        
+
         # Show the TOON format output
         if "toon_string" in result:
             print("TOON Format Output:")
             print("-" * 30)
             print(result["toon_string"])
             print()
-        
+
         # Show usage information
         usage = result.get("usage", {})
         if usage:
@@ -88,11 +84,11 @@ def demonstrate_toon_output():
             print(f"Prompt tokens: {usage.get('prompt_tokens', 'N/A')}")
             print(f"Completion tokens: {usage.get('completion_tokens', 'N/A')}")
             print(f"Total tokens: {usage.get('total_tokens', 'N/A')}")
-            if usage.get('cost'):
+            if usage.get("cost"):
                 print(f"Cost: ${usage.get('cost', 0):.4f}")
-        
+
         return True
-        
+
     except Exception as e:
         print(f"✗ Extraction failed: {e}")
         return False
@@ -101,7 +97,7 @@ def demonstrate_toon_output():
 def main() -> None:
     """Run the TOON output demonstration."""
     success = demonstrate_toon_output()
-    
+
     if success:
         print()
         print("🎉 TOON output format demonstration completed!")

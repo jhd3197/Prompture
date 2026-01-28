@@ -15,8 +15,8 @@ Environment variables required:
 """
 
 import json
-from prompture import extract_and_jsonify
 
+from prompture import extract_and_jsonify
 
 # 1. Define the raw text to parse
 text = "Maria is 32 years old and works as a software developer in New York. She loves hiking and photography."
@@ -29,8 +29,8 @@ json_schema = {
         "age": {"type": "integer"},
         "profession": {"type": "string"},
         "city": {"type": "string"},
-        "hobbies": {"type": "array", "items": {"type": "string"}}
-    }
+        "hobbies": {"type": "array", "items": {"type": "string"}},
+    },
 }
 
 # === FIRST EXAMPLE: Default instruction with explicit Azure model ===
@@ -39,7 +39,7 @@ print("Extracting information into JSON with default instruction...")
 result = extract_and_jsonify(
     text=text,
     json_schema=json_schema,
-    model_name="azure/gpt-4o-mini"  # explicitly override to a known Azure deployment
+    model_name="azure/gpt-4o-mini",  # explicitly override to a known Azure deployment
 )
 
 json_output = result["json_string"]
@@ -68,7 +68,7 @@ custom_result = extract_and_jsonify(
     text=text,
     json_schema=json_schema,
     instruction_template="Parse the biographical details from this text:",
-    model_name="azure/gpt-4"  # override to a different Azure deployment/model
+    model_name="azure/gpt-4",  # override to a different Azure deployment/model
 )
 
 custom_json_output = custom_result["json_string"]

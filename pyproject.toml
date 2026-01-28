@@ -1,3 +1,89 @@
 [build-system]
 requires = ["setuptools>=61", "setuptools_scm>=8", "wheel"]
 build-backend = "setuptools.build_meta"
+
+[project]
+name = "prompture"
+description = "Ask LLMs to return structured JSON and run cross-model tests. API-first."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.9"
+authors = [{ name = "Juan Denis", email = "juan@vene.co" }]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+dynamic = ["version"]
+dependencies = [
+    "anthropic>=0.8.0",
+    "click>=8.0",
+    "google-generativeai>=0.3.0",
+    "groq>=0.4.0",
+    "httpx>=0.25.0",
+    "jsonschema>=4.0",
+    "openai>=1.0.0",
+    "pandas>=1.3.0",
+    "pydantic>=1.10",
+    "pydantic-settings>=2.0",
+    "python-dotenv>=0.19.0",
+    "python-toon>=0.1.0",
+    "requests>=2.28",
+    "python-dateutil>=2.9.0",
+    "tukuy>=0.0.6",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=7.0", "pytest-asyncio>=0.23.0"]
+dev = ["pytest>=7.0", "pytest-asyncio>=0.23.0", "ruff>=0.8.0"]
+airllm = ["airllm>=2.8.0"]
+redis = ["redis>=4.0"]
+
+[project.scripts]
+prompture = "prompture.cli:cli"
+
+[project.urls]
+Homepage = "https://github.com/jhd3197/prompture"
+
+# Entry point groups for plugin driver discovery
+# Third-party packages can register drivers by defining entry points in these groups:
+#
+# [project.entry-points."prompture.drivers"]
+# my_provider = "my_package.drivers:create_driver"
+#
+# [project.entry-points."prompture.async_drivers"]
+# my_provider = "my_package.drivers:create_async_driver"
+
+[tool.setuptools.packages.find]
+include = ["prompture*"]
+exclude = ["prompture-env*"]
+
+[tool.setuptools_scm]
+version_scheme = "python-simplified-semver"
+version_file = "prompture/_version.py"
+fallback_version = "0.0.33.dev1"
+
+[tool.ruff]
+target-version = "py39"
+line-length = 120
+exclude = ["prompture/_version.py"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "UP", "B", "SIM", "RUF"]
+ignore = ["E501", "SIM108", "UP007", "RUF012", "RUF001", "RUF002", "RUF003"]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
+"tests/**" = ["E501", "B011", "RUF043", "SIM105", "SIM117"]
+"test.py" = ["E501", "B011"]
+"examples/**" = ["E402"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["integration: marks tests that use real LLM APIs"]
+addopts = "-v"
+asyncio_mode = "auto"

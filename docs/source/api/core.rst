@@ -103,7 +103,6 @@ Advanced multi-step extraction process that processes each model field individua
        text="Complex document with multiple data points...",
        model_name="openai/gpt-4",
        instruction_template="Extract the {field_name} from this document:",
-       verbose_level=LogLevel.DEBUG
    )
    
    person = result["model"]
@@ -136,7 +135,6 @@ Low-level extraction function that uses an explicitly provided driver instance f
        text="Extract from this text...",
        json_schema=schema,
        model_name="gpt-4-turbo",  # Override driver's default model
-       verbose_level=LogLevel.INFO
    )
 
 Utility Functions

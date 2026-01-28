@@ -9,6 +9,7 @@ This script demonstrates:
 """
 
 import json
+
 from prompture import extract_and_jsonify
 
 # 1. Define the raw text
@@ -22,8 +23,8 @@ json_schema = {
         "age": {"type": "integer"},
         "profession": {"type": "string"},
         "city": {"type": "string"},
-        "hobbies": {"type": "array", "items": {"type": "string"}}
-    }
+        "hobbies": {"type": "array", "items": {"type": "string"}},
+    },
 }
 
 # === FIRST EXAMPLE: Default instruction with Claude Haiku 3.5 ===
@@ -32,7 +33,7 @@ print("Extracting information into JSON with default instruction...")
 result = extract_and_jsonify(
     text=text,
     json_schema=json_schema,
-    model_name="claude/claude-3-5-haiku-20241022"  # explicitly select model
+    model_name="claude/claude-3-5-haiku-20241022",  # explicitly select model
 )
 
 json_output = result["json_string"]
@@ -61,7 +62,7 @@ custom_result = extract_and_jsonify(
     text=text,
     json_schema=json_schema,
     instruction_template="Parse the biographical details from this text:",
-    model_name="claude/claude-3-7-sonnet-20250219"  # override model here
+    model_name="claude/claude-3-7-sonnet-20250219",  # override model here
 )
 
 custom_json_output = custom_result["json_string"]
