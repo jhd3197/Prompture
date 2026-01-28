@@ -45,6 +45,15 @@ prompture = "prompture.cli:cli"
 [project.urls]
 Homepage = "https://github.com/jhd3197/prompture"
 
+# Entry point groups for plugin driver discovery
+# Third-party packages can register drivers by defining entry points in these groups:
+#
+# [project.entry-points."prompture.drivers"]
+# my_provider = "my_package.drivers:create_driver"
+#
+# [project.entry-points."prompture.async_drivers"]
+# my_provider = "my_package.drivers:create_async_driver"
+
 [tool.setuptools.packages.find]
 include = ["prompture*"]
 exclude = ["prompture-env*"]

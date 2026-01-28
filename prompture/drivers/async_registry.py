@@ -1,4 +1,15 @@
-"""Async driver registry — mirrors the sync DRIVER_REGISTRY."""
+"""Async driver registry — mirrors the sync DRIVER_REGISTRY.
+
+This module provides async driver registration and factory functions.
+Custom async drivers can be registered via the ``register_async_driver()``
+function or discovered via entry points.
+
+Entry Point Discovery:
+    Add to your pyproject.toml:
+
+    [project.entry-points."prompture.async_drivers"]
+    my_provider = "my_package.drivers:my_async_driver_factory"
+"""
 
 from __future__ import annotations
 
@@ -14,37 +25,78 @@ from .async_local_http_driver import AsyncLocalHTTPDriver
 from .async_ollama_driver import AsyncOllamaDriver
 from .async_openai_driver import AsyncOpenAIDriver
 from .async_openrouter_driver import AsyncOpenRouterDriver
+from .registry import (
+    _get_async_registry,
+    get_async_driver_factory,
+    register_async_driver,
+)
 
-ASYNC_DRIVER_REGISTRY = {
-    "openai": lambda model=None: AsyncOpenAIDriver(
-        api_key=settings.openai_api_key, model=model or settings.openai_model
-    ),
-    "ollama": lambda model=None: AsyncOllamaDriver(
-        endpoint=settings.ollama_endpoint, model=model or settings.ollama_model
-    ),
-    "claude": lambda model=None: AsyncClaudeDriver(
-        api_key=settings.claude_api_key, model=model or settings.claude_model
-    ),
-    "lmstudio": lambda model=None: AsyncLMStudioDriver(
-        endpoint=settings.lmstudio_endpoint, model=model or settings.lmstudio_model
-    ),
-    "azure": lambda model=None: AsyncAzureDriver(
+# Register built-in async drivers
+register_async_driver(
+    "openai",
+    lambda model=None: AsyncOpenAIDriver(api_key=settings.openai_api_key, model=model or settings.openai_model),
+    overwrite=True,
+)
+register_async_driver(
+    "ollama",
+    lambda model=None: AsyncOllamaDriver(endpoint=settings.ollama_endpoint, model=model or settings.ollama_model),
+    overwrite=True,
+)
+register_async_driver(
+    "claude",
+    lambda model=None: AsyncClaudeDriver(api_key=settings.claude_api_key, model=model or settings.claude_model),
+    overwrite=True,
+)
+register_async_driver(
+    "lmstudio",
+    lambda model=None: AsyncLMStudioDriver(endpoint=settings.lmstudio_endpoint, model=model or settings.lmstudio_model),
+    overwrite=True,
+)
+register_async_driver(
+    "azure",
+    lambda model=None: AsyncAzureDriver(
         api_key=settings.azure_api_key, endpoint=settings.azure_api_endpoint, deployment_id=settings.azure_deployment_id
     ),
-    "local_http": lambda model=None: AsyncLocalHTTPDriver(endpoint=settings.local_http_endpoint, model=model),
-    "google": lambda model=None: AsyncGoogleDriver(
-        api_key=settings.google_api_key, model=model or settings.google_model
-    ),
-    "groq": lambda model=None: AsyncGroqDriver(api_key=settings.groq_api_key, model=model or settings.groq_model),
-    "openrouter": lambda model=None: AsyncOpenRouterDriver(
+    overwrite=True,
+)
+register_async_driver(
+    "local_http",
+    lambda model=None: AsyncLocalHTTPDriver(endpoint=settings.local_http_endpoint, model=model),
+    overwrite=True,
+)
+register_async_driver(
+    "google",
+    lambda model=None: AsyncGoogleDriver(api_key=settings.google_api_key, model=model or settings.google_model),
+    overwrite=True,
+)
+register_async_driver(
+    "groq",
+    lambda model=None: AsyncGroqDriver(api_key=settings.groq_api_key, model=model or settings.groq_model),
+    overwrite=True,
+)
+register_async_driver(
+    "openrouter",
+    lambda model=None: AsyncOpenRouterDriver(
         api_key=settings.openrouter_api_key, model=model or settings.openrouter_model
     ),
-    "grok": lambda model=None: AsyncGrokDriver(api_key=settings.grok_api_key, model=model or settings.grok_model),
-    "airllm": lambda model=None: AsyncAirLLMDriver(
+    overwrite=True,
+)
+register_async_driver(
+    "grok",
+    lambda model=None: AsyncGrokDriver(api_key=settings.grok_api_key, model=model or settings.grok_model),
+    overwrite=True,
+)
+register_async_driver(
+    "airllm",
+    lambda model=None: AsyncAirLLMDriver(
         model=model or settings.airllm_model,
         compression=settings.airllm_compression,
     ),
-}
+    overwrite=True,
+)
+
+# Backwards compatibility: expose registry dict
+ASYNC_DRIVER_REGISTRY = _get_async_registry()
 
 
 def get_async_driver(provider_name: str | None = None):
@@ -53,9 +105,8 @@ def get_async_driver(provider_name: str | None = None):
     Uses default model from settings if not overridden.
     """
     provider = (provider_name or settings.ai_provider or "ollama").strip().lower()
-    if provider not in ASYNC_DRIVER_REGISTRY:
-        raise ValueError(f"Unknown provider: {provider_name}")
-    return ASYNC_DRIVER_REGISTRY[provider]()
+    factory = get_async_driver_factory(provider)
+    return factory()
 
 
 def get_async_driver_for_model(model_str: str):
@@ -74,7 +125,5 @@ def get_async_driver_for_model(model_str: str):
     provider = parts[0].lower()
     model_id = parts[1] if len(parts) > 1 else None
 
-    if provider not in ASYNC_DRIVER_REGISTRY:
-        raise ValueError(f"Unsupported provider '{provider}'")
-
-    return ASYNC_DRIVER_REGISTRY[provider](model_id)
+    factory = get_async_driver_factory(provider)
+    return factory(model_id)

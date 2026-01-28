@@ -42,6 +42,16 @@ from .drivers import (
     OpenRouterDriver,
     get_driver,
     get_driver_for_model,
+    # Plugin registration API
+    is_async_driver_registered,
+    is_driver_registered,
+    list_registered_async_drivers,
+    list_registered_drivers,
+    load_entry_point_drivers,
+    register_async_driver,
+    register_driver,
+    unregister_async_driver,
+    unregister_driver,
 )
 from .field_definitions import (
     FIELD_DEFINITIONS,
@@ -143,14 +153,25 @@ __all__ = [
     "get_model_rates",
     "get_registry_snapshot",
     "get_required_fields",
+    # Plugin registration API
+    "is_async_driver_registered",
+    "is_driver_registered",
+    "list_registered_async_drivers",
+    "list_registered_drivers",
+    "load_entry_point_drivers",
+    # Other exports
     "manual_extract_and_jsonify",
     "normalize_enum_value",
     "refresh_rates_cache",
+    "register_async_driver",
+    "register_driver",
     "register_field",
     "render_output",
     "reset_registry",
     "run_suite_from_spec",
     "stepwise_extract_with_model",
+    "unregister_async_driver",
+    "unregister_driver",
     "validate_against_schema",
     "validate_enum_value",
 ]
