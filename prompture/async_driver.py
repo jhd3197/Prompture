@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import AsyncIterator
 from typing import Any
 
 from .callbacks import DriverCallbacks
@@ -32,13 +33,15 @@ class AsyncDriver:
     supports_json_mode: bool = False
     supports_json_schema: bool = False
     supports_messages: bool = False
+    supports_tool_use: bool = False
+    supports_streaming: bool = False
 
     callbacks: DriverCallbacks | None = None
 
     async def generate(self, prompt: str, options: dict[str, Any]) -> dict[str, Any]:
         raise NotImplementedError
 
-    async def generate_messages(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
+    async def generate_messages(self, messages: list[dict[str, Any]], options: dict[str, Any]) -> dict[str, Any]:
         """Generate a response from a list of conversation messages (async).
 
         Default implementation flattens the messages into a single prompt
@@ -48,6 +51,41 @@ class AsyncDriver:
         """
         prompt = Driver._flatten_messages(messages)
         return await self.generate(prompt, options)
+
+    # ------------------------------------------------------------------
+    # Tool use
+    # ------------------------------------------------------------------
+
+    async def generate_messages_with_tools(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        options: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Generate a response that may include tool calls (async).
+
+        Returns a dict with keys: ``text``, ``meta``, ``tool_calls``, ``stop_reason``.
+        """
+        raise NotImplementedError(f"{self.__class__.__name__} does not support tool use")
+
+    # ------------------------------------------------------------------
+    # Streaming
+    # ------------------------------------------------------------------
+
+    async def generate_messages_stream(
+        self,
+        messages: list[dict[str, Any]],
+        options: dict[str, Any],
+    ) -> AsyncIterator[dict[str, Any]]:
+        """Yield response chunks incrementally (async).
+
+        Each chunk is a dict:
+        - ``{"type": "delta", "text": str}``
+        - ``{"type": "done", "text": str, "meta": dict}``
+        """
+        raise NotImplementedError(f"{self.__class__.__name__} does not support streaming")
+        # yield is needed to make this an async generator
+        yield  # pragma: no cover
 
     # ------------------------------------------------------------------
     # Hook-aware wrappers
@@ -82,7 +120,7 @@ class AsyncDriver:
         return resp
 
     async def generate_messages_with_hooks(
-        self, messages: list[dict[str, str]], options: dict[str, Any]
+        self, messages: list[dict[str, Any]], options: dict[str, Any]
     ) -> dict[str, Any]:
         """Wrap :meth:`generate_messages` with callbacks."""
         driver_name = getattr(self, "model", self.__class__.__name__)

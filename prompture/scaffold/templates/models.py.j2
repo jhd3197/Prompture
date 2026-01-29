@@ -1,0 +1,40 @@
+"""Pydantic request/response models for {{ project_name }}."""
+
+from __future__ import annotations
+
+from typing import Any
+
+from pydantic import BaseModel, Field
+
+
+class ChatRequest(BaseModel):
+    message: str
+    conversation_id: str | None = None
+    stream: bool = False
+    options: dict[str, Any] | None = None
+
+
+class ChatResponse(BaseModel):
+    message: str
+    conversation_id: str
+    usage: dict[str, Any]
+
+
+class ExtractRequest(BaseModel):
+    text: str
+    schema_def: dict[str, Any] = Field(..., alias="schema")
+    conversation_id: str | None = None
+
+    model_config = {"populate_by_name": True}
+
+
+class ExtractResponse(BaseModel):
+    json_object: dict[str, Any]
+    conversation_id: str
+    usage: dict[str, Any]
+
+
+class ConversationHistory(BaseModel):
+    conversation_id: str
+    messages: list[dict[str, Any]]
+    usage: dict[str, Any]

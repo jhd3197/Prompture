@@ -27,6 +27,7 @@ from typing import Any, Callable
 OnRequestCallback = Callable[[dict[str, Any]], None]
 OnResponseCallback = Callable[[dict[str, Any]], None]
 OnErrorCallback = Callable[[dict[str, Any]], None]
+OnStreamDeltaCallback = Callable[[dict[str, Any]], None]
 
 
 @dataclass
@@ -43,8 +44,12 @@ class DriverCallbacks:
 
     ``on_error``
         ``{error, prompt, messages, options, driver}``
+
+    ``on_stream_delta``
+        ``{text, driver}``
     """
 
     on_request: OnRequestCallback | None = field(default=None)
     on_response: OnResponseCallback | None = field(default=None)
     on_error: OnErrorCallback | None = field(default=None)
+    on_stream_delta: OnStreamDeltaCallback | None = field(default=None)

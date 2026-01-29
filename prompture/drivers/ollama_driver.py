@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+from collections.abc import Iterator
 from typing import Any, Optional
 
 import requests
@@ -12,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 class OllamaDriver(Driver):
     supports_json_mode = True
+    supports_streaming = True
 
     # Ollama is free – costs are always zero.
     MODEL_PRICING = {"default": {"prompt": 0.0, "completion": 0.0}}
@@ -121,7 +123,72 @@ class OllamaDriver(Driver):
         # Ollama returns text in "response"
         return {"text": response_data.get("response", ""), "meta": meta}
 
-    def generate_messages(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
+    # ------------------------------------------------------------------
+    # Streaming
+    # ------------------------------------------------------------------
+
+    def generate_messages_stream(
+        self,
+        messages: list[dict[str, Any]],
+        options: dict[str, Any],
+    ) -> Iterator[dict[str, Any]]:
+        """Yield response chunks via Ollama streaming API."""
+        merged_options = self.options.copy()
+        if options:
+            merged_options.update(options)
+
+        chat_endpoint = self.endpoint.replace("/api/generate", "/api/chat")
+
+        payload: dict[str, Any] = {
+            "model": merged_options.get("model", self.model),
+            "messages": messages,
+            "stream": True,
+        }
+
+        if merged_options.get("json_mode"):
+            payload["format"] = "json"
+        if "temperature" in merged_options:
+            payload["temperature"] = merged_options["temperature"]
+        if "top_p" in merged_options:
+            payload["top_p"] = merged_options["top_p"]
+        if "top_k" in merged_options:
+            payload["top_k"] = merged_options["top_k"]
+
+        full_text = ""
+        prompt_tokens = 0
+        completion_tokens = 0
+
+        r = requests.post(chat_endpoint, json=payload, timeout=120, stream=True)
+        r.raise_for_status()
+
+        for line in r.iter_lines():
+            if not line:
+                continue
+            chunk = json.loads(line)
+            if chunk.get("done"):
+                prompt_tokens = chunk.get("prompt_eval_count", 0)
+                completion_tokens = chunk.get("eval_count", 0)
+            else:
+                content = chunk.get("message", {}).get("content", "")
+                if content:
+                    full_text += content
+                    yield {"type": "delta", "text": content}
+
+        total_tokens = prompt_tokens + completion_tokens
+        yield {
+            "type": "done",
+            "text": full_text,
+            "meta": {
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "total_tokens": total_tokens,
+                "cost": 0.0,
+                "raw_response": {},
+                "model_name": merged_options.get("model", self.model),
+            },
+        }
+
+    def generate_messages(self, messages: list[dict[str, Any]], options: dict[str, Any]) -> dict[str, Any]:
         """Use Ollama's /api/chat endpoint for multi-turn conversations."""
         merged_options = self.options.copy()
         if options:

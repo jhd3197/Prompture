@@ -1,0 +1,41 @@
+# {{ project_name }}
+
+A FastAPI server powered by [Prompture](https://github.com/jhd3197/prompture) for structured LLM output.
+
+## Quick start
+
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Copy and edit environment config
+cp .env.example .env
+
+# Run the server
+uvicorn app.main:app --reload
+```
+
+## API endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/v1/chat` | Send a message, get a response |
+| POST | `/v1/extract` | Extract structured JSON with schema |
+| GET | `/v1/conversations/{id}` | Get conversation history |
+| DELETE | `/v1/conversations/{id}` | Delete a conversation |
+
+## Example
+
+```bash
+curl -X POST http://localhost:8000/v1/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Hello!"}'
+```
+{% if include_docker %}
+## Docker
+
+```bash
+docker build -t {{ project_name }} .
+docker run -p 8000:8000 --env-file .env {{ project_name }}
+```
+{% endif %}
