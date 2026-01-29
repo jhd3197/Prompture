@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Iterator
 from typing import Any
 
 from .callbacks import DriverCallbacks
@@ -32,13 +33,15 @@ class Driver:
     supports_json_mode: bool = False
     supports_json_schema: bool = False
     supports_messages: bool = False
+    supports_tool_use: bool = False
+    supports_streaming: bool = False
 
     callbacks: DriverCallbacks | None = None
 
     def generate(self, prompt: str, options: dict[str, Any]) -> dict[str, Any]:
         raise NotImplementedError
 
-    def generate_messages(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
+    def generate_messages(self, messages: list[dict[str, Any]], options: dict[str, Any]) -> dict[str, Any]:
         """Generate a response from a list of conversation messages.
 
         Each message is a dict with ``"role"`` (``"system"``, ``"user"``, or
@@ -51,6 +54,46 @@ class Driver:
         """
         prompt = self._flatten_messages(messages)
         return self.generate(prompt, options)
+
+    # ------------------------------------------------------------------
+    # Tool use
+    # ------------------------------------------------------------------
+
+    def generate_messages_with_tools(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        options: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Generate a response that may include tool calls.
+
+        Returns a dict with keys: ``text``, ``meta``, ``tool_calls``, ``stop_reason``.
+        ``tool_calls`` is a list of ``{"id": str, "name": str, "arguments": dict}``.
+
+        Drivers that support tool use should override this method and set
+        ``supports_tool_use = True``.
+        """
+        raise NotImplementedError(f"{self.__class__.__name__} does not support tool use")
+
+    # ------------------------------------------------------------------
+    # Streaming
+    # ------------------------------------------------------------------
+
+    def generate_messages_stream(
+        self,
+        messages: list[dict[str, Any]],
+        options: dict[str, Any],
+    ) -> Iterator[dict[str, Any]]:
+        """Yield response chunks incrementally.
+
+        Each chunk is a dict:
+        - ``{"type": "delta", "text": str}`` for content fragments
+        - ``{"type": "done", "text": str, "meta": dict}`` for the final summary
+
+        Drivers that support streaming should override this method and set
+        ``supports_streaming = True``.
+        """
+        raise NotImplementedError(f"{self.__class__.__name__} does not support streaming")
 
     # ------------------------------------------------------------------
     # Hook-aware wrappers
@@ -84,7 +127,7 @@ class Driver:
         )
         return resp
 
-    def generate_messages_with_hooks(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
+    def generate_messages_with_hooks(self, messages: list[dict[str, Any]], options: dict[str, Any]) -> dict[str, Any]:
         """Wrap :meth:`generate_messages` with callbacks."""
         driver_name = getattr(self, "model", self.__class__.__name__)
         self._fire_callback(
@@ -129,7 +172,7 @@ class Driver:
             logger.exception("Callback %s raised an exception", event)
 
     @staticmethod
-    def _flatten_messages(messages: list[dict[str, str]]) -> str:
+    def _flatten_messages(messages: list[dict[str, Any]]) -> str:
         """Join messages into a single prompt string with role prefixes."""
         parts: list[str] = []
         for msg in messages:

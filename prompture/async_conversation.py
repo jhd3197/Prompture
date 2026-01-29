@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import AsyncIterator
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any, Literal, Union
+from typing import Any, Callable, Literal, Union
 
 from pydantic import BaseModel
 
@@ -19,6 +20,7 @@ from .tools import (
     convert_value,
     get_field_default,
 )
+from .tools_schema import ToolRegistry
 
 logger = logging.getLogger("prompture.async_conversation")
 
@@ -43,6 +45,8 @@ class AsyncConversation:
         system_prompt: str | None = None,
         options: dict[str, Any] | None = None,
         callbacks: DriverCallbacks | None = None,
+        tools: ToolRegistry | None = None,
+        max_tool_rounds: int = 10,
     ) -> None:
         if model_name is None and driver is None:
             raise ValueError("Either model_name or driver must be provided")
@@ -58,7 +62,7 @@ class AsyncConversation:
         self._model_name = model_name or ""
         self._system_prompt = system_prompt
         self._options = dict(options) if options else {}
-        self._messages: list[dict[str, str]] = []
+        self._messages: list[dict[str, Any]] = []
         self._usage = {
             "prompt_tokens": 0,
             "completion_tokens": 0,
@@ -66,13 +70,15 @@ class AsyncConversation:
             "cost": 0.0,
             "turns": 0,
         }
+        self._tools = tools or ToolRegistry()
+        self._max_tool_rounds = max_tool_rounds
 
     # ------------------------------------------------------------------
     # Public helpers
     # ------------------------------------------------------------------
 
     @property
-    def messages(self) -> list[dict[str, str]]:
+    def messages(self) -> list[dict[str, Any]]:
         """Read-only view of the conversation history."""
         return list(self._messages)
 
@@ -91,6 +97,16 @@ class AsyncConversation:
             raise ValueError("role must be 'user' or 'assistant'")
         self._messages.append({"role": role, "content": content})
 
+    def register_tool(
+        self,
+        fn: Callable[..., Any],
+        *,
+        name: str | None = None,
+        description: str | None = None,
+    ) -> None:
+        """Register a Python function as a tool the LLM can call."""
+        self._tools.register(fn, name=name, description=description)
+
     def usage_summary(self) -> str:
         """Human-readable summary of accumulated usage."""
         u = self._usage
@@ -100,9 +116,9 @@ class AsyncConversation:
     # Core methods
     # ------------------------------------------------------------------
 
-    def _build_messages(self, user_content: str) -> list[dict[str, str]]:
+    def _build_messages(self, user_content: str) -> list[dict[str, Any]]:
         """Build the full messages array for an API call."""
-        msgs: list[dict[str, str]] = []
+        msgs: list[dict[str, Any]] = []
         if self._system_prompt:
             msgs.append({"role": "system", "content": self._system_prompt})
         msgs.extend(self._messages)
@@ -121,7 +137,14 @@ class AsyncConversation:
         content: str,
         options: dict[str, Any] | None = None,
     ) -> str:
-        """Send a message and get a raw text response (async)."""
+        """Send a message and get a raw text response (async).
+
+        If tools are registered and the driver supports tool use,
+        dispatches to the async tool execution loop.
+        """
+        if self._tools and getattr(self._driver, "supports_tool_use", False):
+            return await self._ask_with_tools(content, options)
+
         merged = {**self._options, **(options or {})}
         messages = self._build_messages(content)
         resp = await self._driver.generate_messages_with_hooks(messages, merged)
@@ -134,6 +157,106 @@ class AsyncConversation:
         self._accumulate_usage(meta)
 
         return text
+
+    async def _ask_with_tools(
+        self,
+        content: str,
+        options: dict[str, Any] | None = None,
+    ) -> str:
+        """Async tool-use loop: send -> check tool_calls -> execute -> re-send."""
+        merged = {**self._options, **(options or {})}
+        tool_defs = self._tools.to_openai_format()
+
+        self._messages.append({"role": "user", "content": content})
+        msgs = self._build_messages_raw()
+
+        for _round in range(self._max_tool_rounds):
+            resp = await self._driver.generate_messages_with_tools(msgs, tool_defs, merged)
+
+            meta = resp.get("meta", {})
+            self._accumulate_usage(meta)
+
+            tool_calls = resp.get("tool_calls", [])
+            text = resp.get("text", "")
+
+            if not tool_calls:
+                self._messages.append({"role": "assistant", "content": text})
+                return text
+
+            assistant_msg: dict[str, Any] = {"role": "assistant", "content": text}
+            assistant_msg["tool_calls"] = [
+                {
+                    "id": tc["id"],
+                    "type": "function",
+                    "function": {"name": tc["name"], "arguments": json.dumps(tc["arguments"])},
+                }
+                for tc in tool_calls
+            ]
+            self._messages.append(assistant_msg)
+            msgs.append(assistant_msg)
+
+            for tc in tool_calls:
+                try:
+                    result = self._tools.execute(tc["name"], tc["arguments"])
+                    result_str = json.dumps(result) if not isinstance(result, str) else result
+                except Exception as exc:
+                    result_str = f"Error: {exc}"
+
+                tool_result_msg: dict[str, Any] = {
+                    "role": "tool",
+                    "tool_call_id": tc["id"],
+                    "content": result_str,
+                }
+                self._messages.append(tool_result_msg)
+                msgs.append(tool_result_msg)
+
+        raise RuntimeError(f"Tool execution loop exceeded {self._max_tool_rounds} rounds")
+
+    def _build_messages_raw(self) -> list[dict[str, Any]]:
+        """Build messages array from system prompt + full history (including tool messages)."""
+        msgs: list[dict[str, Any]] = []
+        if self._system_prompt:
+            msgs.append({"role": "system", "content": self._system_prompt})
+        msgs.extend(self._messages)
+        return msgs
+
+    # ------------------------------------------------------------------
+    # Streaming
+    # ------------------------------------------------------------------
+
+    async def ask_stream(
+        self,
+        content: str,
+        options: dict[str, Any] | None = None,
+    ) -> AsyncIterator[str]:
+        """Send a message and yield text chunks as they arrive (async).
+
+        Falls back to non-streaming :meth:`ask` if the driver doesn't
+        support streaming.
+        """
+        if not getattr(self._driver, "supports_streaming", False):
+            yield await self.ask(content, options)
+            return
+
+        merged = {**self._options, **(options or {})}
+        messages = self._build_messages(content)
+
+        self._messages.append({"role": "user", "content": content})
+
+        full_text = ""
+        async for chunk in self._driver.generate_messages_stream(messages, merged):
+            if chunk["type"] == "delta":
+                full_text += chunk["text"]
+                self._driver._fire_callback(
+                    "on_stream_delta",
+                    {"text": chunk["text"], "driver": getattr(self._driver, "model", self._driver.__class__.__name__)},
+                )
+                yield chunk["text"]
+            elif chunk["type"] == "done":
+                meta = chunk.get("meta", {})
+                self._accumulate_usage(meta)
+
+        self._messages.append({"role": "assistant", "content": full_text})
 
     async def ask_for_json(
         self,

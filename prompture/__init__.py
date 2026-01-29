@@ -74,6 +74,7 @@ from .runner import run_suite_from_spec
 from .session import UsageSession
 from .settings import settings as _settings
 from .tools import clean_json_text, clean_toon_text
+from .tools_schema import ToolDefinition, ToolRegistry, tool_from_function
 from .validator import validate_against_schema
 
 # Load environment variables from .env file
@@ -128,6 +129,8 @@ __all__ = [
     "RedisCacheBackend",
     "ResponseCache",
     "SQLiteCacheBackend",
+    "ToolDefinition",
+    "ToolRegistry",
     "UsageSession",
     "add_field_definition",
     "add_field_definitions",
@@ -170,6 +173,7 @@ __all__ = [
     "reset_registry",
     "run_suite_from_spec",
     "stepwise_extract_with_model",
+    "tool_from_function",
     "unregister_async_driver",
     "unregister_driver",
     "validate_against_schema",
