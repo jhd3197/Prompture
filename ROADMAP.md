@@ -1,295 +1,153 @@
 # Prompture Roadmap
 
-Current state: **v0.0.29.dev** | 12 drivers | 50+ field definitions | 171 tests | 28 examples
+## Completed Work
+
+### v0.0.1–v0.0.21: Core Extraction Engine
+- Initial project structure, `ask_for_json()`, JSON schema enforcement
+- OpenAI, Claude, Azure, Ollama drivers
+- JSON cleaning and AI-powered cleanup fallback
+- `extract_and_jsonify()`, `manual_extract_and_jsonify()`
+- Driver flexibility: `get_driver()` interface
+- Example scripts for each provider
+
+### v0.0.22–v0.0.24: Pydantic & Stepwise Extraction
+- `extract_with_model()`: one-shot Pydantic model extraction
+- `stepwise_extract_with_model()`: per-field extraction with smart type coercion
+- `tools.py` utilities: parsing, schema generation, shorthand numbers, multilingual booleans
+- Structured logging and verbose control
+
+### v0.0.25–v0.0.28: Multi-Provider & Field System
+- LM Studio, Google Gemini, Groq, OpenRouter, Grok drivers (12 total)
+- Sphinx documentation site
+- Field definitions registry with 50+ predefined fields
+- Enum field support and validation utilities
+- Template variables (`{{current_year}}`, `{{current_date}}`, etc.)
+- Text classification and analysis examples
+
+### v0.0.29–v0.0.32: TOON, Discovery & AirLLM
+- TOON output format support (compact token-oriented notation)
+- TOON input conversion via `extract_from_data()` / `extract_from_pandas()` (45-60% token savings)
+- `get_available_models()` auto-discovery across configured providers
+- `render_output()` for raw text/HTML/markdown generation
+- AirLLM driver for local inference
+- Live model rates with caching and `get_model_rates()` API
+
+### v0.0.33–v0.0.34: Async, Caching & Conversations
+- `AsyncDriver` base class and async driver implementations
+- `AsyncConversation` for non-blocking multi-turn interactions
+- Response caching with memory, SQLite, and Redis backends
+- `Conversation` class: stateful multi-turn sessions with system prompts and message history
+- Message-based driver APIs: `generate_messages()`, `generate_messages_stream()`
+- Native JSON mode detection per provider (OpenAI `json_schema`, Claude tool-use, Gemini `response_mime_type`)
+- `DriverCallbacks` with `on_request`, `on_response`, `on_error`, `on_stream_delta` hooks
+- `UsageSession` for accumulated token/cost tracking across calls
+- `configure_logging()` with `JSONFormatter` for structured log output
+
+### v0.0.35 (current): Tool Use, Streaming & Plugin System
+- `ToolRegistry` and `ToolDefinition`: register Python functions as LLM-callable tools
+- `tool_from_function()`: auto-generate JSON schemas from type hints
+- Tool use in conversations with multi-round execution (`max_tool_rounds`)
+- Streaming via `ask_stream()` and `generate_messages_stream()`
+- Pluggable driver registry with entry-point discovery
+- `register_driver()` / `register_async_driver()` for third-party provider plugins
 
 ---
 
-## Where Prompture Stands Today
-
-Prompture has a solid foundation: a clean driver abstraction across 12 LLM providers, a thread-safe field registry with 50+ predefined fields, Pydantic model extraction (one-shot and stepwise), TOON input conversion for 45-60% token savings, cost tracking, and a spec-driven cross-model test runner. The CI/CD pipeline auto-publishes to PyPI on merge to main.
-
-What follows is an honest assessment of what would move the project forward, organized from highest to lowest impact.
-
----
-
-## 1. Streaming Support
-
-**Why it matters:** Every major provider now supports streaming. For extraction tasks on larger inputs, users currently wait for the full response before getting anything back. Streaming unlocks real-time progress feedback and partial result handling.
-
-**What this looks like:**
-- Add a `stream=True` parameter to `generate()` in the base `Driver` class
-- Implement streaming in OpenAI, Claude, Google, and Groq drivers first (they all have native streaming APIs)
-- Yield chunks or partial JSON as they arrive
-- For extraction functions, accumulate streamed text and parse once complete
-- Ollama already returns `stream: False` explicitly -- flip this and handle the NDJSON response format
-
-**Scope:** Medium-large. Each driver needs its own streaming implementation due to API differences.
-
----
-
-## 2. Async Driver Support
-
-**Why it matters:** Prompture is synchronous end-to-end. Anyone using it inside a FastAPI, Django Channels, or any async application has to wrap calls in `run_in_executor`. Batch extraction across multiple models is sequential.
-
-**What this looks like:**
-- Add an `AsyncDriver` base class with `async generate()`
-- Provide async variants of core functions: `async_extract_with_model()`, `async_extract_and_jsonify()`
-- OpenAI, Anthropic, and Google SDKs all have native async clients
-- For drivers using `requests`, swap in `httpx.AsyncClient`
-- Enable concurrent multi-model extraction with `asyncio.gather()`
-
-**Scope:** Large. Touches the driver layer and core extraction functions. Could be done incrementally -- async drivers first, then async core wrappers.
-
----
-
-## 3. Response Caching
-
-**Why it matters:** Extraction tasks are often repeated with identical or near-identical prompts during development, testing, and batch processing. Every repeated call burns tokens and money.
-
-**What this looks like:**
-- Hash-based cache keyed on `(prompt, model, schema, options)`
-- Pluggable backends: in-memory (dict/LRU), SQLite on disk, Redis for shared environments
-- Cache-aware wrappers around `extract_with_model()` and `ask_for_json()`
-- TTL support and manual invalidation
-- Disabled by default, enabled via `cache=True` or a settings toggle
-
-**Scope:** Medium. Self-contained module that wraps existing functions.
-
----
-
-## 4. Retry and Resilience
-
-**Why it matters:** LLM APIs fail. Rate limits, transient 500s, malformed responses, and timeouts are routine. Currently, a failed call just raises and the user has to handle retries themselves.
-
-**What this looks like:**
-- Configurable retry policy: max attempts, backoff strategy (exponential with jitter)
-- Retry on transient HTTP errors (429, 500, 502, 503, 504)
-- Retry on malformed JSON responses (re-prompt with stricter instructions)
-- Circuit breaker pattern for providers that are consistently down
-- Per-driver timeout configuration (some providers are slower than others)
-- `ai_cleanup=True` already exists in core -- this extends the idea to the transport layer
-
-**Scope:** Medium. Could be implemented as a decorator/wrapper around `Driver.generate()`.
-
----
-
-## 5. Structured Output / JSON Mode
-
-**Why it matters:** OpenAI, Google, and Anthropic now offer native JSON mode or structured output guarantees at the API level. This is more reliable than prompt-based schema enforcement and uses fewer tokens.
-
-**What this looks like:**
-- Detect when the target provider supports `response_format: { type: "json_object" }` (OpenAI) or equivalent
-- Automatically use native JSON mode when available, fall back to prompt-based enforcement otherwise
-- For OpenAI's structured outputs (`response_format: { type: "json_schema", json_schema: ... }`), pass the Pydantic schema directly
-- Google Gemini has `response_mime_type: "application/json"` with schema support
-- Claude has tool-use based structured output
-
-**Scope:** Medium. Per-driver changes with a feature-detection layer in core.
-
----
-
-## 6. Conversation / Multi-Turn Support
-
-**Why it matters:** All drivers currently operate in single-turn mode (one prompt in, one response out). Multi-turn is needed for complex extraction tasks, clarification loops, and chain-of-thought reasoning.
-
-**What this looks like:**
-- Support message arrays (`[{"role": "system", ...}, {"role": "user", ...}]`) in driver `generate()`
-- Add a `system_prompt` parameter to extraction functions
-- Enable follow-up extraction: "Given your previous response, also extract X"
-- Useful for stepwise extraction where context from earlier fields informs later ones
-
-**Scope:** Medium. Requires updating the driver interface and core functions.
-
----
-
-## 7. Better TOON Output
-
-**Why it matters:** TOON output is marked experimental in the README because general-purpose models tend to emit verbose completions instead of compact TOON notation. This undercuts the token-saving benefit.
-
-**What this looks like:**
-- Few-shot examples in the TOON output prompt showing correct compact notation
-- Model-specific prompt tuning (some models respond better to certain instruction styles)
-- Validation that the output is actually valid TOON before returning
-- Benchmarking suite comparing TOON output token counts vs JSON across models
-- Consider whether TOON output is worth continuing or if native JSON mode (item 5) makes it obsolete for output
-
-**Scope:** Small-medium. Mostly prompt engineering and testing.
-
----
-
-## 8. Observability and Logging
-
-**Why it matters:** Prompture has a custom `LogLevel` enum in `tools.py` that isn't stdlib `logging`. Debug output goes through `log_debug()` with a custom level system. This makes it hard to integrate with standard Python logging, APM tools, or structured logging pipelines.
-
-**What this looks like:**
-- Migrate to stdlib `logging` throughout (or at minimum, bridge the custom `LogLevel` to stdlib levels)
-- Structured log output (JSON lines) for production use
-- Request/response logging with configurable verbosity
-- Token usage and cost aggregation across a session
-- Optional callback hooks for monitoring: `on_request`, `on_response`, `on_error`
-- Cost dashboard or summary function: "This session used X tokens across Y calls costing $Z"
-
-**Scope:** Medium. The custom logging is spread across core and tools.
-
----
-
-## 9. Linting, Formatting, and Type Checking
-
-**Why it matters:** The CLAUDE.md explicitly notes "There is no configured linter or formatter." As the project grows and accepts contributions, inconsistent style and uncaught type errors become friction.
-
-**What this looks like:**
-- Add `ruff` for linting and formatting (single tool, fast, replaces flake8+black+isort)
-- Add `mypy` or `pyright` for type checking (the codebase already uses type hints extensively)
-- `pyproject.toml` configuration for both
-- Pre-commit hooks via `pre-commit`
-- CI check in GitHub Actions
-
-**Scope:** Small-medium. Configuration plus fixing any issues the tools surface.
-
----
-
-## 10. Schema Inference from Examples
-
-**Why it matters:** Users currently need to define Pydantic models or JSON schemas upfront. For exploratory work, it would be useful to provide example outputs and have Prompture infer the schema.
-
-**What this looks like:**
-- `infer_schema(examples: list[dict]) -> dict` that produces a JSON schema from sample data
-- `infer_model(examples: list[dict]) -> Type[BaseModel]` that produces a Pydantic model dynamically
-- Use this as a quick-start path: provide examples, get a schema, refine it
-- Combine with `extract_with_model()` for a zero-config extraction pipeline
-
-**Scope:** Medium. Standalone utility module.
-
----
-
-## 11. Batch and Parallel Extraction
-
-**Why it matters:** Processing hundreds or thousands of texts is common (documents, reviews, emails). Currently this requires a manual loop.
-
-**What this looks like:**
-- `extract_batch(texts, model, schema)` that processes a list of inputs
-- Configurable concurrency (thread pool or async)
-- Progress callback or tqdm integration
-- Rate limiting per provider (respect API limits)
-- Partial results on failure (don't lose 99 results because #100 failed)
-- Works with the caching layer (item 3) to skip already-processed inputs
-
-**Scope:** Medium. Builds on async support (item 2) or uses threading.
-
----
-
-## 12. Plugin / Custom Driver Registration
-
-**Why it matters:** The driver registry is currently hardcoded in `drivers/__init__.py`. Third-party providers or custom endpoints require forking or modifying source.
-
-**What this looks like:**
-- `register_driver(name, factory_fn)` public API
-- Entry point based discovery (`[project.entry-points."prompture.drivers"]` in pyproject.toml)
-- Documentation for writing a custom driver
-- Community drivers can be installed as separate packages and auto-discovered
-
-**Scope:** Small-medium. The registry pattern is already there -- just needs a public registration API and entry point scanning.
-
----
-
-## 13. Expanded Test Coverage
-
-**Why it matters:** 171 tests is solid, but integration tests are skipped by default and require live API access. Some drivers have no dedicated unit tests.
-
-**What this looks like:**
-- Mock-based unit tests for each driver (test the request/response handling without live API calls)
-- Property-based testing with `hypothesis` for JSON cleaning and type conversion
-- Snapshot tests for prompt generation (catch unintended prompt changes)
-- Coverage reporting in CI (currently not measured)
-- Test matrix across Python 3.9-3.13
-
-**Scope:** Medium. Ongoing effort.
-
----
-
-## 14. Documentation Site
-
-**Why it matters:** The README is 400+ lines and growing. Examples are in an `examples/` directory with 28 files. There's no searchable, navigable documentation.
-
-**What this looks like:**
-- MkDocs or Sphinx site with:
-  - Getting started guide
-  - Per-driver setup and configuration
-  - API reference (auto-generated from docstrings)
-  - Field definitions catalog
-  - TOON usage guide
-  - Migration guide for version upgrades
-  - Cookbook with real-world recipes
-- Hosted on GitHub Pages or Read the Docs
-- The existing `documentation.yml` workflow can be extended
-
-**Scope:** Medium-large. Content already exists scattered across README, examples, and docstrings.
-
----
-
-## 15. pyproject.toml Migration
-
-**Why it matters:** The project uses `setup.py` which is the legacy build configuration approach. The Python ecosystem has standardized on `pyproject.toml` for build configuration, dependencies, and tool settings.
-
-**What this looks like:**
-- Migrate `setup.py` to `[project]` table in `pyproject.toml`
-- Move `setuptools_scm` config to `[tool.setuptools_scm]`
-- Consolidate tool configs (ruff, mypy, pytest) into the same file
-- Remove `setup.py` entirely
-- Keep `setuptools` as build backend or consider `hatchling`
-
-**Scope:** Small. Mechanical migration.
-
----
-
-## 16. Provider-Specific Features
-
-Some providers offer capabilities that the current uniform driver interface doesn't expose:
-
-| Provider | Feature | Value |
-|----------|---------|-------|
-| OpenAI | Function calling / tool use | Structured extraction via native tools |
-| Claude | Extended thinking | Better reasoning for complex extraction |
-| Google | Grounding with Search | Extraction with fact-checking |
-| Ollama | Model pulling | Auto-download models on first use |
-| OpenAI | Batch API | 50% cost reduction for non-urgent work |
-| Claude | PDF/image input | Extract from non-text sources |
-| Google | Context caching | Reuse large contexts across calls |
-
-**Scope:** Varies per feature. Each is an independent enhancement.
-
----
-
-## Priority Matrix
-
-| Priority | Item | Impact | Effort |
-|----------|------|--------|--------|
-| **High** | Structured Output / JSON Mode | High | Medium |
-| **High** | Retry and Resilience | High | Medium |
-| **High** | Streaming Support | High | Medium-Large |
-| **High** | Linting + Type Checking | Medium | Small |
-| **Medium** | Async Driver Support | High | Large |
-| **Medium** | Response Caching | Medium | Medium |
-| **Medium** | Conversation / Multi-Turn | Medium | Medium |
-| **Medium** | Batch Extraction | Medium | Medium |
-| **Medium** | pyproject.toml Migration | Low | Small |
-| **Lower** | Schema Inference | Medium | Medium |
-| **Lower** | Plugin System | Medium | Small-Medium |
-| **Lower** | TOON Output Improvements | Low-Medium | Small |
-| **Lower** | Observability Overhaul | Medium | Medium |
-| **Lower** | Documentation Site | Medium | Medium-Large |
-| **Ongoing** | Test Coverage Expansion | Medium | Ongoing |
-| **Ongoing** | Provider-Specific Features | Varies | Varies |
-
----
-
-## Suggested First Moves
-
-If starting tomorrow, the highest-leverage sequence would be:
-
-1. **Linting + pyproject.toml** -- Low effort, cleans up the foundation for everything else
-2. **Structured Output / JSON Mode** -- Directly improves the core value proposition (reliable JSON extraction) with less prompt engineering
-3. **Retry and Resilience** -- Makes the library production-ready; without this, every user writes their own retry wrapper
-4. **Streaming** -- Table stakes for modern LLM tooling; unblocks real-time UX in downstream applications
-
-These four items turn Prompture from a capable dev tool into a production-grade extraction library.
+## Upcoming
+
+### Phase 1: Vision Support
+**Goal**: Native multimodal input in conversations and extraction.
+
+- [ ] `ImageContent` type for passing images (bytes, base64, file path, URL) in messages
+- [ ] `conv.ask(text="What's on screen?", images=[screenshot_bytes])` API
+- [ ] Image support in `extract_with_model()` for vision-based structured extraction
+- [ ] Driver-level image encoding per provider (Claude base64, OpenAI URL/base64, Gemini inline)
+- [ ] Automatic image resizing/compression to stay within provider token limits
+- [ ] Vision examples: screenshot analysis, document extraction, chart reading
+
+### Phase 2: Conversation Persistence
+**Goal**: Save and restore conversations across process restarts.
+
+- [ ] `conv.export() -> dict` serialization (messages, system prompt, tool definitions, usage)
+- [ ] `Conversation.from_export(data)` restoration
+- [ ] File-based persistence: `conv.save("path.json")` / `Conversation.load("path.json")`
+- [ ] SQLite backend for conversation storage with search by ID/tag
+- [ ] Optional auto-save on every turn (configurable)
+- [ ] Conversation metadata: tags, created_at, last_active, turn_count
+- [ ] Export/import of `UsageSession` alongside conversation state
+
+### Phase 3: Agent Framework
+**Goal**: Higher-level agent abstraction for observe-think-act loops.
+
+- [ ] `Agent` class wrapping `Conversation` + `ToolRegistry` + observation function
+- [ ] Configurable loop: `Agent(observe=fn, tools=registry, persona="...", max_cycles=50)`
+- [ ] Built-in loop modes: autonomous (continuous), command (task-driven, stops on completion), single (one cycle)
+- [ ] Cycle callbacks: `on_observe`, `on_think`, `on_act`, `on_cycle_end`
+- [ ] Agent state machine: idle, observing, thinking, acting, paused, stopped
+- [ ] Graceful shutdown with `agent.stop()` and current-cycle completion
+- [ ] Agent logging: structured action log with timestamps and tool call traces
+
+### Phase 4: Persona Templates
+**Goal**: Reusable, composable personality definitions for agents and conversations.
+
+- [ ] `Persona` class with structured fields: name, traits, tone, constraints, knowledge domains
+- [ ] Persona registry (like field registry): `register_persona("cautious_explorer", {...})`
+- [ ] Composable traits: `Persona(base="explorer", traits=["tech_savvy", "minimalist"])`
+- [ ] Persona-to-system-prompt rendering with template support
+- [ ] Built-in personas: assistant, analyst, coder, reviewer, device_agent
+- [ ] `Conversation(persona="cautious_explorer")` shorthand
+- [ ] Persona serialization for storage/sharing
+
+### Phase 5: Multi-Agent Coordination
+**Goal**: Enable multiple agents to share context and collaborate.
+
+- [ ] `AgentGroup` for managing a set of agents with a shared objective
+- [ ] Shared message bus: agents can send typed messages to each other
+- [ ] Coordinator pattern: one agent delegates tasks to others
+- [ ] Shared memory: a common context store agents can read/write
+- [ ] Agent discovery: agents can query what other agents exist and their capabilities
+- [ ] Synchronization primitives: wait for agent, barrier, handoff
+- [ ] Group-level usage tracking (aggregate tokens/cost across all agents)
+
+### Phase 6: Cost Budgets & Guardrails
+**Goal**: Prevent runaway costs and enforce safety constraints on conversations and agents.
+
+- [ ] `Conversation(max_cost=0.50, max_tokens=10000)` budget caps
+- [ ] Budget enforcement modes: hard stop, warn and continue, graceful degrade (switch to cheaper model)
+- [ ] Per-session and per-conversation budget tracking
+- [ ] Rate limiting: max requests per minute per conversation
+- [ ] Content guardrails: blocked patterns, required patterns, output validators
+- [ ] Token budget allocation: reserve tokens for system prompt vs history vs response
+- [ ] Automatic conversation summarization when history exceeds token budget
+
+### Phase 7: Async Tool Execution
+**Goal**: Non-blocking tool execution for long-running operations.
+
+- [ ] `@registry.async_tool` decorator for async tool functions
+- [ ] Tool timeout configuration per tool
+- [ ] Parallel tool execution when LLM requests multiple tools in one turn
+- [ ] Tool status polling: tool returns "pending" and agent checks back
+- [ ] Tool cancellation support
+- [ ] Progress reporting from tools back to the conversation
+
+### Phase 8: Middleware & Interceptors
+**Goal**: Pluggable pipeline between conversation and driver for cross-cutting concerns.
+
+- [ ] `Middleware` protocol: `process(message, next) -> message`
+- [ ] Built-in middleware: content filtering, prompt compression, rate limiting
+- [ ] History summarization middleware: compress old messages to save tokens
+- [ ] Logging middleware: structured request/response logging
+- [ ] Retry middleware: automatic retry with backoff on transient errors
+- [ ] `Conversation(middleware=[filter, compress, log])` configuration
+- [ ] Middleware ordering and priority
+
+### Phase 9: Structured Observation Input
+**Goal**: Typed input models for feeding structured context to conversations and agents.
+
+- [ ] `Observation` base model for structured input (screen state, metrics, events)
+- [ ] Observation-to-prompt template rendering
+- [ ] Built-in observation types: `ScreenObservation`, `MetricsObservation`, `EventObservation`
+- [ ] Custom observation models via Pydantic
+- [ ] `conv.observe(ScreenObservation(app="Chrome", elements=[...]))` API
+- [ ] Automatic observation diffing: only send what changed since last observation
+- [ ] Observation history alongside message history
