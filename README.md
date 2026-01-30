@@ -1,105 +1,102 @@
-# Prompture
+<p align="center">
+  <h1 align="center">Prompture</h1>
+  <p align="center">Structured JSON extraction from any LLM. Schema-enforced, Pydantic-native, multi-provider.</p>
+</p>
 
-[![PyPI version](https://badge.fury.io/py/prompture.svg)](https://badge.fury.io/py/prompture)
-[![Python Versions](https://img.shields.io/pypi/pyversions/prompture.svg)](https://pypi.org/project/prompture/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Downloads](https://static.pepy.tech/badge/prompture)](https://pepy.tech/project/prompture)
-![GitHub Repo stars](https://img.shields.io/github/stars/jhd3197/prompture?style=social)
-
-
-**Prompture** is an API-first library for getting **structured JSON** (or any structure) from LLMs, validating it, and benchmarking multiple models with one spec.
-
-## ✨ Features
-
-- ✅ **Structured output** → JSON schema enforcement, or direct **Pydantic** instances
-- ✅ **TOON input conversion** → 45-60% token savings for structured data analysis with `extract_from_data()` and `extract_from_pandas()`
-- ✅ **Stepwise extraction** → Per-field prompts, with smart type conversion (incl. shorthand numbers)
-- ✅ **Multi-driver** → OpenAI, Azure, Claude, Ollama, LM Studio, Google, Groq, OpenRouter, Grok, HTTP, Mock, HuggingFace (via `get_driver()`)
-- ✅ **Usage & cost** → Token + $ tracking on every call (`usage` from driver meta)
-- ✅ **AI cleanup** → Optional LLM pass to fix malformed JSON
-- ✅ **Batch testing** → Define suites and compare models (spec-driven)
-- 🧪 **Experimental TOON output** → Request Token-Oriented Object Notation when you need ultra-compact text
-<br>
-
-> [!TIP]
-> Starring this repo helps more developers discover Prompture ✨
-> 
->![prompture_no_forks](https://github.com/user-attachments/assets/720f888e-a885-4eb3-970c-ba5809fe2ce7)
-> 
->  🔥 Also check out my other project [RepoGif](https://github.com/jhd3197/RepoGif) – the tool I used to generate the GIF above!
-<br>
-
+<p align="center">
+  <a href="https://pypi.org/project/prompture/"><img src="https://badge.fury.io/py/prompture.svg" alt="PyPI version"></a>
+  <a href="https://pypi.org/project/prompture/"><img src="https://img.shields.io/pypi/pyversions/prompture.svg" alt="Python versions"></a>
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
+  <a href="https://pepy.tech/project/prompture"><img src="https://static.pepy.tech/badge/prompture" alt="Downloads"></a>
+  <a href="https://github.com/jhd3197/prompture"><img src="https://img.shields.io/github/stars/jhd3197/prompture?style=social" alt="GitHub stars"></a>
+</p>
 
 ---
+
+**Prompture** is a Python library that turns LLM responses into validated, structured data. Define a schema or Pydantic model, point it at any provider, and get typed output back — with token tracking, cost calculation, and automatic JSON repair built in.
+
+```python
+from pydantic import BaseModel
+from prompture import extract_with_model
+
+class Person(BaseModel):
+    name: str
+    age: int
+    profession: str
+
+person = extract_with_model(Person, "Maria is 32, a developer in NYC.", model_name="openai/gpt-4")
+print(person.name)  # Maria
+```
+
+## Key Features
+
+- **Structured output** — JSON schema enforcement and direct Pydantic model population
+- **12 providers** — OpenAI, Claude, Google, Groq, Grok, Azure, Ollama, LM Studio, OpenRouter, HuggingFace, AirLLM, and generic HTTP
+- **TOON input conversion** — 45-60% token savings when sending structured data via [Token-Oriented Object Notation](https://github.com/jhd3197/python-toon)
+- **Stepwise extraction** — Per-field prompts with smart type coercion (shorthand numbers, multilingual booleans, dates)
+- **Field registry** — 50+ predefined extraction fields with template variables and Pydantic integration
+- **Conversations** — Stateful multi-turn sessions with sync and async support
+- **Tool use** — Function calling and streaming across supported providers
+- **Caching** — Built-in response cache with memory, SQLite, and Redis backends
+- **Plugin system** — Register custom drivers via entry points
+- **Usage tracking** — Token counts and cost calculation on every call
+- **Auto-repair** — Optional second LLM pass to fix malformed JSON
+- **Batch testing** — Spec-driven suites to compare models side by side
 
 ## Installation
 
 ```bash
 pip install prompture
-````
+```
 
----
-
-## Configure a Provider
-
-Model names now support provider prefixes (e.g., "ollama/llama3.1:8b"). The `get_driver_for_model()` function automatically selects the appropriate driver based on the provider prefix.
-
-You can configure providers either through environment variables or by using provider-prefixed model names:
+Optional extras:
 
 ```bash
-# Environment variable approach:
-export AI_PROVIDER=ollama  # One of: ollama | openai | azure | claude | google | groq | openrouter | grok | lmstudio | http | huggingface
-
-# Only if the provider needs them:
-export OPENAI_API_KEY=...
-export AZURE_OPENAI_ENDPOINT=...
-export AZURE_OPENAI_API_KEY=...
-export ANTHROPIC_API_KEY=...
-export GOOGLE_API_KEY=...
-export GROQ_API_KEY=...
-export OPENROUTER_API_KEY=...
-export GROK_API_KEY=...
-export LMSTUDIO_ENDPOINT=...
+pip install prompture[redis]     # Redis cache backend
+pip install prompture[serve]     # FastAPI server mode
+pip install prompture[airllm]    # AirLLM local inference
 ```
 
-| Provider | Example models                        | Cost calc       |
-| -------- | ------------------------------------- | --------------- |
-| `ollama` | `ollama/llama3.1:8b`, `ollama/qwen2.5:3b` | `$0.00` (local) |
-| `openai` | `openai/gpt-4`, `openai/gpt-3.5-turbo` | Automatic       |
-| `azure`  | `azure/deployed-name`                  | Automatic       |
-| `claude` | `claude/claude-3`                      | Automatic       |
-| `google` | `google/gemini-1.5-pro`, `google/gemini-1.5-flash` | Automatic |
-| `groq` | `groq/llama2-70b-4096`, `groq/mixtral-8x7b-32768` | Automatic |
-| `openrouter` | `openrouter/openai/gpt-3.5-turbo`, `openrouter/anthropic/claude-2` | Automatic |
-| `grok` | `grok/grok-4-fast-reasoning`, `grok/grok-3-mini` | Automatic |
-| `lmstudio` | `lmstudio/local-model` | `$0.00` (local) |
-| `huggingface` | `hf/local-or-endpoint`            | `$0.00` (local) |
-| `http`   | `http/self-hosted`                     | `$0.00`         |
+## Configuration
 
----
+Set API keys for the providers you use. Prompture reads from environment variables or a `.env` file:
 
-## 🔍 Model Discovery
-
-Prompture can auto-detect available models from your configured environment. This is especially useful for local setups (like Ollama) or when you want to see which models are available to your application.
-
-```python
-from prompture import get_available_models
-
-# Returns a list of strings like ["openai/gpt-4o", "ollama/llama3:latest", ...]
-models = get_available_models()
-
-for model in models:
-    print(f"Found: {model}")
+```bash
+OPENAI_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-ant-...
+GOOGLE_API_KEY=...
+GROQ_API_KEY=...
+GROK_API_KEY=...
+OPENROUTER_API_KEY=...
+AZURE_OPENAI_ENDPOINT=...
+AZURE_OPENAI_API_KEY=...
 ```
 
-- **Static Drivers** (OpenAI, Claude, Azure, etc.): Returns models listed in the driver's `MODEL_PRICING` configuration if the driver is configured (API key present).
-- **Dynamic Drivers** (Ollama): Queries the local endpoint (e.g., `http://localhost:11434/api/tags`) to fetch currently installed models.
+Local providers (Ollama, LM Studio) work out of the box with no keys required.
 
----
+## Providers
 
-## Quickstart: Pydantic in one line (auto driver)
+Model strings use `"provider/model"` format. The provider prefix routes to the correct driver automatically.
 
-Use `extract_with_model` for a single LLM call that fills your Pydantic model.
+| Provider | Example Model | Cost |
+|---|---|---|
+| `openai` | `openai/gpt-4` | Automatic |
+| `claude` | `claude/claude-3` | Automatic |
+| `google` | `google/gemini-1.5-pro` | Automatic |
+| `groq` | `groq/llama2-70b-4096` | Automatic |
+| `grok` | `grok/grok-4-fast-reasoning` | Automatic |
+| `azure` | `azure/deployed-name` | Automatic |
+| `openrouter` | `openrouter/anthropic/claude-2` | Automatic |
+| `ollama` | `ollama/llama3.1:8b` | Free (local) |
+| `lmstudio` | `lmstudio/local-model` | Free (local) |
+| `huggingface` | `hf/model-name` | Free (local) |
+| `http` | `http/self-hosted` | Free |
+
+## Usage
+
+### One-Shot Pydantic Extraction
+
+Single LLM call, returns a validated Pydantic instance:
 
 ```python
 from typing import List, Optional
@@ -114,31 +111,75 @@ class Person(BaseModel):
     hobbies: List[str]
     education: Optional[str] = None
 
-text = "Maria is 32, a software developer in New York. She loves hiking and photography."
-
-# Uses get_driver_for_model() internally based on model name prefix
-person = extract_with_model(Person, text, model_name="ollama/gpt-oss:20b")
-print(person.dict())
+person = extract_with_model(
+    Person,
+    "Maria is 32, a software developer in New York. She loves hiking and photography.",
+    model_name="openai/gpt-4"
+)
+print(person.model_dump())
 ```
 
-**Why start here?** It's fast (one call), cost-efficient, and returns a validated Pydantic instance.
+### Stepwise Extraction
 
-
-## 🚀 TOON Input Conversion: 45-60% Token Savings
-
-Analyze structured data with automatic TOON (Token-Oriented Object Notation) conversion for massive token savings.
+One LLM call per field. Higher accuracy, per-field error recovery:
 
 ```python
-from prompture import extract_from_data, extract_from_pandas
+from prompture import stepwise_extract_with_model
 
-# Your product data
+result = stepwise_extract_with_model(
+    Person,
+    "Maria is 32, a software developer in New York. She loves hiking and photography.",
+    model_name="openai/gpt-4"
+)
+print(result["model"].model_dump())
+print(result["usage"])  # per-field and total token usage
+```
+
+| Aspect | `extract_with_model` | `stepwise_extract_with_model` |
+|---|---|---|
+| LLM calls | 1 | N (one per field) |
+| Speed / cost | Faster, cheaper | Slower, higher |
+| Accuracy | Good global coherence | Higher per-field accuracy |
+| Error handling | All-or-nothing | Per-field recovery |
+
+### JSON Schema Extraction
+
+For raw JSON output with full control:
+
+```python
+from prompture import ask_for_json
+
+schema = {
+    "type": "object",
+    "required": ["name", "age"],
+    "properties": {
+        "name": {"type": "string"},
+        "age": {"type": "integer"}
+    }
+}
+
+result = ask_for_json(
+    content_prompt="Extract the person's info from: John is 28 and lives in Miami.",
+    json_schema=schema,
+    model_name="openai/gpt-4"
+)
+print(result["json_object"])  # {"name": "John", "age": 28}
+print(result["usage"])        # token counts and cost
+```
+
+### TOON Input — Token Savings
+
+Analyze structured data with automatic TOON conversion for 45-60% fewer tokens:
+
+```python
+from prompture import extract_from_data
+
 products = [
     {"id": 1, "name": "Laptop", "price": 999.99, "rating": 4.5},
     {"id": 2, "name": "Book", "price": 19.99, "rating": 4.2},
-    {"id": 3, "name": "Headphones", "price": 149.99, "rating": 4.7}
+    {"id": 3, "name": "Headphones", "price": 149.99, "rating": 4.7},
 ]
 
-# Ask questions about your data - automatically uses TOON format for 60%+ token savings
 result = extract_from_data(
     data=products,
     question="What is the average price and highest rated product?",
@@ -153,38 +194,16 @@ result = extract_from_data(
 )
 
 print(result["json_object"])
-# {"average_price": 389.96, "highest_rated": "Headphones"}
+# {"average_price": 389.99, "highest_rated": "Headphones"}
 
 print(f"Token savings: {result['token_savings']['percentage_saved']}%")
-# Token savings: 62.3%
-
-# Works with Pandas DataFrames too!
-import pandas as pd
-df = pd.DataFrame(products)
-result = extract_from_pandas(df=df, question="...", json_schema=schema, model_name="openai/gpt-4")
 ```
 
-**Preview token savings without LLM calls:**
-```bash
-python examples/token_comparison_utility.py
-```
+Works with Pandas DataFrames via `extract_from_pandas()`.
 
-> **Note:** Both `python-toon` and `pandas` are now included by default when you install Prompture!
+### Field Definitions
 
----
----
-
-## 📋 Field Definitions
-
-Prompture includes a powerful **field definitions system** that provides a centralized registry of structured data extraction fields. This system enables consistent, reusable field configurations across your data extraction workflows with built-in fields for common use cases like personal info, contact details, professional data, and more.
-
-**Key benefits:**
-- 🎯 Pre-configured fields with descriptions and extraction instructions
-- 🔄 Template variables like `{{current_year}}`, `{{current_date}}`, `{{current_datetime}}`
-- 🔌 Seamless Pydantic integration via `field_from_registry()`
-- ⚙️ Easy custom field registration
-
-### Using Built-in Fields
+Use the built-in field registry for consistent extraction across models:
 
 ```python
 from pydantic import BaseModel
@@ -195,223 +214,109 @@ class Person(BaseModel):
     age: int = field_from_registry("age")
     email: str = field_from_registry("email")
     occupation: str = field_from_registry("occupation")
-    company: str = field_from_registry("company")
-
-# Built-in fields include: name, age, email, phone, address, city, country,
-# occupation, company, education_level, salary, and many more!
 
 result = stepwise_extract_with_model(
     Person,
-    "John Smith is 25 years old, software engineer at TechCorp, john@example.com",
+    "John Smith, 25, software engineer at TechCorp, john@example.com",
     model_name="openai/gpt-4"
 )
 ```
 
-### Registering Custom Fields
+Register custom fields with template variables:
 
 ```python
-from prompture import register_field, field_from_registry
+from prompture import register_field
 
-# Register a custom field with template variables
 register_field("document_date", {
     "type": "str",
-    "description": "Document creation or processing date",
-    "instructions": "Use {{current_date}} if not specified in document",
+    "description": "Document creation date",
+    "instructions": "Use {{current_date}} if not specified",
     "default": "{{current_date}}",
     "nullable": False
 })
-
-# Use custom field in your model
-class Document(BaseModel):
-    title: str = field_from_registry("name")
-    created_date: str = field_from_registry("document_date")
 ```
 
-📚 **[View Full Field Definitions Reference →](https://prompture.readthedocs.io/en/latest/field_definitions_reference.html)**
+### Conversations
 
----
-
-## JSON-first (low-level primitives)
-
-When you want raw JSON with a schema and full control, use `ask_for_json` or `extract_and_jsonify`.
+Stateful multi-turn sessions:
 
 ```python
-from prompture.drivers import get_driver
-from prompture import ask_for_json, extract_and_jsonify
+from prompture import Conversation
 
-schema = {
-    "type": "object",
-    "required": ["name", "age"],
-    "properties": {
-        "name": {"type": "string"},
-        "age": {"type": "integer"}
-    }
-}
-
-# 1) ask_for_json: you provide the full content prompt
-resp1 = ask_for_json(
-    content_prompt="Extract the person's info from: John is 28 and lives in Miami.",
-    json_schema=schema,
-    model_name="google/gemini-1.5-pro"
-)
-print(resp1["json_object"], resp1["usage"])
-
-# 2) extract_and_jsonify: you provide text & an instruction template; it builds the prompt
-resp2 = extract_and_jsonify(
-    text="John is 28 and lives in Miami.",
-    json_schema=schema,
-    model_name="groq/mixtral-8x7b-32768",
-    instruction_template="Extract the person's information:"
-)
-print(resp2["json_object"], resp2["usage"])
+conv = Conversation(model_name="openai/gpt-4")
+conv.add_message("system", "You are a helpful assistant.")
+response = conv.send("What is the capital of France?")
+follow_up = conv.send("What about Germany?")  # retains context
 ```
 
-### Experimental TOON output
+### Model Discovery
 
-Prompture can ask for TOON (Token-Oriented Object Notation) instead of JSON by setting `output_format="toon"` on `ask_for_json`, `extract_and_jsonify`, `manual_extract_and_jsonify`, or `extract_with_model`. The LLM is still instructed to return JSON (for reliability); Prompture parses it and emits a TOON string via `python-toon`.
+Auto-detect available models from configured providers:
 
 ```python
-result = extract_and_jsonify(
-    text="Alice Johnson is a 30-year-old data scientist...",
-    json_schema=schema,
-    model_name="lmstudio/deepseek/deepseek-r1-0528-qwen3-8b",
-    output_format="toon",
-)
-print(result["toon_string"])  # TOON text generated locally
-print(result["json_object"])  # regular dict parsed from the JSON response
-# result["json_string"] still contains the original JSON text
+from prompture import get_available_models
+
+models = get_available_models()
+for model in models:
+    print(model)  # "openai/gpt-4", "ollama/llama3:latest", ...
 ```
 
-> [!IMPORTANT]
-> TOON output is **experimental**. General-purpose models often emit more verbose completions when asked for TOON, so total token usage can increase (see `toon_token_analysis.md`). Treat it as an opt-in mode until TOON-aware fine-tunes or adapters are available.
-
-### Return shape (JSON helpers)
-
-```python
-{
-  "json_string": str,
-  "json_object": dict,
-  "usage": {
-    "prompt_tokens": int,
-    "completion_tokens": int,
-    "total_tokens": int,
-    "cost": float,
-    "model_name": str
-  }
-}
-```
-
-> If the model returns malformed JSON and `ai_cleanup=True`, a second LLM pass tries to fix it.
-
----
-
-## Pydantic: one-shot vs stepwise
-
-Prompture supports two Pydantic extraction modes:
-
-* **`extract_with_model`** → Single call; global context; best cost/latency; coherent fields
-* **`stepwise_extract_with_model`** → One call per field; higher per-field accuracy; resilient
-
-| Aspect         | `extract_with_model` (one-shot)        | `stepwise_extract_with_model` (per-field) |
-| -------------- | -------------------------------------- | ----------------------------------------- |
-| LLM calls      | 1                                      | N (one per field)                         |
-| Speed & cost   | **Faster / cheaper**                   | Slower / higher                           |
-| Accuracy       | Good global coherence                  | **Higher per-field accuracy**             |
-| Error handling | All-or-nothing                         | **Per-field recovery**                    |
-| Best when      | Fields are related; throughput matters | Correctness per field is critical         |
-
-### Examples
-
-```python
-from prompture import extract_with_model, stepwise_extract_with_model
-
-person1 = extract_with_model(Person, text, model_name="openrouter/anthropic/claude-2")
-print(person1.dict())
-
-res = stepwise_extract_with_model(Person, text, model_name="grok/grok-4-fast-reasoning")
-print(res["model"].dict())
-print(res["usage"])  # includes per-field usage and totals
-```
-
-**Stepwise extras:** internally uses `tools.create_field_schema` + `tools.convert_value` (with `allow_shorthand=True`) so values like `"3.4m"`, `"2k"`, `"1.2b"` can be converted to typed fields where appropriate.
-
----
-
-## Manual control with logging
-
-`manual_extract_and_jsonify` is like `extract_and_jsonify` but lets you provide your own driver.
-Enable library logging via Python's standard `logging` module:
+### Logging and Debugging
 
 ```python
 import logging
-from prompture import manual_extract_and_jsonify, configure_logging
-from prompture.drivers import get_driver
+from prompture import configure_logging
 
-configure_logging(logging.DEBUG)  # see internal debug output
-
-driver = get_driver("ollama")
-res = manual_extract_and_jsonify(
-    driver=driver,
-    text="Maria works as a software developer in New York.",
-    json_schema={
-      "type": "object",
-      "required": ["city", "profession"],
-      "properties": {"city": {"type": "string"}, "profession": {"type": "string"}}
-    },
-    model_name="llama3.1:8b",
-    options={"temperature": 0.2},
-)
-print(res["json_object"])
+configure_logging(logging.DEBUG)
 ```
 
----
+### Response Shape
 
+All extraction functions return a consistent structure:
 
-**Example output (Ollama comparison)** — see `examples/ollama_models_comparison.py` for a richer comparison table.
+```python
+{
+    "json_string": str,       # raw JSON text
+    "json_object": dict,      # parsed result
+    "usage": {
+        "prompt_tokens": int,
+        "completion_tokens": int,
+        "total_tokens": int,
+        "cost": float,
+        "model_name": str
+    }
+}
+```
 
----
+## CLI
 
+```bash
+prompture run <spec-file>
+```
 
-## Ollama Model Comparison Example
+Run spec-driven extraction suites for cross-model comparison.
 
-This example demonstrates how to compare different Ollama models using a specific script located at `examples/ollama_models_comparison.py`.
+## Development
 
-| Model            | Success | Prompt | Completion | Total | Fields | Validation | Name                | Price    | Variants | Screen Size | Warranty | Is New |
-|------------------|---------|--------|------------|-------|--------|------------|---------------------|----------|----------|-------------|----------|--------|
-| gpt-oss:20b      | True    | 801    | 945        | 1746  | 8      | ✓          | GalaxyFold Ultra    | 1299.99  | 9        | 6.9         | 3        | True   |
-| deepseek-r1:latest | True  | 757    | 679        | 1436  | 8      | ✗          | GalaxyFold Ultra    | 1299.99  | 3        | 6.9         | None     | True   |
-| llama3.1:8b      | True    | 746    | 256        | 1002  | 8      | ✓          | GalaxyFold Ultra    | 1299.99  | 3        | 6.9         | 3        | True   |
-| gemma3:latest    | True    | 857    | 315        | 1172  | 8      | ✗          | GalaxyFold Ultra    | 1299.99  | 3        | 6.9         | None     | True   |
-| qwen2.5:1.5b     | True    | 784    | 236        | 1020  | 8      | ✓          | GalaxyFold Ultra    | 1299.99  | 3        | 6.9         | 3        | True   |
-| qwen2.5:3b       | True    | 784    | 273        | 1057  | 9      | ✓          | GalaxyFold Ultra    | 1299.99  | 3        | 6.9         | 3        | True   |
-| mistral:latest   | True    | 928    | 337        | 1265  | 8      | ✓          | GalaxyFold Ultra    | 1299.99  | 3        | 6.9         | 3        | True   |
+```bash
+# Install with dev dependencies
+pip install -e ".[test,dev]"
 
-> **Successful models (7):** gpt-oss:20b, deepseek-r1:latest, llama3.1:8b, gemma3:latest, qwen2.5:1.5b, qwen2.5:3b, mistral:latest
+# Run tests
+pytest
 
-You can run this comparison yourself with:
-`python examples/ollama_models_comparison.py`
+# Run integration tests (requires live LLM access)
+pytest --run-integration
 
-This example script compares multiple Ollama models on a complex task of extracting structured information from a smartphone description using a detailed JSON schema. The purpose of this example is to illustrate how `Prompture` can be used to test and compare different models on the same structured output task, showing their success rates, token usage, and validation results.
-
----
-
-## Error handling notes
-
-* With `ai_cleanup=True`, a second LLM pass attempts to fix malformed JSON; on success, `usage` may be a minimal stub.
-* `extract_and_jsonify` will **skip tests** under `pytest` if there’s a local server connection error (e.g., Ollama), instead of failing the suite.
-* All functions raise `ValueError` for empty text.
-
----
-
-## Tips & Best Practices
-
-* Add `description` to schema fields (or Pydantic field metadata) for better extractions.
-* Start with **one-shot Pydantic**; switch specific fields to **stepwise** if they’re noisy.
-* Track usage/cost before scaling; tweak `temperature` in `options` if consistency wobbles.
-* Use `configure_logging(logging.DEBUG)` in dev to see internal debug output and tighten your specs.
-
----
+# Lint and format
+ruff check .
+ruff format .
+```
 
 ## Contributing
 
-PRs welcome! Add tests and—if adding drivers or patterns—drop an example under `examples/`.
+PRs welcome. Please add tests for new functionality and examples under `examples/` for new drivers or patterns.
+
+## License
+
+[MIT](https://opensource.org/licenses/MIT)
