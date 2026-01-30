@@ -225,15 +225,81 @@
 - [ ] Tag-based storage: `ConversationStore.save(group_id, export, tags=["group_run", "2025-01-30"])`
 
 ### Phase 6: Cost Budgets & Guardrails
-**Goal**: Prevent runaway costs and enforce safety constraints on conversations and agents.
+**Goal**: Prevent runaway costs with pre-flight estimation and enforcement, manage context windows with token-aware history truncation/summarization, rate-limit requests, and validate input/output content — building on the existing `UsageSession`, `DriverCallbacks`, and `CostMixin` infrastructure.
 
-- [ ] `Conversation(max_cost=0.50, max_tokens=10000)` budget caps
-- [ ] Budget enforcement modes: hard stop, warn and continue, graceful degrade (switch to cheaper model)
-- [ ] Per-session and per-conversation budget tracking
-- [ ] Rate limiting: max requests per minute per conversation
-- [ ] Content guardrails: blocked patterns, required patterns, output validators
-- [ ] Token budget allocation: reserve tokens for system prompt vs history vs response
-- [ ] Automatic conversation summarization when history exceeds token budget
+#### Pre-Flight Cost Estimation
+- [ ] `estimate_tokens(text) -> int` using tiktoken (OpenAI models) with fallback to character-based heuristic (~4 chars/token) for other providers
+- [ ] `estimate_cost(prompt, model, options) -> float` — pre-call cost estimate using `get_model_rates()` pricing data
+- [ ] Token count available in `on_request` callback payload: `{"estimated_tokens": int, "estimated_cost": float}` for pre-call decision making
+- [ ] Optional tiktoken dependency: graceful fallback to heuristic when not installed
+
+#### Budget Limits & Enforcement
+- [ ] `Conversation(max_cost=0.50, max_tokens=10000)` — per-conversation budget caps
+- [ ] `Agent(max_cost=1.00, max_tokens=50000)` — per-agent-run budget caps (checked between iterations via `UsageSession`)
+- [ ] `BudgetPolicy` enum: `hard_stop` (raise `BudgetExceeded` before the call that would exceed), `warn_and_continue` (fire `on_budget_warning` callback, proceed), `degrade` (switch to cheaper fallback model)
+- [ ] `BudgetExceeded` exception with `usage_at_limit: dict` containing tokens/cost consumed when the limit was hit
+- [ ] Pre-call budget check: compare `estimate_cost()` against remaining budget before each LLM call — reject if estimated cost would exceed remaining budget
+- [ ] Post-call budget check: after each response, update `UsageSession` and check against limits for the *next* call
+- [ ] `on_budget_warning(usage, limit, remaining)` callback fired when usage exceeds configurable threshold (default 80%)
+
+#### Model Fallback Chains
+- [ ] `Conversation(model="openai/gpt-4o", fallback_models=["openai/gpt-4o-mini", "groq/llama-3.1-8b"])` — ordered list of progressively cheaper models
+- [ ] Fallback triggers: `BudgetPolicy.degrade` switches to next model in chain when budget threshold reached
+- [ ] Fallback on error: retry with next model on provider errors (rate limit, timeout, 5xx) — configurable via `fallback_on_errors: bool`
+- [ ] `on_model_fallback(from_model, to_model, reason)` callback for observability
+- [ ] Fallback state tracked in `UsageSession`: which models were used and why
+
+#### Per-Session & Per-Conversation Tracking
+- [ ] Automatic `UsageSession` on every `Conversation` and `Agent` (no manual callback wiring required)
+- [ ] `conversation.usage_session` property exposing the session with per-model bucketing
+- [ ] `conversation.remaining_budget -> dict` with `{"cost": float, "tokens": int}` remaining before limits
+- [ ] Cross-conversation session: `UsageSession` can be shared across multiple conversations via constructor injection for global budget enforcement
+
+#### Rate Limiting
+- [ ] `RateLimiter` class with token bucket algorithm: `RateLimiter(requests_per_minute=60, tokens_per_minute=100000)`
+- [ ] Per-conversation rate limiting: `Conversation(rate_limiter=my_limiter)`
+- [ ] Per-model rate limiting: `RateLimiter` scoped to a specific `"provider/model"` string
+- [ ] Backpressure behavior: `block` (sleep until bucket refills), `reject` (raise `RateLimitExceeded` immediately)
+- [ ] Rate limiter state exposed: `limiter.available_requests`, `limiter.available_tokens`, `limiter.next_available_at`
+
+#### Context Window Management
+- [ ] `ContextWindowManager` for token-aware message history management
+- [ ] Token budget allocation: configurable split between system prompt, conversation history, and response — `ContextWindowManager(system_reserve=500, response_reserve=1000, max_context=128000)`
+- [ ] Context window sizes loaded from `get_model_info()` per-model metadata (falls back to configurable default)
+- [ ] Overflow strategy enum: `truncate_oldest` (drop oldest messages first), `summarize` (LLM-compress old messages), `sliding_window` (keep last N messages)
+- [ ] `truncate_oldest`: removes oldest non-system messages until history fits within budget, preserving system prompt and most recent messages
+- [ ] `sliding_window`: keeps last N turns (configurable `window_size`), drops everything before
+- [ ] `Conversation(context_manager=my_manager)` integration — automatically applied before each LLM call
+
+#### Conversation Summarization
+- [ ] `summarize` overflow strategy: when history exceeds token budget, compress older messages into a summary using a (cheap) LLM call
+- [ ] Summary inserted as a system-level context message: `{"role": "system", "content": "Previous conversation summary: ..."}`
+- [ ] Configurable summarization model: `ContextWindowManager(summarize_model="openai/gpt-4o-mini")` — use a cheap/fast model for summarization
+- [ ] Hybrid approach: keep last N messages verbatim + summary of everything before (LangChain `ConversationSummaryBufferMemory` pattern)
+- [ ] Summary token budget: summary itself has a max token allocation to prevent unbounded growth
+- [ ] `on_summarize(original_tokens, summary_tokens, messages_removed)` callback for observability
+
+#### Content Guardrails
+- [ ] `InputGuardrail` protocol: `check(content: str) -> GuardrailResult` returning `passed`, `blocked` (with reason), or `modified` (with transformed content)
+- [ ] `OutputGuardrail` protocol: `check(content: str, context: dict) -> GuardrailResult` — same return types, with access to conversation context
+- [ ] Built-in input guardrails: `RegexBlocker(patterns: list[str])` for blocking patterns (PII, secrets, profanity), `RegexRequirer(patterns: list[str])` for requiring patterns in output
+- [ ] Built-in output guardrails: `JsonSchemaValidator(schema)` for format compliance, `MaxLengthValidator(max_chars)` for response length
+- [ ] `Conversation(input_guardrails=[...], output_guardrails=[...])` — applied automatically before/after each LLM call
+- [ ] `GuardrailResult.blocked` raises `ContentBlocked(reason, content)` exception
+- [ ] `GuardrailResult.modified` transparently transforms content and proceeds
+- [ ] Guardrail chain: multiple guardrails execute in order; first `blocked` result stops the chain
+- [ ] `on_guardrail_triggered(guardrail_name, result, direction)` callback for logging/observability
+
+#### Integration with Agent & Multi-Agent (Phase 3 & 5)
+- [ ] Agent inherits conversation-level budgets and guardrails
+- [ ] `Agent(input_guardrails, output_guardrails)` — Phase 3b guardrails implemented using this Phase 6 infrastructure
+- [ ] Group-level budgets from Phase 5 (`max_total_cost`) enforced via shared `UsageSession` with Phase 6 `BudgetPolicy`
+- [ ] `ModelRetry` (from Phase 3b) integrates with output guardrails: guardrail returns `retry` result → feeds error back to LLM
+
+#### Settings & Configuration
+- [ ] `Settings` additions: `default_max_cost`, `default_max_tokens`, `default_rate_limit_rpm`, `default_context_overflow_strategy`
+- [ ] Environment variable support: `PROMPTURE_MAX_COST=0.50`, `PROMPTURE_MAX_TOKENS=10000`, `PROMPTURE_RATE_LIMIT_RPM=60`
+- [ ] All budget/guardrail settings overridable per-conversation or per-agent (constructor params take precedence over Settings defaults)
 
 ### Phase 7: Async Tool Execution
 **Goal**: Non-blocking tool execution for long-running operations.

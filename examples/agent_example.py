@@ -6,6 +6,10 @@ Demonstrates:
 2. Agent with tools (registration via list and @agent.tool decorator)
 3. Agent with output_type (structured Pydantic output)
 4. Inspecting AgentResult (steps, tool_calls, usage)
+5. Agent with RunContext-aware tools and deps
+6. Agent with input/output guardrails
+7. Agent with AgentCallbacks for observability
+8. Inspecting per-run usage via result.run_usage
 
 Usage:
     python examples/agent_example.py
@@ -14,9 +18,11 @@ Requires:
     - A valid API key for a supported provider (OpenAI, Ollama, etc.)
 """
 
+from dataclasses import dataclass
+
 from pydantic import BaseModel, Field
 
-from prompture import Agent
+from prompture import Agent, AgentCallbacks, GuardrailError, ModelRetry, RunContext
 
 MODEL = "openai/gpt-4o"
 
@@ -144,3 +150,116 @@ print(f"Steps:        {len(result.steps)} step(s)")
 for step in result.steps:
     print(f"  [{step.step_type.value}] {step.content[:60]}...")
 print(f"Usage:        {result.usage}")
+print()
+
+# ── Section 6: Agent with RunContext and deps ──────────────────────────────
+
+print("=" * 60)
+print("Section 6: RunContext-Aware Tools with deps")
+print("=" * 60)
+
+
+@dataclass
+class AppDeps:
+    """Application dependencies passed into every tool via RunContext."""
+
+    user_name: str
+    locale: str = "en"
+
+
+def personalized_greeting(ctx: RunContext[AppDeps], topic: str) -> str:
+    """Generate a personalized greeting for a topic."""
+    return f"Hello {ctx.deps.user_name}! Here's info about {topic} (locale: {ctx.deps.locale})"
+
+
+# Dynamic system prompt using RunContext
+def dynamic_system_prompt(ctx: RunContext[AppDeps]) -> str:
+    return f"You are an assistant for {ctx.deps.user_name}. Respond in locale: {ctx.deps.locale}."
+
+
+deps_agent = Agent(
+    MODEL,
+    system_prompt=dynamic_system_prompt,
+    tools=[personalized_greeting],
+)
+
+result = deps_agent.run(
+    "Greet me about Python programming",
+    deps=AppDeps(user_name="Alice", locale="en-US"),
+)
+
+print(f"Output: {result.output}")
+print(f"Run usage: {result.run_usage.get('formatted', 'N/A')}")
+print()
+
+# ── Section 7: Agent with Guardrails ──────────────────────────────────────
+
+print("=" * 60)
+print("Section 7: Input and Output Guardrails")
+print("=" * 60)
+
+
+# Input guardrail: reject dangerous prompts
+def safety_guardrail(ctx: RunContext, prompt: str) -> str | None:
+    """Block prompts containing 'hack'."""
+    if "hack" in prompt.lower():
+        raise GuardrailError("Prompt contains blocked content")
+    return None  # pass through unchanged
+
+
+# Input guardrail: add prefix
+def prefix_guardrail(ctx: RunContext, prompt: str) -> str:
+    """Add a safety prefix to every prompt."""
+    return f"[SAFE MODE] {prompt}"
+
+
+# Output guardrail: ensure response isn't empty
+def non_empty_guardrail(ctx: RunContext, result) -> None:
+    """Reject empty responses."""
+    if not result.output_text.strip():
+        raise ModelRetry("Response was empty, please provide a substantive answer")
+    return None
+
+
+guarded_agent = Agent(
+    MODEL,
+    system_prompt="You are a helpful assistant.",
+    input_guardrails=[safety_guardrail, prefix_guardrail],
+    output_guardrails=[non_empty_guardrail],
+)
+
+result = guarded_agent.run("Tell me about Python")
+print(f"Output: {result.output[:100]}...")
+
+# Test rejection
+try:
+    guarded_agent.run("How to hack a server")
+except GuardrailError as e:
+    print(f"Blocked: {e.message}")
+print()
+
+# ── Section 8: Agent with Callbacks ───────────────────────────────────────
+
+print("=" * 60)
+print("Section 8: AgentCallbacks for Observability")
+print("=" * 60)
+
+callback_log: list[str] = []
+
+callbacks = AgentCallbacks(
+    on_iteration=lambda i: callback_log.append(f"iteration:{i}"),
+    on_step=lambda s: callback_log.append(f"step:{s.step_type.value}"),
+    on_output=lambda r: callback_log.append(f"output:{r.output_text[:30]}"),
+)
+
+observed_agent = Agent(
+    MODEL,
+    system_prompt="Be concise.",
+    agent_callbacks=callbacks,
+)
+
+result = observed_agent.run("What is 2 + 2?")
+
+print(f"Output: {result.output}")
+print(f"Callback log: {callback_log}")
+print(f"Run usage: {result.run_usage}")

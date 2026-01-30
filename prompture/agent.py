@@ -15,26 +15,105 @@ Example::
 
 from __future__ import annotations
 
+import inspect
 import json
 import logging
 import time
+import typing
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Generic
 
 from pydantic import BaseModel
 
-from .agent_types import AgentResult, AgentState, AgentStep, StepType
+from .agent_types import (
+    AgentCallbacks,
+    AgentResult,
+    AgentState,
+    AgentStep,
+    DepsType,
+    ModelRetry,
+    RunContext,
+    StepType,
+)
+from .callbacks import DriverCallbacks
 from .conversation import Conversation
 from .driver import Driver
+from .session import UsageSession
 from .tools import clean_json_text
-from .tools_schema import ToolRegistry
+from .tools_schema import ToolDefinition, ToolRegistry
 
 logger = logging.getLogger("prompture.agent")
 
 _OUTPUT_PARSE_MAX_RETRIES = 3
+_OUTPUT_GUARDRAIL_MAX_RETRIES = 3
 
 
-class Agent:
+# ------------------------------------------------------------------
+# Module-level helpers for RunContext injection
+# ------------------------------------------------------------------
+
+
+def _tool_wants_context(fn: Callable[..., Any]) -> bool:
+    """Check whether *fn*'s first parameter is annotated as :class:`RunContext`.
+
+    Uses :func:`typing.get_type_hints` to resolve string annotations
+    (from ``from __future__ import annotations``).  Falls back to raw
+    ``__annotations__`` when ``get_type_hints`` cannot resolve local types.
+    """
+    sig = inspect.signature(fn)
+    params = list(sig.parameters.keys())
+    if not params:
+        return False
+
+    first_param = params[0]
+    if first_param == "self":
+        if len(params) < 2:
+            return False
+        first_param = params[1]
+
+    # Try get_type_hints first (resolves string annotations)
+    annotation = None
+    try:
+        hints = typing.get_type_hints(fn, include_extras=True)
+        annotation = hints.get(first_param)
+    except Exception:
+        pass
+
+    # Fallback: inspect raw annotation (may be a string)
+    if annotation is None:
+        raw = sig.parameters[first_param].annotation
+        if raw is inspect.Parameter.empty:
+            return False
+        annotation = raw
+
+    # String annotation: check if it starts with "RunContext"
+    if isinstance(annotation, str):
+        return annotation == "RunContext" or annotation.startswith("RunContext[")
+
+    # Direct match
+    if annotation is RunContext:
+        return True
+
+    # Generic alias: RunContext[X]
+    origin = getattr(annotation, "__origin__", None)
+    return origin is RunContext
+
+
+def _get_first_param_name(fn: Callable[..., Any]) -> str:
+    """Return the name of the first non-self parameter of *fn*."""
+    sig = inspect.signature(fn)
+    for name, _param in sig.parameters.items():
+        if name != "self":
+            return name
+    return ""
+
+
+# ------------------------------------------------------------------
+# Agent
+# ------------------------------------------------------------------
+
+
+class Agent(Generic[DepsType]):
     """A reusable agent that executes a ReAct loop with tool support.
 
     Each call to :meth:`run` creates a fresh :class:`Conversation`,
@@ -46,11 +125,18 @@ class Agent:
         driver: Pre-built driver instance (useful for testing).
         tools: Initial tools as a list of callables or a
             :class:`ToolRegistry`.
-        system_prompt: System prompt prepended to every run.
+        system_prompt: System prompt prepended to every run.  May also
+            be a callable ``(RunContext) -> str`` for dynamic prompts.
         output_type: Optional Pydantic model class.  When set, the
             final LLM response is parsed and validated against this type.
         max_iterations: Maximum tool-use rounds per run.
+        max_cost: Soft budget in USD.  When exceeded, output parse and
+            guardrail retries are skipped.
         options: Extra driver options forwarded to every call.
+        deps_type: Type hint for dependencies (for docs/IDE only).
+        agent_callbacks: Agent-level observability callbacks.
+        input_guardrails: Functions called before the prompt is sent.
+        output_guardrails: Functions called after output is parsed.
     """
 
     def __init__(
@@ -59,10 +145,15 @@ class Agent:
         *,
         driver: Driver | None = None,
         tools: list[Callable[..., Any]] | ToolRegistry | None = None,
-        system_prompt: str | None = None,
+        system_prompt: str | Callable[..., str] | None = None,
         output_type: type[BaseModel] | None = None,
         max_iterations: int = 10,
+        max_cost: float | None = None,
         options: dict[str, Any] | None = None,
+        deps_type: type | None = None,
+        agent_callbacks: AgentCallbacks | None = None,
+        input_guardrails: list[Callable[..., Any]] | None = None,
+        output_guardrails: list[Callable[..., Any]] | None = None,
     ) -> None:
         if not model and driver is None:
             raise ValueError("Either model or driver must be provided")
@@ -72,7 +163,12 @@ class Agent:
         self._system_prompt = system_prompt
         self._output_type = output_type
         self._max_iterations = max_iterations
+        self._max_cost = max_cost
         self._options = dict(options) if options else {}
+        self._deps_type = deps_type
+        self._agent_callbacks = agent_callbacks or AgentCallbacks()
+        self._input_guardrails = list(input_guardrails) if input_guardrails else []
+        self._output_guardrails = list(output_guardrails) if output_guardrails else []
 
         # Build internal tool registry
         self._tools = ToolRegistry()
@@ -106,19 +202,23 @@ class Agent:
         """Request graceful shutdown after the current iteration."""
         self._stop_requested = True
 
-    def run(self, prompt: str) -> AgentResult:
+    def run(self, prompt: str, *, deps: Any = None) -> AgentResult:
         """Execute the agent loop to completion.
 
         Creates a fresh :class:`Conversation`, sends the prompt,
         handles any tool calls, and optionally parses the final
         response into an ``output_type`` Pydantic model.
+
+        Args:
+            prompt: The user prompt to send.
+            deps: Optional dependencies injected into :class:`RunContext`.
         """
         self._state = AgentState.running
         self._stop_requested = False
         steps: list[AgentStep] = []
 
         try:
-            result = self._execute(prompt, steps)
+            result = self._execute(prompt, steps, deps)
             self._state = AgentState.idle
             return result
         except Exception:
@@ -126,14 +226,207 @@ class Agent:
             raise
 
     # ------------------------------------------------------------------
+    # RunContext helpers
+    # ------------------------------------------------------------------
+
+    def _build_run_context(
+        self,
+        prompt: str,
+        deps: Any,
+        session: UsageSession,
+        messages: list[dict[str, Any]],
+        iteration: int,
+    ) -> RunContext[Any]:
+        """Create a :class:`RunContext` snapshot for the current run."""
+        return RunContext(
+            deps=deps,
+            model=self._model,
+            usage=session.summary(),
+            messages=list(messages),
+            iteration=iteration,
+            prompt=prompt,
+        )
+
+    # ------------------------------------------------------------------
+    # Tool wrapping (RunContext injection + ModelRetry + callbacks)
+    # ------------------------------------------------------------------
+
+    def _wrap_tools_with_context(self, ctx: RunContext[Any]) -> ToolRegistry:
+        """Return a new :class:`ToolRegistry` with wrapped tool functions.
+
+        For each registered tool:
+        - If the tool's first param is ``RunContext``, inject *ctx* automatically.
+        - Catch :class:`ModelRetry` and convert to an error string.
+        - Fire ``agent_callbacks.on_tool_start`` / ``on_tool_end``.
+        - Strip the ``RunContext`` parameter from the JSON schema sent to the LLM.
+        """
+        if not self._tools:
+            return ToolRegistry()
+
+        new_registry = ToolRegistry()
+
+        cb = self._agent_callbacks
+
+        for td in self._tools.definitions:
+            wants_ctx = _tool_wants_context(td.function)
+            original_fn = td.function
+            tool_name = td.name
+
+            def _make_wrapper(
+                _fn: Callable[..., Any],
+                _wants: bool,
+                _name: str,
+                _cb: AgentCallbacks = cb,
+            ) -> Callable[..., Any]:
+                def wrapper(**kwargs: Any) -> Any:
+                    if _cb.on_tool_start:
+                        _cb.on_tool_start(_name, kwargs)
+                    try:
+                        if _wants:
+                            result = _fn(ctx, **kwargs)
+                        else:
+                            result = _fn(**kwargs)
+                    except ModelRetry as exc:
+                        result = f"Error: {exc.message}"
+                    if _cb.on_tool_end:
+                        _cb.on_tool_end(_name, result)
+                    return result
+
+                return wrapper
+
+            wrapped = _make_wrapper(original_fn, wants_ctx, tool_name)
+
+            # Build schema: strip RunContext param if present
+            params = dict(td.parameters)
+            if wants_ctx:
+                ctx_param_name = _get_first_param_name(td.function)
+                props = dict(params.get("properties", {}))
+                props.pop(ctx_param_name, None)
+                params = dict(params)
+                params["properties"] = props
+                req = list(params.get("required", []))
+                if ctx_param_name in req:
+                    req.remove(ctx_param_name)
+                if req:
+                    params["required"] = req
+                elif "required" in params:
+                    del params["required"]
+
+            new_td = ToolDefinition(
+                name=td.name,
+                description=td.description,
+                parameters=params,
+                function=wrapped,
+            )
+            new_registry.add(new_td)
+
+        return new_registry
+
+    # ------------------------------------------------------------------
+    # Guardrails
+    # ------------------------------------------------------------------
+
+    def _run_input_guardrails(self, ctx: RunContext[Any], prompt: str) -> str:
+        """Execute input guardrails in order. Returns the (possibly transformed) prompt.
+
+        Each guardrail receives ``(ctx, prompt)`` and may:
+        - Return a ``str`` to transform the prompt.
+        - Return ``None`` to leave it unchanged.
+        - Raise :class:`GuardrailError` to reject entirely.
+        """
+        for guardrail in self._input_guardrails:
+            result = guardrail(ctx, prompt)
+            if result is not None:
+                prompt = result
+        return prompt
+
+    def _run_output_guardrails(
+        self,
+        ctx: RunContext[Any],
+        result: AgentResult,
+        conv: Conversation,
+        session: UsageSession,
+        steps: list[AgentStep],
+        all_tool_calls: list[dict[str, Any]],
+    ) -> AgentResult:
+        """Execute output guardrails. Returns the (possibly modified) result.
+
+        Each guardrail receives ``(ctx, result)`` and may:
+        - Return ``None`` to pass (no change).
+        - Return an :class:`AgentResult` to modify the result.
+        - Raise :class:`ModelRetry` to re-prompt the LLM (up to 3 retries).
+        """
+        for guardrail in self._output_guardrails:
+            for attempt in range(_OUTPUT_GUARDRAIL_MAX_RETRIES):
+                try:
+                    guard_result = guardrail(ctx, result)
+                    if guard_result is not None:
+                        result = guard_result
+                    break  # guardrail passed
+                except ModelRetry as exc:
+                    if self._is_over_budget(session):
+                        logger.debug("Over budget, skipping output guardrail retry")
+                        break
+                    if attempt >= _OUTPUT_GUARDRAIL_MAX_RETRIES - 1:
+                        raise ValueError(
+                            f"Output guardrail failed after {_OUTPUT_GUARDRAIL_MAX_RETRIES} retries: {exc.message}"
+                        ) from exc
+                    # Re-prompt the LLM
+                    retry_text = conv.ask(
+                        f"Your response did not pass validation. Error: {exc.message}\n\nPlease try again."
+                    )
+                    self._extract_steps(conv.messages[-2:], steps, all_tool_calls)
+
+                    # Re-parse if output_type is set
+                    if self._output_type is not None:
+                        try:
+                            cleaned = clean_json_text(retry_text)
+                            parsed = json.loads(cleaned)
+                            output = self._output_type.model_validate(parsed)
+                        except Exception:
+                            output = retry_text
+                    else:
+                        output = retry_text
+
+                    result = AgentResult(
+                        output=output,
+                        output_text=retry_text,
+                        messages=conv.messages,
+                        usage=conv.usage,
+                        steps=steps,
+                        all_tool_calls=all_tool_calls,
+                        state=AgentState.idle,
+                        run_usage=session.summary(),
+                    )
+        return result
+
+    # ------------------------------------------------------------------
+    # Budget check
+    # ------------------------------------------------------------------
+
+    def _is_over_budget(self, session: UsageSession) -> bool:
+        """Return True if max_cost is set and the session has exceeded it."""
+        if self._max_cost is None:
+            return False
+        return session.total_cost >= self._max_cost
+
+    # ------------------------------------------------------------------
     # Internals
     # ------------------------------------------------------------------
 
-    def _resolve_system_prompt(self) -> str | None:
+    def _resolve_system_prompt(self, ctx: RunContext[Any] | None = None) -> str | None:
         """Build the system prompt, appending output schema if needed."""
         parts: list[str] = []
-        if self._system_prompt:
-            parts.append(self._system_prompt)
+
+        if self._system_prompt is not None:
+            if callable(self._system_prompt) and not isinstance(self._system_prompt, str):
+                if ctx is not None:
+                    parts.append(self._system_prompt(ctx))
+                else:
+                    # Fallback: call without context (shouldn't happen in normal flow)
+                    parts.append(self._system_prompt(None))  # type: ignore[arg-type]
+            else:
+                parts.append(str(self._system_prompt))
 
         if self._output_type is not None:
             schema = self._output_type.model_json_schema()
@@ -148,15 +441,24 @@ class Agent:
 
         return "\n\n".join(parts) if parts else None
 
-    def _build_conversation(self) -> Conversation:
+    def _build_conversation(
+        self,
+        system_prompt: str | None = None,
+        tools: ToolRegistry | None = None,
+        driver_callbacks: DriverCallbacks | None = None,
+    ) -> Conversation:
         """Create a fresh Conversation for a single run."""
+        effective_tools = tools if tools is not None else (self._tools if self._tools else None)
+
         kwargs: dict[str, Any] = {
-            "system_prompt": self._resolve_system_prompt(),
-            "tools": self._tools if self._tools else None,
+            "system_prompt": system_prompt if system_prompt is not None else self._resolve_system_prompt(),
+            "tools": effective_tools,
             "max_tool_rounds": self._max_iterations,
         }
         if self._options:
             kwargs["options"] = self._options
+        if driver_callbacks is not None:
+            kwargs["callbacks"] = driver_callbacks
 
         if self._driver is not None:
             kwargs["driver"] = self._driver
@@ -165,27 +467,56 @@ class Agent:
 
         return Conversation(**kwargs)
 
-    def _execute(self, prompt: str, steps: list[AgentStep]) -> AgentResult:
+    def _execute(self, prompt: str, steps: list[AgentStep], deps: Any) -> AgentResult:
         """Core execution: run conversation, extract steps, parse output."""
-        conv = self._build_conversation()
+        # 1. Create per-run UsageSession and wire into DriverCallbacks
+        session = UsageSession()
+        driver_callbacks = DriverCallbacks(
+            on_response=session.record,
+            on_error=session.record_error,
+        )
 
-        # Ask the conversation (handles full tool loop internally)
+        # 2. Build initial RunContext
+        ctx = self._build_run_context(prompt, deps, session, [], 0)
+
+        # 3. Run input guardrails
+        effective_prompt = self._run_input_guardrails(ctx, prompt)
+
+        # 4. Resolve system prompt (call it if callable, passing ctx)
+        resolved_system_prompt = self._resolve_system_prompt(ctx)
+
+        # 5. Wrap tools with context
+        wrapped_tools = self._wrap_tools_with_context(ctx)
+
+        # 6. Build Conversation
+        conv = self._build_conversation(
+            system_prompt=resolved_system_prompt,
+            tools=wrapped_tools if wrapped_tools else None,
+            driver_callbacks=driver_callbacks,
+        )
+
+        # 7. Fire on_iteration callback
+        if self._agent_callbacks.on_iteration:
+            self._agent_callbacks.on_iteration(0)
+
+        # 8. Ask the conversation (handles full tool loop internally)
         t0 = time.perf_counter()
-        response_text = conv.ask(prompt)
+        response_text = conv.ask(effective_prompt)
         elapsed_ms = (time.perf_counter() - t0) * 1000
 
-        # Extract steps and tool calls from conversation messages
+        # 9. Extract steps and tool calls from conversation messages
         all_tool_calls: list[dict[str, Any]] = []
         self._extract_steps(conv.messages, steps, all_tool_calls)
 
         # Handle output_type parsing
         if self._output_type is not None:
-            output, output_text = self._parse_output(conv, response_text, steps, all_tool_calls, elapsed_ms)
+            output, output_text = self._parse_output(conv, response_text, steps, all_tool_calls, elapsed_ms, session)
         else:
             output = response_text
             output_text = response_text
 
-        return AgentResult(
+        # Build result with run_usage
+        result = AgentResult(
             output=output,
             output_text=output_text,
             messages=conv.messages,
@@ -193,7 +524,22 @@ class Agent:
             steps=steps,
             all_tool_calls=all_tool_calls,
             state=AgentState.idle,
+            run_usage=session.summary(),
         )
+
+        # 10. Run output guardrails
+        if self._output_guardrails:
+            result = self._run_output_guardrails(ctx, result, conv, session, steps, all_tool_calls)
+
+        # 11. Fire callbacks
+        if self._agent_callbacks.on_step:
+            for step in steps:
+                self._agent_callbacks.on_step(step)
+
+        if self._agent_callbacks.on_output:
+            self._agent_callbacks.on_output(result)
+
+        return result
 
     def _extract_steps(
         self,
@@ -260,6 +606,7 @@ class Agent:
         steps: list[AgentStep],
         all_tool_calls: list[dict[str, Any]],
         elapsed_ms: float,
+        session: UsageSession | None = None,
     ) -> tuple[Any, str]:
         """Try to parse ``response_text`` as the output_type, with retries."""
         assert self._output_type is not None
@@ -276,6 +623,10 @@ class Agent:
             except Exception as exc:
                 last_error = exc
                 if attempt < _OUTPUT_PARSE_MAX_RETRIES - 1:
+                    # Check budget before retrying
+                    if session is not None and self._is_over_budget(session):
+                        logger.debug("Over budget, skipping output parse retry")
+                        break
                     logger.debug("Output parse attempt %d failed: %s", attempt + 1, exc)
                     retry_msg = (
                         f"Your previous response could not be parsed as valid JSON "

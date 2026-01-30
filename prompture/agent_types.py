@@ -6,8 +6,11 @@ Defines enums, dataclasses, and exceptions used by :class:`~prompture.agent.Agen
 from __future__ import annotations
 
 import enum
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Generic, TypeVar
+
+DepsType = TypeVar("DepsType")
 
 
 class AgentState(enum.Enum):
@@ -31,13 +34,62 @@ class StepType(enum.Enum):
 class ModelRetry(Exception):
     """Raised to feed an error message back to the LLM for retry.
 
-    Used in Phase 3b guardrails; defined here so it can be imported
-    without pulling in the full Agent module.
+    Tools raise this to return an error string to the LLM.
+    Output guardrails raise this to re-prompt the LLM.
     """
 
     def __init__(self, message: str) -> None:
         self.message = message
         super().__init__(message)
+
+
+class GuardrailError(Exception):
+    """Raised when an input guardrail rejects the prompt entirely."""
+
+    def __init__(self, message: str) -> None:
+        self.message = message
+        super().__init__(message)
+
+
+@dataclass
+class RunContext(Generic[DepsType]):
+    """Dependency-injection context available to tools and guardrails.
+
+    Built at the start of each :meth:`Agent.run` invocation and passed
+    automatically to tools whose first parameter is annotated as
+    ``RunContext``.
+
+    Attributes:
+        deps: User-supplied dependencies (database handles, API clients, etc.).
+        model: The model string used for this run.
+        usage: Snapshot of :class:`UsageSession.summary()` at context-build time.
+        messages: Copy of conversation history at context-build time.
+        iteration: Current iteration index (0 at the start of the run).
+        prompt: The original user prompt for this run.
+    """
+
+    deps: DepsType
+    model: str
+    usage: dict[str, Any] = field(default_factory=dict)
+    messages: list[dict[str, Any]] = field(default_factory=list)
+    iteration: int = 0
+    prompt: str = ""
+
+
+@dataclass
+class AgentCallbacks:
+    """Agent-level observability callbacks.
+
+    Fired at the logical agent layer (steps, tool invocations, output),
+    separate from :class:`~prompture.callbacks.DriverCallbacks` which
+    fires at the HTTP/driver layer.
+    """
+
+    on_step: Callable[[AgentStep], None] | None = None
+    on_tool_start: Callable[[str, dict[str, Any]], None] | None = None
+    on_tool_end: Callable[[str, Any], None] | None = None
+    on_iteration: Callable[[int], None] | None = None
+    on_output: Callable[[AgentResult], None] | None = None
 
 
 @dataclass
@@ -66,6 +118,7 @@ class AgentResult:
         steps: Ordered list of :class:`AgentStep` recorded during the run.
         all_tool_calls: Flat list of tool-call dicts extracted from messages.
         state: Final :class:`AgentState` after the run completes.
+        run_usage: Per-run :class:`UsageSession` summary dict.
     """
 
     output: Any
@@ -75,3 +128,4 @@ class AgentResult:
     steps: list[AgentStep] = field(default_factory=list)
     all_tool_calls: list[dict[str, Any]] = field(default_factory=list)
     state: AgentState = AgentState.idle
+    run_usage: dict[str, Any] = field(default_factory=dict)

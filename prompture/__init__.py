@@ -3,7 +3,16 @@
 from dotenv import load_dotenv
 
 from .agent import Agent
-from .agent_types import AgentResult, AgentState, AgentStep, ModelRetry, StepType
+from .agent_types import (
+    AgentCallbacks,
+    AgentResult,
+    AgentState,
+    AgentStep,
+    GuardrailError,
+    ModelRetry,
+    RunContext,
+    StepType,
+)
 from .async_conversation import AsyncConversation
 from .async_driver import AsyncDriver
 from .cache import (
@@ -128,6 +137,7 @@ __all__ = [
     "EXPORT_VERSION",
     "FIELD_DEFINITIONS",
     "Agent",
+    "AgentCallbacks",
     "AgentResult",
     "AgentState",
     "AgentStep",
@@ -144,6 +154,7 @@ __all__ = [
     "GoogleDriver",
     "GrokDriver",
     "GroqDriver",
+    "GuardrailError",
     "ImageContent",
     "ImageInput",
     "JSONFormatter",
@@ -156,6 +167,7 @@ __all__ = [
     "OpenRouterDriver",
     "RedisCacheBackend",
     "ResponseCache",
+    "RunContext",
     "SQLiteCacheBackend",
     "StepType",
     "ToolDefinition",
@@ -193,14 +205,12 @@ __all__ = [
     "image_from_url",
     "import_conversation",
     "import_usage_session",
-    # Plugin registration API
     "is_async_driver_registered",
     "is_driver_registered",
     "list_registered_async_drivers",
     "list_registered_drivers",
     "load_entry_point_drivers",
     "make_image",
-    # Other exports
     "manual_extract_and_jsonify",
     "normalize_enum_value",
     "refresh_rates_cache",
