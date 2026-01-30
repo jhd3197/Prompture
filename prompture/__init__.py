@@ -79,7 +79,15 @@ from .image import (
 )
 from .logging import JSONFormatter, configure_logging
 from .model_rates import get_model_info, get_model_rates, refresh_rates_cache
+from .persistence import ConversationStore
 from .runner import run_suite_from_spec
+from .serialization import (
+    EXPORT_VERSION,
+    export_conversation,
+    export_usage_session,
+    import_conversation,
+    import_usage_session,
+)
 from .session import UsageSession
 from .settings import settings as _settings
 from .tools import clean_json_text, clean_toon_text
@@ -115,6 +123,7 @@ except Exception:
     __version__ = "0.0.0"
 
 __all__ = [
+    "EXPORT_VERSION",
     "FIELD_DEFINITIONS",
     "AirLLMDriver",
     "AsyncConversation",
@@ -123,6 +132,7 @@ __all__ = [
     "CacheBackend",
     "ClaudeDriver",
     "Conversation",
+    "ConversationStore",
     "Driver",
     "DriverCallbacks",
     "GoogleDriver",
@@ -152,6 +162,8 @@ __all__ = [
     "clear_registry",
     "configure_cache",
     "configure_logging",
+    "export_conversation",
+    "export_usage_session",
     "extract_and_jsonify",
     "extract_from_data",
     "extract_from_pandas",
@@ -171,6 +183,8 @@ __all__ = [
     "image_from_bytes",
     "image_from_file",
     "image_from_url",
+    "import_conversation",
+    "import_usage_session",
     # Plugin registration API
     "is_async_driver_registered",
     "is_driver_registered",

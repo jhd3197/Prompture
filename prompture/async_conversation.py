@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import json
 import logging
+import uuid
 from collections.abc import AsyncIterator
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal
+from pathlib import Path
 from typing import Any, Callable, Literal, Union
 
 from pydantic import BaseModel
@@ -16,6 +18,9 @@ from .callbacks import DriverCallbacks
 from .drivers.async_registry import get_async_driver_for_model
 from .field_definitions import get_registry_snapshot
 from .image import ImageInput, make_image
+from .persistence import load_from_file, save_to_file
+from .serialization import export_conversation, import_conversation
+from .session import UsageSession
 from .tools import (
     clean_json_text,
     convert_value,
@@ -48,6 +53,9 @@ class AsyncConversation:
         callbacks: DriverCallbacks | None = None,
         tools: ToolRegistry | None = None,
         max_tool_rounds: int = 10,
+        conversation_id: str | None = None,
+        auto_save: str | Path | None = None,
+        tags: list[str] | None = None,
     ) -> None:
         if model_name is None and driver is None:
             raise ValueError("Either model_name or driver must be provided")
@@ -73,6 +81,14 @@ class AsyncConversation:
         }
         self._tools = tools or ToolRegistry()
         self._max_tool_rounds = max_tool_rounds
+
+        # Persistence
+        self._conversation_id = conversation_id or str(uuid.uuid4())
+        self._auto_save = Path(auto_save) if auto_save else None
+        self._metadata: dict[str, Any] = {
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "tags": list(tags) if tags else [],
+        }
 
     # ------------------------------------------------------------------
     # Public helpers
@@ -115,6 +131,122 @@ class AsyncConversation:
         return f"Conversation: {u['total_tokens']:,} tokens across {u['turns']} turn(s) costing ${u['cost']:.4f}"
 
     # ------------------------------------------------------------------
+    # Persistence properties
+    # ------------------------------------------------------------------
+
+    @property
+    def conversation_id(self) -> str:
+        """Unique identifier for this conversation."""
+        return self._conversation_id
+
+    @property
+    def tags(self) -> list[str]:
+        """Tags attached to this conversation."""
+        return self._metadata.get("tags", [])
+
+    @tags.setter
+    def tags(self, value: list[str]) -> None:
+        self._metadata["tags"] = list(value)
+
+    # ------------------------------------------------------------------
+    # Export / Import
+    # ------------------------------------------------------------------
+
+    def export(self, *, usage_session: UsageSession | None = None, strip_images: bool = False) -> dict[str, Any]:
+        """Export conversation state to a JSON-serializable dict."""
+        tools_metadata = (
+            [
+                {"name": td.name, "description": td.description, "parameters": td.parameters}
+                for td in self._tools.definitions
+            ]
+            if self._tools and self._tools.definitions
+            else None
+        )
+        return export_conversation(
+            model_name=self._model_name,
+            system_prompt=self._system_prompt,
+            options=self._options,
+            messages=self._messages,
+            usage=self._usage,
+            max_tool_rounds=self._max_tool_rounds,
+            tools_metadata=tools_metadata,
+            usage_session=usage_session,
+            metadata=self._metadata,
+            conversation_id=self._conversation_id,
+            strip_images=strip_images,
+        )
+
+    @classmethod
+    def from_export(
+        cls,
+        data: dict[str, Any],
+        *,
+        callbacks: DriverCallbacks | None = None,
+        tools: ToolRegistry | None = None,
+    ) -> AsyncConversation:
+        """Reconstruct an :class:`AsyncConversation` from an export dict.
+
+        The driver is reconstructed from the stored ``model_name`` using
+        :func:`get_async_driver_for_model`.  Callbacks and tool functions
+        must be re-attached by the caller.
+        """
+        imported = import_conversation(data)
+
+        model_name = imported.get("model_name") or ""
+        if not model_name:
+            raise ValueError("Cannot restore conversation: export has no model_name")
+        conv = cls(
+            model_name=model_name,
+            system_prompt=imported.get("system_prompt"),
+            options=imported.get("options", {}),
+            callbacks=callbacks,
+            tools=tools,
+            max_tool_rounds=imported.get("max_tool_rounds", 10),
+            conversation_id=imported.get("conversation_id"),
+            tags=imported.get("metadata", {}).get("tags", []),
+        )
+        conv._messages = imported.get("messages", [])
+        conv._usage = imported.get(
+            "usage",
+            {
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "total_tokens": 0,
+                "cost": 0.0,
+                "turns": 0,
+            },
+        )
+        meta = imported.get("metadata", {})
+        if "created_at" in meta:
+            conv._metadata["created_at"] = meta["created_at"]
+        return conv
+
+    def save(self, path: str | Path, **kwargs: Any) -> None:
+        """Export and write to a JSON file."""
+        save_to_file(self.export(**kwargs), path)
+
+    @classmethod
+    def load(
+        cls,
+        path: str | Path,
+        *,
+        callbacks: DriverCallbacks | None = None,
+        tools: ToolRegistry | None = None,
+    ) -> AsyncConversation:
+        """Load a conversation from a JSON file."""
+        data = load_from_file(path)
+        return cls.from_export(data, callbacks=callbacks, tools=tools)
+
+    def _maybe_auto_save(self) -> None:
+        """Auto-save after each turn if configured."""
+        if self._auto_save is None:
+            return
+        try:
+            self.save(self._auto_save)
+        except Exception:
+            logger.debug("Auto-save failed for conversation %s", self._conversation_id, exc_info=True)
+
+    # ------------------------------------------------------------------
     # Core methods
     # ------------------------------------------------------------------
 
@@ -145,6 +277,7 @@ class AsyncConversation:
         self._usage["total_tokens"] += meta.get("total_tokens", 0)
         self._usage["cost"] += meta.get("cost", 0.0)
         self._usage["turns"] += 1
+        self._maybe_auto_save()
 
     async def ask(
         self,

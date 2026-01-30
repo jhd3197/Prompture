@@ -43,7 +43,7 @@
 - `UsageSession` for accumulated token/cost tracking across calls
 - `configure_logging()` with `JSONFormatter` for structured log output
 
-### v0.0.35 (current): Tool Use, Streaming & Plugin System
+### v0.0.35: Tool Use, Streaming & Plugin System
 - `ToolRegistry` and `ToolDefinition`: register Python functions as LLM-callable tools
 - `tool_from_function()`: auto-generate JSON schemas from type hints
 - Tool use in conversations with multi-round execution (`max_tool_rounds`)
@@ -51,41 +51,76 @@
 - Pluggable driver registry with entry-point discovery
 - `register_driver()` / `register_async_driver()` for third-party provider plugins
 
+### v0.0.36 (current): Vision Support
+- `ImageContent` frozen dataclass and `make_image()` smart constructor for bytes, base64, file path, URL inputs
+- `image_from_bytes()`, `image_from_base64()`, `image_from_file()`, `image_from_url()` constructors
+- `conv.ask("describe", images=[screenshot_bytes])` API on `Conversation` and `AsyncConversation`
+- Image support in `ask_for_json()`, `extract_with_model()`, `ask_stream()`, `add_context()`
+- Image support in standalone core functions: `render_output()`, `ask_for_json()`, `extract_and_jsonify()`, `extract_with_model()`
+- Driver-level `_prepare_messages()` with provider-specific wire formats (OpenAI, Claude, Gemini, Ollama)
+- Shared `vision_helpers.py` module for OpenAI-compatible drivers (Groq, Grok, Azure, LM Studio, OpenRouter)
+- `supports_vision` capability flag on all drivers (sync and async)
+- Universal internal format: `{"type": "image", "source": ImageContent(...)}` content blocks
+- Backward compatible: string-only messages unchanged
+
+### v0.0.37: Conversation Persistence
+- `conv.export() -> dict` serialization (messages, system prompt, tool definitions, usage)
+- `Conversation.from_export(data)` restoration with driver reconstruction
+- File-based persistence: `conv.save("path.json")` / `Conversation.load("path.json")`
+- SQLite `ConversationStore` backend with tag search, listing, and CRUD
+- Optional auto-save on every turn via `auto_save` parameter
+- Conversation metadata: `conversation_id`, `tags`, `created_at`, `last_active`, `turn_count`
+- Export/import of `UsageSession` alongside conversation state
+- `ImageContent` serialization/deserialization with `strip_images` option
+- Versioned export format (`EXPORT_VERSION = 1`) with validation on import
+- `serialization.py` (pure data transforms) and `persistence.py` (storage backends) modules
+- Full async support: mirrored on `AsyncConversation`
+
 ---
 
 ## Upcoming
 
-### Phase 1: Vision Support
-**Goal**: Native multimodal input in conversations and extraction.
-
-- [ ] `ImageContent` type for passing images (bytes, base64, file path, URL) in messages
-- [ ] `conv.ask(text="What's on screen?", images=[screenshot_bytes])` API
-- [ ] Image support in `extract_with_model()` for vision-based structured extraction
-- [ ] Driver-level image encoding per provider (Claude base64, OpenAI URL/base64, Gemini inline)
-- [ ] Automatic image resizing/compression to stay within provider token limits
-- [ ] Vision examples: screenshot analysis, document extraction, chart reading
-
-### Phase 2: Conversation Persistence
-**Goal**: Save and restore conversations across process restarts.
-
-- [ ] `conv.export() -> dict` serialization (messages, system prompt, tool definitions, usage)
-- [ ] `Conversation.from_export(data)` restoration
-- [ ] File-based persistence: `conv.save("path.json")` / `Conversation.load("path.json")`
-- [ ] SQLite backend for conversation storage with search by ID/tag
-- [ ] Optional auto-save on every turn (configurable)
-- [ ] Conversation metadata: tags, created_at, last_active, turn_count
-- [ ] Export/import of `UsageSession` alongside conversation state
-
 ### Phase 3: Agent Framework
-**Goal**: Higher-level agent abstraction for observe-think-act loops.
+**Goal**: Higher-level agent abstraction with a ReAct loop, typed context, structured output, and two-tier execution API (simple `run()` + step-by-step `iter()`).
 
-- [ ] `Agent` class wrapping `Conversation` + `ToolRegistry` + observation function
-- [ ] Configurable loop: `Agent(observe=fn, tools=registry, persona="...", max_cycles=50)`
-- [ ] Built-in loop modes: autonomous (continuous), command (task-driven, stops on completion), single (one cycle)
-- [ ] Cycle callbacks: `on_observe`, `on_think`, `on_act`, `on_cycle_end`
-- [ ] Agent state machine: idle, observing, thinking, acting, paused, stopped
-- [ ] Graceful shutdown with `agent.stop()` and current-cycle completion
-- [ ] Agent logging: structured action log with timestamps and tool call traces
+#### Core Agent Class
+- [ ] `Agent` class composing `Conversation` + `ToolRegistry` + system prompt + output type
+- [ ] Constructor: `Agent(model, *, tools, system_prompt, output_type, deps_type, max_iterations, max_cost)`
+- [ ] Tool registration via constructor injection and `@agent.tool` decorator
+- [ ] `output_type: type[BaseModel]` for structured agent output with validation retry (reuses `extract_with_model()` internally)
+
+#### Typed Context & Dependency Injection
+- [ ] `RunContext[DepsType]` dataclass passed to tools and system prompt functions: carries deps, model info, usage, message history, iteration count
+- [ ] `deps_type` generic on `Agent` for type-safe dependency access in tools
+- [ ] Dynamic system prompts: `system_prompt: str | Callable[[RunContext], str]` for context-aware persona rendering
+
+#### Two-Tier Execution API
+- [ ] `agent.run(prompt, *, deps, context) -> AgentResult` — high-level, hides the ReAct loop entirely
+- [ ] `agent.run_sync(prompt, *, deps) -> AgentResult` — sync wrapper for non-async contexts
+- [ ] `agent.run_stream(prompt, *, deps) -> StreamedAgentResult` — streaming with deltas for each step
+- [ ] `agent.iter(prompt, *, deps) -> AgentIterator` — low-level step-by-step control, yields `AgentStep` (think/tool_call/tool_result/output) per iteration
+- [ ] `AgentResult` containing: `output` (typed or str), `messages`, `usage`, `steps: list[AgentStep]`, `all_tool_calls`
+
+#### Agent Loop & State
+- [ ] Internal ReAct loop: send messages → check for tool calls → execute tools → re-send (reuses `Conversation._ask_with_tools` pattern)
+- [ ] Loop modes: `autonomous` (run until output or max_iterations), `single_step` (one LLM call, return)
+- [ ] Agent state enum: `idle`, `running`, `paused`, `stopped`, `errored`
+- [ ] Graceful shutdown: `agent.stop()` completes current iteration then exits
+- [ ] Iteration limits: `max_iterations` (tool rounds) and `max_cost` (USD budget via `UsageSession`)
+
+#### Lifecycle Hooks & Observability
+- [ ] `AgentCallbacks` extending `DriverCallbacks` with: `on_step`, `on_tool_start(name, args)`, `on_tool_end(name, result)`, `on_iteration(step_number)`, `on_output(result)`
+- [ ] Per-run `UsageSession` tracking (tokens, cost, errors across all iterations)
+- [ ] Structured step log: `AgentStep` dataclass with `step_type`, `timestamp`, `content`, `tool_name`, `duration_ms`
+
+#### Guardrails
+- [ ] Input validators: `input_guardrails: list[Callable[[RunContext, str], str | None]]` — transform or reject input before loop starts
+- [ ] Output validators: `output_guardrails: list[Callable[[RunContext, AgentResult], AgentResult | None]]` — validate final output, raise `ModelRetry` to feed error back to LLM
+- [ ] `ModelRetry` exception: raised from tools or validators to send error message back to the model with retry budget
+
+#### Async Support
+- [ ] `AsyncAgent` mirroring `Agent` with `async run()`, `async iter()`, `async run_stream()`
+- [ ] Async tool support: tools can be sync or async callables (auto-detected)
 
 ### Phase 4: Persona Templates
 **Goal**: Reusable, composable personality definitions for agents and conversations.
