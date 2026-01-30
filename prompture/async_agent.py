@@ -151,6 +151,9 @@ class AsyncAgent(Generic[DepsType]):
         agent_callbacks: AgentCallbacks | None = None,
         input_guardrails: list[Callable[..., Any]] | None = None,
         output_guardrails: list[Callable[..., Any]] | None = None,
+        name: str = "",
+        description: str = "",
+        output_key: str | None = None,
     ) -> None:
         if not model and driver is None:
             raise ValueError("Either model or driver must be provided")
@@ -166,6 +169,9 @@ class AsyncAgent(Generic[DepsType]):
         self._agent_callbacks = agent_callbacks or AgentCallbacks()
         self._input_guardrails = list(input_guardrails) if input_guardrails else []
         self._output_guardrails = list(output_guardrails) if output_guardrails else []
+        self.name = name
+        self.description = description
+        self.output_key = output_key
 
         # Build internal tool registry
         self._tools = ToolRegistry()
@@ -195,6 +201,61 @@ class AsyncAgent(Generic[DepsType]):
     def stop(self) -> None:
         """Request graceful shutdown after the current iteration."""
         self._stop_requested = True
+
+    def as_tool(
+        self,
+        name: str | None = None,
+        description: str | None = None,
+        custom_output_extractor: Callable[[AgentResult], str] | None = None,
+    ) -> ToolDefinition:
+        """Wrap this AsyncAgent as a callable tool for another Agent.
+
+        Creates a :class:`ToolDefinition` whose function accepts a ``prompt``
+        string, runs this agent (bridging async to sync), and returns the
+        output text.
+
+        Args:
+            name: Tool name (defaults to ``self.name`` or ``"agent_tool"``).
+            description: Tool description (defaults to ``self.description``).
+            custom_output_extractor: Optional function to extract a string
+                from :class:`AgentResult`.
+        """
+        tool_name = name or self.name or "agent_tool"
+        tool_desc = description or self.description or f"Run agent {tool_name}"
+        agent = self
+        extractor = custom_output_extractor
+
+        def _call_agent(prompt: str) -> str:
+            """Run the wrapped async agent with the given prompt."""
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = None
+
+            if loop is not None and loop.is_running():
+                import concurrent.futures
+
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                    result = pool.submit(asyncio.run, agent.run(prompt)).result()
+            else:
+                result = asyncio.run(agent.run(prompt))
+
+            if extractor is not None:
+                return extractor(result)
+            return result.output_text
+
+        return ToolDefinition(
+            name=tool_name,
+            description=tool_desc,
+            parameters={
+                "type": "object",
+                "properties": {
+                    "prompt": {"type": "string", "description": "The prompt to send to the agent"},
+                },
+                "required": ["prompt"],
+            },
+            function=_call_agent,
+        )
 
     async def run(self, prompt: str, *, deps: Any = None) -> AgentResult:
         """Execute the agent loop to completion (async).

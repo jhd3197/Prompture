@@ -18,6 +18,12 @@ from .agent_types import (
 from .async_agent import AsyncAgent, AsyncAgentIterator, AsyncStreamedAgentResult
 from .async_conversation import AsyncConversation
 from .async_driver import AsyncDriver
+from .async_groups import (
+    AsyncLoopGroup,
+    AsyncRouterAgent,
+    AsyncSequentialGroup,
+    ParallelGroup,
+)
 from .cache import (
     CacheBackend,
     MemoryCacheBackend,
@@ -81,6 +87,19 @@ from .field_definitions import (
     register_field,
     reset_registry,
     validate_enum_value,
+)
+from .group_types import (
+    AgentError,
+    ErrorPolicy,
+    GroupCallbacks,
+    GroupResult,
+    GroupStep,
+)
+from .groups import (
+    GroupAsAgent,
+    LoopGroup,
+    RouterAgent,
+    SequentialGroup,
 )
 from .image import (
     ImageContent,
@@ -157,6 +176,7 @@ __all__ = [
     "PERSONAS",
     "Agent",
     "AgentCallbacks",
+    "AgentError",
     "AgentIterator",
     "AgentResult",
     "AgentState",
@@ -166,6 +186,9 @@ __all__ = [
     "AsyncAgentIterator",
     "AsyncConversation",
     "AsyncDriver",
+    "AsyncLoopGroup",
+    "AsyncRouterAgent",
+    "AsyncSequentialGroup",
     "AsyncStreamedAgentResult",
     "AzureDriver",
     "CacheBackend",
@@ -174,25 +197,34 @@ __all__ = [
     "ConversationStore",
     "Driver",
     "DriverCallbacks",
+    "ErrorPolicy",
     "GoogleDriver",
     "GrokDriver",
     "GroqDriver",
+    "GroupAsAgent",
+    "GroupCallbacks",
+    "GroupResult",
+    "GroupStep",
     "GuardrailError",
     "ImageContent",
     "ImageInput",
     "JSONFormatter",
     "LMStudioDriver",
     "LocalHTTPDriver",
+    "LoopGroup",
     "MemoryCacheBackend",
     "ModelRetry",
     "OllamaDriver",
     "OpenAIDriver",
     "OpenRouterDriver",
+    "ParallelGroup",
     "Persona",
     "RedisCacheBackend",
     "ResponseCache",
+    "RouterAgent",
     "RunContext",
     "SQLiteCacheBackend",
+    "SequentialGroup",
     "StepType",
     "StreamEvent",
     "StreamEventType",
