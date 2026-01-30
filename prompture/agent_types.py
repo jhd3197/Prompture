@@ -129,3 +129,28 @@ class AgentResult:
     all_tool_calls: list[dict[str, Any]] = field(default_factory=list)
     state: AgentState = AgentState.idle
     run_usage: dict[str, Any] = field(default_factory=dict)
+
+
+class StreamEventType(str, enum.Enum):
+    """Classification for events emitted during streaming agent execution."""
+
+    text_delta = "text_delta"
+    tool_call = "tool_call"
+    tool_result = "tool_result"
+    output = "output"
+
+
+@dataclass
+class StreamEvent:
+    """A single event emitted during a streaming agent run.
+
+    Attributes:
+        event_type: The kind of event.
+        data: Payload — ``str`` for text_delta, ``dict`` for tool_call/result,
+            :class:`AgentResult` for output.
+        step: Optional associated :class:`AgentStep`.
+    """
+
+    event_type: StreamEventType
+    data: Any
+    step: AgentStep | None = None

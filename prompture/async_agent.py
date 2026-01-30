@@ -1,26 +1,26 @@
-"""Agent framework for Prompture.
+"""Async Agent framework for Prompture.
 
-Provides a reusable :class:`Agent` that wraps a ReAct-style loop around
-:class:`~prompture.conversation.Conversation`, with optional structured
-output via Pydantic models and tool support via :class:`ToolRegistry`.
+Provides :class:`AsyncAgent`, the async counterpart of :class:`~prompture.agent.Agent`.
+All methods are ``async`` and use :class:`~prompture.async_conversation.AsyncConversation`.
 
 Example::
 
-    from prompture import Agent
+    from prompture import AsyncAgent
 
-    agent = Agent("openai/gpt-4o", system_prompt="You are a helpful assistant.")
-    result = agent.run("What is the capital of France?")
+    agent = AsyncAgent("openai/gpt-4o", system_prompt="You are helpful.")
+    result = await agent.run("What is 2 + 2?")
     print(result.output)
 """
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 import json
 import logging
 import time
 import typing
-from collections.abc import Callable, Generator, Iterator
+from collections.abc import AsyncGenerator, Callable
 from typing import Any, Generic
 
 from pydantic import BaseModel
@@ -38,30 +38,32 @@ from .agent_types import (
     StreamEventType,
 )
 from .callbacks import DriverCallbacks
-from .conversation import Conversation
-from .driver import Driver
 from .session import UsageSession
 from .tools import clean_json_text
 from .tools_schema import ToolDefinition, ToolRegistry
 
-logger = logging.getLogger("prompture.agent")
+logger = logging.getLogger("prompture.async_agent")
 
 _OUTPUT_PARSE_MAX_RETRIES = 3
 _OUTPUT_GUARDRAIL_MAX_RETRIES = 3
 
 
 # ------------------------------------------------------------------
-# Module-level helpers for RunContext injection
+# Helpers
 # ------------------------------------------------------------------
 
 
-def _tool_wants_context(fn: Callable[..., Any]) -> bool:
-    """Check whether *fn*'s first parameter is annotated as :class:`RunContext`.
+def _is_async_callable(fn: Callable[..., Any]) -> bool:
+    """Check if *fn* is an async callable (coroutine function or has async ``__call__``)."""
+    if asyncio.iscoroutinefunction(fn):
+        return True
+    # Check if the object has an async __call__ method (callable class)
+    dunder_call = type(fn).__call__ if callable(fn) else None
+    return dunder_call is not None and asyncio.iscoroutinefunction(dunder_call)
 
-    Uses :func:`typing.get_type_hints` to resolve string annotations
-    (from ``from __future__ import annotations``).  Falls back to raw
-    ``__annotations__`` when ``get_type_hints`` cannot resolve local types.
-    """
+
+def _tool_wants_context(fn: Callable[..., Any]) -> bool:
+    """Check whether *fn*'s first parameter is annotated as :class:`RunContext`."""
     sig = inspect.signature(fn)
     params = list(sig.parameters.keys())
     if not params:
@@ -73,7 +75,6 @@ def _tool_wants_context(fn: Callable[..., Any]) -> bool:
             return False
         first_param = params[1]
 
-    # Try get_type_hints first (resolves string annotations)
     annotation = None
     try:
         hints = typing.get_type_hints(fn, include_extras=True)
@@ -81,22 +82,18 @@ def _tool_wants_context(fn: Callable[..., Any]) -> bool:
     except Exception:
         pass
 
-    # Fallback: inspect raw annotation (may be a string)
     if annotation is None:
         raw = sig.parameters[first_param].annotation
         if raw is inspect.Parameter.empty:
             return False
         annotation = raw
 
-    # String annotation: check if it starts with "RunContext"
     if isinstance(annotation, str):
         return annotation == "RunContext" or annotation.startswith("RunContext[")
 
-    # Direct match
     if annotation is RunContext:
         return True
 
-    # Generic alias: RunContext[X]
     origin = getattr(annotation, "__origin__", None)
     return origin is RunContext
 
@@ -111,31 +108,28 @@ def _get_first_param_name(fn: Callable[..., Any]) -> str:
 
 
 # ------------------------------------------------------------------
-# Agent
+# AsyncAgent
 # ------------------------------------------------------------------
 
 
-class Agent(Generic[DepsType]):
-    """A reusable agent that executes a ReAct loop with tool support.
+class AsyncAgent(Generic[DepsType]):
+    """Async agent that executes a ReAct loop with tool support.
 
-    Each call to :meth:`run` creates a fresh :class:`Conversation`,
-    preventing state leakage between runs.  The Agent itself is a
-    template holding model config, tools, and system prompt.
+    Mirrors :class:`~prompture.agent.Agent` but uses
+    :class:`~prompture.async_conversation.AsyncConversation` and
+    ``async`` methods throughout.
 
     Args:
         model: Model string in ``"provider/model"`` format.
-        driver: Pre-built driver instance (useful for testing).
-        tools: Initial tools as a list of callables or a
-            :class:`ToolRegistry`.
-        system_prompt: System prompt prepended to every run.  May also
-            be a callable ``(RunContext) -> str`` for dynamic prompts.
-        output_type: Optional Pydantic model class.  When set, the
-            final LLM response is parsed and validated against this type.
+        driver: Pre-built async driver instance.
+        tools: Initial tools as a list of callables or a :class:`ToolRegistry`.
+        system_prompt: System prompt prepended to every run.  May also be a
+            callable ``(RunContext) -> str`` for dynamic prompts.
+        output_type: Optional Pydantic model class for structured output.
         max_iterations: Maximum tool-use rounds per run.
-        max_cost: Soft budget in USD.  When exceeded, output parse and
-            guardrail retries are skipped.
+        max_cost: Soft budget in USD.
         options: Extra driver options forwarded to every call.
-        deps_type: Type hint for dependencies (for docs/IDE only).
+        deps_type: Type hint for dependencies.
         agent_callbacks: Agent-level observability callbacks.
         input_guardrails: Functions called before the prompt is sent.
         output_guardrails: Functions called after output is parsed.
@@ -145,7 +139,7 @@ class Agent(Generic[DepsType]):
         self,
         model: str = "",
         *,
-        driver: Driver | None = None,
+        driver: Any | None = None,
         tools: list[Callable[..., Any]] | ToolRegistry | None = None,
         system_prompt: str | Callable[..., str] | None = None,
         output_type: type[BaseModel] | None = None,
@@ -188,10 +182,7 @@ class Agent(Generic[DepsType]):
     # ------------------------------------------------------------------
 
     def tool(self, fn: Callable[..., Any]) -> Callable[..., Any]:
-        """Decorator to register a function as a tool on this agent.
-
-        Returns the original function unchanged.
-        """
+        """Decorator to register a function as a tool on this agent."""
         self._tools.register(fn)
         return fn
 
@@ -204,28 +195,40 @@ class Agent(Generic[DepsType]):
         """Request graceful shutdown after the current iteration."""
         self._stop_requested = True
 
-    def run(self, prompt: str, *, deps: Any = None) -> AgentResult:
-        """Execute the agent loop to completion.
+    async def run(self, prompt: str, *, deps: Any = None) -> AgentResult:
+        """Execute the agent loop to completion (async).
 
-        Creates a fresh :class:`Conversation`, sends the prompt,
-        handles any tool calls, and optionally parses the final
-        response into an ``output_type`` Pydantic model.
-
-        Args:
-            prompt: The user prompt to send.
-            deps: Optional dependencies injected into :class:`RunContext`.
+        Creates a fresh conversation, sends the prompt, handles tool calls,
+        and optionally parses the final response into ``output_type``.
         """
         self._state = AgentState.running
         self._stop_requested = False
         steps: list[AgentStep] = []
 
         try:
-            result = self._execute(prompt, steps, deps)
+            result = await self._execute(prompt, steps, deps)
             self._state = AgentState.idle
             return result
         except Exception:
             self._state = AgentState.errored
             raise
+
+    async def iter(self, prompt: str, *, deps: Any = None) -> AsyncAgentIterator:
+        """Execute the agent loop and iterate over steps asynchronously.
+
+        Returns an :class:`AsyncAgentIterator` yielding :class:`AgentStep` objects.
+        After iteration, :attr:`AsyncAgentIterator.result` holds the final result.
+        """
+        gen = self._execute_iter(prompt, deps)
+        return AsyncAgentIterator(gen)
+
+    async def run_stream(self, prompt: str, *, deps: Any = None) -> AsyncStreamedAgentResult:
+        """Execute the agent loop with streaming output (async).
+
+        Returns an :class:`AsyncStreamedAgentResult` yielding :class:`StreamEvent` objects.
+        """
+        gen = self._execute_stream(prompt, deps)
+        return AsyncStreamedAgentResult(gen)
 
     # ------------------------------------------------------------------
     # RunContext helpers
@@ -239,7 +242,6 @@ class Agent(Generic[DepsType]):
         messages: list[dict[str, Any]],
         iteration: int,
     ) -> RunContext[Any]:
-        """Create a :class:`RunContext` snapshot for the current run."""
         return RunContext(
             deps=deps,
             model=self._model,
@@ -256,28 +258,27 @@ class Agent(Generic[DepsType]):
     def _wrap_tools_with_context(self, ctx: RunContext[Any]) -> ToolRegistry:
         """Return a new :class:`ToolRegistry` with wrapped tool functions.
 
-        For each registered tool:
-        - If the tool's first param is ``RunContext``, inject *ctx* automatically.
-        - Catch :class:`ModelRetry` and convert to an error string.
-        - Fire ``agent_callbacks.on_tool_start`` / ``on_tool_end``.
-        - Strip the ``RunContext`` parameter from the JSON schema sent to the LLM.
+        All wrappers are **sync** so they work with ``ToolRegistry.execute()``.
+        For async tool functions, the wrapper uses
+        ``asyncio.get_event_loop().run_until_complete()`` as a fallback.
         """
         if not self._tools:
             return ToolRegistry()
 
         new_registry = ToolRegistry()
-
         cb = self._agent_callbacks
 
         for td in self._tools.definitions:
             wants_ctx = _tool_wants_context(td.function)
             original_fn = td.function
             tool_name = td.name
+            is_async = _is_async_callable(original_fn)
 
             def _make_wrapper(
                 _fn: Callable[..., Any],
                 _wants: bool,
                 _name: str,
+                _is_async: bool,
                 _cb: AgentCallbacks = cb,
             ) -> Callable[..., Any]:
                 def wrapper(**kwargs: Any) -> Any:
@@ -285,9 +286,27 @@ class Agent(Generic[DepsType]):
                         _cb.on_tool_start(_name, kwargs)
                     try:
                         if _wants:
-                            result = _fn(ctx, **kwargs)
+                            call_args = (ctx,)
                         else:
-                            result = _fn(**kwargs)
+                            call_args = ()
+
+                        if _is_async:
+                            coro = _fn(*call_args, **kwargs)
+                            # Try to get running loop; if none, use asyncio.run()
+                            try:
+                                loop = asyncio.get_running_loop()
+                            except RuntimeError:
+                                loop = None
+                            if loop is not None and loop.is_running():
+                                # We're inside an async context — create a new thread
+                                import concurrent.futures
+
+                                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                                    result = pool.submit(asyncio.run, coro).result()
+                            else:
+                                result = asyncio.run(coro)
+                        else:
+                            result = _fn(*call_args, **kwargs)
                     except ModelRetry as exc:
                         result = f"Error: {exc.message}"
                     if _cb.on_tool_end:
@@ -296,7 +315,7 @@ class Agent(Generic[DepsType]):
 
                 return wrapper
 
-            wrapped = _make_wrapper(original_fn, wants_ctx, tool_name)
+            wrapped = _make_wrapper(original_fn, wants_ctx, tool_name, is_async)
 
             # Build schema: strip RunContext param if present
             params = dict(td.parameters)
@@ -329,57 +348,40 @@ class Agent(Generic[DepsType]):
     # ------------------------------------------------------------------
 
     def _run_input_guardrails(self, ctx: RunContext[Any], prompt: str) -> str:
-        """Execute input guardrails in order. Returns the (possibly transformed) prompt.
-
-        Each guardrail receives ``(ctx, prompt)`` and may:
-        - Return a ``str`` to transform the prompt.
-        - Return ``None`` to leave it unchanged.
-        - Raise :class:`GuardrailError` to reject entirely.
-        """
         for guardrail in self._input_guardrails:
             result = guardrail(ctx, prompt)
             if result is not None:
                 prompt = result
         return prompt
 
-    def _run_output_guardrails(
+    async def _run_output_guardrails(
         self,
         ctx: RunContext[Any],
         result: AgentResult,
-        conv: Conversation,
+        conv: Any,
         session: UsageSession,
         steps: list[AgentStep],
         all_tool_calls: list[dict[str, Any]],
     ) -> AgentResult:
-        """Execute output guardrails. Returns the (possibly modified) result.
-
-        Each guardrail receives ``(ctx, result)`` and may:
-        - Return ``None`` to pass (no change).
-        - Return an :class:`AgentResult` to modify the result.
-        - Raise :class:`ModelRetry` to re-prompt the LLM (up to 3 retries).
-        """
         for guardrail in self._output_guardrails:
             for attempt in range(_OUTPUT_GUARDRAIL_MAX_RETRIES):
                 try:
                     guard_result = guardrail(ctx, result)
                     if guard_result is not None:
                         result = guard_result
-                    break  # guardrail passed
+                    break
                 except ModelRetry as exc:
                     if self._is_over_budget(session):
-                        logger.debug("Over budget, skipping output guardrail retry")
                         break
                     if attempt >= _OUTPUT_GUARDRAIL_MAX_RETRIES - 1:
                         raise ValueError(
                             f"Output guardrail failed after {_OUTPUT_GUARDRAIL_MAX_RETRIES} retries: {exc.message}"
                         ) from exc
-                    # Re-prompt the LLM
-                    retry_text = conv.ask(
+                    retry_text = await conv.ask(
                         f"Your response did not pass validation. Error: {exc.message}\n\nPlease try again."
                     )
                     self._extract_steps(conv.messages[-2:], steps, all_tool_calls)
 
-                    # Re-parse if output_type is set
                     if self._output_type is not None:
                         try:
                             cleaned = clean_json_text(retry_text)
@@ -407,7 +409,6 @@ class Agent(Generic[DepsType]):
     # ------------------------------------------------------------------
 
     def _is_over_budget(self, session: UsageSession) -> bool:
-        """Return True if max_cost is set and the session has exceeded it."""
         if self._max_cost is None:
             return False
         return session.total_cost >= self._max_cost
@@ -417,7 +418,6 @@ class Agent(Generic[DepsType]):
     # ------------------------------------------------------------------
 
     def _resolve_system_prompt(self, ctx: RunContext[Any] | None = None) -> str | None:
-        """Build the system prompt, appending output schema if needed."""
         parts: list[str] = []
 
         if self._system_prompt is not None:
@@ -425,7 +425,6 @@ class Agent(Generic[DepsType]):
                 if ctx is not None:
                     parts.append(self._system_prompt(ctx))
                 else:
-                    # Fallback: call without context (shouldn't happen in normal flow)
                     parts.append(self._system_prompt(None))  # type: ignore[arg-type]
             else:
                 parts.append(str(self._system_prompt))
@@ -448,8 +447,10 @@ class Agent(Generic[DepsType]):
         system_prompt: str | None = None,
         tools: ToolRegistry | None = None,
         driver_callbacks: DriverCallbacks | None = None,
-    ) -> Conversation:
-        """Create a fresh Conversation for a single run."""
+    ) -> Any:
+        """Create a fresh AsyncConversation for a single run."""
+        from .async_conversation import AsyncConversation
+
         effective_tools = tools if tools is not None else (self._tools if self._tools else None)
 
         kwargs: dict[str, Any] = {
@@ -467,11 +468,11 @@ class Agent(Generic[DepsType]):
         else:
             kwargs["model_name"] = self._model
 
-        return Conversation(**kwargs)
+        return AsyncConversation(**kwargs)
 
-    def _execute(self, prompt: str, steps: list[AgentStep], deps: Any) -> AgentResult:
-        """Core execution: run conversation, extract steps, parse output."""
-        # 1. Create per-run UsageSession and wire into DriverCallbacks
+    async def _execute(self, prompt: str, steps: list[AgentStep], deps: Any) -> AgentResult:
+        """Core async execution: run conversation, extract steps, parse output."""
+        # 1. Create per-run UsageSession
         session = UsageSession()
         driver_callbacks = DriverCallbacks(
             on_response=session.record,
@@ -484,13 +485,13 @@ class Agent(Generic[DepsType]):
         # 3. Run input guardrails
         effective_prompt = self._run_input_guardrails(ctx, prompt)
 
-        # 4. Resolve system prompt (call it if callable, passing ctx)
+        # 4. Resolve system prompt
         resolved_system_prompt = self._resolve_system_prompt(ctx)
 
         # 5. Wrap tools with context
         wrapped_tools = self._wrap_tools_with_context(ctx)
 
-        # 6. Build Conversation
+        # 6. Build AsyncConversation
         conv = self._build_conversation(
             system_prompt=resolved_system_prompt,
             tools=wrapped_tools if wrapped_tools else None,
@@ -503,21 +504,22 @@ class Agent(Generic[DepsType]):
 
         # 8. Ask the conversation (handles full tool loop internally)
         t0 = time.perf_counter()
-        response_text = conv.ask(effective_prompt)
+        response_text = await conv.ask(effective_prompt)
         elapsed_ms = (time.perf_counter() - t0) * 1000
 
-        # 9. Extract steps and tool calls from conversation messages
+        # 9. Extract steps and tool calls
         all_tool_calls: list[dict[str, Any]] = []
         self._extract_steps(conv.messages, steps, all_tool_calls)
 
         # Handle output_type parsing
         if self._output_type is not None:
-            output, output_text = self._parse_output(conv, response_text, steps, all_tool_calls, elapsed_ms, session)
+            output, output_text = await self._parse_output(
+                conv, response_text, steps, all_tool_calls, elapsed_ms, session
+            )
         else:
             output = response_text
             output_text = response_text
 
-        # Build result with run_usage
         result = AgentResult(
             output=output,
             output_text=output_text,
@@ -531,13 +533,12 @@ class Agent(Generic[DepsType]):
 
         # 10. Run output guardrails
         if self._output_guardrails:
-            result = self._run_output_guardrails(ctx, result, conv, session, steps, all_tool_calls)
+            result = await self._run_output_guardrails(ctx, result, conv, session, steps, all_tool_calls)
 
         # 11. Fire callbacks
         if self._agent_callbacks.on_step:
             for step in steps:
                 self._agent_callbacks.on_step(step)
-
         if self._agent_callbacks.on_output:
             self._agent_callbacks.on_output(result)
 
@@ -558,7 +559,6 @@ class Agent(Generic[DepsType]):
             if role == "assistant":
                 tc_list = msg.get("tool_calls", [])
                 if tc_list:
-                    # Assistant message with tool calls
                     for tc in tc_list:
                         fn = tc.get("function", {})
                         name = fn.get("name", tc.get("name", ""))
@@ -582,7 +582,6 @@ class Agent(Generic[DepsType]):
                         )
                         all_tool_calls.append({"name": name, "arguments": args, "id": tc.get("id", "")})
                 else:
-                    # Final assistant message (no tool calls)
                     steps.append(
                         AgentStep(
                             step_type=StepType.output,
@@ -601,16 +600,16 @@ class Agent(Generic[DepsType]):
                     )
                 )
 
-    def _parse_output(
+    async def _parse_output(
         self,
-        conv: Conversation,
+        conv: Any,
         response_text: str,
         steps: list[AgentStep],
         all_tool_calls: list[dict[str, Any]],
         elapsed_ms: float,
         session: UsageSession | None = None,
     ) -> tuple[Any, str]:
-        """Try to parse ``response_text`` as the output_type, with retries."""
+        """Try to parse ``response_text`` as the output_type, with retries (async)."""
         assert self._output_type is not None
 
         last_error: Exception | None = None
@@ -625,19 +624,14 @@ class Agent(Generic[DepsType]):
             except Exception as exc:
                 last_error = exc
                 if attempt < _OUTPUT_PARSE_MAX_RETRIES - 1:
-                    # Check budget before retrying
                     if session is not None and self._is_over_budget(session):
-                        logger.debug("Over budget, skipping output parse retry")
                         break
-                    logger.debug("Output parse attempt %d failed: %s", attempt + 1, exc)
                     retry_msg = (
                         f"Your previous response could not be parsed as valid JSON "
                         f"matching the required schema. Error: {exc}\n\n"
                         f"Please try again and respond ONLY with valid JSON."
                     )
-                    text = conv.ask(retry_msg)
-
-                    # Record the retry step
+                    text = await conv.ask(retry_msg)
                     self._extract_steps(conv.messages[-2:], steps, all_tool_calls)
 
         raise ValueError(
@@ -646,130 +640,78 @@ class Agent(Generic[DepsType]):
         )
 
     # ------------------------------------------------------------------
-    # iter() — step-by-step inspection
+    # iter() — async step-by-step
     # ------------------------------------------------------------------
 
-    def iter(self, prompt: str, *, deps: Any = None) -> AgentIterator:
-        """Execute the agent loop and iterate over steps.
-
-        Returns an :class:`AgentIterator` that yields :class:`AgentStep`
-        objects.  After iteration completes, the final :class:`AgentResult`
-        is available via :attr:`AgentIterator.result`.
-
-        Note:
-            In Phase 3c the conversation's tool loop runs to completion
-            before steps are yielded.  True mid-loop yielding is deferred.
-        """
-        gen = self._execute_iter(prompt, deps)
-        return AgentIterator(gen)
-
-    def _execute_iter(self, prompt: str, deps: Any) -> Generator[AgentStep, None, AgentResult]:
-        """Generator that executes the agent loop and yields each step."""
+    async def _execute_iter(self, prompt: str, deps: Any) -> AsyncGenerator[AgentStep, None]:
+        """Async generator that executes the agent loop and yields each step."""
         self._state = AgentState.running
         self._stop_requested = False
         steps: list[AgentStep] = []
 
         try:
-            result = self._execute(prompt, steps, deps)
-            # Yield each step one at a time
-            yield from result.steps
+            result = await self._execute(prompt, steps, deps)
+            for step in result.steps:
+                yield step
             self._state = AgentState.idle
-            return result
+            # Store result on the generator for retrieval
+            self._last_iter_result = result
         except Exception:
             self._state = AgentState.errored
             raise
 
     # ------------------------------------------------------------------
-    # run_stream() — streaming output
+    # run_stream() — async streaming
     # ------------------------------------------------------------------
 
-    def run_stream(self, prompt: str, *, deps: Any = None) -> StreamedAgentResult:
-        """Execute the agent loop with streaming output.
-
-        Returns a :class:`StreamedAgentResult` that yields
-        :class:`StreamEvent` objects.  After iteration completes, the
-        final :class:`AgentResult` is available via
-        :attr:`StreamedAgentResult.result`.
-
-        When tools are registered, streaming falls back to non-streaming
-        ``conv.ask()`` and yields the full response as a single
-        ``text_delta`` event.
-        """
-        gen = self._execute_stream(prompt, deps)
-        return StreamedAgentResult(gen)
-
-    def _execute_stream(self, prompt: str, deps: Any) -> Generator[StreamEvent, None, AgentResult]:
-        """Generator that executes the agent loop and yields stream events."""
+    async def _execute_stream(self, prompt: str, deps: Any) -> AsyncGenerator[StreamEvent, None]:
+        """Async generator that executes the agent loop and yields stream events."""
         self._state = AgentState.running
         self._stop_requested = False
         steps: list[AgentStep] = []
 
         try:
-            # 1. Create per-run UsageSession and wire into DriverCallbacks
+            # 1. Setup
             session = UsageSession()
             driver_callbacks = DriverCallbacks(
                 on_response=session.record,
                 on_error=session.record_error,
             )
-
-            # 2. Build initial RunContext
             ctx = self._build_run_context(prompt, deps, session, [], 0)
-
-            # 3. Run input guardrails
             effective_prompt = self._run_input_guardrails(ctx, prompt)
-
-            # 4. Resolve system prompt
             resolved_system_prompt = self._resolve_system_prompt(ctx)
-
-            # 5. Wrap tools with context
             wrapped_tools = self._wrap_tools_with_context(ctx)
             has_tools = bool(wrapped_tools)
 
-            # 6. Build Conversation
             conv = self._build_conversation(
                 system_prompt=resolved_system_prompt,
                 tools=wrapped_tools if wrapped_tools else None,
                 driver_callbacks=driver_callbacks,
             )
 
-            # 7. Fire on_iteration callback
             if self._agent_callbacks.on_iteration:
                 self._agent_callbacks.on_iteration(0)
 
             if has_tools:
-                # Tools registered: fall back to non-streaming conv.ask()
-                t0 = time.perf_counter()
-                response_text = conv.ask(effective_prompt)
-                _elapsed_ms = (time.perf_counter() - t0) * 1000
-
-                # Yield the full text as a single delta
-                yield StreamEvent(
-                    event_type=StreamEventType.text_delta,
-                    data=response_text,
-                )
+                response_text = await conv.ask(effective_prompt)
+                yield StreamEvent(event_type=StreamEventType.text_delta, data=response_text)
             else:
-                # No tools: use streaming if available
                 response_text = ""
-                stream_iter: Iterator[str] = conv.ask_stream(effective_prompt)
-                for chunk in stream_iter:
+                async for chunk in conv.ask_stream(effective_prompt):
                     response_text += chunk
-                    yield StreamEvent(
-                        event_type=StreamEventType.text_delta,
-                        data=chunk,
-                    )
+                    yield StreamEvent(event_type=StreamEventType.text_delta, data=chunk)
 
-            # 8. Extract steps
+            # Extract steps
             all_tool_calls: list[dict[str, Any]] = []
             self._extract_steps(conv.messages, steps, all_tool_calls)
 
-            # 9. Parse output
+            # Parse output
             if self._output_type is not None:
-                output, output_text = self._parse_output(conv, response_text, steps, all_tool_calls, 0.0, session)
+                output, output_text = await self._parse_output(conv, response_text, steps, all_tool_calls, 0.0, session)
             else:
                 output = response_text
                 output_text = response_text
 
-            # 10. Build result
             result = AgentResult(
                 output=output,
                 output_text=output_text,
@@ -781,54 +723,51 @@ class Agent(Generic[DepsType]):
                 run_usage=session.summary(),
             )
 
-            # 11. Run output guardrails
             if self._output_guardrails:
-                result = self._run_output_guardrails(ctx, result, conv, session, steps, all_tool_calls)
+                result = await self._run_output_guardrails(ctx, result, conv, session, steps, all_tool_calls)
 
-            # 12. Fire callbacks
             if self._agent_callbacks.on_step:
                 for step in steps:
                     self._agent_callbacks.on_step(step)
             if self._agent_callbacks.on_output:
                 self._agent_callbacks.on_output(result)
 
-            # 13. Yield final output event
-            yield StreamEvent(
-                event_type=StreamEventType.output,
-                data=result,
-            )
+            yield StreamEvent(event_type=StreamEventType.output, data=result)
 
             self._state = AgentState.idle
-            return result
+            self._last_stream_result = result
         except Exception:
             self._state = AgentState.errored
             raise
 
 
 # ------------------------------------------------------------------
-# AgentIterator
+# AsyncAgentIterator
 # ------------------------------------------------------------------
 
 
-class AgentIterator:
-    """Wraps the :meth:`Agent.iter` generator, capturing the final result.
+class AsyncAgentIterator:
+    """Wraps the :meth:`AsyncAgent.iter` async generator, capturing the final result.
 
-    After iteration completes (the ``for`` loop ends), the
-    :attr:`result` property holds the :class:`AgentResult`.
+    After async iteration completes, :attr:`result` holds the :class:`AgentResult`.
     """
 
-    def __init__(self, gen: Generator[AgentStep, None, AgentResult]) -> None:
+    def __init__(self, gen: AsyncGenerator[AgentStep, None]) -> None:
         self._gen = gen
         self._result: AgentResult | None = None
+        self._agent: AsyncAgent[Any] | None = None
 
-    def __iter__(self) -> AgentIterator:
+    def __aiter__(self) -> AsyncAgentIterator:
         return self
 
-    def __next__(self) -> AgentStep:
+    async def __anext__(self) -> AgentStep:
         try:
-            return next(self._gen)
-        except StopIteration as e:
-            self._result = e.value
+            return await self._gen.__anext__()
+        except StopAsyncIteration:
+            # Try to capture the result from the agent
+            agent = self._gen.ag_frame and self._gen.ag_frame.f_locals.get("self")
+            if agent and hasattr(agent, "_last_iter_result"):
+                self._result = agent._last_iter_result
             raise
 
     @property
@@ -838,29 +777,32 @@ class AgentIterator:
 
 
 # ------------------------------------------------------------------
-# StreamedAgentResult
+# AsyncStreamedAgentResult
 # ------------------------------------------------------------------
 
 
-class StreamedAgentResult:
-    """Wraps the :meth:`Agent.run_stream` generator, capturing the final result.
+class AsyncStreamedAgentResult:
+    """Wraps the :meth:`AsyncAgent.run_stream` async generator.
 
-    Yields :class:`StreamEvent` objects during iteration.  After iteration
-    completes, the :attr:`result` property holds the :class:`AgentResult`.
+    Yields :class:`StreamEvent` objects.  After iteration completes,
+    :attr:`result` holds the :class:`AgentResult`.
     """
 
-    def __init__(self, gen: Generator[StreamEvent, None, AgentResult]) -> None:
+    def __init__(self, gen: AsyncGenerator[StreamEvent, None]) -> None:
         self._gen = gen
         self._result: AgentResult | None = None
 
-    def __iter__(self) -> StreamedAgentResult:
+    def __aiter__(self) -> AsyncStreamedAgentResult:
         return self
 
-    def __next__(self) -> StreamEvent:
+    async def __anext__(self) -> StreamEvent:
         try:
-            return next(self._gen)
-        except StopIteration as e:
-            self._result = e.value
+            event = await self._gen.__anext__()
+            # Capture result from the output event
+            if event.event_type == StreamEventType.output and isinstance(event.data, AgentResult):
+                self._result = event.data
+            return event
+        except StopAsyncIteration:
             raise
 
     @property

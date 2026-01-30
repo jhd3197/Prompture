@@ -2,7 +2,7 @@
 
 from dotenv import load_dotenv
 
-from .agent import Agent
+from .agent import Agent, AgentIterator, StreamedAgentResult
 from .agent_types import (
     AgentCallbacks,
     AgentResult,
@@ -12,7 +12,10 @@ from .agent_types import (
     ModelRetry,
     RunContext,
     StepType,
+    StreamEvent,
+    StreamEventType,
 )
+from .async_agent import AsyncAgent, AsyncAgentIterator, AsyncStreamedAgentResult
 from .async_conversation import AsyncConversation
 from .async_driver import AsyncDriver
 from .cache import (
@@ -138,12 +141,16 @@ __all__ = [
     "FIELD_DEFINITIONS",
     "Agent",
     "AgentCallbacks",
+    "AgentIterator",
     "AgentResult",
     "AgentState",
     "AgentStep",
     "AirLLMDriver",
+    "AsyncAgent",
+    "AsyncAgentIterator",
     "AsyncConversation",
     "AsyncDriver",
+    "AsyncStreamedAgentResult",
     "AzureDriver",
     "CacheBackend",
     "ClaudeDriver",
@@ -170,6 +177,9 @@ __all__ = [
     "RunContext",
     "SQLiteCacheBackend",
     "StepType",
+    "StreamEvent",
+    "StreamEventType",
+    "StreamedAgentResult",
     "ToolDefinition",
     "ToolRegistry",
     "UsageSession",

@@ -101,22 +101,26 @@
 - [x] 24 unit tests covering construction, run (no tools / with tools / with output_type), system prompt, stop, state, options
 - [x] Example script: `examples/agent_example.py`
 
-#### Phase 3b: Context, Guardrails & Callbacks (next)
-- [ ] `RunContext[DepsType]` dataclass passed to tools and system prompt functions: carries deps, model info, usage, message history, iteration count
-- [ ] `deps_type` generic on `Agent` for type-safe dependency access in tools
-- [ ] Dynamic system prompts: `system_prompt: str | Callable[[RunContext], str]` for context-aware persona rendering
-- [ ] `AgentCallbacks` extending `DriverCallbacks` with: `on_step`, `on_tool_start(name, args)`, `on_tool_end(name, result)`, `on_iteration(step_number)`, `on_output(result)`
-- [ ] Input validators: `input_guardrails: list[Callable[[RunContext, str], str | None]]` — transform or reject input before loop starts
-- [ ] Output validators: `output_guardrails: list[Callable[[RunContext, AgentResult], AgentResult | None]]` — validate final output, raise `ModelRetry` to feed error back to LLM
-- [ ] `ModelRetry` exception integration: raised from tools or validators to send error message back to the model with retry budget
-- [ ] Per-run `UsageSession` tracking (tokens, cost, errors across all iterations)
-- [ ] Iteration limits: `max_cost` (USD budget via `UsageSession`)
+#### Phase 3b: Context, Guardrails & Callbacks ✅
+- [x] `RunContext[DepsType]` dataclass passed to tools and system prompt functions: carries deps, model info, usage, message history, iteration count
+- [x] `deps_type` generic on `Agent` for type-safe dependency access in tools
+- [x] Dynamic system prompts: `system_prompt: str | Callable[[RunContext], str]` for context-aware persona rendering
+- [x] `AgentCallbacks` extending `DriverCallbacks` with: `on_step`, `on_tool_start(name, args)`, `on_tool_end(name, result)`, `on_iteration(step_number)`, `on_output(result)`
+- [x] Input validators: `input_guardrails: list[Callable[[RunContext, str], str | None]]` — transform or reject input before loop starts
+- [x] Output validators: `output_guardrails: list[Callable[[RunContext, AgentResult], AgentResult | None]]` — validate final output, raise `ModelRetry` to feed error back to LLM
+- [x] `ModelRetry` exception integration: raised from tools or validators to send error message back to the model with retry budget
+- [x] Per-run `UsageSession` tracking (tokens, cost, errors across all iterations)
+- [x] Iteration limits: `max_cost` (USD budget via `UsageSession`)
 
-#### Phase 3c: Streaming, Iteration & Async
-- [ ] `agent.iter(prompt) -> AgentIterator` — low-level step-by-step control, yields `AgentStep` per iteration
-- [ ] `agent.run_stream(prompt) -> StreamedAgentResult` — streaming with deltas for each step
-- [ ] `AsyncAgent` mirroring `Agent` with `async run()`, `async iter()`, `async run_stream()`
-- [ ] Async tool support: tools can be sync or async callables (auto-detected)
+#### Phase 3c: Streaming, Iteration & Async ✅
+- [x] `agent.iter(prompt) -> AgentIterator` — low-level step-by-step control, yields `AgentStep` per iteration
+- [x] `agent.run_stream(prompt) -> StreamedAgentResult` — streaming with deltas for each step
+- [x] `AsyncAgent` mirroring `Agent` with `async run()`, `async iter()`, `async run_stream()`
+- [x] Async tool support: tools can be sync or async callables (auto-detected)
+- [x] `StreamEvent` and `StreamEventType` types for streaming event classification
+- [x] `AsyncAgentIterator` and `AsyncStreamedAgentResult` wrapper classes with result capture
+- [x] All new types exported from `prompture.__init__`
+- [x] Example script: `examples/async_agent_example.py`
 
 ### Phase 4: Persona Templates
 **Goal**: Reusable, composable system prompt definitions with template variables, layered composition, and a thread-safe registry following the `field_definitions.py` pattern.

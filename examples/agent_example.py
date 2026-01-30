@@ -10,6 +10,8 @@ Demonstrates:
 6. Agent with input/output guardrails
 7. Agent with AgentCallbacks for observability
 8. Inspecting per-run usage via result.run_usage
+9. Step-by-step iteration with agent.iter()
+10. Streaming output with agent.run_stream()
 
 Usage:
     python examples/agent_example.py
@@ -263,3 +265,39 @@ result = observed_agent.run("What is 2 + 2?")
 print(f"Output: {result.output}")
 print(f"Callback log: {callback_log}")
 print(f"Run usage: {result.run_usage}")
+print()
+
+# ── Section 9: Step-by-step iteration with iter() ──────────────────────────
+
+print("=" * 60)
+print("Section 9: Step-by-Step Iteration with iter()")
+print("=" * 60)
+
+iter_agent = Agent(MODEL, system_prompt="Be concise.")
+it = iter_agent.iter("What is the capital of Japan?")
+
+print("Iterating over steps:")
+for step in it:
+    print(f"  [{step.step_type.value}] {step.content[:60]}")
+
+print(f"Final result: {it.result.output if it.result else 'N/A'}")
+print()
+
+# ── Section 10: Streaming output with run_stream() ────────────────────────
+
+print("=" * 60)
+print("Section 10: Streaming Output with run_stream()")
+print("=" * 60)
+
+stream_agent = Agent(MODEL, system_prompt="Be concise.")
+stream = stream_agent.run_stream("Tell me a short joke.")
+
+print("Streaming events:")
+for event in stream:
+    if event.event_type.value == "text_delta":
+        print(event.data, end="", flush=True)
+    elif event.event_type.value == "output":
+        print()
+        print(f"  [Final output received, state: {event.data.state}]")
+
+print(f"Stream result: {stream.result.output[:60] if stream.result else 'N/A'}...")
