@@ -2,6 +2,8 @@
 
 from dotenv import load_dotenv
 
+from .agent import Agent
+from .agent_types import AgentResult, AgentState, AgentStep, ModelRetry, StepType
 from .async_conversation import AsyncConversation
 from .async_driver import AsyncDriver
 from .cache import (
@@ -125,6 +127,10 @@ except Exception:
 __all__ = [
     "EXPORT_VERSION",
     "FIELD_DEFINITIONS",
+    "Agent",
+    "AgentResult",
+    "AgentState",
+    "AgentStep",
     "AirLLMDriver",
     "AsyncConversation",
     "AsyncDriver",
@@ -144,12 +150,14 @@ __all__ = [
     "LMStudioDriver",
     "LocalHTTPDriver",
     "MemoryCacheBackend",
+    "ModelRetry",
     "OllamaDriver",
     "OpenAIDriver",
     "OpenRouterDriver",
     "RedisCacheBackend",
     "ResponseCache",
     "SQLiteCacheBackend",
+    "StepType",
     "ToolDefinition",
     "ToolRegistry",
     "UsageSession",

@@ -83,66 +83,146 @@
 ### Phase 3: Agent Framework
 **Goal**: Higher-level agent abstraction with a ReAct loop, typed context, structured output, and two-tier execution API (simple `run()` + step-by-step `iter()`).
 
-#### Core Agent Class
-- [ ] `Agent` class composing `Conversation` + `ToolRegistry` + system prompt + output type
-- [ ] Constructor: `Agent(model, *, tools, system_prompt, output_type, deps_type, max_iterations, max_cost)`
-- [ ] Tool registration via constructor injection and `@agent.tool` decorator
-- [ ] `output_type: type[BaseModel]` for structured agent output with validation retry (reuses `extract_with_model()` internally)
+#### Phase 3a: Core Agent Class ✅
+- [x] `Agent` class composing `Conversation` + `ToolRegistry` + system prompt + output type
+- [x] Constructor: `Agent(model, *, driver, tools, system_prompt, output_type, max_iterations, options)`
+- [x] Tool registration via constructor injection (list or `ToolRegistry`) and `@agent.tool` decorator
+- [x] `output_type: type[BaseModel]` for structured agent output with JSON parse + `model_validate()` retry (up to 3 attempts)
+- [x] `agent.run(prompt) -> AgentResult` — high-level, hides the ReAct loop entirely
+- [x] `AgentResult` containing: `output` (typed or str), `output_text`, `messages`, `usage`, `steps: list[AgentStep]`, `all_tool_calls`, `state`
+- [x] `AgentStep` dataclass with `step_type` (think/tool_call/tool_result/output), `timestamp`, `content`, `tool_name`, `tool_args`, `tool_result`, `duration_ms`
+- [x] `AgentState` enum: `idle`, `running`, `stopped`, `errored`
+- [x] `agent.stop()` graceful shutdown flag
+- [x] Fresh `Conversation` per `run()` — no state leakage between runs
+- [x] Internal ReAct loop delegates to `Conversation._ask_with_tools` via `max_tool_rounds`
+- [x] System prompt augmented with JSON schema instructions when `output_type` is set
+- [x] `ModelRetry` exception defined (used in Phase 3b guardrails)
+- [x] Shared types module: `agent_types.py` (AgentState, StepType, AgentStep, AgentResult, ModelRetry)
+- [x] 24 unit tests covering construction, run (no tools / with tools / with output_type), system prompt, stop, state, options
+- [x] Example script: `examples/agent_example.py`
 
-#### Typed Context & Dependency Injection
+#### Phase 3b: Context, Guardrails & Callbacks (next)
 - [ ] `RunContext[DepsType]` dataclass passed to tools and system prompt functions: carries deps, model info, usage, message history, iteration count
 - [ ] `deps_type` generic on `Agent` for type-safe dependency access in tools
 - [ ] Dynamic system prompts: `system_prompt: str | Callable[[RunContext], str]` for context-aware persona rendering
-
-#### Two-Tier Execution API
-- [ ] `agent.run(prompt, *, deps, context) -> AgentResult` — high-level, hides the ReAct loop entirely
-- [ ] `agent.run_sync(prompt, *, deps) -> AgentResult` — sync wrapper for non-async contexts
-- [ ] `agent.run_stream(prompt, *, deps) -> StreamedAgentResult` — streaming with deltas for each step
-- [ ] `agent.iter(prompt, *, deps) -> AgentIterator` — low-level step-by-step control, yields `AgentStep` (think/tool_call/tool_result/output) per iteration
-- [ ] `AgentResult` containing: `output` (typed or str), `messages`, `usage`, `steps: list[AgentStep]`, `all_tool_calls`
-
-#### Agent Loop & State
-- [ ] Internal ReAct loop: send messages → check for tool calls → execute tools → re-send (reuses `Conversation._ask_with_tools` pattern)
-- [ ] Loop modes: `autonomous` (run until output or max_iterations), `single_step` (one LLM call, return)
-- [ ] Agent state enum: `idle`, `running`, `paused`, `stopped`, `errored`
-- [ ] Graceful shutdown: `agent.stop()` completes current iteration then exits
-- [ ] Iteration limits: `max_iterations` (tool rounds) and `max_cost` (USD budget via `UsageSession`)
-
-#### Lifecycle Hooks & Observability
 - [ ] `AgentCallbacks` extending `DriverCallbacks` with: `on_step`, `on_tool_start(name, args)`, `on_tool_end(name, result)`, `on_iteration(step_number)`, `on_output(result)`
-- [ ] Per-run `UsageSession` tracking (tokens, cost, errors across all iterations)
-- [ ] Structured step log: `AgentStep` dataclass with `step_type`, `timestamp`, `content`, `tool_name`, `duration_ms`
-
-#### Guardrails
 - [ ] Input validators: `input_guardrails: list[Callable[[RunContext, str], str | None]]` — transform or reject input before loop starts
 - [ ] Output validators: `output_guardrails: list[Callable[[RunContext, AgentResult], AgentResult | None]]` — validate final output, raise `ModelRetry` to feed error back to LLM
-- [ ] `ModelRetry` exception: raised from tools or validators to send error message back to the model with retry budget
+- [ ] `ModelRetry` exception integration: raised from tools or validators to send error message back to the model with retry budget
+- [ ] Per-run `UsageSession` tracking (tokens, cost, errors across all iterations)
+- [ ] Iteration limits: `max_cost` (USD budget via `UsageSession`)
 
-#### Async Support
+#### Phase 3c: Streaming, Iteration & Async
+- [ ] `agent.iter(prompt) -> AgentIterator` — low-level step-by-step control, yields `AgentStep` per iteration
+- [ ] `agent.run_stream(prompt) -> StreamedAgentResult` — streaming with deltas for each step
 - [ ] `AsyncAgent` mirroring `Agent` with `async run()`, `async iter()`, `async run_stream()`
 - [ ] Async tool support: tools can be sync or async callables (auto-detected)
 
 ### Phase 4: Persona Templates
-**Goal**: Reusable, composable personality definitions for agents and conversations.
+**Goal**: Reusable, composable system prompt definitions with template variables, layered composition, and a thread-safe registry following the `field_definitions.py` pattern.
 
-- [ ] `Persona` class with structured fields: name, traits, tone, constraints, knowledge domains
-- [ ] Persona registry (like field registry): `register_persona("cautious_explorer", {...})`
-- [ ] Composable traits: `Persona(base="explorer", traits=["tech_savvy", "minimalist"])`
-- [ ] Persona-to-system-prompt rendering with template support
-- [ ] Built-in personas: assistant, analyst, coder, reviewer, device_agent
-- [ ] `Conversation(persona="cautious_explorer")` shorthand
-- [ ] Persona serialization for storage/sharing
+#### Persona Data Model
+- [ ] `Persona` dataclass with structured fields: `name`, `system_prompt` (template text), `description` (metadata for registries/docs), `traits: list[str]` (behavioral tags), `variables: dict[str, Any]` (default template values), `constraints: list[str]` (rules and guardrails), `model_hint: str | None` (suggested model), `settings: dict[str, Any]` (temperature, max_tokens, etc.)
+- [ ] Layered prompt structure within `system_prompt`: role/identity section, behavioral rules, output format constraints, and domain knowledge — following OpenAI/Anthropic prompt engineering best practices (markdown headings or XML sections)
+
+#### Template Rendering
+- [ ] Reuse `field_definitions.py` `{{variable}}` substitution engine for persona prompts
+- [ ] Built-in runtime variables: `{{current_date}}`, `{{current_year}}`, `{{current_datetime}}`, `{{current_weekday}}` (same as field definitions)
+- [ ] Custom per-render variables: `persona.render(user_name="Alice", company="Acme")`
+- [ ] `Persona.render(**kwargs) -> str` produces final system prompt with all variables resolved
+
+#### Composition & Extension
+- [ ] `persona.extend(additional_instructions) -> Persona` — returns new persona with appended instructions (immutable pattern)
+- [ ] Trait composition: `Persona(base="analyst", traits=["concise", "technical"])` merges base persona's prompt with trait-defined behavioral modifiers
+- [ ] Trait registry: `register_trait("concise", "Keep responses under 3 sentences.")` — reusable behavioral fragments (inspired by Datasette LLM fragments)
+- [ ] Constraint injection: `persona.with_constraints(["Never discuss competitors", "Always cite sources"])` — appends rules without modifying the base prompt
+- [ ] `persona + other_persona` merge operator for combining two personas (concatenates prompts, merges traits/variables, warns on conflicts)
+
+#### Thread-Safe Global Registry
+- [ ] `register_persona(name, persona)` / `get_persona(name)` with `threading.Lock` (mirrors `field_definitions.py` pattern exactly)
+- [ ] `get_persona_names()`, `get_registry_snapshot()`, `reset_registry()`
+- [ ] `_PersonaRegistryProxy` for dict-like access: `PERSONAS["analyst"]`
+- [ ] Auto-initialization with built-in personas on import
+
+#### Built-in Personas
+- [ ] `json_extractor` — precise structured data extraction, low temperature, JSON-only output
+- [ ] `data_analyst` — quantitative analysis, cites sources, uses precise numerical language
+- [ ] `text_summarizer` — concise summaries, configurable length via variables
+- [ ] `code_reviewer` — technical, identifies issues and suggests fixes, structured feedback format
+- [ ] `concise_assistant` — general purpose, brief responses, no unnecessary elaboration
+- [ ] Each built-in persona includes appropriate `model_hint` and `settings` defaults
+
+#### Integration with Conversation & Agent
+- [ ] `Conversation(persona="json_extractor")` shorthand — looks up registry, renders, sets as system prompt
+- [ ] `Conversation(persona=my_persona)` — accepts `Persona` instance directly
+- [ ] `Agent(persona="analyst")` shorthand (Phase 3 integration) — renders via `RunContext` for dynamic variable injection
+- [ ] Dynamic persona support for agents: `system_prompt: str | Persona | Callable[[RunContext], str]` — Persona objects auto-render with RunContext variables
+- [ ] `description` field available for multi-agent routing (AutoGen pattern: LLM-facing prompt vs orchestrator-facing metadata are separate concerns)
+
+#### Serialization & Persistence
+- [ ] `persona.to_dict() -> dict` / `Persona.from_dict(data) -> Persona` with version field
+- [ ] YAML file support: `persona.save_yaml("path.yaml")` / `Persona.load_yaml("path.yaml")` — YAML is the standard for human-authored prompt definitions
+- [ ] JSON file support: `persona.save_json("path.json")` / `Persona.load_json("path.json")` — for programmatic generation and API transport
+- [ ] `load_personas_from_directory("personas/")` — bulk-load a folder of YAML/JSON persona files into the registry
 
 ### Phase 5: Multi-Agent Coordination
-**Goal**: Enable multiple agents to share context and collaborate.
+**Goal**: Enable multiple agents to collaborate via deterministic workflow groups (sequential, parallel, router) and agent-as-tool composition, with explicit scoped state sharing and aggregate usage tracking.
 
-- [ ] `AgentGroup` for managing a set of agents with a shared objective
-- [ ] Shared message bus: agents can send typed messages to each other
-- [ ] Coordinator pattern: one agent delegates tasks to others
-- [ ] Shared memory: a common context store agents can read/write
-- [ ] Agent discovery: agents can query what other agents exist and their capabilities
-- [ ] Synchronization primitives: wait for agent, barrier, handoff
-- [ ] Group-level usage tracking (aggregate tokens/cost across all agents)
+#### Agent-as-Tool (Foundation Pattern)
+- [ ] `agent.as_tool(name, description) -> ToolDefinition` — wraps any `Agent` as a callable tool for another agent
+- [ ] Coordinator retains conversation control; sub-agent runs independently and returns result as tool output
+- [ ] Optional `custom_output_extractor: Callable[[AgentResult], str]` for transforming sub-agent results before returning to coordinator
+- [ ] Sub-agent inherits no conversation history from coordinator (maximum isolation)
+- [ ] Sub-agent `AgentResult` captured for tracing even when used as tool
+
+#### Deterministic Workflow Groups
+- [ ] `SequentialGroup(agents, *, state, error_policy, max_total_turns)` — agents execute in order, each receiving shared state with outputs from prior agents
+- [ ] `ParallelGroup(agents, *, state, error_policy, timeout_ms)` — independent agents run concurrently via `asyncio.gather`, results collected into shared state
+- [ ] `LoopGroup(agents, *, exit_condition, max_iterations)` — generator-critic cycle: agents execute in sequence repeatedly until `exit_condition(state) -> bool` returns True
+- [ ] All groups accept `state: dict[str, Any]` as initial shared context
+- [ ] Groups are composable: a `SequentialGroup` can contain a `ParallelGroup` as a step (nested workflows)
+
+#### Shared State via Named Keys
+- [ ] Each agent reads from shared `state: dict[str, Any]` (injected as part of system prompt or `RunContext.deps`)
+- [ ] Each agent writes output to a named key: `Agent(output_key="research_data")` — result stored in `state["research_data"]`
+- [ ] Template variable injection: agent system prompts can reference `{research_data}` to read other agents' outputs (Google ADK pattern)
+- [ ] Explicit data flow: traceable which agent produces and consumes which state keys
+- [ ] No shared conversation history — each agent gets only the state keys it needs (minimum necessary context)
+
+#### LLM-Driven Router (Optional)
+- [ ] `RouterAgent(model, agents, routing_prompt)` — uses a (cheap) LLM to classify input and delegate to the appropriate specialist agent
+- [ ] Routing based on agent `description` fields from Persona metadata (Phase 4 integration)
+- [ ] Fallback agent when no specialist matches
+- [ ] Router runs a single LLM call for classification, not a full ReAct loop (minimal overhead)
+
+#### Error Handling
+- [ ] `ErrorPolicy` enum: `fail_fast` (abort group on first failure), `continue_on_error` (skip failed agent, proceed with partial results), `retry_failed` (retry N times with backoff)
+- [ ] Per-agent error state captured in `GroupResult.agent_results`
+- [ ] Failed agent's error message available in shared state for downstream agents to handle
+- [ ] `max_total_turns` across entire group to prevent runaway costs from agents bouncing between each other
+
+#### Group-Level Usage & Observability
+- [ ] `GroupResult` dataclass: `agent_results: dict[str, AgentResult]`, `aggregate_usage: UsageSession`, `shared_state: dict[str, Any]`, `elapsed_ms: float`, `timeline: list[GroupStep]`
+- [ ] `GroupStep` dataclass: `agent_name`, `step_type` (started/completed/errored), `timestamp`, `duration_ms`, `usage_delta`
+- [ ] Aggregate `UsageSession` across all agents with per-agent bucketing (`_per_agent: dict[str, UsageSession]`)
+- [ ] `GroupCallbacks` extending `AgentCallbacks` with: `on_agent_start(name)`, `on_agent_complete(name, result)`, `on_agent_error(name, error)`, `on_state_update(key, value)`
+- [ ] Interleaved timeline view: all agent steps merged chronologically for debugging
+
+#### Timeout & Cancellation
+- [ ] Per-agent timeout: `Agent(timeout_ms=30000)` — enforced via `asyncio.wait_for`
+- [ ] Group-level timeout: `group.run(timeout_ms=120000)` — cancels all remaining agents
+- [ ] Cooperative shutdown: `group.stop()` calls `agent.stop()` on all running agents, waits for current iterations to complete
+- [ ] `max_total_cost` budget across the group (aggregate `UsageSession` enforced)
+
+#### Async Support
+- [ ] `AsyncSequentialGroup`, `AsyncParallelGroup`, `AsyncLoopGroup` mirroring sync variants
+- [ ] `ParallelGroup` uses `asyncio.gather` internally (async-native); sync wrapper available via `group.run()` with event loop management
+- [ ] `AsyncRouterAgent` for non-blocking routing
+
+#### Serialization & Persistence
+- [ ] `GroupResult.export() -> dict` with per-agent results, shared state, aggregate usage, and timeline
+- [ ] `group.save("path.json")` for full group run persistence (reuses `serialization.py` patterns)
+- [ ] Tag-based storage: `ConversationStore.save(group_id, export, tags=["group_run", "2025-01-30"])`
 
 ### Phase 6: Cost Budgets & Guardrails
 **Goal**: Prevent runaway costs and enforce safety constraints on conversations and agents.
