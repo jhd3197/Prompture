@@ -19,6 +19,7 @@ from .drivers import get_driver_for_model
 from .field_definitions import get_registry_snapshot
 from .image import ImageInput, make_image
 from .persistence import load_from_file, save_to_file
+from .persona import Persona, get_persona
 from .serialization import export_conversation, import_conversation
 from .session import UsageSession
 from .tools import (
@@ -50,6 +51,7 @@ class Conversation:
         *,
         driver: Driver | None = None,
         system_prompt: str | None = None,
+        persona: str | Persona | None = None,
         options: dict[str, Any] | None = None,
         callbacks: DriverCallbacks | None = None,
         tools: ToolRegistry | None = None,
@@ -58,8 +60,25 @@ class Conversation:
         auto_save: str | Path | None = None,
         tags: list[str] | None = None,
     ) -> None:
+        if system_prompt is not None and persona is not None:
+            raise ValueError("Cannot provide both 'system_prompt' and 'persona'. Use one or the other.")
+
+        # Resolve persona
+        resolved_persona: Persona | None = None
+        if persona is not None:
+            if isinstance(persona, str):
+                resolved_persona = get_persona(persona)
+                if resolved_persona is None:
+                    raise ValueError(f"Persona '{persona}' not found in registry.")
+            else:
+                resolved_persona = persona
+
         if model_name is None and driver is None:
-            raise ValueError("Either model_name or driver must be provided")
+            # Check persona for model_hint
+            if resolved_persona is not None and resolved_persona.model_hint:
+                model_name = resolved_persona.model_hint
+            else:
+                raise ValueError("Either model_name or driver must be provided")
 
         if driver is not None:
             self._driver = driver
@@ -70,8 +89,16 @@ class Conversation:
             self._driver.callbacks = callbacks
 
         self._model_name = model_name or ""
-        self._system_prompt = system_prompt
-        self._options = dict(options) if options else {}
+
+        # Apply persona: render system_prompt and merge settings
+        if resolved_persona is not None:
+            self._system_prompt = resolved_persona.render()
+            # Persona settings as defaults, explicit options override
+            self._options = {**resolved_persona.settings, **(dict(options) if options else {})}
+        else:
+            self._system_prompt = system_prompt
+            self._options = dict(options) if options else {}
+
         self._messages: list[dict[str, Any]] = []
         self._usage = {
             "prompt_tokens": 0,

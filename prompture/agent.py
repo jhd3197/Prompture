@@ -40,6 +40,7 @@ from .agent_types import (
 from .callbacks import DriverCallbacks
 from .conversation import Conversation
 from .driver import Driver
+from .persona import Persona
 from .session import UsageSession
 from .tools import clean_json_text
 from .tools_schema import ToolDefinition, ToolRegistry
@@ -147,7 +148,7 @@ class Agent(Generic[DepsType]):
         *,
         driver: Driver | None = None,
         tools: list[Callable[..., Any]] | ToolRegistry | None = None,
-        system_prompt: str | Callable[..., str] | None = None,
+        system_prompt: str | Persona | Callable[..., str] | None = None,
         output_type: type[BaseModel] | None = None,
         max_iterations: int = 10,
         max_cost: float | None = None,
@@ -421,7 +422,14 @@ class Agent(Generic[DepsType]):
         parts: list[str] = []
 
         if self._system_prompt is not None:
-            if callable(self._system_prompt) and not isinstance(self._system_prompt, str):
+            if isinstance(self._system_prompt, Persona):
+                # Render Persona with RunContext variables if available
+                render_kwargs: dict[str, Any] = {}
+                if ctx is not None:
+                    render_kwargs["model"] = ctx.model
+                    render_kwargs["iteration"] = ctx.iteration
+                parts.append(self._system_prompt.render(**render_kwargs))
+            elif callable(self._system_prompt) and not isinstance(self._system_prompt, str):
                 if ctx is not None:
                     parts.append(self._system_prompt(ctx))
                 else:
