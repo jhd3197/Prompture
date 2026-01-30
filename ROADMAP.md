@@ -122,52 +122,57 @@
 - [x] All new types exported from `prompture.__init__`
 - [x] Example script: `examples/async_agent_example.py`
 
-### Phase 4: Persona Templates
+### Phase 4: Persona Templates ✅
 **Goal**: Reusable, composable system prompt definitions with template variables, layered composition, and a thread-safe registry following the `field_definitions.py` pattern.
 
-#### Persona Data Model
-- [ ] `Persona` dataclass with structured fields: `name`, `system_prompt` (template text), `description` (metadata for registries/docs), `traits: list[str]` (behavioral tags), `variables: dict[str, Any]` (default template values), `constraints: list[str]` (rules and guardrails), `model_hint: str | None` (suggested model), `settings: dict[str, Any]` (temperature, max_tokens, etc.)
-- [ ] Layered prompt structure within `system_prompt`: role/identity section, behavioral rules, output format constraints, and domain knowledge — following OpenAI/Anthropic prompt engineering best practices (markdown headings or XML sections)
+#### Persona Data Model ✅
+- [x] `Persona` frozen dataclass with structured fields: `name`, `system_prompt` (template text), `description` (metadata for registries/docs), `traits: tuple[str, ...]` (behavioral tags), `variables: dict[str, Any]` (default template values), `constraints: list[str]` (rules and guardrails), `model_hint: str | None` (suggested model), `settings: dict[str, Any]` (temperature, max_tokens, etc.)
+- [x] Layered prompt structure within `system_prompt`: role/identity section, behavioral rules, output format constraints, and domain knowledge — constraints rendered as `## Constraints` section
 
-#### Template Rendering
-- [ ] Reuse `field_definitions.py` `{{variable}}` substitution engine for persona prompts
-- [ ] Built-in runtime variables: `{{current_date}}`, `{{current_year}}`, `{{current_datetime}}`, `{{current_weekday}}` (same as field definitions)
-- [ ] Custom per-render variables: `persona.render(user_name="Alice", company="Acme")`
-- [ ] `Persona.render(**kwargs) -> str` produces final system prompt with all variables resolved
+#### Template Rendering ✅
+- [x] Reuse `field_definitions.py` `_apply_templates()` and `_get_template_variables()` for persona prompts
+- [x] Built-in runtime variables: `{{current_date}}`, `{{current_year}}`, `{{current_datetime}}`, `{{current_weekday}}` (same as field definitions)
+- [x] Custom per-render variables: `persona.render(user_name="Alice", company="Acme")`
+- [x] `Persona.render(**kwargs) -> str` produces final system prompt with all variables resolved
+- [x] Variable precedence: built-in < `self.variables` < kwargs
 
-#### Composition & Extension
-- [ ] `persona.extend(additional_instructions) -> Persona` — returns new persona with appended instructions (immutable pattern)
-- [ ] Trait composition: `Persona(base="analyst", traits=["concise", "technical"])` merges base persona's prompt with trait-defined behavioral modifiers
-- [ ] Trait registry: `register_trait("concise", "Keep responses under 3 sentences.")` — reusable behavioral fragments (inspired by Datasette LLM fragments)
-- [ ] Constraint injection: `persona.with_constraints(["Never discuss competitors", "Always cite sources"])` — appends rules without modifying the base prompt
-- [ ] `persona + other_persona` merge operator for combining two personas (concatenates prompts, merges traits/variables, warns on conflicts)
+#### Composition & Extension ✅
+- [x] `persona.extend(additional_instructions) -> Persona` — returns new persona with appended instructions (immutable via `dataclasses.replace`)
+- [x] Trait composition: `Persona(traits=("concise", "technical"))` resolves traits from registry during `render()`
+- [x] Trait registry: `register_trait("concise", "Keep responses under 3 sentences.")`, `get_trait()`, `get_trait_names()`, `reset_trait_registry()` with `threading.Lock`
+- [x] Constraint injection: `persona.with_constraints(["Never discuss competitors"])` — appends rules without modifying the base prompt
+- [x] `persona + other_persona` merge operator: concatenates prompts, dedupes traits, merges variables (right wins + warning on conflict), merges constraints and settings
 
-#### Thread-Safe Global Registry
-- [ ] `register_persona(name, persona)` / `get_persona(name)` with `threading.Lock` (mirrors `field_definitions.py` pattern exactly)
-- [ ] `get_persona_names()`, `get_registry_snapshot()`, `reset_registry()`
-- [ ] `_PersonaRegistryProxy` for dict-like access: `PERSONAS["analyst"]`
-- [ ] Auto-initialization with built-in personas on import
+#### Thread-Safe Global Registry ✅
+- [x] `register_persona(persona)` / `get_persona(name)` with `threading.Lock` (mirrors `field_definitions.py` pattern)
+- [x] `get_persona_names()`, `get_persona_registry_snapshot()`, `clear_persona_registry()`, `reset_persona_registry()`
+- [x] `_PersonaRegistryProxy` for dict-like access: `PERSONAS["analyst"]`
+- [x] Auto-initialization with built-in personas on import
 
-#### Built-in Personas
-- [ ] `json_extractor` — precise structured data extraction, low temperature, JSON-only output
-- [ ] `data_analyst` — quantitative analysis, cites sources, uses precise numerical language
-- [ ] `text_summarizer` — concise summaries, configurable length via variables
-- [ ] `code_reviewer` — technical, identifies issues and suggests fixes, structured feedback format
-- [ ] `concise_assistant` — general purpose, brief responses, no unnecessary elaboration
-- [ ] Each built-in persona includes appropriate `model_hint` and `settings` defaults
+#### Built-in Personas ✅
+- [x] `json_extractor` — precise structured data extraction, `temperature: 0.0`, JSON-only output constraints
+- [x] `data_analyst` — quantitative analysis, cites sources, confidence level constraints
+- [x] `text_summarizer` — concise summaries, configurable `{{max_sentences}}` variable (default 3)
+- [x] `code_reviewer` — structured feedback format (Summary/Issues/Suggestions sections)
+- [x] `concise_assistant` — brief responses, no unnecessary elaboration
 
-#### Integration with Conversation & Agent
-- [ ] `Conversation(persona="json_extractor")` shorthand — looks up registry, renders, sets as system prompt
-- [ ] `Conversation(persona=my_persona)` — accepts `Persona` instance directly
-- [ ] `Agent(persona="analyst")` shorthand (Phase 3 integration) — renders via `RunContext` for dynamic variable injection
-- [ ] Dynamic persona support for agents: `system_prompt: str | Persona | Callable[[RunContext], str]` — Persona objects auto-render with RunContext variables
-- [ ] `description` field available for multi-agent routing (AutoGen pattern: LLM-facing prompt vs orchestrator-facing metadata are separate concerns)
+#### Integration with Conversation & Agent ✅
+- [x] `Conversation(persona="json_extractor")` shorthand — looks up registry, renders, sets as system prompt
+- [x] `Conversation(persona=my_persona)` — accepts `Persona` instance directly
+- [x] `ValueError` when both `persona` and `system_prompt` provided
+- [x] `persona.settings` applied as default options (explicit options override)
+- [x] `persona.model_hint` used if `model_name` not provided
+- [x] Dynamic persona support for agents: `system_prompt: str | Persona | Callable[[RunContext], str]` — Persona objects auto-render with RunContext variables
+- [x] `description` field available for multi-agent routing
+- [x] Full async support: mirrored on `AsyncConversation` and `AsyncAgent`
+- [x] All new symbols exported from `prompture.__init__`
 
-#### Serialization & Persistence
-- [ ] `persona.to_dict() -> dict` / `Persona.from_dict(data) -> Persona` with version field
-- [ ] YAML file support: `persona.save_yaml("path.yaml")` / `Persona.load_yaml("path.yaml")` — YAML is the standard for human-authored prompt definitions
-- [ ] JSON file support: `persona.save_json("path.json")` / `Persona.load_json("path.json")` — for programmatic generation and API transport
-- [ ] `load_personas_from_directory("personas/")` — bulk-load a folder of YAML/JSON persona files into the registry
+#### Serialization & Persistence ✅
+- [x] `persona.to_dict() -> dict` / `Persona.from_dict(data) -> Persona` with `version: 1`
+- [x] JSON file support: `persona.save_json()` / `Persona.load_json()`
+- [x] YAML file support: `persona.save_yaml()` / `Persona.load_yaml()` (optional `pyyaml` dependency)
+- [x] `load_personas_from_directory("personas/")` — bulk-load `.json`/`.yaml`/`.yml` files into the registry
+- [x] 72 unit tests covering all sub-phases
 
 ### Phase 5: Multi-Agent Coordination
 **Goal**: Enable multiple agents to collaborate via deterministic workflow groups (sequential, parallel, router) and agent-as-tool composition, with explicit scoped state sharing and aggregate usage tracking.
