@@ -20,6 +20,7 @@ class AsyncGoogleDriver(CostMixin, AsyncDriver):
 
     supports_json_mode = True
     supports_json_schema = True
+    supports_vision = True
 
     MODEL_PRICING = GoogleDriver.MODEL_PRICING
     _PRICING_UNIT = 1_000_000
@@ -50,12 +51,17 @@ class AsyncGoogleDriver(CostMixin, AsyncDriver):
 
     supports_messages = True
 
+    def _prepare_messages(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        from .vision_helpers import _prepare_google_vision_messages
+
+        return _prepare_google_vision_messages(messages)
+
     async def generate(self, prompt: str, options: dict[str, Any] | None = None) -> dict[str, Any]:
         messages = [{"role": "user", "content": prompt}]
         return await self._do_generate(messages, options)
 
     async def generate_messages(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
-        return await self._do_generate(messages, options)
+        return await self._do_generate(self._prepare_messages(messages), options)
 
     async def _do_generate(
         self, messages: list[dict[str, str]], options: dict[str, Any] | None = None
@@ -90,10 +96,14 @@ class AsyncGoogleDriver(CostMixin, AsyncDriver):
             role = msg.get("role", "user")
             content = msg.get("content", "")
             if role == "system":
-                system_instruction = content
+                system_instruction = content if isinstance(content, str) else str(content)
             else:
                 gemini_role = "model" if role == "assistant" else "user"
-                contents.append({"role": gemini_role, "parts": [content]})
+                if msg.get("_vision_parts"):
+                    # Already converted to Gemini parts by _prepare_messages
+                    contents.append({"role": gemini_role, "parts": content})
+                else:
+                    contents.append({"role": gemini_role, "parts": [content]})
 
         try:
             model_kwargs: dict[str, Any] = {}
@@ -111,7 +121,17 @@ class AsyncGoogleDriver(CostMixin, AsyncDriver):
             if not response.text:
                 raise ValueError("Empty response from model")
 
-            total_prompt_chars = sum(len(msg.get("content", "")) for msg in messages)
+            total_prompt_chars = 0
+            for msg in messages:
+                c = msg.get("content", "")
+                if isinstance(c, str):
+                    total_prompt_chars += len(c)
+                elif isinstance(c, list):
+                    for part in c:
+                        if isinstance(part, str):
+                            total_prompt_chars += len(part)
+                        elif isinstance(part, dict) and "text" in part:
+                            total_prompt_chars += len(part["text"])
             completion_chars = len(response.text)
 
             total_cost = self._calculate_cost_chars(total_prompt_chars, completion_chars)

@@ -35,6 +35,7 @@ class AsyncDriver:
     supports_messages: bool = False
     supports_tool_use: bool = False
     supports_streaming: bool = False
+    supports_vision: bool = False
 
     callbacks: DriverCallbacks | None = None
 
@@ -164,6 +165,29 @@ class AsyncDriver:
             cb(payload)
         except Exception:
             logger.exception("Callback %s raised an exception", event)
+
+    def _check_vision_support(self, messages: list[dict[str, Any]]) -> None:
+        """Raise if messages contain image blocks and the driver lacks vision support."""
+        if self.supports_vision:
+            return
+        for msg in messages:
+            content = msg.get("content")
+            if isinstance(content, list):
+                for block in content:
+                    if isinstance(block, dict) and block.get("type") == "image":
+                        raise NotImplementedError(
+                            f"{self.__class__.__name__} does not support vision/image inputs. "
+                            "Use a vision-capable model."
+                        )
+
+    def _prepare_messages(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Transform universal message format into provider-specific wire format.
+
+        Vision-capable async drivers override this to convert the universal
+        image blocks into their provider-specific format.
+        """
+        self._check_vision_support(messages)
+        return messages
 
     # Re-export the static helper for convenience
     _flatten_messages = staticmethod(Driver._flatten_messages)

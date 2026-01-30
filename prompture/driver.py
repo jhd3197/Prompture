@@ -35,6 +35,7 @@ class Driver:
     supports_messages: bool = False
     supports_tool_use: bool = False
     supports_streaming: bool = False
+    supports_vision: bool = False
 
     callbacks: DriverCallbacks | None = None
 
@@ -52,6 +53,7 @@ class Driver:
         support message arrays should override this method and set
         ``supports_messages = True``.
         """
+        self._check_vision_support(messages)
         prompt = self._flatten_messages(messages)
         return self.generate(prompt, options)
 
@@ -171,6 +173,30 @@ class Driver:
         except Exception:
             logger.exception("Callback %s raised an exception", event)
 
+    def _check_vision_support(self, messages: list[dict[str, Any]]) -> None:
+        """Raise if messages contain image blocks and the driver lacks vision support."""
+        if self.supports_vision:
+            return
+        for msg in messages:
+            content = msg.get("content")
+            if isinstance(content, list):
+                for block in content:
+                    if isinstance(block, dict) and block.get("type") == "image":
+                        raise NotImplementedError(
+                            f"{self.__class__.__name__} does not support vision/image inputs. "
+                            "Use a vision-capable model."
+                        )
+
+    def _prepare_messages(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Transform universal message format into provider-specific wire format.
+
+        Vision-capable drivers override this to convert the universal image
+        blocks into their provider-specific format.  The base implementation
+        validates vision support and returns messages unchanged.
+        """
+        self._check_vision_support(messages)
+        return messages
+
     @staticmethod
     def _flatten_messages(messages: list[dict[str, Any]]) -> str:
         """Join messages into a single prompt string with role prefixes."""
@@ -178,6 +204,18 @@ class Driver:
         for msg in messages:
             role = msg.get("role", "user")
             content = msg.get("content", "")
+            # Handle content that is a list of blocks (vision messages)
+            if isinstance(content, list):
+                text_parts = []
+                for block in content:
+                    if isinstance(block, dict):
+                        if block.get("type") == "text":
+                            text_parts.append(block.get("text", ""))
+                        elif block.get("type") == "image":
+                            text_parts.append("[image]")
+                    elif isinstance(block, str):
+                        text_parts.append(block)
+                content = " ".join(text_parts)
             if role == "system":
                 parts.append(f"[System]: {content}")
             elif role == "assistant":

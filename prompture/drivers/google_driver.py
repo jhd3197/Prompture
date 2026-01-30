@@ -15,6 +15,7 @@ class GoogleDriver(CostMixin, Driver):
 
     supports_json_mode = True
     supports_json_schema = True
+    supports_vision = True
 
     # Based on current Gemini pricing (as of 2025)
     # Source: https://cloud.google.com/vertex-ai/pricing#gemini_models
@@ -107,12 +108,17 @@ class GoogleDriver(CostMixin, Driver):
 
     supports_messages = True
 
+    def _prepare_messages(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        from .vision_helpers import _prepare_google_vision_messages
+
+        return _prepare_google_vision_messages(messages)
+
     def generate(self, prompt: str, options: Optional[dict[str, Any]] = None) -> dict[str, Any]:
         messages = [{"role": "user", "content": prompt}]
         return self._do_generate(messages, options)
 
     def generate_messages(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
-        return self._do_generate(messages, options)
+        return self._do_generate(self._prepare_messages(messages), options)
 
     def _do_generate(self, messages: list[dict[str, str]], options: Optional[dict[str, Any]] = None) -> dict[str, Any]:
         merged_options = self.options.copy()
@@ -147,11 +153,15 @@ class GoogleDriver(CostMixin, Driver):
             role = msg.get("role", "user")
             content = msg.get("content", "")
             if role == "system":
-                system_instruction = content
+                system_instruction = content if isinstance(content, str) else str(content)
             else:
                 # Gemini uses "model" for assistant role
                 gemini_role = "model" if role == "assistant" else "user"
-                contents.append({"role": gemini_role, "parts": [content]})
+                if msg.get("_vision_parts"):
+                    # Already converted to Gemini parts by _prepare_messages
+                    contents.append({"role": gemini_role, "parts": content})
+                else:
+                    contents.append({"role": gemini_role, "parts": [content]})
 
         try:
             logger.debug(f"Initializing {self.model} for generation")
@@ -174,7 +184,17 @@ class GoogleDriver(CostMixin, Driver):
                 raise ValueError("Empty response from model")
 
             # Calculate token usage and cost
-            total_prompt_chars = sum(len(msg.get("content", "")) for msg in messages)
+            total_prompt_chars = 0
+            for msg in messages:
+                c = msg.get("content", "")
+                if isinstance(c, str):
+                    total_prompt_chars += len(c)
+                elif isinstance(c, list):
+                    for part in c:
+                        if isinstance(part, str):
+                            total_prompt_chars += len(part)
+                        elif isinstance(part, dict) and "text" in part:
+                            total_prompt_chars += len(part["text"])
             completion_chars = len(response.text)
 
             # Google uses character-based cost estimation

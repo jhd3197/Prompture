@@ -15,6 +15,7 @@ from .callbacks import DriverCallbacks
 from .driver import Driver
 from .drivers import get_driver_for_model
 from .field_definitions import get_registry_snapshot
+from .image import ImageInput, make_image
 from .tools import (
     clean_json_text,
     convert_value,
@@ -92,11 +93,12 @@ class Conversation:
         """Reset message history (keeps system_prompt and driver)."""
         self._messages.clear()
 
-    def add_context(self, role: str, content: str) -> None:
+    def add_context(self, role: str, content: str, images: list[ImageInput] | None = None) -> None:
         """Seed the history with a user or assistant message."""
         if role not in ("user", "assistant"):
             raise ValueError("role must be 'user' or 'assistant'")
-        self._messages.append({"role": role, "content": content})
+        msg_content = self._build_content_with_images(content, images)
+        self._messages.append({"role": role, "content": msg_content})
 
     def register_tool(
         self,
@@ -117,13 +119,25 @@ class Conversation:
     # Core methods
     # ------------------------------------------------------------------
 
-    def _build_messages(self, user_content: str) -> list[dict[str, Any]]:
+    @staticmethod
+    def _build_content_with_images(text: str, images: list[ImageInput] | None = None) -> str | list[dict[str, Any]]:
+        """Return plain string when no images, or a list of content blocks."""
+        if not images:
+            return text
+        blocks: list[dict[str, Any]] = [{"type": "text", "text": text}]
+        for img in images:
+            ic = make_image(img)
+            blocks.append({"type": "image", "source": ic})
+        return blocks
+
+    def _build_messages(self, user_content: str, images: list[ImageInput] | None = None) -> list[dict[str, Any]]:
         """Build the full messages array for an API call."""
         msgs: list[dict[str, Any]] = []
         if self._system_prompt:
             msgs.append({"role": "system", "content": self._system_prompt})
         msgs.extend(self._messages)
-        msgs.append({"role": "user", "content": user_content})
+        content = self._build_content_with_images(user_content, images)
+        msgs.append({"role": "user", "content": content})
         return msgs
 
     def _accumulate_usage(self, meta: dict[str, Any]) -> None:
@@ -137,25 +151,33 @@ class Conversation:
         self,
         content: str,
         options: dict[str, Any] | None = None,
+        images: list[ImageInput] | None = None,
     ) -> str:
         """Send a message and get a raw text response.
 
         Appends the user message and assistant response to history.
         If tools are registered and the driver supports tool use,
         dispatches to the tool execution loop.
+
+        Args:
+            content: The text message to send.
+            options: Additional options for the driver.
+            images: Optional list of images to include (bytes, path, URL,
+                base64 string, or :class:`ImageContent`).
         """
         if self._tools and getattr(self._driver, "supports_tool_use", False):
-            return self._ask_with_tools(content, options)
+            return self._ask_with_tools(content, options, images=images)
 
         merged = {**self._options, **(options or {})}
-        messages = self._build_messages(content)
+        messages = self._build_messages(content, images=images)
         resp = self._driver.generate_messages_with_hooks(messages, merged)
 
         text = resp.get("text", "")
         meta = resp.get("meta", {})
 
-        # Record in history
-        self._messages.append({"role": "user", "content": content})
+        # Record in history — store content with images for context
+        user_content = self._build_content_with_images(content, images)
+        self._messages.append({"role": "user", "content": user_content})
         self._messages.append({"role": "assistant", "content": text})
         self._accumulate_usage(meta)
 
@@ -165,13 +187,15 @@ class Conversation:
         self,
         content: str,
         options: dict[str, Any] | None = None,
+        images: list[ImageInput] | None = None,
     ) -> str:
         """Execute the tool-use loop: send -> check tool_calls -> execute -> re-send."""
         merged = {**self._options, **(options or {})}
         tool_defs = self._tools.to_openai_format()
 
         # Build messages including user content
-        self._messages.append({"role": "user", "content": content})
+        user_content = self._build_content_with_images(content, images)
+        self._messages.append({"role": "user", "content": user_content})
         msgs = self._build_messages_raw()
 
         for _round in range(self._max_tool_rounds):
@@ -235,6 +259,7 @@ class Conversation:
         self,
         content: str,
         options: dict[str, Any] | None = None,
+        images: list[ImageInput] | None = None,
     ) -> Iterator[str]:
         """Send a message and yield text chunks as they arrive.
 
@@ -243,13 +268,14 @@ class Conversation:
         is recorded in history.
         """
         if not getattr(self._driver, "supports_streaming", False):
-            yield self.ask(content, options)
+            yield self.ask(content, options, images=images)
             return
 
         merged = {**self._options, **(options or {})}
-        messages = self._build_messages(content)
+        messages = self._build_messages(content, images=images)
 
-        self._messages.append({"role": "user", "content": content})
+        user_content = self._build_content_with_images(content, images)
+        self._messages.append({"role": "user", "content": user_content})
 
         full_text = ""
         for chunk in self._driver.generate_messages_stream(messages, merged):
@@ -276,6 +302,7 @@ class Conversation:
         options: dict[str, Any] | None = None,
         output_format: Literal["json", "toon"] = "json",
         json_mode: Literal["auto", "on", "off"] = "auto",
+        images: list[ImageInput] | None = None,
     ) -> dict[str, Any]:
         """Send a message with schema enforcement and get structured JSON back.
 
@@ -320,14 +347,16 @@ class Conversation:
 
         full_user_content = f"{content}\n\n{instruct}"
 
-        messages = self._build_messages(full_user_content)
+        messages = self._build_messages(full_user_content, images=images)
         resp = self._driver.generate_messages_with_hooks(messages, merged)
 
         text = resp.get("text", "")
         meta = resp.get("meta", {})
 
         # Store original content (without schema boilerplate) for cleaner context
-        self._messages.append({"role": "user", "content": content})
+        # Include images in history so subsequent turns can reference them
+        user_content = self._build_content_with_images(content, images)
+        self._messages.append({"role": "user", "content": user_content})
 
         # Parse JSON
         cleaned = clean_json_text(text)
@@ -383,6 +412,7 @@ class Conversation:
         output_format: Literal["json", "toon"] = "json",
         options: dict[str, Any] | None = None,
         json_mode: Literal["auto", "on", "off"] = "auto",
+        images: list[ImageInput] | None = None,
     ) -> dict[str, Any]:
         """Extract structured information into a Pydantic model with conversation context."""
         from .core import normalize_field_value
@@ -397,6 +427,7 @@ class Conversation:
             options=options,
             output_format=output_format,
             json_mode=json_mode,
+            images=images,
         )
 
         # Normalize field values

@@ -68,6 +68,15 @@ from .field_definitions import (
     reset_registry,
     validate_enum_value,
 )
+from .image import (
+    ImageContent,
+    ImageInput,
+    image_from_base64,
+    image_from_bytes,
+    image_from_file,
+    image_from_url,
+    make_image,
+)
 from .logging import JSONFormatter, configure_logging
 from .model_rates import get_model_info, get_model_rates, refresh_rates_cache
 from .runner import run_suite_from_spec
@@ -119,6 +128,8 @@ __all__ = [
     "GoogleDriver",
     "GrokDriver",
     "GroqDriver",
+    "ImageContent",
+    "ImageInput",
     "JSONFormatter",
     "LMStudioDriver",
     "LocalHTTPDriver",
@@ -156,12 +167,17 @@ __all__ = [
     "get_model_rates",
     "get_registry_snapshot",
     "get_required_fields",
+    "image_from_base64",
+    "image_from_bytes",
+    "image_from_file",
+    "image_from_url",
     # Plugin registration API
     "is_async_driver_registered",
     "is_driver_registered",
     "list_registered_async_drivers",
     "list_registered_drivers",
     "load_entry_point_drivers",
+    "make_image",
     # Other exports
     "manual_extract_and_jsonify",
     "normalize_enum_value",

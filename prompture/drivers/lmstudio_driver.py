@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 class LMStudioDriver(Driver):
     supports_json_mode = True
+    supports_vision = True
 
     # LM Studio is local – costs are always zero.
     MODEL_PRICING = {"default": {"prompt": 0.0, "completion": 0.0}}
@@ -40,12 +41,17 @@ class LMStudioDriver(Driver):
 
     supports_messages = True
 
+    def _prepare_messages(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        from .vision_helpers import _prepare_openai_vision_messages
+
+        return _prepare_openai_vision_messages(messages)
+
     def generate(self, prompt: str, options: Optional[dict[str, Any]] = None) -> dict[str, Any]:
         messages = [{"role": "user", "content": prompt}]
         return self._do_generate(messages, options)
 
     def generate_messages(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
-        return self._do_generate(messages, options)
+        return self._do_generate(self._prepare_messages(messages), options)
 
     def _do_generate(self, messages: list[dict[str, str]], options: Optional[dict[str, Any]] = None) -> dict[str, Any]:
         merged_options = self.options.copy()

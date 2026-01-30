@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 class AsyncOllamaDriver(AsyncDriver):
     supports_json_mode = True
+    supports_vision = True
 
     MODEL_PRICING = {"default": {"prompt": 0.0, "completion": 0.0}}
 
@@ -24,6 +25,11 @@ class AsyncOllamaDriver(AsyncDriver):
         self.options: dict[str, Any] = {}
 
     supports_messages = True
+
+    def _prepare_messages(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        from .vision_helpers import _prepare_ollama_vision_messages
+
+        return _prepare_ollama_vision_messages(messages)
 
     async def generate(self, prompt: str, options: dict[str, Any] | None = None) -> dict[str, Any]:
         merged_options = self.options.copy()
@@ -74,6 +80,7 @@ class AsyncOllamaDriver(AsyncDriver):
 
     async def generate_messages(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
         """Use Ollama's /api/chat endpoint for multi-turn conversations."""
+        messages = self._prepare_messages(messages)
         merged_options = self.options.copy()
         if options:
             merged_options.update(options)

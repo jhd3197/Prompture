@@ -13,6 +13,7 @@ from ..driver import Driver
 
 class GrokDriver(CostMixin, Driver):
     supports_json_mode = True
+    supports_vision = True
 
     # Pricing per 1M tokens based on xAI's documentation
     _PRICING_UNIT = 1_000_000
@@ -80,12 +81,17 @@ class GrokDriver(CostMixin, Driver):
 
     supports_messages = True
 
+    def _prepare_messages(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        from .vision_helpers import _prepare_openai_vision_messages
+
+        return _prepare_openai_vision_messages(messages)
+
     def generate(self, prompt: str, options: dict[str, Any]) -> dict[str, Any]:
         messages = [{"role": "user", "content": prompt}]
         return self._do_generate(messages, options)
 
     def generate_messages(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
-        return self._do_generate(messages, options)
+        return self._do_generate(self._prepare_messages(messages), options)
 
     def _do_generate(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
         if not self.api_key:
