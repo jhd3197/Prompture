@@ -35,7 +35,7 @@ print("Extracting information into JSON with default instruction...")
 result = extract_and_jsonify(
     text=text,
     json_schema=json_schema,
-    model_name="ollama/gpt-oss:20b",  # explicit model override
+    model_name="ollama/deepseek-r1:8b",  # explicit model override
 )
 
 json_output = result["json_string"]
