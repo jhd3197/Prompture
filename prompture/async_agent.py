@@ -81,6 +81,7 @@ def _tool_wants_context(fn: Callable[..., Any]) -> bool:
         hints = typing.get_type_hints(fn, include_extras=True)
         annotation = hints.get(first_param)
     except Exception:
+        # get_type_hints can fail with local/forward references; fall back to raw annotation
         pass
 
     if annotation is None:

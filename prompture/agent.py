@@ -80,6 +80,7 @@ def _tool_wants_context(fn: Callable[..., Any]) -> bool:
         hints = typing.get_type_hints(fn, include_extras=True)
         annotation = hints.get(first_param)
     except Exception:
+        # get_type_hints can fail with local/forward references; fall back to raw annotation
         pass
 
     # Fallback: inspect raw annotation (may be a string)
@@ -794,9 +795,7 @@ class Agent(Generic[DepsType]):
 
             if has_tools:
                 # Tools registered: fall back to non-streaming conv.ask()
-                t0 = time.perf_counter()
                 response_text = conv.ask(effective_prompt)
-                _elapsed_ms = (time.perf_counter() - t0) * 1000
 
                 # Yield the full text as a single delta
                 yield StreamEvent(
