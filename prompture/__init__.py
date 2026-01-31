@@ -111,7 +111,13 @@ from .image import (
     make_image,
 )
 from .logging import JSONFormatter, configure_logging
-from .model_rates import get_model_info, get_model_rates, refresh_rates_cache
+from .model_rates import (
+    ModelCapabilities,
+    get_model_capabilities,
+    get_model_info,
+    get_model_rates,
+    refresh_rates_cache,
+)
 from .persistence import ConversationStore
 from .persona import (
     PERSONAS,
@@ -213,6 +219,7 @@ __all__ = [
     "LocalHTTPDriver",
     "LoopGroup",
     "MemoryCacheBackend",
+    "ModelCapabilities",
     "ModelRetry",
     "OllamaDriver",
     "OpenAIDriver",
@@ -255,6 +262,7 @@ __all__ = [
     "get_driver_for_model",
     "get_field_definition",
     "get_field_names",
+    "get_model_capabilities",
     "get_model_info",
     "get_model_rates",
     "get_persona",

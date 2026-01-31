@@ -169,6 +169,13 @@ class AsyncGoogleDriver(CostMixin, AsyncDriver):
     ) -> dict[str, Any]:
         gen_input, gen_kwargs, model_kwargs = self._build_generation_args(messages, options)
 
+        # Validate capabilities against models.dev metadata
+        self._validate_model_capabilities(
+            "google",
+            self.model,
+            using_json_schema=bool((options or {}).get("json_schema")),
+        )
+
         try:
             model = genai.GenerativeModel(self.model, **model_kwargs)
             response = await model.generate_content_async(gen_input, **gen_kwargs)
@@ -201,6 +208,9 @@ class AsyncGoogleDriver(CostMixin, AsyncDriver):
         options: dict[str, Any],
     ) -> dict[str, Any]:
         """Generate a response that may include tool/function calls (async)."""
+        model = options.get("model", self.model)
+        self._validate_model_capabilities("google", model, using_tool_use=True)
+
         gen_input, gen_kwargs, model_kwargs = self._build_generation_args(
             self._prepare_messages(messages), options
         )

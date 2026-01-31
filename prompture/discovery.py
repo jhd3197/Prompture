@@ -1,7 +1,11 @@
 """Discovery module for auto-detecting available models."""
 
+from __future__ import annotations
+
+import dataclasses
 import logging
 import os
+from typing import Any, overload
 
 import requests
 
@@ -22,23 +26,34 @@ from .settings import settings
 logger = logging.getLogger(__name__)
 
 
-def get_available_models() -> list[str]:
-    """
-    Auto-detects all available models based on configured drivers and environment variables.
+@overload
+def get_available_models(*, include_capabilities: bool = False) -> list[str]: ...
 
-    Iterates through supported providers and checks if they are configured (e.g. API key present).
-    For static drivers, returns models from their MODEL_PRICING keys.
-    For dynamic drivers (like Ollama), attempts to fetch available models from the endpoint.
+
+@overload
+def get_available_models(*, include_capabilities: bool = True) -> list[dict[str, Any]]: ...
+
+
+def get_available_models(*, include_capabilities: bool = False) -> list[str] | list[dict[str, Any]]:
+    """Auto-detect available models based on configured drivers and environment variables.
+
+    Iterates through supported providers and checks if they are configured
+    (e.g. API key present).  For static drivers, returns models from their
+    ``MODEL_PRICING`` keys.  For dynamic drivers (like Ollama), attempts to
+    fetch available models from the endpoint.
+
+    Args:
+        include_capabilities: When ``True``, return enriched dicts with
+            ``model``, ``provider``, ``model_id``, and ``capabilities``
+            fields instead of plain ``"provider/model_id"`` strings.
 
     Returns:
-        A list of unique model strings in the format "provider/model_id".
+        A sorted list of unique model strings (default) or enriched dicts.
     """
     available_models: set[str] = set()
     configured_providers: set[str] = set()
 
     # Map of provider name to driver class
-    # We need to map the registry keys to the actual classes to check MODEL_PRICING
-    # and instantiate for dynamic checks if needed.
     provider_classes = {
         "openai": OpenAIDriver,
         "azure": AzureDriver,
@@ -54,11 +69,6 @@ def get_available_models() -> list[str]:
 
     for provider, driver_cls in provider_classes.items():
         try:
-            # 1. Check if the provider is configured (has API key or endpoint)
-            # We can check this by looking at the settings or env vars that the driver uses.
-            # A simple way is to try to instantiate it with defaults, but that might fail if keys are missing.
-            # Instead, let's check the specific requirements for each known provider.
-
             is_configured = False
 
             if provider == "openai":
@@ -87,13 +97,10 @@ def get_available_models() -> list[str]:
                 if settings.grok_api_key or os.getenv("GROK_API_KEY"):
                     is_configured = True
             elif provider == "ollama":
-                # Ollama is always considered "configured" as it defaults to localhost
-                # We will check connectivity later
                 is_configured = True
             elif provider == "lmstudio":
-                # LM Studio is similar to Ollama, defaults to localhost
                 is_configured = True
-            elif provider == "local_http" and (settings.local_http_endpoint or os.getenv("LOCAL_HTTP_ENDPOINT")):
+            elif provider == "local_http" and os.getenv("LOCAL_HTTP_ENDPOINT"):
                 is_configured = True
 
             if not is_configured:
@@ -101,36 +108,20 @@ def get_available_models() -> list[str]:
 
             configured_providers.add(provider)
 
-            # 2. Static Detection: Get models from MODEL_PRICING
+            # Static Detection: Get models from MODEL_PRICING
             if hasattr(driver_cls, "MODEL_PRICING"):
                 pricing = driver_cls.MODEL_PRICING
                 for model_id in pricing:
-                    # Skip "default" or generic keys if they exist
                     if model_id == "default":
                         continue
-
-                    # For Azure, the model_id in pricing is usually the base model name,
-                    # but the user needs to use the deployment ID.
-                    # However, our Azure driver implementation uses the deployment_id from init
-                    # as the "model" for the request, but expects the user to pass a model name
-                    # that maps to pricing?
-                    # Looking at AzureDriver:
-                    # kwargs = {"model": self.deployment_id, ...}
-                    # model = options.get("model", self.model) -> used for pricing lookup
-                    # So we should list the keys in MODEL_PRICING as available "models"
-                    # even though for Azure specifically it's a bit weird because of deployment IDs.
-                    # But for general discovery, listing supported models is correct.
-
                     available_models.add(f"{provider}/{model_id}")
 
-            # 3. Dynamic Detection: Specific logic for Ollama
+            # Dynamic Detection: Specific logic for Ollama
             if provider == "ollama":
                 try:
                     endpoint = settings.ollama_endpoint or os.getenv(
                         "OLLAMA_ENDPOINT", "http://localhost:11434/api/generate"
                     )
-                    # We need the base URL for tags, usually http://localhost:11434/api/tags
-                    # The configured endpoint might be .../api/generate or .../api/chat
                     base_url = endpoint.split("/api/")[0]
                     tags_url = f"{base_url}/api/tags"
 
@@ -141,8 +132,6 @@ def get_available_models() -> list[str]:
                         for model in models:
                             name = model.get("name")
                             if name:
-                                # Ollama model names often include tags like "llama3:latest"
-                                # We can keep them as is.
                                 available_models.add(f"ollama/{name}")
                 except Exception as e:
                     logger.debug(f"Failed to fetch Ollama models: {e}")
@@ -184,4 +173,30 @@ def get_available_models() -> list[str]:
             for model_id in get_all_provider_models(api_name):
                 available_models.add(f"{prompture_name}/{model_id}")
 
-    return sorted(list(available_models))
+    sorted_models = sorted(available_models)
+
+    if not include_capabilities:
+        return sorted_models
+
+    # Build enriched dicts with capabilities from models.dev
+    from .model_rates import get_model_capabilities
+
+    enriched: list[dict[str, Any]] = []
+    for model_str in sorted_models:
+        parts = model_str.split("/", 1)
+        provider = parts[0]
+        model_id = parts[1] if len(parts) > 1 else parts[0]
+
+        caps = get_model_capabilities(provider, model_id)
+        caps_dict = dataclasses.asdict(caps) if caps is not None else None
+
+        enriched.append(
+            {
+                "model": model_str,
+                "provider": provider,
+                "model_id": model_id,
+                "capabilities": caps_dict,
+            }
+        )
+
+    return enriched

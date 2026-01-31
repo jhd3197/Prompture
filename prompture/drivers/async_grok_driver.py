@@ -44,9 +44,9 @@ class AsyncGrokDriver(CostMixin, AsyncDriver):
 
         model = options.get("model", self.model)
 
-        model_info = self.MODEL_PRICING.get(model, {})
-        tokens_param = model_info.get("tokens_param", "max_tokens")
-        supports_temperature = model_info.get("supports_temperature", True)
+        model_config = self._get_model_config("grok", model)
+        tokens_param = model_config["tokens_param"]
+        supports_temperature = model_config["supports_temperature"]
 
         opts = {"temperature": 1.0, "max_tokens": 512, **options}
 

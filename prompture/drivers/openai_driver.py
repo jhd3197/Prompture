@@ -93,10 +93,17 @@ class OpenAIDriver(CostMixin, Driver):
 
         model = options.get("model", self.model)
 
-        # Lookup model-specific config
-        model_info = self.MODEL_PRICING.get(model, {})
-        tokens_param = model_info.get("tokens_param", "max_tokens")
-        supports_temperature = model_info.get("supports_temperature", True)
+        # Lookup model-specific config (live models.dev data + hardcoded fallback)
+        model_config = self._get_model_config("openai", model)
+        tokens_param = model_config["tokens_param"]
+        supports_temperature = model_config["supports_temperature"]
+
+        # Validate capabilities against models.dev metadata
+        self._validate_model_capabilities(
+            "openai",
+            model,
+            using_json_schema=bool(options.get("json_schema")),
+        )
 
         # Defaults
         opts = {"temperature": 1.0, "max_tokens": 512, **options}
@@ -168,9 +175,11 @@ class OpenAIDriver(CostMixin, Driver):
             raise RuntimeError("openai package (>=1.0.0) is not installed")
 
         model = options.get("model", self.model)
-        model_info = self.MODEL_PRICING.get(model, {})
-        tokens_param = model_info.get("tokens_param", "max_tokens")
-        supports_temperature = model_info.get("supports_temperature", True)
+        model_config = self._get_model_config("openai", model)
+        tokens_param = model_config["tokens_param"]
+        supports_temperature = model_config["supports_temperature"]
+
+        self._validate_model_capabilities("openai", model, using_tool_use=True)
 
         opts = {"temperature": 1.0, "max_tokens": 512, **options}
 
@@ -239,9 +248,9 @@ class OpenAIDriver(CostMixin, Driver):
             raise RuntimeError("openai package (>=1.0.0) is not installed")
 
         model = options.get("model", self.model)
-        model_info = self.MODEL_PRICING.get(model, {})
-        tokens_param = model_info.get("tokens_param", "max_tokens")
-        supports_temperature = model_info.get("supports_temperature", True)
+        model_config = self._get_model_config("openai", model)
+        tokens_param = model_config["tokens_param"]
+        supports_temperature = model_config["supports_temperature"]
 
         opts = {"temperature": 1.0, "max_tokens": 512, **options}
 

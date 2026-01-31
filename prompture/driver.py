@@ -173,6 +173,45 @@ class Driver:
         except Exception:
             logger.exception("Callback %s raised an exception", event)
 
+    def _validate_model_capabilities(
+        self,
+        provider: str,
+        model: str,
+        *,
+        using_tool_use: bool = False,
+        using_json_schema: bool = False,
+        using_vision: bool = False,
+    ) -> None:
+        """Log warnings when the model may not support a requested feature.
+
+        Uses models.dev metadata as a secondary signal.  Warnings only — the
+        API is the final authority and models.dev data may be stale.
+        """
+        from .model_rates import get_model_capabilities
+
+        caps = get_model_capabilities(provider, model)
+        if caps is None:
+            return
+
+        if using_tool_use and caps.supports_tool_use is False:
+            logger.warning(
+                "Model %s/%s may not support tool use according to models.dev metadata",
+                provider,
+                model,
+            )
+        if using_json_schema and caps.supports_structured_output is False:
+            logger.warning(
+                "Model %s/%s may not support structured output / JSON schema according to models.dev metadata",
+                provider,
+                model,
+            )
+        if using_vision and caps.supports_vision is False:
+            logger.warning(
+                "Model %s/%s may not support vision/image inputs according to models.dev metadata",
+                provider,
+                model,
+            )
+
     def _check_vision_support(self, messages: list[dict[str, Any]]) -> None:
         """Raise if messages contain image blocks and the driver lacks vision support."""
         if self.supports_vision:
