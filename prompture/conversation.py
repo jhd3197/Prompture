@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import json
 import logging
+import uuid
 from collections.abc import Iterator
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal
+from pathlib import Path
 from typing import Any, Callable, Literal, Union
 
 from pydantic import BaseModel
@@ -15,6 +17,11 @@ from .callbacks import DriverCallbacks
 from .driver import Driver
 from .drivers import get_driver_for_model
 from .field_definitions import get_registry_snapshot
+from .image import ImageInput, make_image
+from .persistence import load_from_file, save_to_file
+from .persona import Persona, get_persona
+from .serialization import export_conversation, import_conversation
+from .session import UsageSession
 from .tools import (
     clean_json_text,
     convert_value,
@@ -44,13 +51,34 @@ class Conversation:
         *,
         driver: Driver | None = None,
         system_prompt: str | None = None,
+        persona: str | Persona | None = None,
         options: dict[str, Any] | None = None,
         callbacks: DriverCallbacks | None = None,
         tools: ToolRegistry | None = None,
         max_tool_rounds: int = 10,
+        conversation_id: str | None = None,
+        auto_save: str | Path | None = None,
+        tags: list[str] | None = None,
     ) -> None:
+        if system_prompt is not None and persona is not None:
+            raise ValueError("Cannot provide both 'system_prompt' and 'persona'. Use one or the other.")
+
+        # Resolve persona
+        resolved_persona: Persona | None = None
+        if persona is not None:
+            if isinstance(persona, str):
+                resolved_persona = get_persona(persona)
+                if resolved_persona is None:
+                    raise ValueError(f"Persona '{persona}' not found in registry.")
+            else:
+                resolved_persona = persona
+
         if model_name is None and driver is None:
-            raise ValueError("Either model_name or driver must be provided")
+            # Check persona for model_hint
+            if resolved_persona is not None and resolved_persona.model_hint:
+                model_name = resolved_persona.model_hint
+            else:
+                raise ValueError("Either model_name or driver must be provided")
 
         if driver is not None:
             self._driver = driver
@@ -61,8 +89,16 @@ class Conversation:
             self._driver.callbacks = callbacks
 
         self._model_name = model_name or ""
-        self._system_prompt = system_prompt
-        self._options = dict(options) if options else {}
+
+        # Apply persona: render system_prompt and merge settings
+        if resolved_persona is not None:
+            self._system_prompt = resolved_persona.render()
+            # Persona settings as defaults, explicit options override
+            self._options = {**resolved_persona.settings, **(dict(options) if options else {})}
+        else:
+            self._system_prompt = system_prompt
+            self._options = dict(options) if options else {}
+
         self._messages: list[dict[str, Any]] = []
         self._usage = {
             "prompt_tokens": 0,
@@ -73,6 +109,14 @@ class Conversation:
         }
         self._tools = tools or ToolRegistry()
         self._max_tool_rounds = max_tool_rounds
+
+        # Persistence
+        self._conversation_id = conversation_id or str(uuid.uuid4())
+        self._auto_save = Path(auto_save) if auto_save else None
+        self._metadata: dict[str, Any] = {
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "tags": list(tags) if tags else [],
+        }
 
     # ------------------------------------------------------------------
     # Public helpers
@@ -92,11 +136,12 @@ class Conversation:
         """Reset message history (keeps system_prompt and driver)."""
         self._messages.clear()
 
-    def add_context(self, role: str, content: str) -> None:
+    def add_context(self, role: str, content: str, images: list[ImageInput] | None = None) -> None:
         """Seed the history with a user or assistant message."""
         if role not in ("user", "assistant"):
             raise ValueError("role must be 'user' or 'assistant'")
-        self._messages.append({"role": role, "content": content})
+        msg_content = self._build_content_with_images(content, images)
+        self._messages.append({"role": role, "content": msg_content})
 
     def register_tool(
         self,
@@ -114,16 +159,148 @@ class Conversation:
         return f"Conversation: {u['total_tokens']:,} tokens across {u['turns']} turn(s) costing ${u['cost']:.4f}"
 
     # ------------------------------------------------------------------
+    # Persistence properties
+    # ------------------------------------------------------------------
+
+    @property
+    def conversation_id(self) -> str:
+        """Unique identifier for this conversation."""
+        return self._conversation_id
+
+    @property
+    def tags(self) -> list[str]:
+        """Tags attached to this conversation."""
+        return self._metadata.get("tags", [])
+
+    @tags.setter
+    def tags(self, value: list[str]) -> None:
+        self._metadata["tags"] = list(value)
+
+    # ------------------------------------------------------------------
+    # Export / Import
+    # ------------------------------------------------------------------
+
+    def export(self, *, usage_session: UsageSession | None = None, strip_images: bool = False) -> dict[str, Any]:
+        """Export conversation state to a JSON-serializable dict."""
+        tools_metadata = (
+            [
+                {"name": td.name, "description": td.description, "parameters": td.parameters}
+                for td in self._tools.definitions
+            ]
+            if self._tools and self._tools.definitions
+            else None
+        )
+        return export_conversation(
+            model_name=self._model_name,
+            system_prompt=self._system_prompt,
+            options=self._options,
+            messages=self._messages,
+            usage=self._usage,
+            max_tool_rounds=self._max_tool_rounds,
+            tools_metadata=tools_metadata,
+            usage_session=usage_session,
+            metadata=self._metadata,
+            conversation_id=self._conversation_id,
+            strip_images=strip_images,
+        )
+
+    @classmethod
+    def from_export(
+        cls,
+        data: dict[str, Any],
+        *,
+        callbacks: DriverCallbacks | None = None,
+        tools: ToolRegistry | None = None,
+    ) -> Conversation:
+        """Reconstruct a :class:`Conversation` from an export dict.
+
+        The driver is reconstructed from the stored ``model_name``.
+        Callbacks and tool *functions* must be re-attached by the caller
+        (tool metadata — name/description/parameters — is preserved in
+        the export but executable functions cannot be serialized).
+        """
+        imported = import_conversation(data)
+
+        model_name = imported.get("model_name") or ""
+        if not model_name:
+            raise ValueError("Cannot restore conversation: export has no model_name")
+        conv = cls(
+            model_name=model_name,
+            system_prompt=imported.get("system_prompt"),
+            options=imported.get("options", {}),
+            callbacks=callbacks,
+            tools=tools,
+            max_tool_rounds=imported.get("max_tool_rounds", 10),
+            conversation_id=imported.get("conversation_id"),
+            tags=imported.get("metadata", {}).get("tags", []),
+        )
+        conv._messages = imported.get("messages", [])
+        conv._usage = imported.get(
+            "usage",
+            {
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "total_tokens": 0,
+                "cost": 0.0,
+                "turns": 0,
+            },
+        )
+        meta = imported.get("metadata", {})
+        if "created_at" in meta:
+            conv._metadata["created_at"] = meta["created_at"]
+        return conv
+
+    def save(self, path: str | Path, **kwargs: Any) -> None:
+        """Export and write to a JSON file.
+
+        Keyword arguments are forwarded to :meth:`export`.
+        """
+        save_to_file(self.export(**kwargs), path)
+
+    @classmethod
+    def load(
+        cls,
+        path: str | Path,
+        *,
+        callbacks: DriverCallbacks | None = None,
+        tools: ToolRegistry | None = None,
+    ) -> Conversation:
+        """Load a conversation from a JSON file."""
+        data = load_from_file(path)
+        return cls.from_export(data, callbacks=callbacks, tools=tools)
+
+    def _maybe_auto_save(self) -> None:
+        """Auto-save after each turn if configured.  Errors are silently logged."""
+        if self._auto_save is None:
+            return
+        try:
+            self.save(self._auto_save)
+        except Exception:
+            logger.debug("Auto-save failed for conversation %s", self._conversation_id, exc_info=True)
+
+    # ------------------------------------------------------------------
     # Core methods
     # ------------------------------------------------------------------
 
-    def _build_messages(self, user_content: str) -> list[dict[str, Any]]:
+    @staticmethod
+    def _build_content_with_images(text: str, images: list[ImageInput] | None = None) -> str | list[dict[str, Any]]:
+        """Return plain string when no images, or a list of content blocks."""
+        if not images:
+            return text
+        blocks: list[dict[str, Any]] = [{"type": "text", "text": text}]
+        for img in images:
+            ic = make_image(img)
+            blocks.append({"type": "image", "source": ic})
+        return blocks
+
+    def _build_messages(self, user_content: str, images: list[ImageInput] | None = None) -> list[dict[str, Any]]:
         """Build the full messages array for an API call."""
         msgs: list[dict[str, Any]] = []
         if self._system_prompt:
             msgs.append({"role": "system", "content": self._system_prompt})
         msgs.extend(self._messages)
-        msgs.append({"role": "user", "content": user_content})
+        content = self._build_content_with_images(user_content, images)
+        msgs.append({"role": "user", "content": content})
         return msgs
 
     def _accumulate_usage(self, meta: dict[str, Any]) -> None:
@@ -132,30 +309,39 @@ class Conversation:
         self._usage["total_tokens"] += meta.get("total_tokens", 0)
         self._usage["cost"] += meta.get("cost", 0.0)
         self._usage["turns"] += 1
+        self._maybe_auto_save()
 
     def ask(
         self,
         content: str,
         options: dict[str, Any] | None = None,
+        images: list[ImageInput] | None = None,
     ) -> str:
         """Send a message and get a raw text response.
 
         Appends the user message and assistant response to history.
         If tools are registered and the driver supports tool use,
         dispatches to the tool execution loop.
+
+        Args:
+            content: The text message to send.
+            options: Additional options for the driver.
+            images: Optional list of images to include (bytes, path, URL,
+                base64 string, or :class:`ImageContent`).
         """
         if self._tools and getattr(self._driver, "supports_tool_use", False):
-            return self._ask_with_tools(content, options)
+            return self._ask_with_tools(content, options, images=images)
 
         merged = {**self._options, **(options or {})}
-        messages = self._build_messages(content)
+        messages = self._build_messages(content, images=images)
         resp = self._driver.generate_messages_with_hooks(messages, merged)
 
         text = resp.get("text", "")
         meta = resp.get("meta", {})
 
-        # Record in history
-        self._messages.append({"role": "user", "content": content})
+        # Record in history — store content with images for context
+        user_content = self._build_content_with_images(content, images)
+        self._messages.append({"role": "user", "content": user_content})
         self._messages.append({"role": "assistant", "content": text})
         self._accumulate_usage(meta)
 
@@ -165,13 +351,15 @@ class Conversation:
         self,
         content: str,
         options: dict[str, Any] | None = None,
+        images: list[ImageInput] | None = None,
     ) -> str:
         """Execute the tool-use loop: send -> check tool_calls -> execute -> re-send."""
         merged = {**self._options, **(options or {})}
         tool_defs = self._tools.to_openai_format()
 
         # Build messages including user content
-        self._messages.append({"role": "user", "content": content})
+        user_content = self._build_content_with_images(content, images)
+        self._messages.append({"role": "user", "content": user_content})
         msgs = self._build_messages_raw()
 
         for _round in range(self._max_tool_rounds):
@@ -235,6 +423,7 @@ class Conversation:
         self,
         content: str,
         options: dict[str, Any] | None = None,
+        images: list[ImageInput] | None = None,
     ) -> Iterator[str]:
         """Send a message and yield text chunks as they arrive.
 
@@ -243,13 +432,14 @@ class Conversation:
         is recorded in history.
         """
         if not getattr(self._driver, "supports_streaming", False):
-            yield self.ask(content, options)
+            yield self.ask(content, options, images=images)
             return
 
         merged = {**self._options, **(options or {})}
-        messages = self._build_messages(content)
+        messages = self._build_messages(content, images=images)
 
-        self._messages.append({"role": "user", "content": content})
+        user_content = self._build_content_with_images(content, images)
+        self._messages.append({"role": "user", "content": user_content})
 
         full_text = ""
         for chunk in self._driver.generate_messages_stream(messages, merged):
@@ -276,6 +466,7 @@ class Conversation:
         options: dict[str, Any] | None = None,
         output_format: Literal["json", "toon"] = "json",
         json_mode: Literal["auto", "on", "off"] = "auto",
+        images: list[ImageInput] | None = None,
     ) -> dict[str, Any]:
         """Send a message with schema enforcement and get structured JSON back.
 
@@ -320,14 +511,16 @@ class Conversation:
 
         full_user_content = f"{content}\n\n{instruct}"
 
-        messages = self._build_messages(full_user_content)
+        messages = self._build_messages(full_user_content, images=images)
         resp = self._driver.generate_messages_with_hooks(messages, merged)
 
         text = resp.get("text", "")
         meta = resp.get("meta", {})
 
         # Store original content (without schema boilerplate) for cleaner context
-        self._messages.append({"role": "user", "content": content})
+        # Include images in history so subsequent turns can reference them
+        user_content = self._build_content_with_images(content, images)
+        self._messages.append({"role": "user", "content": user_content})
 
         # Parse JSON
         cleaned = clean_json_text(text)
@@ -383,6 +576,7 @@ class Conversation:
         output_format: Literal["json", "toon"] = "json",
         options: dict[str, Any] | None = None,
         json_mode: Literal["auto", "on", "off"] = "auto",
+        images: list[ImageInput] | None = None,
     ) -> dict[str, Any]:
         """Extract structured information into a Pydantic model with conversation context."""
         from .core import normalize_field_value
@@ -397,6 +591,7 @@ class Conversation:
             options=options,
             output_format=output_format,
             json_mode=json_mode,
+            images=images,
         )
 
         # Normalize field values

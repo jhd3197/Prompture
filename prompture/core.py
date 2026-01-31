@@ -21,6 +21,7 @@ from pydantic import BaseModel
 from .driver import Driver
 from .drivers import get_driver_for_model
 from .field_definitions import get_registry_snapshot
+from .image import ImageInput, make_image
 from .tools import (
     clean_json_text,
     convert_value,
@@ -28,6 +29,17 @@ from .tools import (
 )
 
 logger = logging.getLogger("prompture.core")
+
+
+def _build_content_with_images(text: str, images: list[ImageInput] | None = None) -> str | list[dict[str, Any]]:
+    """Return plain string when no images, or a list of content blocks."""
+    if not images:
+        return text
+    blocks: list[dict[str, Any]] = [{"type": "text", "text": text}]
+    for img in images:
+        ic = make_image(img)
+        blocks.append({"type": "image", "source": ic})
+    return blocks
 
 
 def normalize_field_value(value: Any, field_type: type, field_def: dict[str, Any]) -> Any:
@@ -142,6 +154,7 @@ def render_output(
     model_name: str = "",
     options: dict[str, Any] | None = None,
     system_prompt: str | None = None,
+    images: list[ImageInput] | None = None,
 ) -> dict[str, Any]:
     """Sends a prompt to the driver and returns the raw output in the requested format.
 
@@ -186,12 +199,12 @@ def render_output(
 
     full_prompt = f"{content_prompt}\n\nSYSTEM INSTRUCTION: {instruct}"
 
-    # Use generate_messages when system_prompt is provided
-    if system_prompt is not None:
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": full_prompt},
-        ]
+    # Use generate_messages when system_prompt or images are provided
+    user_content = _build_content_with_images(full_prompt, images)
+    if system_prompt is not None or images:
+        messages = [{"role": "user", "content": user_content}]
+        if system_prompt is not None:
+            messages.insert(0, {"role": "system", "content": system_prompt})
         resp = driver.generate_messages(messages, options)
     else:
         resp = driver.generate(full_prompt, options)
@@ -232,6 +245,7 @@ def ask_for_json(
     cache: bool | None = None,
     json_mode: Literal["auto", "on", "off"] = "auto",
     system_prompt: str | None = None,
+    images: list[ImageInput] | None = None,
 ) -> dict[str, Any]:
     """Sends a prompt to the driver and returns structured output plus usage metadata.
 
@@ -327,12 +341,12 @@ def ask_for_json(
 
     full_prompt = f"{content_prompt}\n\n{instruct}"
 
-    # Use generate_messages when system_prompt is provided
-    if system_prompt is not None:
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": full_prompt},
-        ]
+    # Use generate_messages when system_prompt or images are provided
+    user_content = _build_content_with_images(full_prompt, images)
+    if system_prompt is not None or images:
+        messages = [{"role": "user", "content": user_content}]
+        if system_prompt is not None:
+            messages.insert(0, {"role": "system", "content": system_prompt})
         resp = driver.generate_messages(messages, options)
     else:
         resp = driver.generate(full_prompt, options)
@@ -411,6 +425,7 @@ def extract_and_jsonify(
     options: dict[str, Any] | None = None,
     json_mode: Literal["auto", "on", "off"] = "auto",
     system_prompt: str | None = None,
+    images: list[ImageInput] | None = None,
 ) -> dict[str, Any]:
     """Extracts structured information using automatic driver selection based on model name.
 
@@ -497,6 +512,7 @@ def extract_and_jsonify(
             output_format=actual_output_format,
             json_mode=json_mode,
             system_prompt=system_prompt,
+            images=images,
         )
     except (requests.exceptions.ConnectionError, requests.exceptions.HTTPError) as e:
         if "pytest" in sys.modules:
@@ -595,6 +611,7 @@ def extract_with_model(
     cache: bool | None = None,
     json_mode: Literal["auto", "on", "off"] = "auto",
     system_prompt: str | None = None,
+    images: list[ImageInput] | None = None,
 ) -> dict[str, Any]:
     """Extracts structured information into a Pydantic model instance.
 
@@ -684,6 +701,7 @@ def extract_with_model(
         options=options,
         json_mode=json_mode,
         system_prompt=system_prompt,
+        images=images,
     )
     logger.debug("[extract] Extraction completed successfully")
 

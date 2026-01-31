@@ -49,7 +49,11 @@ register_async_driver(
 )
 register_async_driver(
     "lmstudio",
-    lambda model=None: AsyncLMStudioDriver(endpoint=settings.lmstudio_endpoint, model=model or settings.lmstudio_model),
+    lambda model=None: AsyncLMStudioDriver(
+        endpoint=settings.lmstudio_endpoint,
+        model=model or settings.lmstudio_model,
+        api_key=settings.lmstudio_api_key,
+    ),
     overwrite=True,
 )
 register_async_driver(

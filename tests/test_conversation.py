@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
@@ -10,6 +11,7 @@ from pydantic import BaseModel
 
 from prompture.conversation import Conversation
 from prompture.driver import Driver
+from prompture.serialization import EXPORT_VERSION
 
 
 class MockDriver(Driver):
@@ -266,3 +268,93 @@ class TestConversationUsageProperty:
         assert usage["total_tokens"] == 0
         assert usage["cost"] == 0.0
         assert usage["turns"] == 0
+
+
+class TestConversationPersistence:
+    """Test export/import, save/load, auto-save, id, and tags."""
+
+    def test_export_returns_correct_structure(self):
+        driver = MockDriver(responses=["response"])
+        conv = Conversation(driver=driver, system_prompt="sys", options={"temperature": 0.5})
+        conv.ask("hello")
+
+        data = conv.export()
+        assert data["version"] == EXPORT_VERSION
+        assert data["conversation_id"] == conv.conversation_id
+        assert data["system_prompt"] == "sys"
+        assert data["options"] == {"temperature": 0.5}
+        assert len(data["messages"]) == 2
+
+    def test_conversation_id_property(self):
+        driver = MockDriver()
+        conv = Conversation(driver=driver, conversation_id="my-id")
+        assert conv.conversation_id == "my-id"
+
+    def test_conversation_id_auto_generated(self):
+        driver = MockDriver()
+        conv = Conversation(driver=driver)
+        assert conv.conversation_id  # not empty
+        assert len(conv.conversation_id) > 10  # UUID-like
+
+    def test_tags_property(self):
+        driver = MockDriver()
+        conv = Conversation(driver=driver, tags=["demo", "test"])
+        assert conv.tags == ["demo", "test"]
+        conv.tags = ["new-tag"]
+        assert conv.tags == ["new-tag"]
+
+    def test_from_export_round_trip(self):
+        driver = MockDriver(responses=["response"])
+        conv = Conversation(
+            model_name="mock/model", driver=driver, system_prompt="sys",
+            options={"temperature": 0.5}, tags=["demo"],
+        )
+        conv.ask("hello")
+        data = conv.export()
+
+        with patch("prompture.conversation.get_driver_for_model") as mock_get:
+            mock_get.return_value = MockDriver()
+            restored = Conversation.from_export(data)
+            assert restored.conversation_id == conv.conversation_id
+            assert restored._system_prompt == "sys"
+            assert restored._options == {"temperature": 0.5}
+            assert len(restored.messages) == 2
+            assert restored.usage["turns"] == 1
+            assert restored.tags == ["demo"]
+
+    def test_save_and_load(self, tmp_path: Path):
+        driver = MockDriver(responses=["response"])
+        conv = Conversation(model_name="mock/model", driver=driver, system_prompt="sys")
+        conv.ask("hello")
+        path = tmp_path / "conv.json"
+        conv.save(path)
+
+        assert path.exists()
+
+        with patch("prompture.conversation.get_driver_for_model") as mock_get:
+            mock_get.return_value = MockDriver()
+            loaded = Conversation.load(path)
+            assert loaded.conversation_id == conv.conversation_id
+            assert len(loaded.messages) == 2
+
+    def test_auto_save_triggers(self, tmp_path: Path):
+        auto_path = tmp_path / "auto.json"
+        driver = MockDriver(responses=["response"])
+        conv = Conversation(model_name="mock/model", driver=driver, auto_save=auto_path)
+        conv.ask("hello")
+        assert auto_path.exists()
+
+    def test_callbacks_not_in_export(self):
+        driver = MockDriver(responses=["response"])
+        conv = Conversation(driver=driver)
+        conv.ask("hello")
+        data = conv.export()
+        assert "callbacks" not in data
+
+    def test_tool_functions_not_in_export(self):
+        driver = MockDriver(responses=["response"])
+        conv = Conversation(driver=driver)
+        conv.ask("hello")
+        data = conv.export()
+        # tools key should not be present if no tools registered
+        assert "tools" not in data or all("function" not in t for t in data.get("tools", []))

@@ -5,6 +5,7 @@
 
 import os
 import sys
+from pathlib import Path
 
 # Add the project root to the Python path so Sphinx can find the prompture package
 sys.path.insert(0, os.path.abspath("../../"))
@@ -13,9 +14,20 @@ sys.path.insert(0, os.path.abspath("../../"))
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 project = "Prompture"
-copyright = "2025, Juan Denis"
+copyright = '2026, <a href="https://juandenis.com">Juan Denis</a>'
 author = "Juan Denis"
-release = "0.0.23.dev1"
+
+# Read version dynamically: VERSION file > setuptools_scm > fallback
+_project_root = Path(__file__).resolve().parent.parent.parent
+_version_file = _project_root / "VERSION"
+if _version_file.exists():
+    release = _version_file.read_text().strip()
+else:
+    try:
+        from setuptools_scm import get_version
+        release = get_version(root=str(_project_root))
+    except Exception:
+        release = "0.0.36"
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration

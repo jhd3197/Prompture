@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 class OllamaDriver(Driver):
     supports_json_mode = True
     supports_streaming = True
+    supports_vision = True
 
     # Ollama is free – costs are always zero.
     MODEL_PRICING = {"default": {"prompt": 0.0, "completion": 0.0}}
@@ -45,6 +46,11 @@ class OllamaDriver(Driver):
             # The actual error will be raised when generate() is called
 
     supports_messages = True
+
+    def _prepare_messages(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        from .vision_helpers import _prepare_ollama_vision_messages
+
+        return _prepare_ollama_vision_messages(messages)
 
     def generate(self, prompt: str, options: Optional[dict[str, Any]] = None) -> dict[str, Any]:
         # Merge instance options with call-specific options
@@ -190,6 +196,7 @@ class OllamaDriver(Driver):
 
     def generate_messages(self, messages: list[dict[str, Any]], options: dict[str, Any]) -> dict[str, Any]:
         """Use Ollama's /api/chat endpoint for multi-turn conversations."""
+        messages = self._prepare_messages(messages)
         merged_options = self.options.copy()
         if options:
             merged_options.update(options)

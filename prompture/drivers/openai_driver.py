@@ -21,6 +21,7 @@ class OpenAIDriver(CostMixin, Driver):
     supports_json_schema = True
     supports_tool_use = True
     supports_streaming = True
+    supports_vision = True
 
     # Approximate pricing per 1K tokens (keep updated with OpenAI's official pricing)
     # Each model entry also defines which token parameter it supports and
@@ -74,12 +75,17 @@ class OpenAIDriver(CostMixin, Driver):
 
     supports_messages = True
 
+    def _prepare_messages(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        from .vision_helpers import _prepare_openai_vision_messages
+
+        return _prepare_openai_vision_messages(messages)
+
     def generate(self, prompt: str, options: dict[str, Any]) -> dict[str, Any]:
         messages = [{"role": "user", "content": prompt}]
         return self._do_generate(messages, options)
 
     def generate_messages(self, messages: list[dict[str, Any]], options: dict[str, Any]) -> dict[str, Any]:
-        return self._do_generate(messages, options)
+        return self._do_generate(self._prepare_messages(messages), options)
 
     def _do_generate(self, messages: list[dict[str, Any]], options: dict[str, Any]) -> dict[str, Any]:
         if self.client is None:

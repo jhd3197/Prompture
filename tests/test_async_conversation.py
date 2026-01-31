@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 import pytest
 from pydantic import BaseModel
 
 from prompture.async_conversation import AsyncConversation
 from prompture.async_driver import AsyncDriver
+from prompture.serialization import EXPORT_VERSION
 
 
 class MockAsyncDriver(AsyncDriver):
@@ -196,3 +199,70 @@ class TestAsyncConversationUsage:
         u1 = conv.usage
         u1["turns"] = 999
         assert conv.usage["turns"] == 0
+
+
+class TestAsyncConversationPersistence:
+    """Test export/import, save/load, auto-save, id, and tags for AsyncConversation."""
+
+    @pytest.mark.asyncio
+    async def test_export_returns_correct_structure(self):
+        driver = MockAsyncDriver(responses=["response"])
+        conv = AsyncConversation(driver=driver, system_prompt="sys", options={"temperature": 0.5})
+        await conv.ask("hello")
+
+        data = conv.export()
+        assert data["version"] == EXPORT_VERSION
+        assert data["conversation_id"] == conv.conversation_id
+        assert data["system_prompt"] == "sys"
+        assert len(data["messages"]) == 2
+
+    def test_conversation_id_property(self):
+        driver = MockAsyncDriver()
+        conv = AsyncConversation(driver=driver, conversation_id="my-id")
+        assert conv.conversation_id == "my-id"
+
+    def test_tags_property(self):
+        driver = MockAsyncDriver()
+        conv = AsyncConversation(driver=driver, tags=["demo"])
+        assert conv.tags == ["demo"]
+        conv.tags = ["new"]
+        assert conv.tags == ["new"]
+
+    @pytest.mark.asyncio
+    async def test_from_export_round_trip(self):
+        driver = MockAsyncDriver(responses=["response"])
+        conv = AsyncConversation(model_name="mock/model", driver=driver, system_prompt="sys", tags=["demo"])
+        await conv.ask("hello")
+        data = conv.export()
+
+        with patch("prompture.async_conversation.get_async_driver_for_model") as mock_get:
+            mock_get.return_value = MockAsyncDriver()
+            restored = AsyncConversation.from_export(data)
+            assert restored.conversation_id == conv.conversation_id
+            assert restored._system_prompt == "sys"
+            assert len(restored.messages) == 2
+            assert restored.tags == ["demo"]
+
+    @pytest.mark.asyncio
+    async def test_save_and_load(self, tmp_path: Path):
+        driver = MockAsyncDriver(responses=["response"])
+        conv = AsyncConversation(model_name="mock/model", driver=driver, system_prompt="sys")
+        await conv.ask("hello")
+        path = tmp_path / "conv.json"
+        conv.save(path)
+
+        assert path.exists()
+
+        with patch("prompture.async_conversation.get_async_driver_for_model") as mock_get:
+            mock_get.return_value = MockAsyncDriver()
+            loaded = AsyncConversation.load(path)
+            assert loaded.conversation_id == conv.conversation_id
+            assert len(loaded.messages) == 2
+
+    @pytest.mark.asyncio
+    async def test_auto_save_triggers(self, tmp_path: Path):
+        auto_path = tmp_path / "auto.json"
+        driver = MockAsyncDriver(responses=["response"])
+        conv = AsyncConversation(model_name="mock/model", driver=driver, auto_save=auto_path)
+        await conv.ask("hello")
+        assert auto_path.exists()

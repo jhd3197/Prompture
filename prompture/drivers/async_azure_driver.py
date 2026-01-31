@@ -18,6 +18,7 @@ from .azure_driver import AzureDriver
 class AsyncAzureDriver(CostMixin, AsyncDriver):
     supports_json_mode = True
     supports_json_schema = True
+    supports_vision = True
 
     MODEL_PRICING = AzureDriver.MODEL_PRICING
 
@@ -52,12 +53,17 @@ class AsyncAzureDriver(CostMixin, AsyncDriver):
 
     supports_messages = True
 
+    def _prepare_messages(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        from .vision_helpers import _prepare_openai_vision_messages
+
+        return _prepare_openai_vision_messages(messages)
+
     async def generate(self, prompt: str, options: dict[str, Any]) -> dict[str, Any]:
         messages = [{"role": "user", "content": prompt}]
         return await self._do_generate(messages, options)
 
     async def generate_messages(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
-        return await self._do_generate(messages, options)
+        return await self._do_generate(self._prepare_messages(messages), options)
 
     async def _do_generate(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
         if self.client is None:

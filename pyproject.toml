@@ -63,7 +63,7 @@ exclude = ["prompture-env*"]
 [tool.setuptools_scm]
 version_scheme = "python-simplified-semver"
 version_file = "prompture/_version.py"
-fallback_version = "0.0.33.dev1"
+fallback_version = "0.0.36"
 
 [tool.ruff]
 target-version = "py39"
