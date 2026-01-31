@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.abspath("../../"))
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 project = "Prompture"
-copyright = '2026, <a href="https://juandenis.com">Juan Denis</a>'
+copyright = '2026, Juan Denis'
 author = "Juan Denis"
 
 # Read version dynamically: VERSION file > setuptools_scm > fallback

@@ -1,0 +1,16 @@
+{%- extends "!footer.html" %}
+
+{% block extrafooter %}
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    var footerCopy = document.querySelector("footer .copyright");
+    if (footerCopy) {
+        footerCopy.innerHTML = footerCopy.innerHTML.replace(
+            "Juan Denis",
+            '<a href="https://juandenis.com">Juan Denis</a>'
+        );
+    }
+});
+</script>
+{{ super() }}
+{% endblock %}
