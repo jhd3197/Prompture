@@ -27,14 +27,18 @@ logger = logging.getLogger(__name__)
 
 
 @overload
-def get_available_models(*, include_capabilities: bool = False) -> list[str]: ...
+def get_available_models(*, include_capabilities: bool = False, verified_only: bool = False) -> list[str]: ...
 
 
 @overload
-def get_available_models(*, include_capabilities: bool = True) -> list[dict[str, Any]]: ...
+def get_available_models(*, include_capabilities: bool = True, verified_only: bool = False) -> list[dict[str, Any]]: ...
 
 
-def get_available_models(*, include_capabilities: bool = False) -> list[str] | list[dict[str, Any]]:
+def get_available_models(
+    *,
+    include_capabilities: bool = False,
+    verified_only: bool = False,
+) -> list[str] | list[dict[str, Any]]:
     """Auto-detect available models based on configured drivers and environment variables.
 
     Iterates through supported providers and checks if they are configured
@@ -46,6 +50,8 @@ def get_available_models(*, include_capabilities: bool = False) -> list[str] | l
         include_capabilities: When ``True``, return enriched dicts with
             ``model``, ``provider``, ``model_id``, and ``capabilities``
             fields instead of plain ``"provider/model_id"`` strings.
+        verified_only: When ``True``, only return models that have been
+            successfully used (as recorded by the usage ledger).
 
     Returns:
         A sorted list of unique model strings (default) or enriched dicts.
@@ -96,11 +102,11 @@ def get_available_models(*, include_capabilities: bool = False) -> list[str] | l
             elif provider == "grok":
                 if settings.grok_api_key or os.getenv("GROK_API_KEY"):
                     is_configured = True
-            elif provider == "ollama":
-                is_configured = True
-            elif provider == "lmstudio":
-                is_configured = True
-            elif provider == "local_http" and os.getenv("LOCAL_HTTP_ENDPOINT"):
+            elif (
+                provider == "ollama"
+                or provider == "lmstudio"
+                or (provider == "local_http" and os.getenv("LOCAL_HTTP_ENDPOINT"))
+            ):
                 is_configured = True
 
             if not is_configured:
@@ -175,11 +181,46 @@ def get_available_models(*, include_capabilities: bool = False) -> list[str] | l
 
     sorted_models = sorted(available_models)
 
+    # --- verified_only filtering ---
+    verified_set: set[str] | None = None
+    if verified_only or include_capabilities:
+        try:
+            from .ledger import _get_ledger
+
+            ledger = _get_ledger()
+            verified_set = ledger.get_verified_models()
+        except Exception:
+            logger.debug("Could not load ledger for verified models", exc_info=True)
+            verified_set = set()
+
+    if verified_only and verified_set is not None:
+        sorted_models = [m for m in sorted_models if m in verified_set]
+
     if not include_capabilities:
         return sorted_models
 
     # Build enriched dicts with capabilities from models.dev
     from .model_rates import get_model_capabilities
+
+    # Fetch all ledger stats for annotation (keyed by model_name)
+    ledger_stats: dict[str, dict[str, Any]] = {}
+    try:
+        from .ledger import _get_ledger
+
+        for row in _get_ledger().get_all_stats():
+            name = row["model_name"]
+            if name not in ledger_stats:
+                ledger_stats[name] = row
+            else:
+                # Aggregate across API key hashes
+                existing = ledger_stats[name]
+                existing["use_count"] += row["use_count"]
+                existing["total_tokens"] += row["total_tokens"]
+                existing["total_cost"] += row["total_cost"]
+                if row["last_used"] > existing["last_used"]:
+                    existing["last_used"] = row["last_used"]
+    except Exception:
+        logger.debug("Could not load ledger stats for enrichment", exc_info=True)
 
     enriched: list[dict[str, Any]] = []
     for model_str in sorted_models:
@@ -190,13 +231,22 @@ def get_available_models(*, include_capabilities: bool = False) -> list[str] | l
         caps = get_model_capabilities(provider, model_id)
         caps_dict = dataclasses.asdict(caps) if caps is not None else None
 
-        enriched.append(
-            {
-                "model": model_str,
-                "provider": provider,
-                "model_id": model_id,
-                "capabilities": caps_dict,
-            }
-        )
+        entry: dict[str, Any] = {
+            "model": model_str,
+            "provider": provider,
+            "model_id": model_id,
+            "capabilities": caps_dict,
+            "verified": verified_set is not None and model_str in verified_set,
+        }
+
+        stats = ledger_stats.get(model_str)
+        if stats:
+            entry["last_used"] = stats["last_used"]
+            entry["use_count"] = stats["use_count"]
+        else:
+            entry["last_used"] = None
+            entry["use_count"] = 0
+
+        enriched.append(entry)
 
     return enriched

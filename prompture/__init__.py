@@ -110,6 +110,7 @@ from .image import (
     image_from_url,
     make_image,
 )
+from .ledger import ModelUsageLedger, get_recently_used_models
 from .logging import JSONFormatter, configure_logging
 from .model_rates import (
     ModelCapabilities,
@@ -221,6 +222,7 @@ __all__ = [
     "MemoryCacheBackend",
     "ModelCapabilities",
     "ModelRetry",
+    "ModelUsageLedger",
     "OllamaDriver",
     "OpenAIDriver",
     "OpenRouterDriver",
@@ -268,6 +270,7 @@ __all__ = [
     "get_persona",
     "get_persona_names",
     "get_persona_registry_snapshot",
+    "get_recently_used_models",
     "get_registry_snapshot",
     "get_required_fields",
     "get_trait",

@@ -31,6 +31,18 @@ from .tools import (
 logger = logging.getLogger("prompture.core")
 
 
+def _record_usage_to_ledger(model_name: str, meta: dict[str, Any]) -> None:
+    """Fire-and-forget ledger recording for standalone core functions."""
+    from .ledger import _resolve_api_key_hash, record_model_usage
+
+    record_model_usage(
+        model_name,
+        api_key_hash=_resolve_api_key_hash(model_name),
+        tokens=meta.get("total_tokens", 0),
+        cost=meta.get("cost", 0.0),
+    )
+
+
 def _build_content_with_images(text: str, images: list[ImageInput] | None = None) -> str | list[dict[str, Any]]:
     """Return plain string when no images, or a list of content blocks."""
     if not images:
@@ -231,6 +243,8 @@ def render_output(
         "model_name": model_name or getattr(driver, "model", ""),
     }
 
+    _record_usage_to_ledger(model_name, resp.get("meta", {}))
+
     return {"text": raw, "usage": usage, "output_format": output_format}
 
 
@@ -352,6 +366,8 @@ def ask_for_json(
         resp = driver.generate(full_prompt, options)
     raw = resp.get("text", "")
     cleaned = clean_json_text(raw)
+
+    _record_usage_to_ledger(model_name, resp.get("meta", {}))
 
     try:
         json_obj = json.loads(cleaned)

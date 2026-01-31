@@ -304,6 +304,15 @@ class AsyncConversation:
         self._usage["turns"] += 1
         self._maybe_auto_save()
 
+        from .ledger import _resolve_api_key_hash, record_model_usage
+
+        record_model_usage(
+            self._model_name,
+            api_key_hash=_resolve_api_key_hash(self._model_name),
+            tokens=meta.get("total_tokens", 0),
+            cost=meta.get("cost", 0.0),
+        )
+
     async def ask(
         self,
         content: str,

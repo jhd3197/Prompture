@@ -9,6 +9,7 @@ This script will:
 Usage:
     python discovery_example.py              # default: compact view
     python discovery_example.py --simple     # plain list without capabilities
+    python discovery_example.py --verified   # only show models that have been used
 """
 
 import argparse
@@ -51,13 +52,14 @@ def _capability_badges(caps: dict) -> str:
 def main():
     parser = argparse.ArgumentParser(description="Auto-detect available LLM models")
     parser.add_argument("--simple", action="store_true", help="Plain list without capabilities")
+    parser.add_argument("--verified", action="store_true", help="Only show models that have been used successfully")
     args = parser.parse_args()
 
     print("Auto-detecting available models...")
 
     try:
         if args.simple:
-            models = get_available_models()
+            models = get_available_models(verified_only=args.verified)
             if not models:
                 print("No models detected. Check your API keys or .env file.")
                 return
@@ -75,7 +77,7 @@ def main():
             return
 
         # Enriched mode — show capabilities
-        models = get_available_models(include_capabilities=True)
+        models = get_available_models(include_capabilities=True, verified_only=args.verified)
 
         if not models:
             print("No models detected. Check your API keys or .env file.")
@@ -92,6 +94,12 @@ def main():
             print(f"[{provider.upper()}]")
             for entry in sorted(entries, key=lambda e: e["model_id"]):
                 caps = entry.get("capabilities")
+                verified_badge = " [verified]" if entry.get("verified") else ""
+                last_used = entry.get("last_used")
+                use_info = ""
+                if last_used:
+                    use_info = f"  used={entry.get('use_count', 0)}x last={last_used[:10]}"
+
                 if caps:
                     ctx = _format_tokens(caps.get("context_window"))
                     out = _format_tokens(caps.get("max_output_tokens"))
@@ -99,9 +107,9 @@ def main():
                     detail = f"ctx={ctx}  out={out}"
                     if badges:
                         detail += f"  [{badges}]"
-                    print(f"  {entry['model_id']:<40s} {detail}")
+                    print(f"  {entry['model_id']:<40s} {detail}{verified_badge}{use_info}")
                 else:
-                    print(f"  {entry['model_id']}")
+                    print(f"  {entry['model_id']}{verified_badge}{use_info}")
             print()
 
     except Exception as e:
