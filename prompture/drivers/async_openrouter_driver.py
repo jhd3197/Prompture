@@ -93,7 +93,7 @@ class AsyncOpenRouterDriver(CostMixin, AsyncDriver):
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
             "total_tokens": total_tokens,
-            "cost": total_cost,
+            "cost": round(total_cost, 6),
             "raw_response": resp,
             "model_name": model,
         }
