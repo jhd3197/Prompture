@@ -77,6 +77,13 @@ class ClaudeDriver(CostMixin, Driver):
         opts = {**{"temperature": 0.0, "max_tokens": 512}, **options}
         model = options.get("model", self.model)
 
+        # Validate capabilities against models.dev metadata
+        self._validate_model_capabilities(
+            "claude",
+            model,
+            using_json_schema=bool(options.get("json_schema")),
+        )
+
         client = anthropic.Anthropic(api_key=self.api_key)
 
         # Anthropic requires system messages as a top-level parameter
@@ -177,6 +184,9 @@ class ClaudeDriver(CostMixin, Driver):
 
         opts = {**{"temperature": 0.0, "max_tokens": 512}, **options}
         model = options.get("model", self.model)
+
+        self._validate_model_capabilities("claude", model, using_tool_use=True)
+
         client = anthropic.Anthropic(api_key=self.api_key)
 
         system_content, api_messages = self._extract_system_and_messages(messages)

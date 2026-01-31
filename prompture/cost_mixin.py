@@ -49,3 +49,40 @@ class CostMixin:
             completion_cost = (completion_tokens / unit) * model_pricing["completion"]
 
         return round(prompt_cost + completion_cost, 6)
+
+    def _get_model_config(self, provider: str, model: str) -> dict[str, Any]:
+        """Merge live models.dev capabilities with hardcoded ``MODEL_PRICING``.
+
+        Returns a dict with:
+        - ``tokens_param`` — always from hardcoded ``MODEL_PRICING`` (API-specific)
+        - ``supports_temperature`` — prefers live data, falls back to hardcoded, default ``True``
+        - ``context_window`` — from live data only (``None`` if unavailable)
+        - ``max_output_tokens`` — from live data only (``None`` if unavailable)
+        """
+        from .model_rates import get_model_capabilities
+
+        hardcoded = self.MODEL_PRICING.get(model, {})
+
+        # tokens_param is always from hardcoded config (API-specific, not in models.dev)
+        tokens_param = hardcoded.get("tokens_param", "max_tokens")
+
+        # Start with hardcoded supports_temperature, default True
+        supports_temperature = hardcoded.get("supports_temperature", True)
+
+        context_window: int | None = None
+        max_output_tokens: int | None = None
+
+        # Override with live data when available
+        caps = get_model_capabilities(provider, model)
+        if caps is not None:
+            if caps.supports_temperature is not None:
+                supports_temperature = caps.supports_temperature
+            context_window = caps.context_window
+            max_output_tokens = caps.max_output_tokens
+
+        return {
+            "tokens_param": tokens_param,
+            "supports_temperature": supports_temperature,
+            "context_window": context_window,
+            "max_output_tokens": max_output_tokens,
+        }

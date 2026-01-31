@@ -228,6 +228,13 @@ class GoogleDriver(CostMixin, Driver):
     def _do_generate(self, messages: list[dict[str, str]], options: Optional[dict[str, Any]] = None) -> dict[str, Any]:
         gen_input, gen_kwargs, model_kwargs = self._build_generation_args(messages, options)
 
+        # Validate capabilities against models.dev metadata
+        self._validate_model_capabilities(
+            "google",
+            self.model,
+            using_json_schema=bool((options or {}).get("json_schema")),
+        )
+
         try:
             logger.debug(f"Initializing {self.model} for generation")
             model = genai.GenerativeModel(self.model, **model_kwargs)
@@ -263,6 +270,9 @@ class GoogleDriver(CostMixin, Driver):
         options: dict[str, Any],
     ) -> dict[str, Any]:
         """Generate a response that may include tool/function calls."""
+        model = options.get("model", self.model)
+        self._validate_model_capabilities("google", model, using_tool_use=True)
+
         gen_input, gen_kwargs, model_kwargs = self._build_generation_args(
             self._prepare_messages(messages), options
         )

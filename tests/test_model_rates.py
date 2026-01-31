@@ -8,38 +8,77 @@ import pytest
 
 import prompture.model_rates as mr
 
-# Sample API data mimicking models.dev structure
+# Sample API data mimicking models.dev structure (with capability fields)
 SAMPLE_API_DATA = {
     "openai": {
         "gpt-4o": {
             "cost": {"input": 2.5, "output": 10.0},
             "limit": {"context": 128000, "output": 16384},
+            "temperature": True,
+            "tool_call": True,
+            "structured_output": True,
+            "reasoning": False,
+            "modalities": {"input": ["text", "image"], "output": ["text"]},
         },
         "gpt-4o-mini": {
             "cost": {"input": 0.15, "output": 0.6},
             "limit": {"context": 128000, "output": 16384},
+            "temperature": True,
+            "tool_call": True,
+            "structured_output": True,
+            "reasoning": False,
+            "modalities": {"input": ["text", "image"], "output": ["text"]},
+        },
+        "o1": {
+            "cost": {"input": 15.0, "output": 60.0},
+            "limit": {"context": 200000, "output": 100000},
+            "temperature": False,
+            "tool_call": True,
+            "structured_output": True,
+            "reasoning": True,
+            "modalities": {"input": ["text", "image"], "output": ["text"]},
         },
     },
     "anthropic": {
         "claude-sonnet-4-20250514": {
             "cost": {"input": 3.0, "output": 15.0, "cache_read": 0.3, "cache_write": 3.75},
             "limit": {"context": 200000, "output": 8192},
+            "temperature": True,
+            "tool_call": True,
+            "structured_output": True,
+            "reasoning": False,
+            "modalities": {"input": ["text", "image"], "output": ["text"]},
         },
     },
     "xai": {
         "grok-3": {
             "cost": {"input": 3.0, "output": 15.0},
             "limit": {"context": 131072, "output": 131072},
+            "temperature": True,
+            "tool_call": True,
+            "structured_output": True,
+            "reasoning": False,
+            "modalities": {"input": ["text"], "output": ["text"]},
         },
     },
     "google": {
         "gemini-2.5-pro": {
             "cost": {"input": 1.25, "output": 10.0},
+            "temperature": True,
+            "tool_call": True,
+            "structured_output": True,
+            "reasoning": False,
+            "modalities": {"input": ["text", "image", "audio", "video"], "output": ["text"]},
         },
     },
     "groq": {
         "llama2-70b-4096": {
             "cost": {"input": 0.59, "output": 0.79},
+            "temperature": True,
+            "tool_call": False,
+            "structured_output": False,
+            "reasoning": False,
+            "modalities": {"input": ["text"], "output": ["text"]},
         },
     },
 }
@@ -292,3 +331,194 @@ class TestProviderMap:
         assert mr.PROVIDER_MAP["grok"] == "xai"
         assert mr.PROVIDER_MAP["azure"] == "azure"
         assert mr.PROVIDER_MAP["openrouter"] == "openrouter"
+
+
+class TestGetModelCapabilities:
+    def test_known_model_with_full_capabilities(self):
+        """Returns all capability fields for a well-known model."""
+        mr._data = SAMPLE_API_DATA
+        mr._loaded = True
+
+        caps = mr.get_model_capabilities("openai", "gpt-4o")
+        assert caps is not None
+        assert caps.supports_temperature is True
+        assert caps.supports_tool_use is True
+        assert caps.supports_structured_output is True
+        assert caps.supports_vision is True
+        assert caps.is_reasoning is False
+        assert caps.context_window == 128000
+        assert caps.max_output_tokens == 16384
+        assert caps.modalities_input == ("text", "image")
+        assert caps.modalities_output == ("text",)
+
+    def test_reasoning_model(self):
+        """Reasoning model has is_reasoning=True and supports_temperature=False."""
+        mr._data = SAMPLE_API_DATA
+        mr._loaded = True
+
+        caps = mr.get_model_capabilities("openai", "o1")
+        assert caps is not None
+        assert caps.is_reasoning is True
+        assert caps.supports_temperature is False
+        assert caps.supports_tool_use is True
+
+    def test_model_without_vision(self):
+        """Model with text-only input has supports_vision=False."""
+        mr._data = SAMPLE_API_DATA
+        mr._loaded = True
+
+        caps = mr.get_model_capabilities("grok", "grok-3")
+        assert caps is not None
+        assert caps.supports_vision is False
+        assert caps.modalities_input == ("text",)
+
+    def test_model_without_tool_support(self):
+        """Model with tool_call=False."""
+        mr._data = SAMPLE_API_DATA
+        mr._loaded = True
+
+        caps = mr.get_model_capabilities("groq", "llama2-70b-4096")
+        assert caps is not None
+        assert caps.supports_tool_use is False
+        assert caps.supports_structured_output is False
+
+    def test_unknown_model_returns_none(self):
+        """Returns None for unknown model."""
+        mr._data = SAMPLE_API_DATA
+        mr._loaded = True
+
+        assert mr.get_model_capabilities("openai", "nonexistent") is None
+
+    def test_unknown_provider_returns_none(self):
+        """Returns None for unknown provider."""
+        mr._data = SAMPLE_API_DATA
+        mr._loaded = True
+
+        assert mr.get_model_capabilities("unknown", "gpt-4o") is None
+
+    def test_no_data_returns_none(self):
+        """Returns None when no API data is loaded."""
+        mr._data = None
+        mr._loaded = True
+
+        assert mr.get_model_capabilities("openai", "gpt-4o") is None
+
+    def test_model_without_capability_fields(self):
+        """Model entry with only cost/limit but no capability fields."""
+        mr._data = {"openai": {"gpt-x": {"cost": {"input": 1.0, "output": 2.0}}}}
+        mr._loaded = True
+
+        caps = mr.get_model_capabilities("openai", "gpt-x")
+        assert caps is not None
+        # All capability booleans should be None (unknown)
+        assert caps.supports_temperature is None
+        assert caps.supports_tool_use is None
+        assert caps.supports_structured_output is None
+        assert caps.supports_vision is None
+        assert caps.is_reasoning is None
+        assert caps.context_window is None
+        assert caps.max_output_tokens is None
+        assert caps.modalities_input == ()
+        assert caps.modalities_output == ()
+
+    def test_provider_name_mapping(self):
+        """Prompture provider names map correctly to models.dev names."""
+        mr._data = SAMPLE_API_DATA
+        mr._loaded = True
+
+        caps = mr.get_model_capabilities("claude", "claude-sonnet-4-20250514")
+        assert caps is not None
+        assert caps.supports_tool_use is True
+        assert caps.context_window == 200000
+
+    def test_frozen_dataclass(self):
+        """ModelCapabilities is immutable."""
+        mr._data = SAMPLE_API_DATA
+        mr._loaded = True
+
+        caps = mr.get_model_capabilities("openai", "gpt-4o")
+        with pytest.raises(AttributeError):
+            caps.supports_temperature = False
+
+
+class TestGetModelConfig:
+    """Test _get_model_config() on CostMixin."""
+
+    def test_live_data_overrides_hardcoded_temperature(self):
+        """Live models.dev data overrides hardcoded supports_temperature."""
+        from prompture.cost_mixin import CostMixin
+
+        mixin = CostMixin()
+        mixin.MODEL_PRICING = {
+            "test-model": {
+                "prompt": 0.01,
+                "completion": 0.02,
+                "tokens_param": "max_completion_tokens",
+                "supports_temperature": True,
+            }
+        }
+
+        # Mock get_model_capabilities to return supports_temperature=False
+        caps = mr.ModelCapabilities(supports_temperature=False, context_window=200000)
+        with patch("prompture.model_rates.get_model_capabilities", return_value=caps):
+            config = mixin._get_model_config("openai", "test-model")
+
+        assert config["supports_temperature"] is False
+        assert config["tokens_param"] == "max_completion_tokens"
+        assert config["context_window"] == 200000
+
+    def test_tokens_param_always_from_hardcoded(self):
+        """tokens_param is always from MODEL_PRICING, never from models.dev."""
+        from prompture.cost_mixin import CostMixin
+
+        mixin = CostMixin()
+        mixin.MODEL_PRICING = {
+            "test-model": {
+                "prompt": 0.01,
+                "completion": 0.02,
+                "tokens_param": "max_completion_tokens",
+                "supports_temperature": True,
+            }
+        }
+
+        caps = mr.ModelCapabilities(supports_temperature=True)
+        with patch("prompture.model_rates.get_model_capabilities", return_value=caps):
+            config = mixin._get_model_config("openai", "test-model")
+
+        assert config["tokens_param"] == "max_completion_tokens"
+
+    def test_fallback_when_no_live_data(self):
+        """Falls back to hardcoded values when models.dev returns None."""
+        from prompture.cost_mixin import CostMixin
+
+        mixin = CostMixin()
+        mixin.MODEL_PRICING = {
+            "test-model": {
+                "prompt": 0.01,
+                "completion": 0.02,
+                "tokens_param": "max_tokens",
+                "supports_temperature": False,
+            }
+        }
+
+        with patch("prompture.model_rates.get_model_capabilities", return_value=None):
+            config = mixin._get_model_config("openai", "test-model")
+
+        assert config["supports_temperature"] is False
+        assert config["tokens_param"] == "max_tokens"
+        assert config["context_window"] is None
+        assert config["max_output_tokens"] is None
+
+    def test_unknown_model_defaults(self):
+        """Unknown model gets default values."""
+        from prompture.cost_mixin import CostMixin
+
+        mixin = CostMixin()
+        mixin.MODEL_PRICING = {}
+
+        with patch("prompture.model_rates.get_model_capabilities", return_value=None):
+            config = mixin._get_model_config("openai", "unknown-model")
+
+        assert config["tokens_param"] == "max_tokens"
+        assert config["supports_temperature"] is True
+        assert config["context_window"] is None

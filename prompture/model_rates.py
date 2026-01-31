@@ -9,6 +9,7 @@ import contextlib
 import json
 import logging
 import threading
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
@@ -139,7 +140,12 @@ def _lookup_model(provider: str, model_id: str) -> Optional[dict[str, Any]]:
     if not isinstance(provider_data, dict):
         return None
 
-    return provider_data.get(model_id)
+    # models.dev nests actual models under a "models" key
+    models = provider_data.get("models", provider_data)
+    if not isinstance(models, dict):
+        return None
+
+    return models.get(model_id)
 
 
 # ── Public API ──────────────────────────────────────────────────────────────
@@ -189,7 +195,12 @@ def get_all_provider_models(provider: str) -> list[str]:
     if not isinstance(provider_data, dict):
         return []
 
-    return list(provider_data.keys())
+    # models.dev nests actual models under a "models" key
+    models = provider_data.get("models", provider_data)
+    if not isinstance(models, dict):
+        return []
+
+    return list(models.keys())
 
 
 def refresh_rates_cache(force: bool = False) -> bool:
@@ -215,3 +226,102 @@ def refresh_rates_cache(force: bool = False) -> bool:
             return True
 
         return False
+
+
+# ── Model Capabilities ─────────────────────────────────────────────────────
+
+
+@dataclass(frozen=True)
+class ModelCapabilities:
+    """Normalized capability metadata for an LLM model from models.dev.
+
+    All fields default to ``None`` (unknown) so callers can distinguish
+    "the model doesn't support X" from "we have no data about X".
+    """
+
+    supports_temperature: Optional[bool] = None
+    supports_tool_use: Optional[bool] = None
+    supports_structured_output: Optional[bool] = None
+    supports_vision: Optional[bool] = None
+    is_reasoning: Optional[bool] = None
+    context_window: Optional[int] = None
+    max_output_tokens: Optional[int] = None
+    modalities_input: tuple[str, ...] = ()
+    modalities_output: tuple[str, ...] = ()
+
+
+def get_model_capabilities(provider: str, model_id: str) -> Optional[ModelCapabilities]:
+    """Return capability metadata for a model, or ``None`` if unavailable.
+
+    Maps models.dev fields to a :class:`ModelCapabilities` instance:
+
+    - ``temperature`` → ``supports_temperature``
+    - ``tool_call`` → ``supports_tool_use``
+    - ``structured_output`` → ``supports_structured_output``
+    - ``"image" in modalities.input`` → ``supports_vision``
+    - ``reasoning`` → ``is_reasoning``
+    - ``limit.context`` → ``context_window``
+    - ``limit.output`` → ``max_output_tokens``
+    """
+    entry = _lookup_model(provider, model_id)
+    if entry is None:
+        return None
+
+    # Boolean capabilities (True/False/None)
+    supports_temperature: Optional[bool] = None
+    if "temperature" in entry:
+        supports_temperature = bool(entry["temperature"])
+
+    supports_tool_use: Optional[bool] = None
+    if "tool_call" in entry:
+        supports_tool_use = bool(entry["tool_call"])
+
+    supports_structured_output: Optional[bool] = None
+    if "structured_output" in entry:
+        supports_structured_output = bool(entry["structured_output"])
+
+    is_reasoning: Optional[bool] = None
+    if "reasoning" in entry:
+        is_reasoning = bool(entry["reasoning"])
+
+    # Modalities
+    modalities = entry.get("modalities", {})
+    modalities_input: tuple[str, ...] = ()
+    modalities_output: tuple[str, ...] = ()
+    if isinstance(modalities, dict):
+        raw_in = modalities.get("input")
+        if isinstance(raw_in, (list, tuple)):
+            modalities_input = tuple(str(m) for m in raw_in)
+        raw_out = modalities.get("output")
+        if isinstance(raw_out, (list, tuple)):
+            modalities_output = tuple(str(m) for m in raw_out)
+
+    supports_vision: Optional[bool] = None
+    if modalities_input:
+        supports_vision = "image" in modalities_input
+
+    # Limits
+    context_window: Optional[int] = None
+    max_output_tokens: Optional[int] = None
+    limits = entry.get("limit", {})
+    if isinstance(limits, dict):
+        ctx = limits.get("context")
+        if ctx is not None:
+            with contextlib.suppress(TypeError, ValueError):
+                context_window = int(ctx)
+        out = limits.get("output")
+        if out is not None:
+            with contextlib.suppress(TypeError, ValueError):
+                max_output_tokens = int(out)
+
+    return ModelCapabilities(
+        supports_temperature=supports_temperature,
+        supports_tool_use=supports_tool_use,
+        supports_structured_output=supports_structured_output,
+        supports_vision=supports_vision,
+        is_reasoning=is_reasoning,
+        context_window=context_window,
+        max_output_tokens=max_output_tokens,
+        modalities_input=modalities_input,
+        modalities_output=modalities_output,
+    )
