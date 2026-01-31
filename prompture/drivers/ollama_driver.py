@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 class OllamaDriver(Driver):
     supports_json_mode = True
+    supports_json_schema = True
     supports_streaming = True
     supports_vision = True
 
@@ -64,9 +65,10 @@ class OllamaDriver(Driver):
             "stream": False,
         }
 
-        # Native JSON mode support
+        # Native JSON mode / structured output support
         if merged_options.get("json_mode"):
-            payload["format"] = "json"
+            json_schema = merged_options.get("json_schema")
+            payload["format"] = json_schema if json_schema else "json"
 
         # Add any Ollama-specific options from merged_options
         if "temperature" in merged_options:
@@ -152,7 +154,8 @@ class OllamaDriver(Driver):
         }
 
         if merged_options.get("json_mode"):
-            payload["format"] = "json"
+            json_schema = merged_options.get("json_schema")
+            payload["format"] = json_schema if json_schema else "json"
         if "temperature" in merged_options:
             payload["temperature"] = merged_options["temperature"]
         if "top_p" in merged_options:
@@ -210,9 +213,10 @@ class OllamaDriver(Driver):
             "stream": False,
         }
 
-        # Native JSON mode support
+        # Native JSON mode / structured output support
         if merged_options.get("json_mode"):
-            payload["format"] = "json"
+            json_schema = merged_options.get("json_schema")
+            payload["format"] = json_schema if json_schema else "json"
 
         if "temperature" in merged_options:
             payload["temperature"] = merged_options["temperature"]

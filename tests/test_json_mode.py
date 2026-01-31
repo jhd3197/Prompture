@@ -116,13 +116,13 @@ class TestDriverCapabilityFlags:
         from prompture.drivers.ollama_driver import OllamaDriver
 
         assert OllamaDriver.supports_json_mode is True
-        assert OllamaDriver.supports_json_schema is False
+        assert OllamaDriver.supports_json_schema is True
 
     def test_lmstudio_driver_flags(self):
         from prompture.drivers.lmstudio_driver import LMStudioDriver
 
         assert LMStudioDriver.supports_json_mode is True
-        assert LMStudioDriver.supports_json_schema is False
+        assert LMStudioDriver.supports_json_schema is True
 
     def test_hugging_driver_flags(self):
         from prompture.drivers.hugging_driver import HuggingFaceDriver
@@ -192,13 +192,13 @@ class TestAsyncDriverCapabilityFlags:
         from prompture.drivers.async_ollama_driver import AsyncOllamaDriver
 
         assert AsyncOllamaDriver.supports_json_mode is True
-        assert AsyncOllamaDriver.supports_json_schema is False
+        assert AsyncOllamaDriver.supports_json_schema is True
 
     def test_async_lmstudio_driver_flags(self):
         from prompture.drivers.async_lmstudio_driver import AsyncLMStudioDriver
 
         assert AsyncLMStudioDriver.supports_json_mode is True
-        assert AsyncLMStudioDriver.supports_json_schema is False
+        assert AsyncLMStudioDriver.supports_json_schema is True
 
 
 # ---------------------------------------------------------------------------

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import AsyncIterator
 from typing import Any
 
 try:
@@ -19,6 +20,8 @@ from .claude_driver import ClaudeDriver
 class AsyncClaudeDriver(CostMixin, AsyncDriver):
     supports_json_mode = True
     supports_json_schema = True
+    supports_tool_use = True
+    supports_streaming = True
     supports_vision = True
 
     MODEL_PRICING = ClaudeDriver.MODEL_PRICING
@@ -51,13 +54,7 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
         client = anthropic.AsyncAnthropic(api_key=self.api_key)
 
         # Anthropic requires system messages as a top-level parameter
-        system_content = None
-        api_messages = []
-        for msg in messages:
-            if msg.get("role") == "system":
-                system_content = msg.get("content", "")
-            else:
-                api_messages.append(msg)
+        system_content, api_messages = self._extract_system_and_messages(messages)
 
         # Build common kwargs
         common_kwargs: dict[str, Any] = {
@@ -105,9 +102,171 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
             "total_tokens": total_tokens,
-            "cost": total_cost,
+            "cost": round(total_cost, 6),
             "raw_response": dict(resp),
             "model_name": model,
         }
 
         return {"text": text, "meta": meta}
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    def _extract_system_and_messages(
+        self, messages: list[dict[str, Any]]
+    ) -> tuple[str | None, list[dict[str, Any]]]:
+        """Separate system message from conversation messages for Anthropic API."""
+        system_content = None
+        api_messages: list[dict[str, Any]] = []
+        for msg in messages:
+            if msg.get("role") == "system":
+                system_content = msg.get("content", "")
+            else:
+                api_messages.append(msg)
+        return system_content, api_messages
+
+    # ------------------------------------------------------------------
+    # Tool use
+    # ------------------------------------------------------------------
+
+    async def generate_messages_with_tools(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        options: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Generate a response that may include tool calls (Anthropic)."""
+        if anthropic is None:
+            raise RuntimeError("anthropic package not installed")
+
+        opts = {**{"temperature": 0.0, "max_tokens": 512}, **options}
+        model = options.get("model", self.model)
+        client = anthropic.AsyncAnthropic(api_key=self.api_key)
+
+        system_content, api_messages = self._extract_system_and_messages(messages)
+
+        # Convert tools from OpenAI format to Anthropic format if needed
+        anthropic_tools = []
+        for t in tools:
+            if "type" in t and t["type"] == "function":
+                # OpenAI format -> Anthropic format
+                fn = t["function"]
+                anthropic_tools.append({
+                    "name": fn["name"],
+                    "description": fn.get("description", ""),
+                    "input_schema": fn.get("parameters", {"type": "object", "properties": {}}),
+                })
+            elif "input_schema" in t:
+                # Already Anthropic format
+                anthropic_tools.append(t)
+            else:
+                anthropic_tools.append(t)
+
+        kwargs: dict[str, Any] = {
+            "model": model,
+            "messages": api_messages,
+            "temperature": opts["temperature"],
+            "max_tokens": opts["max_tokens"],
+            "tools": anthropic_tools,
+        }
+        if system_content:
+            kwargs["system"] = system_content
+
+        resp = await client.messages.create(**kwargs)
+
+        prompt_tokens = resp.usage.input_tokens
+        completion_tokens = resp.usage.output_tokens
+        total_tokens = prompt_tokens + completion_tokens
+        total_cost = self._calculate_cost("claude", model, prompt_tokens, completion_tokens)
+
+        meta = {
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": total_tokens,
+            "cost": round(total_cost, 6),
+            "raw_response": dict(resp),
+            "model_name": model,
+        }
+
+        text = ""
+        tool_calls_out: list[dict[str, Any]] = []
+        for block in resp.content:
+            if block.type == "text":
+                text += block.text
+            elif block.type == "tool_use":
+                tool_calls_out.append({
+                    "id": block.id,
+                    "name": block.name,
+                    "arguments": block.input,
+                })
+
+        return {
+            "text": text,
+            "meta": meta,
+            "tool_calls": tool_calls_out,
+            "stop_reason": resp.stop_reason,
+        }
+
+    # ------------------------------------------------------------------
+    # Streaming
+    # ------------------------------------------------------------------
+
+    async def generate_messages_stream(
+        self,
+        messages: list[dict[str, Any]],
+        options: dict[str, Any],
+    ) -> AsyncIterator[dict[str, Any]]:
+        """Yield response chunks via Anthropic streaming API."""
+        if anthropic is None:
+            raise RuntimeError("anthropic package not installed")
+
+        opts = {**{"temperature": 0.0, "max_tokens": 512}, **options}
+        model = options.get("model", self.model)
+        client = anthropic.AsyncAnthropic(api_key=self.api_key)
+
+        system_content, api_messages = self._extract_system_and_messages(messages)
+
+        kwargs: dict[str, Any] = {
+            "model": model,
+            "messages": api_messages,
+            "temperature": opts["temperature"],
+            "max_tokens": opts["max_tokens"],
+        }
+        if system_content:
+            kwargs["system"] = system_content
+
+        full_text = ""
+        prompt_tokens = 0
+        completion_tokens = 0
+
+        async with client.messages.stream(**kwargs) as stream:
+            async for event in stream:
+                if hasattr(event, "type"):
+                    if event.type == "content_block_delta" and hasattr(event, "delta"):
+                        delta_text = getattr(event.delta, "text", "")
+                        if delta_text:
+                            full_text += delta_text
+                            yield {"type": "delta", "text": delta_text}
+                    elif event.type == "message_delta" and hasattr(event, "usage"):
+                        completion_tokens = getattr(event.usage, "output_tokens", 0)
+                    elif event.type == "message_start" and hasattr(event, "message"):
+                        usage = getattr(event.message, "usage", None)
+                        if usage:
+                            prompt_tokens = getattr(usage, "input_tokens", 0)
+
+        total_tokens = prompt_tokens + completion_tokens
+        total_cost = self._calculate_cost("claude", model, prompt_tokens, completion_tokens)
+
+        yield {
+            "type": "done",
+            "text": full_text,
+            "meta": {
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "total_tokens": total_tokens,
+                "cost": round(total_cost, 6),
+                "raw_response": {},
+                "model_name": model,
+            },
+        }

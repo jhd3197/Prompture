@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 class LMStudioDriver(Driver):
     supports_json_mode = True
+    supports_json_schema = True
     supports_vision = True
 
     # LM Studio is local – costs are always zero.
@@ -82,9 +83,21 @@ class LMStudioDriver(Driver):
             "temperature": merged_options.get("temperature", 0.7),
         }
 
-        # Native JSON mode support
+        # Native JSON mode support (LM Studio requires json_schema, not json_object)
         if merged_options.get("json_mode"):
-            payload["response_format"] = {"type": "json_object"}
+            json_schema = merged_options.get("json_schema")
+            if json_schema:
+                payload["response_format"] = {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "extraction",
+                        "schema": json_schema,
+                    },
+                }
+            else:
+                # No schema provided — omit response_format entirely;
+                # LM Studio rejects "json_object" type.
+                pass
 
         try:
             logger.debug(f"Sending request to LM Studio endpoint: {self.endpoint}")
@@ -152,7 +165,7 @@ class LMStudioDriver(Driver):
     def unload_model(self, model: str) -> dict[str, Any]:
         """Unload a model from LM Studio via POST /api/v1/models/unload."""
         url = f"{self.base_url}/api/v1/models/unload"
-        payload = {"model": model}
+        payload = {"instance_id": model}
         r = requests.post(url, json=payload, headers=self._headers, timeout=30)
         r.raise_for_status()
         return r.json()
