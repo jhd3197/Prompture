@@ -62,6 +62,13 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
+      - name: Update VERSION file
+        run: |
+          echo "${{ steps.ver.outputs.new }}" > VERSION
+          git add VERSION
+          git commit -m "chore: bump dev version to ${{ steps.ver.outputs.new }} [skip ci]" || true
+          git push origin dev || true
+
       - name: Create and push dev tag
         run: |
           git tag -a "${{ steps.ver.outputs.tag }}" -m "pre: ${{ steps.ver.outputs.new }}"

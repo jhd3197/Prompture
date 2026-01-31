@@ -17,23 +17,41 @@ class LMStudioDriver(Driver):
     # LM Studio is local – costs are always zero.
     MODEL_PRICING = {"default": {"prompt": 0.0, "completion": 0.0}}
 
-    def __init__(self, endpoint: str | None = None, model: str = "deepseek/deepseek-r1-0528-qwen3-8b"):
+    def __init__(
+        self,
+        endpoint: str | None = None,
+        model: str = "deepseek/deepseek-r1-0528-qwen3-8b",
+        api_key: str | None = None,
+    ):
         # Allow override via env var
         self.endpoint = endpoint or os.getenv("LMSTUDIO_ENDPOINT", "http://127.0.0.1:1234/v1/chat/completions")
         self.model = model
         self.options: dict[str, Any] = {}
 
+        # Derive base_url once for reuse across management endpoints
+        self.base_url = self.endpoint.split("/v1/")[0]
+
+        # API key for LM Studio 0.4.0+ authentication
+        self.api_key = api_key or os.getenv("LMSTUDIO_API_KEY")
+        self._headers = self._build_headers()
+
         # Validate connection to LM Studio server
         self._validate_connection()
+
+    def _build_headers(self) -> dict[str, str]:
+        """Build request headers, including auth if an API key is configured."""
+        headers: dict[str, str] = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+        return headers
 
     def _validate_connection(self):
         """Validate connection to the LM Studio server."""
         try:
-            base_url = self.endpoint.split("/v1/")[0]
-            health_url = f"{base_url}/v1/models"
+            health_url = f"{self.base_url}/v1/models"
 
             logger.debug(f"Validating connection to LM Studio server at: {health_url}")
-            response = requests.get(health_url, timeout=5)
+            response = requests.get(health_url, headers=self._headers, timeout=5)
             response.raise_for_status()
             logger.debug("Connection to LM Studio server validated successfully")
         except requests.exceptions.RequestException as e:
@@ -72,7 +90,7 @@ class LMStudioDriver(Driver):
             logger.debug(f"Sending request to LM Studio endpoint: {self.endpoint}")
             logger.debug(f"Request payload: {payload}")
 
-            r = requests.post(self.endpoint, json=payload, timeout=120)
+            r = requests.post(self.endpoint, json=payload, headers=self._headers, timeout=120)
             r.raise_for_status()
 
             response_data = r.json()
@@ -110,3 +128,31 @@ class LMStudioDriver(Driver):
         }
 
         return {"text": text, "meta": meta}
+
+    # -- Model management (LM Studio 0.4.0+) ----------------------------------
+
+    def list_models(self) -> list[dict[str, Any]]:
+        """List currently loaded models via GET /v1/models (OpenAI-compatible)."""
+        url = f"{self.base_url}/v1/models"
+        r = requests.get(url, headers=self._headers, timeout=10)
+        r.raise_for_status()
+        data = r.json()
+        return data.get("data", [])
+
+    def load_model(self, model: str, context_length: int | None = None) -> dict[str, Any]:
+        """Load a model into LM Studio via POST /api/v1/models/load."""
+        url = f"{self.base_url}/api/v1/models/load"
+        payload: dict[str, Any] = {"model": model}
+        if context_length is not None:
+            payload["context_length"] = context_length
+        r = requests.post(url, json=payload, headers=self._headers, timeout=120)
+        r.raise_for_status()
+        return r.json()
+
+    def unload_model(self, model: str) -> dict[str, Any]:
+        """Unload a model from LM Studio via POST /api/v1/models/unload."""
+        url = f"{self.base_url}/api/v1/models/unload"
+        payload = {"model": model}
+        r = requests.post(url, json=payload, headers=self._headers, timeout=30)
+        r.raise_for_status()
+        return r.json()

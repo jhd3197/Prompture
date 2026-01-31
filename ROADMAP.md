@@ -174,64 +174,62 @@
 - [x] `load_personas_from_directory("personas/")` — bulk-load `.json`/`.yaml`/`.yml` files into the registry
 - [x] 72 unit tests covering all sub-phases
 
-### Phase 5: Multi-Agent Coordination
+### Phase 5: Multi-Agent Coordination ✅
 **Goal**: Enable multiple agents to collaborate via deterministic workflow groups (sequential, parallel, router) and agent-as-tool composition, with explicit scoped state sharing and aggregate usage tracking.
 
-#### Agent-as-Tool (Foundation Pattern)
-- [ ] `agent.as_tool(name, description) -> ToolDefinition` — wraps any `Agent` as a callable tool for another agent
-- [ ] Coordinator retains conversation control; sub-agent runs independently and returns result as tool output
-- [ ] Optional `custom_output_extractor: Callable[[AgentResult], str]` for transforming sub-agent results before returning to coordinator
-- [ ] Sub-agent inherits no conversation history from coordinator (maximum isolation)
-- [ ] Sub-agent `AgentResult` captured for tracing even when used as tool
+#### Agent-as-Tool (Foundation Pattern) ✅
+- [x] `agent.as_tool(name, description) -> ToolDefinition` — wraps any `Agent` as a callable tool for another agent
+- [x] Coordinator retains conversation control; sub-agent runs independently and returns result as tool output
+- [x] Optional `custom_output_extractor: Callable[[AgentResult], str]` for transforming sub-agent results before returning to coordinator
+- [x] Sub-agent inherits no conversation history from coordinator (maximum isolation)
+- [x] Sub-agent `AgentResult` captured for tracing even when used as tool
 
-#### Deterministic Workflow Groups
-- [ ] `SequentialGroup(agents, *, state, error_policy, max_total_turns)` — agents execute in order, each receiving shared state with outputs from prior agents
-- [ ] `ParallelGroup(agents, *, state, error_policy, timeout_ms)` — independent agents run concurrently via `asyncio.gather`, results collected into shared state
-- [ ] `LoopGroup(agents, *, exit_condition, max_iterations)` — generator-critic cycle: agents execute in sequence repeatedly until `exit_condition(state) -> bool` returns True
-- [ ] All groups accept `state: dict[str, Any]` as initial shared context
-- [ ] Groups are composable: a `SequentialGroup` can contain a `ParallelGroup` as a step (nested workflows)
+#### Deterministic Workflow Groups ✅
+- [x] `SequentialGroup(agents, *, state, error_policy, max_total_turns)` — agents execute in order, each receiving shared state with outputs from prior agents
+- [x] `ParallelGroup(agents, *, state, error_policy, timeout_ms)` — independent agents run concurrently via `asyncio.gather`, results collected into shared state
+- [x] `LoopGroup(agents, *, exit_condition, max_iterations)` — generator-critic cycle: agents execute in sequence repeatedly until `exit_condition(state) -> bool` returns True
+- [x] All groups accept `state: dict[str, Any]` as initial shared context
+- [x] Groups are composable: a `SequentialGroup` can contain a `ParallelGroup` as a step (nested workflows via `GroupAsAgent` adapter)
 
-#### Shared State via Named Keys
-- [ ] Each agent reads from shared `state: dict[str, Any]` (injected as part of system prompt or `RunContext.deps`)
-- [ ] Each agent writes output to a named key: `Agent(output_key="research_data")` — result stored in `state["research_data"]`
-- [ ] Template variable injection: agent system prompts can reference `{research_data}` to read other agents' outputs (Google ADK pattern)
-- [ ] Explicit data flow: traceable which agent produces and consumes which state keys
-- [ ] No shared conversation history — each agent gets only the state keys it needs (minimum necessary context)
+#### Shared State via Named Keys ✅
+- [x] Each agent reads from shared `state: dict[str, Any]` (injected via template variable substitution in prompts)
+- [x] Each agent writes output to a named key: `Agent(output_key="research_data")` — result stored in `state["research_data"]`
+- [x] Template variable injection: agent system prompts can reference `{research_data}` to read other agents' outputs (Google ADK pattern)
+- [x] Explicit data flow: traceable which agent produces and consumes which state keys
+- [x] No shared conversation history — each agent gets only the state keys it needs (minimum necessary context)
 
-#### LLM-Driven Router (Optional)
-- [ ] `RouterAgent(model, agents, routing_prompt)` — uses a (cheap) LLM to classify input and delegate to the appropriate specialist agent
-- [ ] Routing based on agent `description` fields from Persona metadata (Phase 4 integration)
-- [ ] Fallback agent when no specialist matches
-- [ ] Router runs a single LLM call for classification, not a full ReAct loop (minimal overhead)
+#### LLM-Driven Router ✅
+- [x] `RouterAgent(model, agents, routing_prompt)` — uses a (cheap) LLM to classify input and delegate to the appropriate specialist agent
+- [x] Routing based on agent `description` fields from Persona metadata (Phase 4 integration)
+- [x] Fallback agent when no specialist matches
+- [x] Router runs a single LLM call for classification, not a full ReAct loop (minimal overhead)
 
-#### Error Handling
-- [ ] `ErrorPolicy` enum: `fail_fast` (abort group on first failure), `continue_on_error` (skip failed agent, proceed with partial results), `retry_failed` (retry N times with backoff)
-- [ ] Per-agent error state captured in `GroupResult.agent_results`
-- [ ] Failed agent's error message available in shared state for downstream agents to handle
-- [ ] `max_total_turns` across entire group to prevent runaway costs from agents bouncing between each other
+#### Error Handling ✅
+- [x] `ErrorPolicy` enum: `fail_fast` (abort group on first failure), `continue_on_error` (skip failed agent, proceed with partial results), `retry_failed` (retry N times with backoff)
+- [x] Per-agent error state captured in `GroupResult.agent_results` and `GroupResult.errors` (list of `AgentError`)
+- [x] Failed agent's error message available in shared state for downstream agents to handle
+- [x] `max_total_turns` across entire group to prevent runaway costs from agents bouncing between each other
 
-#### Group-Level Usage & Observability
-- [ ] `GroupResult` dataclass: `agent_results: dict[str, AgentResult]`, `aggregate_usage: UsageSession`, `shared_state: dict[str, Any]`, `elapsed_ms: float`, `timeline: list[GroupStep]`
-- [ ] `GroupStep` dataclass: `agent_name`, `step_type` (started/completed/errored), `timestamp`, `duration_ms`, `usage_delta`
-- [ ] Aggregate `UsageSession` across all agents with per-agent bucketing (`_per_agent: dict[str, UsageSession]`)
-- [ ] `GroupCallbacks` extending `AgentCallbacks` with: `on_agent_start(name)`, `on_agent_complete(name, result)`, `on_agent_error(name, error)`, `on_state_update(key, value)`
-- [ ] Interleaved timeline view: all agent steps merged chronologically for debugging
+#### Group-Level Usage & Observability ✅
+- [x] `GroupResult` dataclass: `agent_results: dict[str, AgentResult]`, `aggregate_usage: dict`, `shared_state: dict[str, Any]`, `elapsed_ms: float`, `timeline: list[GroupStep]`
+- [x] `GroupStep` dataclass: `agent_name`, `step_type` (agent_run/agent_error), `timestamp`, `duration_ms`, `usage_delta`
+- [x] Aggregate usage across all agents via `_aggregate_usage()` helper (prompt_tokens, completion_tokens, total_tokens, total_cost, call_count, errors)
+- [x] `GroupCallbacks` with: `on_agent_start(name, prompt)`, `on_agent_complete(name, result)`, `on_agent_error(name, error)`, `on_state_update(key, value)`
+- [x] Interleaved timeline view: all agent steps merged chronologically for debugging
 
-#### Timeout & Cancellation
-- [ ] Per-agent timeout: `Agent(timeout_ms=30000)` — enforced via `asyncio.wait_for`
-- [ ] Group-level timeout: `group.run(timeout_ms=120000)` — cancels all remaining agents
-- [ ] Cooperative shutdown: `group.stop()` calls `agent.stop()` on all running agents, waits for current iterations to complete
-- [ ] `max_total_cost` budget across the group (aggregate `UsageSession` enforced)
+#### Timeout & Cancellation ✅
+- [x] Per-agent timeout in `ParallelGroup(timeout_ms=30000)` — enforced via `asyncio.wait_for`
+- [x] Cooperative shutdown: `group.stop()` calls `agent.stop()` on all running agents
+- [x] `max_total_cost` budget across the group (aggregate `UsageSession` enforced)
 
-#### Async Support
-- [ ] `AsyncSequentialGroup`, `AsyncParallelGroup`, `AsyncLoopGroup` mirroring sync variants
-- [ ] `ParallelGroup` uses `asyncio.gather` internally (async-native); sync wrapper available via `group.run()` with event loop management
-- [ ] `AsyncRouterAgent` for non-blocking routing
+#### Async Support ✅
+- [x] `AsyncSequentialGroup`, `AsyncLoopGroup` mirroring sync variants
+- [x] `ParallelGroup` uses `asyncio.gather` internally (async-native); sync wrapper available via `group.run()` with event loop management
+- [x] `AsyncRouterAgent` for non-blocking routing
 
-#### Serialization & Persistence
-- [ ] `GroupResult.export() -> dict` with per-agent results, shared state, aggregate usage, and timeline
-- [ ] `group.save("path.json")` for full group run persistence (reuses `serialization.py` patterns)
-- [ ] Tag-based storage: `ConversationStore.save(group_id, export, tags=["group_run", "2025-01-30"])`
+#### Serialization & Persistence ✅
+- [x] `GroupResult.export() -> dict` with per-agent results, shared state, aggregate usage, and timeline
+- [x] `GroupResult.save("path.json")` for full group result persistence (reuses `serialization.py` patterns)
 
 ### Phase 6: Cost Budgets & Guardrails
 **Goal**: Prevent runaway costs with pre-flight estimation and enforcement, manage context windows with token-aware history truncation/summarization, rate-limit requests, and validate input/output content — building on the existing `UsageSession`, `DriverCallbacks`, and `CostMixin` infrastructure.

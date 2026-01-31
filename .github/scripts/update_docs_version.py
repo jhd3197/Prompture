@@ -174,6 +174,41 @@ def update_index_rst(index_file, version):
         return False
 
 
+def update_conf_py(conf_file, version):
+    """
+    Update the release version in docs/source/conf.py fallback.
+
+    Args:
+        conf_file: Path to the conf.py file
+        version: Version string to insert
+
+    Returns:
+        bool: True if file was updated, False otherwise
+    """
+    if not conf_file.exists():
+        print(f"✗ File not found: {conf_file}", file=sys.stderr)
+        return False
+
+    try:
+        content = conf_file.read_text(encoding="utf-8")
+        # Update the hardcoded fallback version in conf.py
+        new_content, count = re.subn(
+            r'(release\s*=\s*")[^"]+(")',
+            rf"\g<1>{version}\g<2>",
+            content,
+        )
+        if count > 0:
+            conf_file.write_text(new_content, encoding="utf-8")
+            print(f"✓ Updated fallback release version in {conf_file}")
+            return True
+        else:
+            print(f"✗ release pattern not found in {conf_file}", file=sys.stderr)
+            return False
+    except Exception as e:
+        print(f"✗ Error updating conf.py: {e}", file=sys.stderr)
+        return False
+
+
 def main():
     """Main entry point for the script."""
     # Determine project root (two levels up from this script)
@@ -192,9 +227,13 @@ def main():
 
     # Update index.rst
     index_file = project_root / "docs" / "source" / "index.rst"
-    success = update_index_rst(index_file, version)
+    rst_ok = update_index_rst(index_file, version)
 
-    if success:
+    # Update conf.py fallback version
+    conf_file = project_root / "docs" / "source" / "conf.py"
+    conf_ok = update_conf_py(conf_file, version)
+
+    if rst_ok or conf_ok:
         print("\n✓ Documentation version updated successfully")
         sys.exit(0)
     else:

@@ -147,7 +147,30 @@ def get_available_models() -> list[str]:
                 except Exception as e:
                     logger.debug(f"Failed to fetch Ollama models: {e}")
 
-            # Future: Add dynamic detection for LM Studio if they have an endpoint for listing models
+            # Dynamic Detection: LM Studio loaded models
+            if provider == "lmstudio":
+                try:
+                    endpoint = settings.lmstudio_endpoint or os.getenv(
+                        "LMSTUDIO_ENDPOINT", "http://127.0.0.1:1234/v1/chat/completions"
+                    )
+                    base_url = endpoint.split("/v1/")[0]
+                    models_url = f"{base_url}/v1/models"
+
+                    headers: dict[str, str] = {}
+                    api_key = settings.lmstudio_api_key or os.getenv("LMSTUDIO_API_KEY")
+                    if api_key:
+                        headers["Authorization"] = f"Bearer {api_key}"
+
+                    resp = requests.get(models_url, headers=headers, timeout=2)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        models = data.get("data", [])
+                        for model in models:
+                            model_id = model.get("id")
+                            if model_id:
+                                available_models.add(f"lmstudio/{model_id}")
+                except Exception as e:
+                    logger.debug(f"Failed to fetch LM Studio models: {e}")
 
         except Exception as e:
             logger.warning(f"Error detecting models for provider {provider}: {e}")

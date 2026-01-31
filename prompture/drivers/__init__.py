@@ -84,7 +84,11 @@ register_driver(
 )
 register_driver(
     "lmstudio",
-    lambda model=None: LMStudioDriver(endpoint=settings.lmstudio_endpoint, model=model or settings.lmstudio_model),
+    lambda model=None: LMStudioDriver(
+        endpoint=settings.lmstudio_endpoint,
+        model=model or settings.lmstudio_model,
+        api_key=settings.lmstudio_api_key,
+    ),
     overwrite=True,
 )
 register_driver(
