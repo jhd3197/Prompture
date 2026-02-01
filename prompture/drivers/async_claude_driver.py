@@ -99,6 +99,13 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
             resp = await client.messages.create(**common_kwargs)
             text = resp.content[0].text
 
+        # Extract reasoning/thinking content from content blocks
+        reasoning_content = ClaudeDriver._extract_thinking(resp.content)
+
+        # Fallback: use reasoning as text if content is empty
+        if not text and reasoning_content:
+            text = reasoning_content
+
         prompt_tokens = resp.usage.input_tokens
         completion_tokens = resp.usage.output_tokens
         total_tokens = prompt_tokens + completion_tokens
@@ -114,7 +121,10 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
             "model_name": model,
         }
 
-        return {"text": text, "meta": meta}
+        result: dict[str, Any] = {"text": text, "meta": meta}
+        if reasoning_content is not None:
+            result["reasoning_content"] = reasoning_content
+        return result
 
     # ------------------------------------------------------------------
     # Helpers
@@ -211,12 +221,17 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
                     "arguments": block.input,
                 })
 
-        return {
+        reasoning_content = ClaudeDriver._extract_thinking(resp.content)
+
+        result: dict[str, Any] = {
             "text": text,
             "meta": meta,
             "tool_calls": tool_calls_out,
             "stop_reason": resp.stop_reason,
         }
+        if reasoning_content is not None:
+            result["reasoning_content"] = reasoning_content
+        return result
 
     # ------------------------------------------------------------------
     # Streaming
@@ -247,6 +262,7 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
             kwargs["system"] = system_content
 
         full_text = ""
+        full_reasoning = ""
         prompt_tokens = 0
         completion_tokens = 0
 
@@ -254,10 +270,16 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
             async for event in stream:
                 if hasattr(event, "type"):
                     if event.type == "content_block_delta" and hasattr(event, "delta"):
-                        delta_text = getattr(event.delta, "text", "")
-                        if delta_text:
-                            full_text += delta_text
-                            yield {"type": "delta", "text": delta_text}
+                        delta_type = getattr(event.delta, "type", "")
+                        if delta_type == "thinking_delta":
+                            thinking_text = getattr(event.delta, "thinking", "")
+                            if thinking_text:
+                                full_reasoning += thinking_text
+                        else:
+                            delta_text = getattr(event.delta, "text", "")
+                            if delta_text:
+                                full_text += delta_text
+                                yield {"type": "delta", "text": delta_text}
                     elif event.type == "message_delta" and hasattr(event, "usage"):
                         completion_tokens = getattr(event.usage, "output_tokens", 0)
                     elif event.type == "message_start" and hasattr(event, "message"):
@@ -268,7 +290,7 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
         total_tokens = prompt_tokens + completion_tokens
         total_cost = self._calculate_cost("claude", model, prompt_tokens, completion_tokens)
 
-        yield {
+        done_chunk: dict[str, Any] = {
             "type": "done",
             "text": full_text,
             "meta": {
@@ -280,3 +302,6 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
                 "model_name": model,
             },
         }
+        if full_reasoning:
+            done_chunk["reasoning_content"] = full_reasoning
+        yield done_chunk
