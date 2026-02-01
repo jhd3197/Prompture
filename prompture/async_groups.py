@@ -340,6 +340,8 @@ class AsyncSequentialGroup:
                 if self._callbacks.on_agent_error:
                     self._callbacks.on_agent_error(name, exc)
 
+                if self._error_policy == ErrorPolicy.raise_on_error:
+                    raise
                 if self._error_policy == ErrorPolicy.fail_fast:
                     break
 
@@ -495,6 +497,8 @@ class AsyncLoopGroup:
                     if self._callbacks.on_agent_error:
                         self._callbacks.on_agent_error(name, exc)
 
+                    if self._error_policy == ErrorPolicy.raise_on_error:
+                        raise
                     if self._error_policy == ErrorPolicy.fail_fast:
                         break
 

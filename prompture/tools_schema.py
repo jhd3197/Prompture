@@ -110,7 +110,9 @@ class ToolDefinition:
         }
 
 
-def tool_from_function(fn: Callable[..., Any], *, name: str | None = None, description: str | None = None) -> ToolDefinition:
+def tool_from_function(
+    fn: Callable[..., Any], *, name: str | None = None, description: str | None = None
+) -> ToolDefinition:
     """Build a :class:`ToolDefinition` by inspecting *fn*'s signature and docstring.
 
     Parameters:
@@ -150,6 +152,10 @@ def tool_from_function(fn: Callable[..., Any], *, name: str | None = None, descr
     }
     if required:
         parameters["required"] = required
+    if not properties:
+        # Some providers reject empty properties with required=[].
+        # Omit required entirely when there are no parameters.
+        parameters.pop("required", None)
 
     return ToolDefinition(
         name=tool_name,

@@ -21,6 +21,7 @@ class ErrorPolicy(enum.Enum):
     fail_fast = "fail_fast"
     continue_on_error = "continue_on_error"
     retry_failed = "retry_failed"
+    raise_on_error = "raise_on_error"
 
 
 @dataclass
