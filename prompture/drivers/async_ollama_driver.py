@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
+import uuid
 from typing import Any
 
 import httpx
@@ -16,6 +18,7 @@ logger = logging.getLogger(__name__)
 class AsyncOllamaDriver(AsyncDriver):
     supports_json_mode = True
     supports_json_schema = True
+    supports_tool_use = True
     supports_vision = True
 
     MODEL_PRICING = {"default": {"prompt": 0.0, "completion": 0.0}}
@@ -79,6 +82,88 @@ class AsyncOllamaDriver(AsyncDriver):
         }
 
         return {"text": response_data.get("response", ""), "meta": meta}
+
+    # ------------------------------------------------------------------
+    # Tool use
+    # ------------------------------------------------------------------
+
+    async def generate_messages_with_tools(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        options: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Generate a response that may include tool calls via Ollama's /api/chat endpoint."""
+        merged_options = self.options.copy()
+        if options:
+            merged_options.update(options)
+
+        chat_endpoint = self.endpoint.replace("/api/generate", "/api/chat")
+
+        payload: dict[str, Any] = {
+            "model": merged_options.get("model", self.model),
+            "messages": messages,
+            "tools": tools,
+            "stream": False,
+        }
+
+        if "temperature" in merged_options:
+            payload["temperature"] = merged_options["temperature"]
+        if "top_p" in merged_options:
+            payload["top_p"] = merged_options["top_p"]
+        if "top_k" in merged_options:
+            payload["top_k"] = merged_options["top_k"]
+
+        async with httpx.AsyncClient() as client:
+            try:
+                r = await client.post(chat_endpoint, json=payload, timeout=120)
+                r.raise_for_status()
+                response_data = r.json()
+            except httpx.HTTPStatusError as e:
+                raise RuntimeError(f"Ollama tool use request failed: {e}") from e
+            except Exception as e:
+                raise RuntimeError(f"Ollama tool use request failed: {e}") from e
+
+        prompt_tokens = response_data.get("prompt_eval_count", 0)
+        completion_tokens = response_data.get("eval_count", 0)
+        total_tokens = prompt_tokens + completion_tokens
+
+        meta = {
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": total_tokens,
+            "cost": 0.0,
+            "raw_response": response_data,
+            "model_name": merged_options.get("model", self.model),
+        }
+
+        message = response_data.get("message", {})
+        text = message.get("content") or ""
+        stop_reason = response_data.get("done_reason", "stop")
+
+        tool_calls_out: list[dict[str, Any]] = []
+        for tc in message.get("tool_calls", []):
+            func = tc.get("function", {})
+            # Ollama returns arguments as a dict already (no JSON string parsing needed)
+            args = func.get("arguments", {})
+            if isinstance(args, str):
+                try:
+                    args = json.loads(args)
+                except (json.JSONDecodeError, TypeError):
+                    args = {}
+            tool_calls_out.append({
+                # Ollama does not return tool_call IDs — generate one locally
+                "id": f"call_{uuid.uuid4().hex[:24]}",
+                "name": func.get("name", ""),
+                "arguments": args,
+            })
+
+        return {
+            "text": text,
+            "meta": meta,
+            "tool_calls": tool_calls_out,
+            "stop_reason": stop_reason,
+        }
 
     async def generate_messages(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
         """Use Ollama's /api/chat endpoint for multi-turn conversations."""

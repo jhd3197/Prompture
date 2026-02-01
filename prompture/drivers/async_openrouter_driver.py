@@ -122,8 +122,17 @@ class AsyncOpenRouterDriver(CostMixin, AsyncDriver):
             "model_name": model,
         }
 
-        text = resp["choices"][0]["message"]["content"]
-        return {"text": text, "meta": meta}
+        message = resp["choices"][0]["message"]
+        text = message.get("content") or ""
+        reasoning_content = message.get("reasoning_content")
+
+        if not text and reasoning_content:
+            text = reasoning_content
+
+        result: dict[str, Any] = {"text": text, "meta": meta}
+        if reasoning_content is not None:
+            result["reasoning_content"] = reasoning_content
+        return result
 
     # ------------------------------------------------------------------
     # Tool use
@@ -196,18 +205,23 @@ class AsyncOpenRouterDriver(CostMixin, AsyncDriver):
                 args = json.loads(tc["function"]["arguments"])
             except (json.JSONDecodeError, TypeError):
                 args = {}
-            tool_calls_out.append({
-                "id": tc["id"],
-                "name": tc["function"]["name"],
-                "arguments": args,
-            })
+            tool_calls_out.append(
+                {
+                    "id": tc["id"],
+                    "name": tc["function"]["name"],
+                    "arguments": args,
+                }
+            )
 
-        return {
+        result: dict[str, Any] = {
             "text": text,
             "meta": meta,
             "tool_calls": tool_calls_out,
             "stop_reason": stop_reason,
         }
+        if choice["message"].get("reasoning_content") is not None:
+            result["reasoning_content"] = choice["message"]["reasoning_content"]
+        return result
 
     # ------------------------------------------------------------------
     # Streaming
@@ -238,21 +252,25 @@ class AsyncOpenRouterDriver(CostMixin, AsyncDriver):
             data["temperature"] = opts["temperature"]
 
         full_text = ""
+        full_reasoning = ""
         prompt_tokens = 0
         completion_tokens = 0
 
-        async with httpx.AsyncClient() as client, client.stream(
-            "POST",
-            f"{self.base_url}/chat/completions",
-            headers=self.headers,
-            json=data,
-            timeout=120,
-        ) as response:
+        async with (
+            httpx.AsyncClient() as client,
+            client.stream(
+                "POST",
+                f"{self.base_url}/chat/completions",
+                headers=self.headers,
+                json=data,
+                timeout=120,
+            ) as response,
+        ):
             response.raise_for_status()
             async for line in response.aiter_lines():
                 if not line or not line.startswith("data: "):
                     continue
-                payload = line[len("data: "):]
+                payload = line[len("data: ") :]
                 if payload.strip() == "[DONE]":
                     break
                 try:
@@ -270,6 +288,11 @@ class AsyncOpenRouterDriver(CostMixin, AsyncDriver):
                 if choices:
                     delta = choices[0].get("delta", {})
                     content = delta.get("content", "")
+                    reasoning_chunk = delta.get("reasoning_content") or ""
+                    if reasoning_chunk:
+                        full_reasoning += reasoning_chunk
+                    if not content and reasoning_chunk:
+                        content = reasoning_chunk
                     if content:
                         full_text += content
                         yield {"type": "delta", "text": content}
@@ -277,7 +300,7 @@ class AsyncOpenRouterDriver(CostMixin, AsyncDriver):
         total_tokens = prompt_tokens + completion_tokens
         total_cost = self._calculate_cost("openrouter", model, prompt_tokens, completion_tokens)
 
-        yield {
+        done_chunk: dict[str, Any] = {
             "type": "done",
             "text": full_text,
             "meta": {
@@ -289,3 +312,6 @@ class AsyncOpenRouterDriver(CostMixin, AsyncDriver):
                 "model_name": model,
             },
         }
+        if full_reasoning:
+            done_chunk["reasoning_content"] = full_reasoning
+        yield done_chunk

@@ -109,6 +109,24 @@ class ToolDefinition:
             "input_schema": self.parameters,
         }
 
+    def to_prompt_format(self) -> str:
+        """Plain-text description suitable for prompt-based tool calling."""
+        lines = [f"Tool: {self.name}", f"  Description: {self.description}", "  Parameters:"]
+        props = self.parameters.get("properties", {})
+        required = set(self.parameters.get("required", []))
+        if not props:
+            lines.append("    (none)")
+        else:
+            for pname, pschema in props.items():
+                ptype = pschema.get("type", "string")
+                req_label = "required" if pname in required else "optional"
+                desc = pschema.get("description", "")
+                line = f"    - {pname} ({ptype}, {req_label})"
+                if desc:
+                    line += f": {desc}"
+                lines.append(line)
+        return "\n".join(lines)
+
 
 def tool_from_function(
     fn: Callable[..., Any], *, name: str | None = None, description: str | None = None
@@ -243,6 +261,10 @@ class ToolRegistry:
 
     def to_anthropic_format(self) -> list[dict[str, Any]]:
         return [td.to_anthropic_format() for td in self._tools.values()]
+
+    def to_prompt_format(self) -> str:
+        """Join all tool descriptions into a single plain-text block."""
+        return "\n\n".join(td.to_prompt_format() for td in self._tools.values())
 
     # ------------------------------------------------------------------
     # Execution
