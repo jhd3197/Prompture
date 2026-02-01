@@ -123,7 +123,13 @@ class LMStudioDriver(Driver):
             raise RuntimeError(f"LM Studio request failed: {e}") from e
 
         # Extract text
-        text = response_data["choices"][0]["message"]["content"]
+        message = response_data["choices"][0]["message"]
+        text = message.get("content") or ""
+        reasoning_content = message.get("reasoning_content")
+
+        # Reasoning models (e.g. DeepSeek R1) may return content in reasoning_content
+        if not text and reasoning_content:
+            text = reasoning_content
 
         # Meta info
         usage = response_data.get("usage", {})
@@ -140,7 +146,10 @@ class LMStudioDriver(Driver):
             "model_name": merged_options.get("model", self.model),
         }
 
-        return {"text": text, "meta": meta}
+        result: dict[str, Any] = {"text": text, "meta": meta}
+        if reasoning_content is not None:
+            result["reasoning_content"] = reasoning_content
+        return result
 
     # -- Model management (LM Studio 0.4.0+) ----------------------------------
 

@@ -112,6 +112,9 @@ class Conversation:
         self._max_tool_rounds = max_tool_rounds
         self._simulated_tools = simulated_tools
 
+        # Reasoning content from last response
+        self._last_reasoning: str | None = None
+
         # Persistence
         self._conversation_id = conversation_id or str(uuid.uuid4())
         self._auto_save = Path(auto_save) if auto_save else None
@@ -123,6 +126,11 @@ class Conversation:
     # ------------------------------------------------------------------
     # Public helpers
     # ------------------------------------------------------------------
+
+    @property
+    def last_reasoning(self) -> str | None:
+        """The reasoning/thinking content from the last LLM response, if any."""
+        return self._last_reasoning
 
     @property
     def messages(self) -> list[dict[str, Any]]:
@@ -340,6 +348,8 @@ class Conversation:
             images: Optional list of images to include (bytes, path, URL,
                 base64 string, or :class:`ImageContent`).
         """
+        self._last_reasoning = None
+
         # Route to appropriate tool handling
         if self._tools:
             use_native = getattr(self._driver, "supports_tool_use", False)
@@ -354,6 +364,7 @@ class Conversation:
 
         text = resp.get("text", "")
         meta = resp.get("meta", {})
+        self._last_reasoning = resp.get("reasoning_content")
 
         # Record in history — store content with images for context
         user_content = self._build_content_with_images(content, images)
@@ -389,6 +400,7 @@ class Conversation:
 
             if not tool_calls:
                 # No tool calls -> final response
+                self._last_reasoning = resp.get("reasoning_content")
                 self._messages.append({"role": "assistant", "content": text})
                 return text
 
@@ -553,6 +565,8 @@ class Conversation:
         context clean for subsequent turns.
         """
 
+        self._last_reasoning = None
+
         merged = {**self._options, **(options or {})}
 
         # Build the full prompt with schema instructions inline (handled by ask_for_json)
@@ -594,6 +608,7 @@ class Conversation:
 
         text = resp.get("text", "")
         meta = resp.get("meta", {})
+        self._last_reasoning = resp.get("reasoning_content")
 
         # Store original content (without schema boilerplate) for cleaner context
         # Include images in history so subsequent turns can reference them
@@ -632,6 +647,7 @@ class Conversation:
             "json_object": json_obj,
             "usage": usage,
             "output_format": output_format,
+            "reasoning": self._last_reasoning,
         }
 
         if output_format == "toon":

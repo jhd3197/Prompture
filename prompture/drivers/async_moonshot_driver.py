@@ -138,10 +138,11 @@ class AsyncMoonshotDriver(CostMixin, AsyncDriver):
 
         message = resp["choices"][0]["message"]
         text = message.get("content") or ""
+        reasoning_content = message.get("reasoning_content")
 
         # Reasoning models may return content in reasoning_content when content is empty
-        if not text and message.get("reasoning_content"):
-            text = message["reasoning_content"]
+        if not text and reasoning_content:
+            text = reasoning_content
 
         # Structured output fallback: if we used json_schema mode and got an
         # empty response, retry with json_object mode and schema in the prompt.
@@ -184,8 +185,9 @@ class AsyncMoonshotDriver(CostMixin, AsyncDriver):
                     resp = fb_resp
                     fb_message = fb_resp["choices"][0]["message"]
                     text = fb_message.get("content") or ""
-                    if not text and fb_message.get("reasoning_content"):
-                        text = fb_message["reasoning_content"]
+                    reasoning_content = fb_message.get("reasoning_content")
+                    if not text and reasoning_content:
+                        text = reasoning_content
 
         total_cost = self._calculate_cost("moonshot", model, prompt_tokens, completion_tokens)
 
@@ -198,7 +200,10 @@ class AsyncMoonshotDriver(CostMixin, AsyncDriver):
             "model_name": model,
         }
 
-        return {"text": text, "meta": meta}
+        result: dict[str, Any] = {"text": text, "meta": meta}
+        if reasoning_content is not None:
+            result["reasoning_content"] = reasoning_content
+        return result
 
     # ------------------------------------------------------------------
     # Tool use
@@ -334,6 +339,7 @@ class AsyncMoonshotDriver(CostMixin, AsyncDriver):
             data["temperature"] = opts["temperature"]
 
         full_text = ""
+        full_reasoning = ""
         prompt_tokens = 0
         completion_tokens = 0
 
@@ -368,9 +374,11 @@ class AsyncMoonshotDriver(CostMixin, AsyncDriver):
                 if choices:
                     delta = choices[0].get("delta", {})
                     content = delta.get("content") or ""
-                    # Reasoning models stream thinking via reasoning_content
-                    if not content:
-                        content = delta.get("reasoning_content") or ""
+                    reasoning_chunk = delta.get("reasoning_content") or ""
+                    if reasoning_chunk:
+                        full_reasoning += reasoning_chunk
+                    if not content and reasoning_chunk:
+                        content = reasoning_chunk
                     if content:
                         full_text += content
                         yield {"type": "delta", "text": content}
@@ -378,7 +386,7 @@ class AsyncMoonshotDriver(CostMixin, AsyncDriver):
         total_tokens = prompt_tokens + completion_tokens
         total_cost = self._calculate_cost("moonshot", model, prompt_tokens, completion_tokens)
 
-        yield {
+        done_chunk: dict[str, Any] = {
             "type": "done",
             "text": full_text,
             "meta": {
@@ -390,3 +398,6 @@ class AsyncMoonshotDriver(CostMixin, AsyncDriver):
                 "model_name": model,
             },
         }
+        if full_reasoning:
+            done_chunk["reasoning_content"] = full_reasoning
+        yield done_chunk

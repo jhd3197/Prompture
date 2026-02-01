@@ -130,6 +130,28 @@ print(f"Answer: {result4}")
 print(f"Turns:  {conv4.usage['turns']}")
 print()
 
+# ── Test 5: Reasoning content ─────────────────────────────────────────────────
+
+print("=" * 60)
+print("Test 5: Reasoning Content (last_reasoning)")
+print("=" * 60)
+
+conv5 = Conversation(
+    MODEL,
+    system_prompt="You are a concise assistant. Think step by step.",
+    tools=tools,
+    max_tool_rounds=5,
+)
+
+result5 = conv5.ask("What is the weather in Tokyo? Explain your reasoning.")
+print(f"Answer:    {result5}")
+print(f"Reasoning: {conv5.last_reasoning}")
+if conv5.last_reasoning:
+    print(f"  (reasoning length: {len(conv5.last_reasoning)} chars)")
+else:
+    print("  (no reasoning_content returned — model may not be a reasoning model)")
+print()
+
 # ── Summary ──────────────────────────────────────────────────────────────────
 
 print("=" * 60)

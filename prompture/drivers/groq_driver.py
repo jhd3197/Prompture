@@ -122,8 +122,16 @@ class GroqDriver(CostMixin, Driver):
         }
 
         # Extract generated text
-        text = resp.choices[0].message.content
-        return {"text": text, "meta": meta}
+        text = resp.choices[0].message.content or ""
+        reasoning_content = getattr(resp.choices[0].message, "reasoning_content", None)
+
+        if not text and reasoning_content:
+            text = reasoning_content
+
+        result: dict[str, Any] = {"text": text, "meta": meta}
+        if reasoning_content is not None:
+            result["reasoning_content"] = reasoning_content
+        return result
 
     # ------------------------------------------------------------------
     # Tool use
@@ -186,15 +194,21 @@ class GroqDriver(CostMixin, Driver):
                     args = json.loads(tc.function.arguments)
                 except (json.JSONDecodeError, TypeError):
                     args = {}
-                tool_calls_out.append({
-                    "id": tc.id,
-                    "name": tc.function.name,
-                    "arguments": args,
-                })
+                tool_calls_out.append(
+                    {
+                        "id": tc.id,
+                        "name": tc.function.name,
+                        "arguments": args,
+                    }
+                )
 
-        return {
+        result: dict[str, Any] = {
             "text": text,
             "meta": meta,
             "tool_calls": tool_calls_out,
             "stop_reason": stop_reason,
         }
+        reasoning_content = getattr(choice.message, "reasoning_content", None)
+        if reasoning_content is not None:
+            result["reasoning_content"] = reasoning_content
+        return result

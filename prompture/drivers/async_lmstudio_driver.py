@@ -98,7 +98,12 @@ class AsyncLMStudioDriver(AsyncDriver):
         if "choices" not in response_data or not response_data["choices"]:
             raise ValueError(f"Unexpected response format: {response_data}")
 
-        text = response_data["choices"][0]["message"]["content"]
+        message = response_data["choices"][0]["message"]
+        text = message.get("content") or ""
+        reasoning_content = message.get("reasoning_content")
+
+        if not text and reasoning_content:
+            text = reasoning_content
 
         usage = response_data.get("usage", {})
         prompt_tokens = usage.get("prompt_tokens", 0)
@@ -114,7 +119,10 @@ class AsyncLMStudioDriver(AsyncDriver):
             "model_name": merged_options.get("model", self.model),
         }
 
-        return {"text": text, "meta": meta}
+        result: dict[str, Any] = {"text": text, "meta": meta}
+        if reasoning_content is not None:
+            result["reasoning_content"] = reasoning_content
+        return result
 
     # -- Model management (LM Studio 0.4.0+) ----------------------------------
 

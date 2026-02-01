@@ -64,6 +64,31 @@ class MockDriver(Driver):
         }
 
 
+class MockReasoningDriver(Driver):
+    """A mock driver that returns reasoning_content alongside text."""
+
+    supports_tool_use = False
+    supports_messages = True
+
+    def __init__(self, responses: list[dict[str, Any]]):
+        self._responses = list(responses)
+        self._call_count = 0
+        self.callbacks = None
+
+    def generate_messages(self, messages: list[dict[str, Any]], options: dict[str, Any]) -> dict[str, Any]:
+        if self._call_count >= len(self._responses):
+            raise RuntimeError("MockReasoningDriver ran out of responses")
+        resp = self._responses[self._call_count]
+        self._call_count += 1
+        result: dict[str, Any] = {
+            "text": resp.get("text", ""),
+            "meta": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15, "cost": 0.0},
+        }
+        if "reasoning_content" in resp:
+            result["reasoning_content"] = resp["reasoning_content"]
+        return result
+
+
 class NativeToolDriver(Driver):
     """A driver that claims native tool use support."""
 
@@ -85,6 +110,41 @@ class NativeToolDriver(Driver):
             "meta": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "cost": 0.0},
             "tool_calls": [],
             "stop_reason": "stop",
+        }
+
+
+class NativeToolReasoningDriver(Driver):
+    """A driver that returns reasoning_content in tool call responses."""
+
+    supports_tool_use = True
+    supports_messages = True
+
+    def __init__(self):
+        self.callbacks = None
+        self._call_count = 0
+
+    def generate_messages(self, messages, options):
+        return {
+            "text": "native response",
+            "meta": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "cost": 0.0},
+        }
+
+    def generate_messages_with_tools(self, messages, tools, options):
+        self._call_count += 1
+        if self._call_count == 1:
+            return {
+                "text": "",
+                "meta": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15, "cost": 0.0},
+                "tool_calls": [{"id": "call_1", "name": "get_weather", "arguments": {"city": "Tokyo"}}],
+                "stop_reason": "tool_calls",
+                "reasoning_content": "I need to check the weather first.",
+            }
+        return {
+            "text": "The weather in Tokyo is 28C and sunny.",
+            "meta": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15, "cost": 0.0},
+            "tool_calls": [],
+            "stop_reason": "stop",
+            "reasoning_content": "Now I have the weather data, I can answer.",
         }
 
 
@@ -362,3 +422,107 @@ class TestSimulatedToolLoop:
 
         for msg in conv.messages:
             assert msg["role"] in ("user", "assistant"), f"Unexpected role: {msg['role']}"
+
+
+# ---------------------------------------------------------------------------
+# last_reasoning property
+# ---------------------------------------------------------------------------
+
+
+class TestLastReasoning:
+    def test_last_reasoning_none_by_default(self):
+        """last_reasoning should be None before any ask() call."""
+        from prompture.conversation import Conversation
+
+        driver = MockDriver([json.dumps({"type": "final_answer", "content": "hi"})])
+        conv = Conversation(driver=driver, system_prompt="test")
+        assert conv.last_reasoning is None
+
+    def test_last_reasoning_none_after_simulated_tools(self, tools):
+        """Simulated tool path does not produce reasoning_content."""
+        from prompture.conversation import Conversation
+
+        responses = [
+            json.dumps({"type": "tool_call", "name": "get_weather", "arguments": {"city": "London"}}),
+            json.dumps({"type": "final_answer", "content": "It's cloudy."}),
+        ]
+        driver = MockDriver(responses)
+        conv = Conversation(driver=driver, tools=tools, simulated_tools=True)
+        conv.ask("Weather in London?")
+        assert conv.last_reasoning is None
+
+    def test_last_reasoning_populated_from_driver(self):
+        """last_reasoning should be set when driver returns reasoning_content."""
+        from prompture.conversation import Conversation
+
+        driver = MockReasoningDriver(
+            [
+                {"text": "The answer is 42.", "reasoning_content": "Let me think step by step..."},
+            ]
+        )
+        conv = Conversation(driver=driver, system_prompt="test")
+        result = conv.ask("What is the meaning of life?")
+        assert result == "The answer is 42."
+        assert conv.last_reasoning == "Let me think step by step..."
+
+    def test_last_reasoning_reset_between_calls(self):
+        """last_reasoning should reset at the start of each ask() call."""
+        from prompture.conversation import Conversation
+
+        driver = MockReasoningDriver(
+            [
+                {"text": "first", "reasoning_content": "thinking about first"},
+                {"text": "second"},
+            ]
+        )
+        conv = Conversation(driver=driver, system_prompt="test")
+
+        conv.ask("first question")
+        assert conv.last_reasoning == "thinking about first"
+
+        conv.ask("second question")
+        assert conv.last_reasoning is None
+
+    def test_last_reasoning_with_native_tools(self, tools):
+        """last_reasoning should be set from the final tool response."""
+        from prompture.conversation import Conversation
+
+        driver = NativeToolReasoningDriver()
+        conv = Conversation(driver=driver, tools=tools, simulated_tools=False)
+        result = conv.ask("Weather in Tokyo?")
+        assert "Tokyo" in result
+        assert conv.last_reasoning == "Now I have the weather data, I can answer."
+
+    def test_last_reasoning_in_ask_for_json(self):
+        """ask_for_json should populate last_reasoning and include it in the result."""
+        from prompture.conversation import Conversation
+
+        driver = MockReasoningDriver(
+            [
+                {"text": '{"name": "John"}', "reasoning_content": "Extracting name from text..."},
+            ]
+        )
+        conv = Conversation(driver=driver, system_prompt="Extract data")
+        result = conv.ask_for_json(
+            "John is 30 years old",
+            {"type": "object", "properties": {"name": {"type": "string"}}},
+            ai_cleanup=False,
+        )
+        assert result["json_object"] == {"name": "John"}
+        assert result["reasoning"] == "Extracting name from text..."
+        assert conv.last_reasoning == "Extracting name from text..."
+
+    def test_ask_for_json_reasoning_none_without_reasoning_model(self):
+        """ask_for_json result should have reasoning=None for non-reasoning models."""
+        from prompture.conversation import Conversation
+
+        driver = MockDriver(['{"name": "Jane"}'])
+        conv = Conversation(driver=driver, system_prompt="Extract data")
+        result = conv.ask_for_json(
+            "Jane is 25",
+            {"type": "object", "properties": {"name": {"type": "string"}}},
+            ai_cleanup=False,
+        )
+        assert result["json_object"] == {"name": "Jane"}
+        assert result["reasoning"] is None
+        assert conv.last_reasoning is None

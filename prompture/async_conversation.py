@@ -109,6 +109,9 @@ class AsyncConversation:
         self._max_tool_rounds = max_tool_rounds
         self._simulated_tools = simulated_tools
 
+        # Reasoning content from last response
+        self._last_reasoning: str | None = None
+
         # Persistence
         self._conversation_id = conversation_id or str(uuid.uuid4())
         self._auto_save = Path(auto_save) if auto_save else None
@@ -120,6 +123,11 @@ class AsyncConversation:
     # ------------------------------------------------------------------
     # Public helpers
     # ------------------------------------------------------------------
+
+    @property
+    def last_reasoning(self) -> str | None:
+        """The reasoning/thinking content from the last LLM response, if any."""
+        return self._last_reasoning
 
     @property
     def messages(self) -> list[dict[str, Any]]:
@@ -326,6 +334,8 @@ class AsyncConversation:
         If tools are registered and the driver supports tool use,
         dispatches to the async tool execution loop.
         """
+        self._last_reasoning = None
+
         # Route to appropriate tool handling
         if self._tools:
             use_native = getattr(self._driver, "supports_tool_use", False)
@@ -340,6 +350,7 @@ class AsyncConversation:
 
         text = resp.get("text", "")
         meta = resp.get("meta", {})
+        self._last_reasoning = resp.get("reasoning_content")
 
         user_content = self._build_content_with_images(content, images)
         self._messages.append({"role": "user", "content": user_content})
@@ -372,6 +383,7 @@ class AsyncConversation:
             text = resp.get("text", "")
 
             if not tool_calls:
+                self._last_reasoning = resp.get("reasoning_content")
                 self._messages.append({"role": "assistant", "content": text})
                 return text
 
@@ -526,6 +538,8 @@ class AsyncConversation:
         images: list[ImageInput] | None = None,
     ) -> dict[str, Any]:
         """Send a message with schema enforcement and get structured JSON back (async)."""
+        self._last_reasoning = None
+
         merged = {**self._options, **(options or {})}
 
         schema_string = json.dumps(json_schema, indent=2)
@@ -563,6 +577,7 @@ class AsyncConversation:
 
         text = resp.get("text", "")
         meta = resp.get("meta", {})
+        self._last_reasoning = resp.get("reasoning_content")
 
         user_content = self._build_content_with_images(content, images)
         self._messages.append({"role": "user", "content": user_content})
@@ -597,6 +612,7 @@ class AsyncConversation:
             "json_object": json_obj,
             "usage": usage,
             "output_format": output_format,
+            "reasoning": self._last_reasoning,
         }
 
         if output_format == "toon":

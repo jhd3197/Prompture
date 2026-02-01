@@ -154,8 +154,17 @@ class GrokDriver(CostMixin, Driver):
             "model_name": model,
         }
 
-        text = resp["choices"][0]["message"]["content"]
-        return {"text": text, "meta": meta}
+        message = resp["choices"][0]["message"]
+        text = message.get("content") or ""
+        reasoning_content = message.get("reasoning_content")
+
+        if not text and reasoning_content:
+            text = reasoning_content
+
+        result: dict[str, Any] = {"text": text, "meta": meta}
+        if reasoning_content is not None:
+            result["reasoning_content"] = reasoning_content
+        return result
 
     # ------------------------------------------------------------------
     # Tool use
@@ -227,15 +236,20 @@ class GrokDriver(CostMixin, Driver):
                 args = json.loads(tc["function"]["arguments"])
             except (json.JSONDecodeError, TypeError):
                 args = {}
-            tool_calls_out.append({
-                "id": tc["id"],
-                "name": tc["function"]["name"],
-                "arguments": args,
-            })
+            tool_calls_out.append(
+                {
+                    "id": tc["id"],
+                    "name": tc["function"]["name"],
+                    "arguments": args,
+                }
+            )
 
-        return {
+        result: dict[str, Any] = {
             "text": text,
             "meta": meta,
             "tool_calls": tool_calls_out,
             "stop_reason": stop_reason,
         }
+        if choice["message"].get("reasoning_content") is not None:
+            result["reasoning_content"] = choice["message"]["reasoning_content"]
+        return result
