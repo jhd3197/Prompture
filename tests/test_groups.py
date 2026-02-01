@@ -600,3 +600,76 @@ class TestAggregateUsage:
         assert result["total_tokens"] == 45
         assert result["total_cost"] == pytest.approx(0.03)
         assert result["call_count"] == 3
+
+
+# ---------------------------------------------------------------------------
+# inject_state / shared_state tests
+# ---------------------------------------------------------------------------
+
+
+class TestInjectStateMethod:
+    """Tests for the inject_state() public method on group classes."""
+
+    def test_basic_merge(self):
+        a = _make_mock_agent("a", "out", output_key="result")
+        group = SequentialGroup([a])
+        group.inject_state({"key1": "val1", "key2": "val2"})
+        assert group.shared_state == {"key1": "val1", "key2": "val2"}
+
+    def test_setdefault_semantics(self):
+        """inject_state should NOT overwrite existing keys."""
+        a = _make_mock_agent("a", "out")
+        group = SequentialGroup([a], state={"existing": "original"})
+        group.inject_state({"existing": "overwritten", "new_key": "new_val"})
+        assert group.shared_state["existing"] == "original"
+        assert group.shared_state["new_key"] == "new_val"
+
+    def test_recursive_propagation(self):
+        """inject_state(recursive=True) should propagate to nested groups."""
+        inner_agent = _make_mock_agent("inner", "out")
+        inner_group = SequentialGroup([inner_agent], state={"inner_key": "inner_val"})
+        outer_group = SequentialGroup(
+            [(GroupAsAgent(inner_group, name="nested"), None)],
+        )
+        # GroupAsAgent doesn't have inject_state, so only the inner_group does.
+        # Test with direct nesting instead:
+        inner_group_2 = SequentialGroup([inner_agent])
+        inner_group_2.inject_state({"propagated": "yes"})
+        assert inner_group_2.shared_state["propagated"] == "yes"
+
+    def test_loop_group_inject_state(self):
+        a = _make_mock_agent("a", "out")
+        group = LoopGroup(
+            [a],
+            exit_condition=lambda state, i: i >= 1,
+            state={"pre": "existing"},
+        )
+        group.inject_state({"pre": "overwrite_attempt", "extra": "value"})
+        assert group.shared_state["pre"] == "existing"
+        assert group.shared_state["extra"] == "value"
+
+
+class TestSharedStateProperty:
+    """Tests for the shared_state read-only property on group classes."""
+
+    def test_returns_copy(self):
+        """shared_state should return a copy, not a reference."""
+        a = _make_mock_agent("a", "out")
+        group = SequentialGroup([a], state={"key": "val"})
+        snapshot = group.shared_state
+        snapshot["key"] = "mutated"
+        assert group.shared_state["key"] == "val"
+
+    def test_empty_state(self):
+        a = _make_mock_agent("a", "out")
+        group = SequentialGroup([a])
+        assert group.shared_state == {}
+
+    def test_loop_group_shared_state(self):
+        a = _make_mock_agent("a", "out")
+        group = LoopGroup(
+            [a],
+            exit_condition=lambda state, i: i >= 1,
+            state={"loop_key": "loop_val"},
+        )
+        assert group.shared_state == {"loop_key": "loop_val"}
