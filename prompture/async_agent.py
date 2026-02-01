@@ -182,7 +182,7 @@ class AsyncAgent(Generic[DepsType]):
             for fn in tools:
                 self._tools.register(fn)
 
-        self._state = AgentState.idle
+        self._lifecycle = AgentState.idle
         self._stop_requested = False
 
     # ------------------------------------------------------------------
@@ -197,7 +197,7 @@ class AsyncAgent(Generic[DepsType]):
     @property
     def state(self) -> AgentState:
         """Current lifecycle state of the agent."""
-        return self._state
+        return self._lifecycle
 
     def stop(self) -> None:
         """Request graceful shutdown after the current iteration."""
@@ -264,16 +264,16 @@ class AsyncAgent(Generic[DepsType]):
         Creates a fresh conversation, sends the prompt, handles tool calls,
         and optionally parses the final response into ``output_type``.
         """
-        self._state = AgentState.running
+        self._lifecycle = AgentState.running
         self._stop_requested = False
         steps: list[AgentStep] = []
 
         try:
             result = await self._execute(prompt, steps, deps)
-            self._state = AgentState.idle
+            self._lifecycle = AgentState.idle
             return result
         except Exception:
-            self._state = AgentState.errored
+            self._lifecycle = AgentState.errored
             raise
 
     async def iter(self, prompt: str, *, deps: Any = None) -> AsyncAgentIterator:
@@ -714,7 +714,7 @@ class AsyncAgent(Generic[DepsType]):
 
     async def _execute_iter(self, prompt: str, deps: Any) -> AsyncGenerator[AgentStep, None]:
         """Async generator that executes the agent loop and yields each step."""
-        self._state = AgentState.running
+        self._lifecycle = AgentState.running
         self._stop_requested = False
         steps: list[AgentStep] = []
 
@@ -722,11 +722,11 @@ class AsyncAgent(Generic[DepsType]):
             result = await self._execute(prompt, steps, deps)
             for step in result.steps:
                 yield step
-            self._state = AgentState.idle
+            self._lifecycle = AgentState.idle
             # Store result on the generator for retrieval
             self._last_iter_result = result
         except Exception:
-            self._state = AgentState.errored
+            self._lifecycle = AgentState.errored
             raise
 
     # ------------------------------------------------------------------
@@ -735,7 +735,7 @@ class AsyncAgent(Generic[DepsType]):
 
     async def _execute_stream(self, prompt: str, deps: Any) -> AsyncGenerator[StreamEvent, None]:
         """Async generator that executes the agent loop and yields stream events."""
-        self._state = AgentState.running
+        self._lifecycle = AgentState.running
         self._stop_requested = False
         steps: list[AgentStep] = []
 
@@ -803,10 +803,10 @@ class AsyncAgent(Generic[DepsType]):
 
             yield StreamEvent(event_type=StreamEventType.output, data=result)
 
-            self._state = AgentState.idle
+            self._lifecycle = AgentState.idle
             self._last_stream_result = result
         except Exception:
-            self._state = AgentState.errored
+            self._lifecycle = AgentState.errored
             raise
 
 

@@ -45,7 +45,7 @@ class Settings(BaseSettings):
 
     # OpenRouter
     openrouter_api_key: Optional[str] = None
-    openrouter_model: str = "openai/gpt-3.5-turbo"
+    openrouter_model: str = "openai/gpt-4o-mini"
 
     # Grok
     grok_api_key: Optional[str] = None

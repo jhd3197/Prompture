@@ -13,7 +13,7 @@ from typing import Any
 import httpx
 
 from ..async_driver import AsyncDriver
-from ..cost_mixin import CostMixin
+from ..cost_mixin import CostMixin, prepare_strict_schema
 from .zai_driver import ZaiDriver
 
 
@@ -83,12 +83,13 @@ class AsyncZaiDriver(CostMixin, AsyncDriver):
         if options.get("json_mode"):
             json_schema = options.get("json_schema")
             if json_schema:
+                schema_copy = prepare_strict_schema(json_schema)
                 data["response_format"] = {
                     "type": "json_schema",
                     "json_schema": {
                         "name": "extraction",
                         "strict": True,
-                        "schema": json_schema,
+                        "schema": schema_copy,
                     },
                 }
             else:
