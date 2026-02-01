@@ -85,20 +85,31 @@ class AsyncMoonshotDriver(CostMixin, AsyncDriver):
         if supports_temperature and "temperature" in opts:
             data["temperature"] = opts["temperature"]
 
+        # Native JSON mode support — skip for reasoning models where
+        # Moonshot's API does not reliably support response_format.
         if options.get("json_mode"):
-            json_schema = options.get("json_schema")
-            if json_schema:
-                schema_copy = prepare_strict_schema(json_schema)
-                data["response_format"] = {
-                    "type": "json_schema",
-                    "json_schema": {
-                        "name": "extraction",
-                        "strict": True,
-                        "schema": schema_copy,
-                    },
-                }
-            else:
-                data["response_format"] = {"type": "json_object"}
+            from ..model_rates import get_model_capabilities
+
+            caps = get_model_capabilities("moonshot", model)
+            is_reasoning = caps is not None and caps.is_reasoning is True
+            model_supports_structured = (
+                caps is None or caps.supports_structured_output is not False
+            ) and not is_reasoning
+
+            if model_supports_structured:
+                json_schema = options.get("json_schema")
+                if json_schema:
+                    schema_copy = prepare_strict_schema(json_schema)
+                    data["response_format"] = {
+                        "type": "json_schema",
+                        "json_schema": {
+                            "name": "extraction",
+                            "strict": True,
+                            "schema": schema_copy,
+                        },
+                    }
+                else:
+                    data["response_format"] = {"type": "json_object"}
 
         async with httpx.AsyncClient() as client:
             try:
@@ -132,7 +143,13 @@ class AsyncMoonshotDriver(CostMixin, AsyncDriver):
             "model_name": model,
         }
 
-        text = resp["choices"][0]["message"]["content"]
+        message = resp["choices"][0]["message"]
+        text = message.get("content") or ""
+
+        # Reasoning models may return content in reasoning_content when content is empty
+        if not text and message.get("reasoning_content"):
+            text = message["reasoning_content"]
+
         return {"text": text, "meta": meta}
 
     # ------------------------------------------------------------------
