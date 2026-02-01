@@ -27,13 +27,13 @@ json_schema = {
     },
 }
 
-# === FIRST EXAMPLE: Default instruction with GPT-3.5 Turbo via OpenRouter ===
+# === FIRST EXAMPLE: Default instruction with GPT-4o Mini via OpenRouter ===
 print("Extracting information into JSON with default instruction...")
 
 result = extract_and_jsonify(
     text=text,
     json_schema=json_schema,
-    model_name="openrouter/openai/gpt-3.5-turbo",  # explicitly select model
+    model_name="openrouter/openai/gpt-4o-mini",  # explicitly select model
 )
 
 json_output = result["json_string"]
@@ -62,7 +62,7 @@ custom_result = extract_and_jsonify(
     text=text,
     json_schema=json_schema,
     instruction_template="Parse the biographical details from this text:",
-    model_name="openrouter/x-ai/grok-4-fast:free",  # override model here
+    model_name="openrouter/arcee-ai/trinity-large-preview:free",  # override model here
 )
 
 custom_json_output = custom_result["json_string"]

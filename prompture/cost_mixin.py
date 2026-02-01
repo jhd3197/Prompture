@@ -2,7 +2,32 @@
 
 from __future__ import annotations
 
+import copy
 from typing import Any
+
+
+def prepare_strict_schema(schema: dict[str, Any]) -> dict[str, Any]:
+    """Prepare a JSON schema for OpenAI strict structured-output mode.
+
+    OpenAI's ``strict: true`` requires every object to have
+    ``"additionalProperties": false`` and a ``"required"`` array listing
+    all property keys.  This function recursively patches a schema copy
+    so callers don't need to worry about these constraints.
+    """
+    schema = copy.deepcopy(schema)
+    _patch_strict(schema)
+    return schema
+
+
+def _patch_strict(node: dict[str, Any]) -> None:
+    """Recursively add strict-mode constraints to an object schema node."""
+    if node.get("type") == "object" and "properties" in node:
+        node.setdefault("additionalProperties", False)
+        node.setdefault("required", list(node["properties"].keys()))
+        for prop in node["properties"].values():
+            _patch_strict(prop)
+    elif node.get("type") == "array" and isinstance(node.get("items"), dict):
+        _patch_strict(node["items"])
 
 
 class CostMixin:

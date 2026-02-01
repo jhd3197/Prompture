@@ -114,6 +114,27 @@ class SequentialGroup:
         """Request graceful shutdown after the current agent finishes."""
         self._stop_requested = True
 
+    @property
+    def shared_state(self) -> dict[str, Any]:
+        """Return a copy of the current shared execution state."""
+        return dict(self._state)
+
+    def inject_state(self, state: dict[str, Any], *, recursive: bool = False) -> None:
+        """Merge external key-value pairs into this group's shared state.
+
+        Existing keys are NOT overwritten (uses setdefault semantics).
+
+        Args:
+            state: Key-value pairs to inject.
+            recursive: If True, also inject into nested sub-groups.
+        """
+        for k, v in state.items():
+            self._state.setdefault(k, v)
+        if recursive:
+            for agent, _ in self._agents:
+                if hasattr(agent, "inject_state"):
+                    agent.inject_state(state, recursive=True)
+
     def save(self, path: str) -> None:
         """Run and save result to file. Convenience wrapper."""
         result = self.run()
@@ -266,6 +287,27 @@ class LoopGroup:
     def stop(self) -> None:
         """Request graceful shutdown."""
         self._stop_requested = True
+
+    @property
+    def shared_state(self) -> dict[str, Any]:
+        """Return a copy of the current shared execution state."""
+        return dict(self._state)
+
+    def inject_state(self, state: dict[str, Any], *, recursive: bool = False) -> None:
+        """Merge external key-value pairs into this group's shared state.
+
+        Existing keys are NOT overwritten (uses setdefault semantics).
+
+        Args:
+            state: Key-value pairs to inject.
+            recursive: If True, also inject into nested sub-groups.
+        """
+        for k, v in state.items():
+            self._state.setdefault(k, v)
+        if recursive:
+            for agent, _ in self._agents:
+                if hasattr(agent, "inject_state"):
+                    agent.inject_state(state, recursive=True)
 
     def run(self, prompt: str = "") -> GroupResult:
         """Execute the loop."""

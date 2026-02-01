@@ -10,7 +10,7 @@ try:
 except Exception:
     AzureOpenAI = None
 
-from ..cost_mixin import CostMixin
+from ..cost_mixin import CostMixin, prepare_strict_schema
 from ..driver import Driver
 
 
@@ -128,12 +128,13 @@ class AzureDriver(CostMixin, Driver):
         if options.get("json_mode"):
             json_schema = options.get("json_schema")
             if json_schema:
+                schema_copy = prepare_strict_schema(json_schema)
                 kwargs["response_format"] = {
                     "type": "json_schema",
                     "json_schema": {
                         "name": "extraction",
                         "strict": True,
-                        "schema": json_schema,
+                        "schema": schema_copy,
                     },
                 }
             else:

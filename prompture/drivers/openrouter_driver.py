@@ -2,6 +2,7 @@
 Requires the `requests` package. Uses OPENROUTER_API_KEY env var.
 """
 
+import contextlib
 import json
 import os
 from collections.abc import Iterator
@@ -9,7 +10,7 @@ from typing import Any
 
 import requests
 
-from ..cost_mixin import CostMixin
+from ..cost_mixin import CostMixin, prepare_strict_schema
 from ..driver import Driver
 
 
@@ -128,12 +129,13 @@ class OpenRouterDriver(CostMixin, Driver):
         if options.get("json_mode"):
             json_schema = options.get("json_schema")
             if json_schema:
+                schema_copy = prepare_strict_schema(json_schema)
                 data["response_format"] = {
                     "type": "json_schema",
                     "json_schema": {
                         "name": "extraction",
                         "strict": True,
-                        "schema": json_schema,
+                        "schema": schema_copy,
                     },
                 }
             else:
@@ -149,7 +151,13 @@ class OpenRouterDriver(CostMixin, Driver):
             response.raise_for_status()
             resp = response.json()
         except requests.exceptions.HTTPError as e:
+            body = ""
+            if e.response is not None:
+                with contextlib.suppress(Exception):
+                    body = e.response.text
             error_msg = f"OpenRouter API request failed: {e!s}"
+            if body:
+                error_msg += f"\nResponse: {body}"
             raise RuntimeError(error_msg) from e
         except requests.exceptions.RequestException as e:
             raise RuntimeError(f"OpenRouter API request failed: {e!s}") from e

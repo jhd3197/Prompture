@@ -188,7 +188,7 @@ class Agent(Generic[DepsType]):
             for fn in tools:
                 self._tools.register(fn)
 
-        self._state = AgentState.idle
+        self._lifecycle = AgentState.idle
         self._stop_requested = False
 
     # ------------------------------------------------------------------
@@ -206,7 +206,7 @@ class Agent(Generic[DepsType]):
     @property
     def state(self) -> AgentState:
         """Current lifecycle state of the agent."""
-        return self._state
+        return self._lifecycle
 
     def stop(self) -> None:
         """Request graceful shutdown after the current iteration."""
@@ -265,16 +265,16 @@ class Agent(Generic[DepsType]):
             prompt: The user prompt to send.
             deps: Optional dependencies injected into :class:`RunContext`.
         """
-        self._state = AgentState.running
+        self._lifecycle = AgentState.running
         self._stop_requested = False
         steps: list[AgentStep] = []
 
         try:
             result = self._execute(prompt, steps, deps)
-            self._state = AgentState.idle
+            self._lifecycle = AgentState.idle
             return result
         except Exception:
-            self._state = AgentState.errored
+            self._lifecycle = AgentState.errored
             raise
 
     # ------------------------------------------------------------------
@@ -722,7 +722,7 @@ class Agent(Generic[DepsType]):
 
     def _execute_iter(self, prompt: str, deps: Any) -> Generator[AgentStep, None, AgentResult]:
         """Generator that executes the agent loop and yields each step."""
-        self._state = AgentState.running
+        self._lifecycle = AgentState.running
         self._stop_requested = False
         steps: list[AgentStep] = []
 
@@ -730,10 +730,10 @@ class Agent(Generic[DepsType]):
             result = self._execute(prompt, steps, deps)
             # Yield each step one at a time
             yield from result.steps
-            self._state = AgentState.idle
+            self._lifecycle = AgentState.idle
             return result
         except Exception:
-            self._state = AgentState.errored
+            self._lifecycle = AgentState.errored
             raise
 
     # ------------------------------------------------------------------
@@ -757,7 +757,7 @@ class Agent(Generic[DepsType]):
 
     def _execute_stream(self, prompt: str, deps: Any) -> Generator[StreamEvent, None, AgentResult]:
         """Generator that executes the agent loop and yields stream events."""
-        self._state = AgentState.running
+        self._lifecycle = AgentState.running
         self._stop_requested = False
         steps: list[AgentStep] = []
 
@@ -853,10 +853,10 @@ class Agent(Generic[DepsType]):
                 data=result,
             )
 
-            self._state = AgentState.idle
+            self._lifecycle = AgentState.idle
             return result
         except Exception:
-            self._state = AgentState.errored
+            self._lifecycle = AgentState.errored
             raise
 
 
