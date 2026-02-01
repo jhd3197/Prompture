@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from typing import Any
 
@@ -14,6 +15,7 @@ from .grok_driver import GrokDriver
 
 class AsyncGrokDriver(CostMixin, AsyncDriver):
     supports_json_mode = True
+    supports_tool_use = True
     supports_vision = True
 
     MODEL_PRICING = GrokDriver.MODEL_PRICING
@@ -95,3 +97,91 @@ class AsyncGrokDriver(CostMixin, AsyncDriver):
 
         text = resp["choices"][0]["message"]["content"]
         return {"text": text, "meta": meta}
+
+    # ------------------------------------------------------------------
+    # Tool use
+    # ------------------------------------------------------------------
+
+    async def generate_messages_with_tools(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        options: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Generate a response that may include tool calls."""
+        if not self.api_key:
+            raise RuntimeError("GROK_API_KEY environment variable is required")
+
+        model = options.get("model", self.model)
+        model_config = self._get_model_config("grok", model)
+        tokens_param = model_config["tokens_param"]
+        supports_temperature = model_config["supports_temperature"]
+
+        self._validate_model_capabilities("grok", model, using_tool_use=True)
+
+        opts = {"temperature": 1.0, "max_tokens": 512, **options}
+
+        payload: dict[str, Any] = {
+            "model": model,
+            "messages": messages,
+            "tools": tools,
+        }
+        payload[tokens_param] = opts.get("max_tokens", 512)
+
+        if supports_temperature and "temperature" in opts:
+            payload["temperature"] = opts["temperature"]
+
+        if "tool_choice" in options:
+            payload["tool_choice"] = options["tool_choice"]
+
+        headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
+
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.post(
+                    f"{self.api_base}/chat/completions", headers=headers, json=payload, timeout=120
+                )
+                response.raise_for_status()
+                resp = response.json()
+            except httpx.HTTPStatusError as e:
+                raise RuntimeError(f"Grok API request failed: {e!s}") from e
+            except Exception as e:
+                raise RuntimeError(f"Grok API request failed: {e!s}") from e
+
+        usage = resp.get("usage", {})
+        prompt_tokens = usage.get("prompt_tokens", 0)
+        completion_tokens = usage.get("completion_tokens", 0)
+        total_tokens = usage.get("total_tokens", 0)
+        total_cost = self._calculate_cost("grok", model, prompt_tokens, completion_tokens)
+
+        meta = {
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": total_tokens,
+            "cost": round(total_cost, 6),
+            "raw_response": resp,
+            "model_name": model,
+        }
+
+        choice = resp["choices"][0]
+        text = choice["message"].get("content") or ""
+        stop_reason = choice.get("finish_reason")
+
+        tool_calls_out: list[dict[str, Any]] = []
+        for tc in choice["message"].get("tool_calls", []):
+            try:
+                args = json.loads(tc["function"]["arguments"])
+            except (json.JSONDecodeError, TypeError):
+                args = {}
+            tool_calls_out.append({
+                "id": tc["id"],
+                "name": tc["function"]["name"],
+                "arguments": args,
+            })
+
+        return {
+            "text": text,
+            "meta": meta,
+            "tool_calls": tool_calls_out,
+            "stop_reason": stop_reason,
+        }
