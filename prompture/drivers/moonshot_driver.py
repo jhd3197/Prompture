@@ -167,7 +167,7 @@ class MoonshotDriver(CostMixin, Driver):
             using_json_schema=bool(options.get("json_schema")),
         )
 
-        opts = {"temperature": 1.0, "max_tokens": 512, **options}
+        opts = {"temperature": 1.0, "max_tokens": 512, "timeout": 300, **options}
         opts = self._clamp_temperature(opts)
 
         data: dict[str, Any] = {
@@ -210,7 +210,7 @@ class MoonshotDriver(CostMixin, Driver):
                 f"{self.base_url}/chat/completions",
                 headers=self.headers,
                 json=data,
-                timeout=120,
+                timeout=opts.get("timeout", 300),
             )
             response.raise_for_status()
             resp = response.json()
@@ -261,7 +261,7 @@ class MoonshotDriver(CostMixin, Driver):
                     f"{self.base_url}/chat/completions",
                     headers=self.headers,
                     json=fallback_data,
-                    timeout=120,
+                    timeout=opts.get("timeout", 300),
                 )
                 fb_response.raise_for_status()
                 fb_resp = fb_response.json()
@@ -317,7 +317,7 @@ class MoonshotDriver(CostMixin, Driver):
 
         self._validate_model_capabilities("moonshot", model, using_tool_use=True)
 
-        opts = {"temperature": 1.0, "max_tokens": 512, **options}
+        opts = {"temperature": 1.0, "max_tokens": 512, "timeout": 300, **options}
         opts = self._clamp_temperature(opts)
 
         sanitized_tools = self._sanitize_tools(tools)
@@ -342,7 +342,7 @@ class MoonshotDriver(CostMixin, Driver):
                 f"{self.base_url}/chat/completions",
                 headers=self.headers,
                 json=data,
-                timeout=120,
+                timeout=opts.get("timeout", 300),
             )
             response.raise_for_status()
             resp = response.json()
@@ -420,7 +420,7 @@ class MoonshotDriver(CostMixin, Driver):
         tokens_param = model_config["tokens_param"]
         supports_temperature = model_config["supports_temperature"]
 
-        opts = {"temperature": 1.0, "max_tokens": 512, **options}
+        opts = {"temperature": 1.0, "max_tokens": 512, "timeout": 300, **options}
         opts = self._clamp_temperature(opts)
 
         data: dict[str, Any] = {
@@ -439,7 +439,7 @@ class MoonshotDriver(CostMixin, Driver):
             headers=self.headers,
             json=data,
             stream=True,
-            timeout=120,
+            timeout=opts.get("timeout", 300),
         )
         response.raise_for_status()
 

@@ -81,7 +81,16 @@ class AsyncOllamaDriver(AsyncDriver):
             "model_name": merged_options.get("model", self.model),
         }
 
-        return {"text": response_data.get("response", ""), "meta": meta}
+        text = response_data.get("response", "")
+        reasoning_content = response_data.get("thinking") or None
+
+        if not text and reasoning_content:
+            text = reasoning_content
+
+        result: dict[str, Any] = {"text": text, "meta": meta}
+        if reasoning_content is not None:
+            result["reasoning_content"] = reasoning_content
+        return result
 
     # ------------------------------------------------------------------
     # Tool use
@@ -139,7 +148,11 @@ class AsyncOllamaDriver(AsyncDriver):
 
         message = response_data.get("message", {})
         text = message.get("content") or ""
+        reasoning_content = message.get("thinking") or None
         stop_reason = response_data.get("done_reason", "stop")
+
+        if not text and reasoning_content:
+            text = reasoning_content
 
         tool_calls_out: list[dict[str, Any]] = []
         for tc in message.get("tool_calls", []):
@@ -158,12 +171,15 @@ class AsyncOllamaDriver(AsyncDriver):
                 "arguments": args,
             })
 
-        return {
+        result: dict[str, Any] = {
             "text": text,
             "meta": meta,
             "tool_calls": tool_calls_out,
             "stop_reason": stop_reason,
         }
+        if reasoning_content is not None:
+            result["reasoning_content"] = reasoning_content
+        return result
 
     async def generate_messages(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
         """Use Ollama's /api/chat endpoint for multi-turn conversations."""
@@ -217,4 +233,12 @@ class AsyncOllamaDriver(AsyncDriver):
 
         message = response_data.get("message", {})
         text = message.get("content", "")
-        return {"text": text, "meta": meta}
+        reasoning_content = message.get("thinking") or None
+
+        if not text and reasoning_content:
+            text = reasoning_content
+
+        result: dict[str, Any] = {"text": text, "meta": meta}
+        if reasoning_content is not None:
+            result["reasoning_content"] = reasoning_content
+        return result

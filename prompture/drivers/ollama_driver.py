@@ -84,7 +84,7 @@ class OllamaDriver(Driver):
             logger.debug(f"Sending request to Ollama endpoint: {self.endpoint}")
             logger.debug(f"Request payload: {payload}")
 
-            r = requests.post(self.endpoint, json=payload, timeout=120)
+            r = requests.post(self.endpoint, json=payload, timeout=merged_options.get("timeout", 300))
             logger.debug(f"Response status code: {r.status_code}")
 
             r.raise_for_status()
@@ -131,7 +131,17 @@ class OllamaDriver(Driver):
         }
 
         # Ollama returns text in "response"
-        return {"text": response_data.get("response", ""), "meta": meta}
+        text = response_data.get("response", "")
+        reasoning_content = response_data.get("thinking") or None
+
+        # Reasoning models may return content only in thinking
+        if not text and reasoning_content:
+            text = reasoning_content
+
+        result: dict[str, Any] = {"text": text, "meta": meta}
+        if reasoning_content is not None:
+            result["reasoning_content"] = reasoning_content
+        return result
 
     # ------------------------------------------------------------------
     # Tool use
@@ -166,7 +176,7 @@ class OllamaDriver(Driver):
 
         try:
             logger.debug(f"Sending tool use request to Ollama endpoint: {chat_endpoint}")
-            r = requests.post(chat_endpoint, json=payload, timeout=120)
+            r = requests.post(chat_endpoint, json=payload, timeout=merged_options.get("timeout", 300))
             r.raise_for_status()
             response_data = r.json()
 
@@ -196,7 +206,11 @@ class OllamaDriver(Driver):
 
         message = response_data.get("message", {})
         text = message.get("content") or ""
+        reasoning_content = message.get("thinking") or None
         stop_reason = response_data.get("done_reason", "stop")
+
+        if not text and reasoning_content:
+            text = reasoning_content
 
         tool_calls_out: list[dict[str, Any]] = []
         for tc in message.get("tool_calls", []):
@@ -215,12 +229,15 @@ class OllamaDriver(Driver):
                 "arguments": args,
             })
 
-        return {
+        result: dict[str, Any] = {
             "text": text,
             "meta": meta,
             "tool_calls": tool_calls_out,
             "stop_reason": stop_reason,
         }
+        if reasoning_content is not None:
+            result["reasoning_content"] = reasoning_content
+        return result
 
     # ------------------------------------------------------------------
     # Streaming
@@ -255,10 +272,11 @@ class OllamaDriver(Driver):
             payload["top_k"] = merged_options["top_k"]
 
         full_text = ""
+        full_reasoning = ""
         prompt_tokens = 0
         completion_tokens = 0
 
-        r = requests.post(chat_endpoint, json=payload, timeout=120, stream=True)
+        r = requests.post(chat_endpoint, json=payload, timeout=merged_options.get("timeout", 300), stream=True)
         r.raise_for_status()
 
         for line in r.iter_lines():
@@ -269,13 +287,17 @@ class OllamaDriver(Driver):
                 prompt_tokens = chunk.get("prompt_eval_count", 0)
                 completion_tokens = chunk.get("eval_count", 0)
             else:
-                content = chunk.get("message", {}).get("content", "")
+                msg = chunk.get("message", {})
+                thinking = msg.get("thinking", "")
+                if thinking:
+                    full_reasoning += thinking
+                content = msg.get("content", "")
                 if content:
                     full_text += content
                     yield {"type": "delta", "text": content}
 
         total_tokens = prompt_tokens + completion_tokens
-        yield {
+        done_chunk: dict[str, Any] = {
             "type": "done",
             "text": full_text,
             "meta": {
@@ -287,6 +309,9 @@ class OllamaDriver(Driver):
                 "model_name": merged_options.get("model", self.model),
             },
         }
+        if full_reasoning:
+            done_chunk["reasoning_content"] = full_reasoning
+        yield done_chunk
 
     def generate_messages(self, messages: list[dict[str, Any]], options: dict[str, Any]) -> dict[str, Any]:
         """Use Ollama's /api/chat endpoint for multi-turn conversations."""
@@ -318,7 +343,7 @@ class OllamaDriver(Driver):
 
         try:
             logger.debug(f"Sending chat request to Ollama endpoint: {chat_endpoint}")
-            r = requests.post(chat_endpoint, json=payload, timeout=120)
+            r = requests.post(chat_endpoint, json=payload, timeout=merged_options.get("timeout", 300))
             r.raise_for_status()
             response_data = r.json()
 
@@ -349,4 +374,12 @@ class OllamaDriver(Driver):
         # Chat endpoint returns response in message.content
         message = response_data.get("message", {})
         text = message.get("content", "")
-        return {"text": text, "meta": meta}
+        reasoning_content = message.get("thinking") or None
+
+        if not text and reasoning_content:
+            text = reasoning_content
+
+        result: dict[str, Any] = {"text": text, "meta": meta}
+        if reasoning_content is not None:
+            result["reasoning_content"] = reasoning_content
+        return result
