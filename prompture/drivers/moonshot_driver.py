@@ -336,7 +336,10 @@ class MoonshotDriver(CostMixin, Driver):
             choices = chunk.get("choices", [])
             if choices:
                 delta = choices[0].get("delta", {})
-                content = delta.get("content", "")
+                content = delta.get("content") or ""
+                # Reasoning models stream thinking via reasoning_content
+                if not content:
+                    content = delta.get("reasoning_content") or ""
                 if content:
                     full_text += content
                     yield {"type": "delta", "text": content}
