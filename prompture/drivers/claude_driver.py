@@ -131,6 +131,13 @@ class ClaudeDriver(CostMixin, Driver):
             resp = client.messages.create(**common_kwargs)
             text = resp.content[0].text
 
+        # Extract reasoning/thinking content from content blocks
+        reasoning_content = self._extract_thinking(resp.content)
+
+        # Fallback: use reasoning as text if content is empty
+        if not text and reasoning_content:
+            text = reasoning_content
+
         # Extract token usage from Claude response
         prompt_tokens = resp.usage.input_tokens
         completion_tokens = resp.usage.output_tokens
@@ -149,11 +156,25 @@ class ClaudeDriver(CostMixin, Driver):
             "model_name": model,
         }
 
-        return {"text": text, "meta": meta}
+        result: dict[str, Any] = {"text": text, "meta": meta}
+        if reasoning_content is not None:
+            result["reasoning_content"] = reasoning_content
+        return result
 
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _extract_thinking(content_blocks: list[Any]) -> str | None:
+        """Extract thinking/reasoning text from Claude content blocks."""
+        parts: list[str] = []
+        for block in content_blocks:
+            if getattr(block, "type", None) == "thinking":
+                thinking_text = getattr(block, "thinking", "")
+                if thinking_text:
+                    parts.append(thinking_text)
+        return "\n".join(parts) if parts else None
 
     def _extract_system_and_messages(
         self, messages: list[dict[str, Any]]
@@ -246,12 +267,17 @@ class ClaudeDriver(CostMixin, Driver):
                     "arguments": block.input,
                 })
 
-        return {
+        reasoning_content = self._extract_thinking(resp.content)
+
+        result: dict[str, Any] = {
             "text": text,
             "meta": meta,
             "tool_calls": tool_calls_out,
             "stop_reason": resp.stop_reason,
         }
+        if reasoning_content is not None:
+            result["reasoning_content"] = reasoning_content
+        return result
 
     # ------------------------------------------------------------------
     # Streaming
@@ -282,6 +308,7 @@ class ClaudeDriver(CostMixin, Driver):
             kwargs["system"] = system_content
 
         full_text = ""
+        full_reasoning = ""
         prompt_tokens = 0
         completion_tokens = 0
 
@@ -289,10 +316,16 @@ class ClaudeDriver(CostMixin, Driver):
             for event in stream:
                 if hasattr(event, "type"):
                     if event.type == "content_block_delta" and hasattr(event, "delta"):
-                        delta_text = getattr(event.delta, "text", "")
-                        if delta_text:
-                            full_text += delta_text
-                            yield {"type": "delta", "text": delta_text}
+                        delta_type = getattr(event.delta, "type", "")
+                        if delta_type == "thinking_delta":
+                            thinking_text = getattr(event.delta, "thinking", "")
+                            if thinking_text:
+                                full_reasoning += thinking_text
+                        else:
+                            delta_text = getattr(event.delta, "text", "")
+                            if delta_text:
+                                full_text += delta_text
+                                yield {"type": "delta", "text": delta_text}
                     elif event.type == "message_delta" and hasattr(event, "usage"):
                         completion_tokens = getattr(event.usage, "output_tokens", 0)
                     elif event.type == "message_start" and hasattr(event, "message"):
@@ -303,7 +336,7 @@ class ClaudeDriver(CostMixin, Driver):
         total_tokens = prompt_tokens + completion_tokens
         total_cost = self._calculate_cost("claude", model, prompt_tokens, completion_tokens)
 
-        yield {
+        done_chunk: dict[str, Any] = {
             "type": "done",
             "text": full_text,
             "meta": {
@@ -315,3 +348,6 @@ class ClaudeDriver(CostMixin, Driver):
                 "model_name": model,
             },
         }
+        if full_reasoning:
+            done_chunk["reasoning_content"] = full_reasoning
+        yield done_chunk
