@@ -36,7 +36,7 @@ print(person.name)  # Maria
 - **Stepwise extraction** — Per-field prompts with smart type coercion (shorthand numbers, multilingual booleans, dates)
 - **Field registry** — 50+ predefined extraction fields with template variables and Pydantic integration
 - **Conversations** — Stateful multi-turn sessions with sync and async support
-- **Tool use** — Function calling and streaming across supported providers
+- **Tool use** — Function calling and streaming across supported providers, with automatic prompt-based simulation for models without native tool support
 - **Caching** — Built-in response cache with memory, SQLite, and Redis backends
 - **Plugin system** — Register custom drivers via entry points
 - **Usage tracking** — Token counts and cost calculation on every call
@@ -248,6 +248,39 @@ conv.add_message("system", "You are a helpful assistant.")
 response = conv.send("What is the capital of France?")
 follow_up = conv.send("What about Germany?")  # retains context
 ```
+
+### Tool Use
+
+Register Python functions as tools the LLM can call during a conversation:
+
+```python
+from prompture import Conversation, ToolRegistry
+
+registry = ToolRegistry()
+
+@registry.tool
+def get_weather(city: str, units: str = "celsius") -> str:
+    """Get the current weather for a city."""
+    return f"Weather in {city}: 22 {units}"
+
+conv = Conversation("openai/gpt-4", tools=registry)
+result = conv.ask("What's the weather in London?")
+```
+
+For models without native function calling (Ollama, LM Studio, etc.), Prompture automatically simulates tool use by describing tools in the prompt and parsing structured JSON responses:
+
+```python
+# Auto-detect: uses native tool calling if available, simulation otherwise
+conv = Conversation("ollama/llama3.1:8b", tools=registry, simulated_tools="auto")
+
+# Force simulation even on capable models
+conv = Conversation("openai/gpt-4", tools=registry, simulated_tools=True)
+
+# Disable tool use entirely
+conv = Conversation("openai/gpt-4", tools=registry, simulated_tools=False)
+```
+
+The simulation loop describes tools in the system prompt, asks the model to respond with JSON (`tool_call` or `final_answer`), executes tools, and feeds results back — all transparent to the caller.
 
 ### Model Discovery
 

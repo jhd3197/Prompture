@@ -56,6 +56,7 @@ class Conversation:
         callbacks: DriverCallbacks | None = None,
         tools: ToolRegistry | None = None,
         max_tool_rounds: int = 10,
+        simulated_tools: bool | Literal["auto"] = "auto",
         conversation_id: str | None = None,
         auto_save: str | Path | None = None,
         tags: list[str] | None = None,
@@ -109,6 +110,7 @@ class Conversation:
         }
         self._tools = tools or ToolRegistry()
         self._max_tool_rounds = max_tool_rounds
+        self._simulated_tools = simulated_tools
 
         # Persistence
         self._conversation_id = conversation_id or str(uuid.uuid4())
@@ -338,8 +340,13 @@ class Conversation:
             images: Optional list of images to include (bytes, path, URL,
                 base64 string, or :class:`ImageContent`).
         """
-        if self._tools and getattr(self._driver, "supports_tool_use", False):
-            return self._ask_with_tools(content, options, images=images)
+        # Route to appropriate tool handling
+        if self._tools:
+            use_native = getattr(self._driver, "supports_tool_use", False)
+            if self._simulated_tools is True or (self._simulated_tools == "auto" and not use_native):
+                return self._ask_with_simulated_tools(content, options, images=images)
+            elif use_native and self._simulated_tools is not True:
+                return self._ask_with_tools(content, options, images=images)
 
         merged = {**self._options, **(options or {})}
         messages = self._build_messages(content, images=images)
@@ -395,6 +402,11 @@ class Conversation:
                 }
                 for tc in tool_calls
             ]
+            # Preserve reasoning_content for providers that require it
+            # on subsequent requests (e.g. Moonshot reasoning models).
+            if resp.get("reasoning_content") is not None:
+                assistant_msg["reasoning_content"] = resp["reasoning_content"]
+
             self._messages.append(assistant_msg)
             msgs.append(assistant_msg)
 
@@ -415,6 +427,63 @@ class Conversation:
                 msgs.append(tool_result_msg)
 
         raise RuntimeError(f"Tool execution loop exceeded {self._max_tool_rounds} rounds")
+
+    def _ask_with_simulated_tools(
+        self,
+        content: str,
+        options: dict[str, Any] | None = None,
+        images: list[ImageInput] | None = None,
+    ) -> str:
+        """Prompt-based tool calling for drivers without native tool use."""
+        from .simulated_tools import build_tool_prompt, format_tool_result, parse_simulated_response
+
+        merged = {**self._options, **(options or {})}
+        tool_prompt = build_tool_prompt(self._tools)
+
+        # Augment system prompt with tool descriptions
+        augmented_system = tool_prompt
+        if self._system_prompt:
+            augmented_system = f"{self._system_prompt}\n\n{tool_prompt}"
+
+        # Record user message in history
+        user_content = self._build_content_with_images(content, images)
+        self._messages.append({"role": "user", "content": user_content})
+
+        for _round in range(self._max_tool_rounds):
+            # Build messages with the augmented system prompt
+            msgs: list[dict[str, Any]] = []
+            msgs.append({"role": "system", "content": augmented_system})
+            msgs.extend(self._messages)
+
+            resp = self._driver.generate_messages_with_hooks(msgs, merged)
+            text = resp.get("text", "")
+            meta = resp.get("meta", {})
+            self._accumulate_usage(meta)
+
+            parsed = parse_simulated_response(text, self._tools)
+
+            if parsed["type"] == "final_answer":
+                answer = parsed["content"]
+                self._messages.append({"role": "assistant", "content": answer})
+                return answer
+
+            # Tool call
+            tool_name = parsed["name"]
+            tool_args = parsed["arguments"]
+
+            # Record assistant's tool call as an assistant message
+            self._messages.append({"role": "assistant", "content": text})
+
+            try:
+                result = self._tools.execute(tool_name, tool_args)
+                result_msg = format_tool_result(tool_name, result)
+            except Exception as exc:
+                result_msg = format_tool_result(tool_name, f"Error: {exc}")
+
+            # Record tool result as a user message (all drivers understand user/assistant)
+            self._messages.append({"role": "user", "content": result_msg})
+
+        raise RuntimeError(f"Simulated tool execution loop exceeded {self._max_tool_rounds} rounds")
 
     def _build_messages_raw(self) -> list[dict[str, Any]]:
         """Build messages array from system prompt + full history (including tool messages)."""

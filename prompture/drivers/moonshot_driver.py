@@ -364,11 +364,12 @@ class MoonshotDriver(CostMixin, Driver):
         }
 
         choice = resp["choices"][0]
-        text = choice["message"].get("content") or ""
+        message = choice["message"]
+        text = message.get("content") or ""
         stop_reason = choice.get("finish_reason")
 
         tool_calls_out: list[dict[str, Any]] = []
-        for tc in choice["message"].get("tool_calls", []):
+        for tc in message.get("tool_calls", []):
             try:
                 args = json.loads(tc["function"]["arguments"])
             except (json.JSONDecodeError, TypeError):
@@ -381,12 +382,20 @@ class MoonshotDriver(CostMixin, Driver):
                 }
             )
 
-        return {
+        result: dict[str, Any] = {
             "text": text,
             "meta": meta,
             "tool_calls": tool_calls_out,
             "stop_reason": stop_reason,
         }
+
+        # Preserve reasoning_content for reasoning models so the
+        # conversation loop can include it when sending the assistant
+        # message back (Moonshot requires it on subsequent requests).
+        if message.get("reasoning_content") is not None:
+            result["reasoning_content"] = message["reasoning_content"]
+
+        return result
 
     # ------------------------------------------------------------------
     # Streaming
