@@ -22,9 +22,12 @@ from .async_grok_driver import AsyncGrokDriver
 from .async_groq_driver import AsyncGroqDriver
 from .async_lmstudio_driver import AsyncLMStudioDriver
 from .async_local_http_driver import AsyncLocalHTTPDriver
+from .async_modelscope_driver import AsyncModelScopeDriver
+from .async_moonshot_driver import AsyncMoonshotDriver
 from .async_ollama_driver import AsyncOllamaDriver
 from .async_openai_driver import AsyncOpenAIDriver
 from .async_openrouter_driver import AsyncOpenRouterDriver
+from .async_zai_driver import AsyncZaiDriver
 from .registry import (
     _get_async_registry,
     get_async_driver_factory,
@@ -88,6 +91,33 @@ register_async_driver(
 register_async_driver(
     "grok",
     lambda model=None: AsyncGrokDriver(api_key=settings.grok_api_key, model=model or settings.grok_model),
+    overwrite=True,
+)
+register_async_driver(
+    "moonshot",
+    lambda model=None: AsyncMoonshotDriver(
+        api_key=settings.moonshot_api_key,
+        model=model or settings.moonshot_model,
+        endpoint=settings.moonshot_endpoint,
+    ),
+    overwrite=True,
+)
+register_async_driver(
+    "modelscope",
+    lambda model=None: AsyncModelScopeDriver(
+        api_key=settings.modelscope_api_key,
+        model=model or settings.modelscope_model,
+        endpoint=settings.modelscope_endpoint,
+    ),
+    overwrite=True,
+)
+register_async_driver(
+    "zai",
+    lambda model=None: AsyncZaiDriver(
+        api_key=settings.zhipu_api_key,
+        model=model or settings.zhipu_model,
+        endpoint=settings.zhipu_endpoint,
+    ),
     overwrite=True,
 )
 register_async_driver(

@@ -110,7 +110,7 @@ class TestDriverCapabilityFlags:
         from prompture.drivers.openrouter_driver import OpenRouterDriver
 
         assert OpenRouterDriver.supports_json_mode is True
-        assert OpenRouterDriver.supports_json_schema is False
+        assert OpenRouterDriver.supports_json_schema is True
 
     def test_ollama_driver_flags(self):
         from prompture.drivers.ollama_driver import OllamaDriver
@@ -186,7 +186,7 @@ class TestAsyncDriverCapabilityFlags:
         from prompture.drivers.async_openrouter_driver import AsyncOpenRouterDriver
 
         assert AsyncOpenRouterDriver.supports_json_mode is True
-        assert AsyncOpenRouterDriver.supports_json_schema is False
+        assert AsyncOpenRouterDriver.supports_json_schema is True
 
     def test_async_ollama_driver_flags(self):
         from prompture.drivers.async_ollama_driver import AsyncOllamaDriver

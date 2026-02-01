@@ -51,6 +51,21 @@ class Settings(BaseSettings):
     grok_api_key: Optional[str] = None
     grok_model: str = "grok-4-fast-reasoning"
 
+    # Moonshot AI (Kimi)
+    moonshot_api_key: Optional[str] = None
+    moonshot_model: str = "kimi-k2-0905-preview"
+    moonshot_endpoint: str = "https://api.moonshot.ai/v1"
+
+    # Z.ai (Zhipu AI)
+    zhipu_api_key: Optional[str] = None
+    zhipu_model: str = "glm-4.7"
+    zhipu_endpoint: str = "https://api.z.ai/api/paas/v4"
+
+    # ModelScope (Alibaba Cloud)
+    modelscope_api_key: Optional[str] = None
+    modelscope_model: str = "Qwen/Qwen3-235B-A22B-Instruct-2507"
+    modelscope_endpoint: str = "https://api-inference.modelscope.cn/v1"
+
     # AirLLM
     airllm_model: str = "meta-llama/Llama-2-7b-hf"
     airllm_compression: Optional[str] = None  # "4bit" or "8bit"

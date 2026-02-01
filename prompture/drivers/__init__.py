@@ -37,10 +37,13 @@ from .async_groq_driver import AsyncGroqDriver
 from .async_hugging_driver import AsyncHuggingFaceDriver
 from .async_lmstudio_driver import AsyncLMStudioDriver
 from .async_local_http_driver import AsyncLocalHTTPDriver
+from .async_modelscope_driver import AsyncModelScopeDriver
+from .async_moonshot_driver import AsyncMoonshotDriver
 from .async_ollama_driver import AsyncOllamaDriver
 from .async_openai_driver import AsyncOpenAIDriver
 from .async_openrouter_driver import AsyncOpenRouterDriver
 from .async_registry import ASYNC_DRIVER_REGISTRY, get_async_driver, get_async_driver_for_model
+from .async_zai_driver import AsyncZaiDriver
 from .azure_driver import AzureDriver
 from .claude_driver import ClaudeDriver
 from .google_driver import GoogleDriver
@@ -48,6 +51,8 @@ from .grok_driver import GrokDriver
 from .groq_driver import GroqDriver
 from .lmstudio_driver import LMStudioDriver
 from .local_http_driver import LocalHTTPDriver
+from .modelscope_driver import ModelScopeDriver
+from .moonshot_driver import MoonshotDriver
 from .ollama_driver import OllamaDriver
 from .openai_driver import OpenAIDriver
 from .openrouter_driver import OpenRouterDriver
@@ -65,6 +70,7 @@ from .registry import (
     unregister_async_driver,
     unregister_driver,
 )
+from .zai_driver import ZaiDriver
 
 # Register built-in sync drivers
 register_driver(
@@ -121,6 +127,33 @@ register_driver(
 register_driver(
     "grok",
     lambda model=None: GrokDriver(api_key=settings.grok_api_key, model=model or settings.grok_model),
+    overwrite=True,
+)
+register_driver(
+    "moonshot",
+    lambda model=None: MoonshotDriver(
+        api_key=settings.moonshot_api_key,
+        model=model or settings.moonshot_model,
+        endpoint=settings.moonshot_endpoint,
+    ),
+    overwrite=True,
+)
+register_driver(
+    "modelscope",
+    lambda model=None: ModelScopeDriver(
+        api_key=settings.modelscope_api_key,
+        model=model or settings.modelscope_model,
+        endpoint=settings.modelscope_endpoint,
+    ),
+    overwrite=True,
+)
+register_driver(
+    "zai",
+    lambda model=None: ZaiDriver(
+        api_key=settings.zhipu_api_key,
+        model=model or settings.zhipu_model,
+        endpoint=settings.zhipu_endpoint,
+    ),
     overwrite=True,
 )
 register_driver(
@@ -197,9 +230,12 @@ __all__ = [
     "AsyncHuggingFaceDriver",
     "AsyncLMStudioDriver",
     "AsyncLocalHTTPDriver",
+    "AsyncModelScopeDriver",
+    "AsyncMoonshotDriver",
     "AsyncOllamaDriver",
     "AsyncOpenAIDriver",
     "AsyncOpenRouterDriver",
+    "AsyncZaiDriver",
     "AzureDriver",
     "ClaudeDriver",
     "GoogleDriver",
@@ -207,9 +243,12 @@ __all__ = [
     "GroqDriver",
     "LMStudioDriver",
     "LocalHTTPDriver",
+    "ModelScopeDriver",
+    "MoonshotDriver",
     "OllamaDriver",
     "OpenAIDriver",
     "OpenRouterDriver",
+    "ZaiDriver",
     "get_async_driver",
     "get_async_driver_for_model",
     # Factory functions

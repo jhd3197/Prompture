@@ -1,5 +1,12 @@
-"""OpenRouter driver implementation.
-Requires the `requests` package. Uses OPENROUTER_API_KEY env var.
+"""Moonshot AI (Kimi) driver implementation.
+Requires the `requests` package. Uses MOONSHOT_API_KEY env var.
+
+The Moonshot API is fully OpenAI-compatible (/v1/chat/completions).
+All pricing comes from models.dev (provider: "moonshotai") — no hardcoded pricing.
+
+Moonshot-specific constraints:
+- Temperature clamped to [0, 1] (OpenAI allows [0, 2])
+- tool_choice: "required" not supported — only "auto" or "none"
 """
 
 import json
@@ -13,70 +20,57 @@ from ..cost_mixin import CostMixin
 from ..driver import Driver
 
 
-class OpenRouterDriver(CostMixin, Driver):
+class MoonshotDriver(CostMixin, Driver):
     supports_json_mode = True
     supports_json_schema = True
     supports_tool_use = True
     supports_streaming = True
     supports_vision = True
 
-    # Approximate pricing per 1K tokens based on OpenRouter's pricing
-    # https://openrouter.ai/docs#pricing
-    MODEL_PRICING = {
-        "openai/gpt-4o": {
-            "prompt": 0.005,
-            "completion": 0.015,
-            "tokens_param": "max_tokens",
-            "supports_temperature": True,
-        },
-        "openai/gpt-4o-mini": {
-            "prompt": 0.00015,
-            "completion": 0.0006,
-            "tokens_param": "max_tokens",
-            "supports_temperature": True,
-        },
-        "anthropic/claude-sonnet-4-20250514": {
-            "prompt": 0.003,
-            "completion": 0.015,
-            "tokens_param": "max_tokens",
-            "supports_temperature": True,
-        },
-        "google/gemini-2.0-flash-001": {
-            "prompt": 0.0001,
-            "completion": 0.0004,
-            "tokens_param": "max_tokens",
-            "supports_temperature": True,
-        },
-        "meta-llama/llama-3.1-70b-instruct": {
-            "prompt": 0.0004,
-            "completion": 0.0004,
-            "tokens_param": "max_tokens",
-            "supports_temperature": True,
-        },
-    }
+    # All pricing resolved live from models.dev (provider: "moonshotai")
+    MODEL_PRICING: dict[str, dict[str, Any]] = {}
 
-    def __init__(self, api_key: str | None = None, model: str = "openai/gpt-4o-mini"):
-        """Initialize OpenRouter driver.
+    def __init__(
+        self,
+        api_key: str | None = None,
+        model: str = "kimi-k2-0905-preview",
+        endpoint: str = "https://api.moonshot.ai/v1",
+    ):
+        """Initialize Moonshot driver.
 
         Args:
-            api_key: OpenRouter API key. If not provided, will look for OPENROUTER_API_KEY env var
-            model: Model to use. Defaults to openai/gpt-4o-mini
+            api_key: Moonshot API key. If not provided, will look for MOONSHOT_API_KEY env var.
+            model: Model to use. Defaults to kimi-k2-0905-preview.
+            endpoint: API base URL. Defaults to https://api.moonshot.ai/v1.
+                      Use https://api.moonshot.cn/v1 for the China endpoint.
         """
-        self.api_key = api_key or os.getenv("OPENROUTER_API_KEY")
+        self.api_key = api_key or os.getenv("MOONSHOT_API_KEY")
         if not self.api_key:
-            raise ValueError("OpenRouter API key not found. Set OPENROUTER_API_KEY env var.")
+            raise ValueError("Moonshot API key not found. Set MOONSHOT_API_KEY env var.")
 
         self.model = model
-        self.base_url = "https://openrouter.ai/api/v1"
+        self.base_url = endpoint.rstrip("/")
 
-        # Required headers for OpenRouter
         self.headers = {
             "Authorization": f"Bearer {self.api_key}",
-            "HTTP-Referer": "https://github.com/jhd3197/prompture",  # Required by OpenRouter
             "Content-Type": "application/json",
         }
 
     supports_messages = True
+
+    @staticmethod
+    def _clamp_temperature(opts: dict[str, Any]) -> dict[str, Any]:
+        """Clamp temperature to Moonshot's supported range [0, 1]."""
+        if "temperature" in opts:
+            opts["temperature"] = max(0.0, min(1.0, float(opts["temperature"])))
+        return opts
+
+    @staticmethod
+    def _sanitize_tool_choice(data: dict[str, Any]) -> dict[str, Any]:
+        """Downgrade tool_choice='required' to 'auto' (unsupported by Moonshot)."""
+        if data.get("tool_choice") == "required":
+            data["tool_choice"] = "auto"
+        return data
 
     def _prepare_messages(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
         from .vision_helpers import _prepare_openai_vision_messages
@@ -92,35 +86,29 @@ class OpenRouterDriver(CostMixin, Driver):
 
     def _do_generate(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
         if not self.api_key:
-            raise RuntimeError("OpenRouter API key not found")
+            raise RuntimeError("Moonshot API key not found")
 
         model = options.get("model", self.model)
 
-        # Lookup model-specific config (live models.dev data + hardcoded fallback)
-        model_config = self._get_model_config("openrouter", model)
+        model_config = self._get_model_config("moonshot", model)
         tokens_param = model_config["tokens_param"]
         supports_temperature = model_config["supports_temperature"]
 
-        # Validate capabilities against models.dev metadata
         self._validate_model_capabilities(
-            "openrouter",
+            "moonshot",
             model,
             using_json_schema=bool(options.get("json_schema")),
         )
 
-        # Defaults
         opts = {"temperature": 1.0, "max_tokens": 512, **options}
+        opts = self._clamp_temperature(opts)
 
-        # Base request data
-        data = {
+        data: dict[str, Any] = {
             "model": model,
             "messages": messages,
         }
-
-        # Add token limit with correct parameter name
         data[tokens_param] = opts.get("max_tokens", 512)
 
-        # Only include temperature if model supports it
         if supports_temperature and "temperature" in opts:
             data["temperature"] = opts["temperature"]
 
@@ -149,21 +137,18 @@ class OpenRouterDriver(CostMixin, Driver):
             response.raise_for_status()
             resp = response.json()
         except requests.exceptions.HTTPError as e:
-            error_msg = f"OpenRouter API request failed: {e!s}"
+            error_msg = f"Moonshot API request failed: {e!s}"
             raise RuntimeError(error_msg) from e
         except requests.exceptions.RequestException as e:
-            raise RuntimeError(f"OpenRouter API request failed: {e!s}") from e
+            raise RuntimeError(f"Moonshot API request failed: {e!s}") from e
 
-        # Extract usage info
         usage = resp.get("usage", {})
         prompt_tokens = usage.get("prompt_tokens", 0)
         completion_tokens = usage.get("completion_tokens", 0)
         total_tokens = usage.get("total_tokens", 0)
 
-        # Calculate cost via shared mixin
-        total_cost = self._calculate_cost("openrouter", model, prompt_tokens, completion_tokens)
+        total_cost = self._calculate_cost("moonshot", model, prompt_tokens, completion_tokens)
 
-        # Standardized meta object
         meta = {
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
@@ -188,16 +173,17 @@ class OpenRouterDriver(CostMixin, Driver):
     ) -> dict[str, Any]:
         """Generate a response that may include tool calls."""
         if not self.api_key:
-            raise RuntimeError("OpenRouter API key not found")
+            raise RuntimeError("Moonshot API key not found")
 
         model = options.get("model", self.model)
-        model_config = self._get_model_config("openrouter", model)
+        model_config = self._get_model_config("moonshot", model)
         tokens_param = model_config["tokens_param"]
         supports_temperature = model_config["supports_temperature"]
 
-        self._validate_model_capabilities("openrouter", model, using_tool_use=True)
+        self._validate_model_capabilities("moonshot", model, using_tool_use=True)
 
         opts = {"temperature": 1.0, "max_tokens": 512, **options}
+        opts = self._clamp_temperature(opts)
 
         data: dict[str, Any] = {
             "model": model,
@@ -209,6 +195,11 @@ class OpenRouterDriver(CostMixin, Driver):
         if supports_temperature and "temperature" in opts:
             data["temperature"] = opts["temperature"]
 
+        if "tool_choice" in options:
+            data["tool_choice"] = options["tool_choice"]
+
+        data = self._sanitize_tool_choice(data)
+
         try:
             response = requests.post(
                 f"{self.base_url}/chat/completions",
@@ -219,16 +210,16 @@ class OpenRouterDriver(CostMixin, Driver):
             response.raise_for_status()
             resp = response.json()
         except requests.exceptions.HTTPError as e:
-            error_msg = f"OpenRouter API request failed: {e!s}"
+            error_msg = f"Moonshot API request failed: {e!s}"
             raise RuntimeError(error_msg) from e
         except requests.exceptions.RequestException as e:
-            raise RuntimeError(f"OpenRouter API request failed: {e!s}") from e
+            raise RuntimeError(f"Moonshot API request failed: {e!s}") from e
 
         usage = resp.get("usage", {})
         prompt_tokens = usage.get("prompt_tokens", 0)
         completion_tokens = usage.get("completion_tokens", 0)
         total_tokens = usage.get("total_tokens", 0)
-        total_cost = self._calculate_cost("openrouter", model, prompt_tokens, completion_tokens)
+        total_cost = self._calculate_cost("moonshot", model, prompt_tokens, completion_tokens)
 
         meta = {
             "prompt_tokens": prompt_tokens,
@@ -249,11 +240,13 @@ class OpenRouterDriver(CostMixin, Driver):
                 args = json.loads(tc["function"]["arguments"])
             except (json.JSONDecodeError, TypeError):
                 args = {}
-            tool_calls_out.append({
-                "id": tc["id"],
-                "name": tc["function"]["name"],
-                "arguments": args,
-            })
+            tool_calls_out.append(
+                {
+                    "id": tc["id"],
+                    "name": tc["function"]["name"],
+                    "arguments": args,
+                }
+            )
 
         return {
             "text": text,
@@ -271,16 +264,17 @@ class OpenRouterDriver(CostMixin, Driver):
         messages: list[dict[str, Any]],
         options: dict[str, Any],
     ) -> Iterator[dict[str, Any]]:
-        """Yield response chunks via OpenRouter streaming API."""
+        """Yield response chunks via Moonshot streaming API."""
         if not self.api_key:
-            raise RuntimeError("OpenRouter API key not found")
+            raise RuntimeError("Moonshot API key not found")
 
         model = options.get("model", self.model)
-        model_config = self._get_model_config("openrouter", model)
+        model_config = self._get_model_config("moonshot", model)
         tokens_param = model_config["tokens_param"]
         supports_temperature = model_config["supports_temperature"]
 
         opts = {"temperature": 1.0, "max_tokens": 512, **options}
+        opts = self._clamp_temperature(opts)
 
         data: dict[str, Any] = {
             "model": model,
@@ -309,7 +303,7 @@ class OpenRouterDriver(CostMixin, Driver):
         for line in response.iter_lines(decode_unicode=True):
             if not line or not line.startswith("data: "):
                 continue
-            payload = line[len("data: "):]
+            payload = line[len("data: ") :]
             if payload.strip() == "[DONE]":
                 break
             try:
@@ -317,7 +311,6 @@ class OpenRouterDriver(CostMixin, Driver):
             except json.JSONDecodeError:
                 continue
 
-            # Usage comes in the final chunk
             usage = chunk.get("usage")
             if usage:
                 prompt_tokens = usage.get("prompt_tokens", 0)
@@ -332,7 +325,7 @@ class OpenRouterDriver(CostMixin, Driver):
                     yield {"type": "delta", "text": content}
 
         total_tokens = prompt_tokens + completion_tokens
-        total_cost = self._calculate_cost("openrouter", model, prompt_tokens, completion_tokens)
+        total_cost = self._calculate_cost("moonshot", model, prompt_tokens, completion_tokens)
 
         yield {
             "type": "done",
