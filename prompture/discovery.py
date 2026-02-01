@@ -10,6 +10,7 @@ from typing import Any, overload
 import requests
 
 from .drivers import (
+    AirLLMDriver,
     AzureDriver,
     ClaudeDriver,
     GoogleDriver,
@@ -17,9 +18,12 @@ from .drivers import (
     GroqDriver,
     LMStudioDriver,
     LocalHTTPDriver,
+    ModelScopeDriver,
+    MoonshotDriver,
     OllamaDriver,
     OpenAIDriver,
     OpenRouterDriver,
+    ZaiDriver,
 )
 from .settings import settings
 
@@ -71,6 +75,10 @@ def get_available_models(
         "ollama": OllamaDriver,
         "lmstudio": LMStudioDriver,
         "local_http": LocalHTTPDriver,
+        "moonshot": MoonshotDriver,
+        "zai": ZaiDriver,
+        "modelscope": ModelScopeDriver,
+        "airllm": AirLLMDriver,
     }
 
     for provider, driver_cls in provider_classes.items():
@@ -102,6 +110,18 @@ def get_available_models(
             elif provider == "grok":
                 if settings.grok_api_key or os.getenv("GROK_API_KEY"):
                     is_configured = True
+            elif provider == "moonshot":
+                if settings.moonshot_api_key or os.getenv("MOONSHOT_API_KEY"):
+                    is_configured = True
+            elif provider == "zai":
+                if settings.zhipu_api_key or os.getenv("ZHIPU_API_KEY"):
+                    is_configured = True
+            elif provider == "modelscope":
+                if settings.modelscope_api_key or os.getenv("MODELSCOPE_API_KEY"):
+                    is_configured = True
+            elif provider == "airllm":
+                # AirLLM runs locally, always considered configured
+                is_configured = True
             elif (
                 provider == "ollama"
                 or provider == "lmstudio"
