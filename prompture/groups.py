@@ -232,6 +232,8 @@ class SequentialGroup:
                 if self._callbacks.on_agent_error:
                     self._callbacks.on_agent_error(name, exc)
 
+                if self._error_policy == ErrorPolicy.raise_on_error:
+                    raise
                 if self._error_policy == ErrorPolicy.fail_fast:
                     break
                 # continue_on_error / retry_failed: continue to next agent
@@ -390,6 +392,8 @@ class LoopGroup:
                     if self._callbacks.on_agent_error:
                         self._callbacks.on_agent_error(name, exc)
 
+                    if self._error_policy == ErrorPolicy.raise_on_error:
+                        raise
                     if self._error_policy == ErrorPolicy.fail_fast:
                         break
 

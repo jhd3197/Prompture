@@ -10,6 +10,7 @@ Moonshot-specific constraints:
 """
 
 import json
+import logging
 import os
 from collections.abc import Iterator
 from typing import Any
@@ -18,6 +19,8 @@ import requests
 
 from ..cost_mixin import CostMixin, prepare_strict_schema
 from ..driver import Driver
+
+logger = logging.getLogger("prompture.drivers.moonshot")
 
 
 class MoonshotDriver(CostMixin, Driver):
@@ -71,6 +74,70 @@ class MoonshotDriver(CostMixin, Driver):
         if data.get("tool_choice") == "required":
             data["tool_choice"] = "auto"
         return data
+
+    @staticmethod
+    def _sanitize_tools(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Sanitize tool definitions for Moonshot API compatibility.
+
+        Fixes common issues that cause 400 errors:
+        - Ensures every function has a non-empty description.
+        - Removes empty ``required`` arrays from parameter schemas.
+        - Ensures parameter descriptions are meaningful (not just 'Parameter: x').
+        """
+        sanitized = []
+        for tool in tools:
+            tool = json.loads(json.dumps(tool))  # deep copy
+            func = tool.get("function", {})
+
+            # Ensure description is non-empty
+            if not func.get("description"):
+                func["description"] = f"Call the {func.get('name', 'unknown')} function"
+
+            params = func.get("parameters", {})
+
+            # Remove empty required arrays — Moonshot rejects these
+            if "required" in params and not params["required"]:
+                del params["required"]
+
+            # Ensure properties exist even if empty
+            if "properties" not in params:
+                params["properties"] = {}
+
+            sanitized.append(tool)
+        return sanitized
+
+    @staticmethod
+    def _format_error_body(data: dict[str, Any], error: Exception) -> str:
+        """Build a redacted request body excerpt for error diagnostics.
+
+        Omits message content (can be large) and the Authorization header.
+        Includes model, tools, response_format, and tool_choice if present.
+        """
+        excerpt: dict[str, Any] = {}
+        for key in ("model", "response_format", "tool_choice"):
+            if key in data:
+                excerpt[key] = data[key]
+        if "tools" in data:
+            # Show tool names/parameter keys only, not full schemas
+            excerpt["tools"] = [
+                {
+                    "name": t.get("function", {}).get("name"),
+                    "params": list(t.get("function", {}).get("parameters", {}).get("properties", {}).keys()),
+                }
+                for t in data.get("tools", [])
+            ]
+        # Include response body from the error if available
+        response_text = ""
+        resp = getattr(error, "response", None)
+        if resp is not None:
+            import contextlib
+
+            with contextlib.suppress(Exception):
+                response_text = resp.text[:500] if hasattr(resp, "text") else ""
+        parts = [f"\nRequest excerpt: {json.dumps(excerpt, default=str)}"]
+        if response_text:
+            parts.append(f"Response body: {response_text}")
+        return "\n".join(parts)
 
     def _prepare_messages(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
         from .vision_helpers import _prepare_openai_vision_messages
@@ -148,7 +215,8 @@ class MoonshotDriver(CostMixin, Driver):
             response.raise_for_status()
             resp = response.json()
         except requests.exceptions.HTTPError as e:
-            error_msg = f"Moonshot API request failed: {e!s}"
+            error_body = self._format_error_body(data, e)
+            error_msg = f"Moonshot API request failed: {e!s}{error_body}"
             raise RuntimeError(error_msg) from e
         except requests.exceptions.RequestException as e:
             raise RuntimeError(f"Moonshot API request failed: {e!s}") from e
@@ -157,6 +225,58 @@ class MoonshotDriver(CostMixin, Driver):
         prompt_tokens = usage.get("prompt_tokens", 0)
         completion_tokens = usage.get("completion_tokens", 0)
         total_tokens = usage.get("total_tokens", 0)
+
+        message = resp["choices"][0]["message"]
+        text = message.get("content") or ""
+
+        # Reasoning models may return content in reasoning_content when content is empty
+        if not text and message.get("reasoning_content"):
+            text = message["reasoning_content"]
+
+        # Structured output fallback: if we used json_schema mode and got an
+        # empty response, retry with json_object mode and schema in the prompt.
+        used_strict = data.get("response_format", {}).get("type") == "json_schema"
+        if used_strict and not text.strip() and completion_tokens == 0:
+            logger.info(
+                "Moonshot returned empty response with json_schema mode for %s; retrying with json_object fallback",
+                model,
+            )
+            fallback_data = {k: v for k, v in data.items() if k != "response_format"}
+            fallback_data["response_format"] = {"type": "json_object"}
+
+            # Inject schema instructions into messages
+            json_schema = options.get("json_schema")
+            schema_instruction = (
+                "Return a JSON object that validates against this schema:\n"
+                f"{json.dumps(json_schema, indent=2)}\n"
+                "If a value is unknown use null."
+            )
+            fallback_messages = list(fallback_data["messages"])
+            fallback_messages.append({"role": "system", "content": schema_instruction})
+            fallback_data["messages"] = fallback_messages
+
+            try:
+                fb_response = requests.post(
+                    f"{self.base_url}/chat/completions",
+                    headers=self.headers,
+                    json=fallback_data,
+                    timeout=120,
+                )
+                fb_response.raise_for_status()
+                fb_resp = fb_response.json()
+            except requests.exceptions.RequestException:
+                # Fallback failed — return original empty result
+                pass
+            else:
+                fb_usage = fb_resp.get("usage", {})
+                prompt_tokens += fb_usage.get("prompt_tokens", 0)
+                completion_tokens = fb_usage.get("completion_tokens", 0)
+                total_tokens = prompt_tokens + completion_tokens
+                resp = fb_resp
+                fb_message = fb_resp["choices"][0]["message"]
+                text = fb_message.get("content") or ""
+                if not text and fb_message.get("reasoning_content"):
+                    text = fb_message["reasoning_content"]
 
         total_cost = self._calculate_cost("moonshot", model, prompt_tokens, completion_tokens)
 
@@ -168,13 +288,6 @@ class MoonshotDriver(CostMixin, Driver):
             "raw_response": resp,
             "model_name": model,
         }
-
-        message = resp["choices"][0]["message"]
-        text = message.get("content") or ""
-
-        # Reasoning models may return content in reasoning_content when content is empty
-        if not text and message.get("reasoning_content"):
-            text = message["reasoning_content"]
 
         return {"text": text, "meta": meta}
 
@@ -202,10 +315,12 @@ class MoonshotDriver(CostMixin, Driver):
         opts = {"temperature": 1.0, "max_tokens": 512, **options}
         opts = self._clamp_temperature(opts)
 
+        sanitized_tools = self._sanitize_tools(tools)
+
         data: dict[str, Any] = {
             "model": model,
             "messages": messages,
-            "tools": tools,
+            "tools": sanitized_tools,
         }
         data[tokens_param] = opts.get("max_tokens", 512)
 
@@ -227,7 +342,8 @@ class MoonshotDriver(CostMixin, Driver):
             response.raise_for_status()
             resp = response.json()
         except requests.exceptions.HTTPError as e:
-            error_msg = f"Moonshot API request failed: {e!s}"
+            error_body = self._format_error_body(data, e)
+            error_msg = f"Moonshot API request failed: {e!s}{error_body}"
             raise RuntimeError(error_msg) from e
         except requests.exceptions.RequestException as e:
             raise RuntimeError(f"Moonshot API request failed: {e!s}") from e
