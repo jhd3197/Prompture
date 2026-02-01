@@ -1,37 +1,53 @@
-"""Async OpenRouter driver using httpx."""
+"""Z.ai (Zhipu AI) driver implementation.
+Requires the `requests` package. Uses ZHIPU_API_KEY env var.
 
-from __future__ import annotations
+The Z.ai API is fully OpenAI-compatible (/chat/completions).
+All pricing comes from models.dev (provider: "zai") — no hardcoded pricing.
+"""
 
 import json
 import os
-from collections.abc import AsyncIterator
+from collections.abc import Iterator
 from typing import Any
 
-import httpx
+import requests
 
-from ..async_driver import AsyncDriver
 from ..cost_mixin import CostMixin
-from .openrouter_driver import OpenRouterDriver
+from ..driver import Driver
 
 
-class AsyncOpenRouterDriver(CostMixin, AsyncDriver):
+class ZaiDriver(CostMixin, Driver):
     supports_json_mode = True
     supports_json_schema = True
     supports_tool_use = True
     supports_streaming = True
     supports_vision = True
 
-    MODEL_PRICING = OpenRouterDriver.MODEL_PRICING
+    # All pricing resolved live from models.dev (provider: "zai")
+    MODEL_PRICING: dict[str, dict[str, Any]] = {}
 
-    def __init__(self, api_key: str | None = None, model: str = "openai/gpt-4o-mini"):
-        self.api_key = api_key or os.getenv("OPENROUTER_API_KEY")
+    def __init__(
+        self,
+        api_key: str | None = None,
+        model: str = "glm-4.7",
+        endpoint: str = "https://api.z.ai/api/paas/v4",
+    ):
+        """Initialize Z.ai driver.
+
+        Args:
+            api_key: Zhipu API key. If not provided, will look for ZHIPU_API_KEY env var.
+            model: Model to use. Defaults to glm-4.7.
+            endpoint: API base URL. Defaults to https://api.z.ai/api/paas/v4.
+        """
+        self.api_key = api_key or os.getenv("ZHIPU_API_KEY")
         if not self.api_key:
-            raise ValueError("OpenRouter API key not found. Set OPENROUTER_API_KEY env var.")
+            raise ValueError("Zhipu API key not found. Set ZHIPU_API_KEY env var.")
+
         self.model = model
-        self.base_url = "https://openrouter.ai/api/v1"
+        self.base_url = endpoint.rstrip("/")
+
         self.headers = {
             "Authorization": f"Bearer {self.api_key}",
-            "HTTP-Referer": "https://github.com/jhd3197/prompture",
             "Content-Type": "application/json",
         }
 
@@ -42,30 +58,32 @@ class AsyncOpenRouterDriver(CostMixin, AsyncDriver):
 
         return _prepare_openai_vision_messages(messages)
 
-    async def generate(self, prompt: str, options: dict[str, Any]) -> dict[str, Any]:
+    def generate(self, prompt: str, options: dict[str, Any]) -> dict[str, Any]:
         messages = [{"role": "user", "content": prompt}]
-        return await self._do_generate(messages, options)
+        return self._do_generate(messages, options)
 
-    async def generate_messages(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
-        return await self._do_generate(self._prepare_messages(messages), options)
+    def generate_messages(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
+        return self._do_generate(self._prepare_messages(messages), options)
 
-    async def _do_generate(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
+    def _do_generate(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
+        if not self.api_key:
+            raise RuntimeError("Zhipu API key not found")
+
         model = options.get("model", self.model)
 
-        model_config = self._get_model_config("openrouter", model)
+        model_config = self._get_model_config("zai", model)
         tokens_param = model_config["tokens_param"]
         supports_temperature = model_config["supports_temperature"]
 
-        # Validate capabilities against models.dev metadata
         self._validate_model_capabilities(
-            "openrouter",
+            "zai",
             model,
             using_json_schema=bool(options.get("json_schema")),
         )
 
         opts = {"temperature": 1.0, "max_tokens": 512, **options}
 
-        data = {
+        data: dict[str, Any] = {
             "model": model,
             "messages": messages,
         }
@@ -89,28 +107,27 @@ class AsyncOpenRouterDriver(CostMixin, AsyncDriver):
             else:
                 data["response_format"] = {"type": "json_object"}
 
-        async with httpx.AsyncClient() as client:
-            try:
-                response = await client.post(
-                    f"{self.base_url}/chat/completions",
-                    headers=self.headers,
-                    json=data,
-                    timeout=120,
-                )
-                response.raise_for_status()
-                resp = response.json()
-            except httpx.HTTPStatusError as e:
-                error_msg = f"OpenRouter API request failed: {e!s}"
-                raise RuntimeError(error_msg) from e
-            except Exception as e:
-                raise RuntimeError(f"OpenRouter API request failed: {e!s}") from e
+        try:
+            response = requests.post(
+                f"{self.base_url}/chat/completions",
+                headers=self.headers,
+                json=data,
+                timeout=120,
+            )
+            response.raise_for_status()
+            resp = response.json()
+        except requests.exceptions.HTTPError as e:
+            error_msg = f"Z.ai API request failed: {e!s}"
+            raise RuntimeError(error_msg) from e
+        except requests.exceptions.RequestException as e:
+            raise RuntimeError(f"Z.ai API request failed: {e!s}") from e
 
         usage = resp.get("usage", {})
         prompt_tokens = usage.get("prompt_tokens", 0)
         completion_tokens = usage.get("completion_tokens", 0)
         total_tokens = usage.get("total_tokens", 0)
 
-        total_cost = self._calculate_cost("openrouter", model, prompt_tokens, completion_tokens)
+        total_cost = self._calculate_cost("zai", model, prompt_tokens, completion_tokens)
 
         meta = {
             "prompt_tokens": prompt_tokens,
@@ -128,19 +145,22 @@ class AsyncOpenRouterDriver(CostMixin, AsyncDriver):
     # Tool use
     # ------------------------------------------------------------------
 
-    async def generate_messages_with_tools(
+    def generate_messages_with_tools(
         self,
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]],
         options: dict[str, Any],
     ) -> dict[str, Any]:
         """Generate a response that may include tool calls."""
+        if not self.api_key:
+            raise RuntimeError("Zhipu API key not found")
+
         model = options.get("model", self.model)
-        model_config = self._get_model_config("openrouter", model)
+        model_config = self._get_model_config("zai", model)
         tokens_param = model_config["tokens_param"]
         supports_temperature = model_config["supports_temperature"]
 
-        self._validate_model_capabilities("openrouter", model, using_tool_use=True)
+        self._validate_model_capabilities("zai", model, using_tool_use=True)
 
         opts = {"temperature": 1.0, "max_tokens": 512, **options}
 
@@ -154,27 +174,29 @@ class AsyncOpenRouterDriver(CostMixin, AsyncDriver):
         if supports_temperature and "temperature" in opts:
             data["temperature"] = opts["temperature"]
 
-        async with httpx.AsyncClient() as client:
-            try:
-                response = await client.post(
-                    f"{self.base_url}/chat/completions",
-                    headers=self.headers,
-                    json=data,
-                    timeout=120,
-                )
-                response.raise_for_status()
-                resp = response.json()
-            except httpx.HTTPStatusError as e:
-                error_msg = f"OpenRouter API request failed: {e!s}"
-                raise RuntimeError(error_msg) from e
-            except Exception as e:
-                raise RuntimeError(f"OpenRouter API request failed: {e!s}") from e
+        if "tool_choice" in options:
+            data["tool_choice"] = options["tool_choice"]
+
+        try:
+            response = requests.post(
+                f"{self.base_url}/chat/completions",
+                headers=self.headers,
+                json=data,
+                timeout=120,
+            )
+            response.raise_for_status()
+            resp = response.json()
+        except requests.exceptions.HTTPError as e:
+            error_msg = f"Z.ai API request failed: {e!s}"
+            raise RuntimeError(error_msg) from e
+        except requests.exceptions.RequestException as e:
+            raise RuntimeError(f"Z.ai API request failed: {e!s}") from e
 
         usage = resp.get("usage", {})
         prompt_tokens = usage.get("prompt_tokens", 0)
         completion_tokens = usage.get("completion_tokens", 0)
         total_tokens = usage.get("total_tokens", 0)
-        total_cost = self._calculate_cost("openrouter", model, prompt_tokens, completion_tokens)
+        total_cost = self._calculate_cost("zai", model, prompt_tokens, completion_tokens)
 
         meta = {
             "prompt_tokens": prompt_tokens,
@@ -195,11 +217,13 @@ class AsyncOpenRouterDriver(CostMixin, AsyncDriver):
                 args = json.loads(tc["function"]["arguments"])
             except (json.JSONDecodeError, TypeError):
                 args = {}
-            tool_calls_out.append({
-                "id": tc["id"],
-                "name": tc["function"]["name"],
-                "arguments": args,
-            })
+            tool_calls_out.append(
+                {
+                    "id": tc["id"],
+                    "name": tc["function"]["name"],
+                    "arguments": args,
+                }
+            )
 
         return {
             "text": text,
@@ -212,14 +236,17 @@ class AsyncOpenRouterDriver(CostMixin, AsyncDriver):
     # Streaming
     # ------------------------------------------------------------------
 
-    async def generate_messages_stream(
+    def generate_messages_stream(
         self,
         messages: list[dict[str, Any]],
         options: dict[str, Any],
-    ) -> AsyncIterator[dict[str, Any]]:
-        """Yield response chunks via OpenRouter streaming API."""
+    ) -> Iterator[dict[str, Any]]:
+        """Yield response chunks via Z.ai streaming API."""
+        if not self.api_key:
+            raise RuntimeError("Zhipu API key not found")
+
         model = options.get("model", self.model)
-        model_config = self._get_model_config("openrouter", model)
+        model_config = self._get_model_config("zai", model)
         tokens_param = model_config["tokens_param"]
         supports_temperature = model_config["supports_temperature"]
 
@@ -236,45 +263,45 @@ class AsyncOpenRouterDriver(CostMixin, AsyncDriver):
         if supports_temperature and "temperature" in opts:
             data["temperature"] = opts["temperature"]
 
+        response = requests.post(
+            f"{self.base_url}/chat/completions",
+            headers=self.headers,
+            json=data,
+            stream=True,
+            timeout=120,
+        )
+        response.raise_for_status()
+
         full_text = ""
         prompt_tokens = 0
         completion_tokens = 0
 
-        async with httpx.AsyncClient() as client, client.stream(
-            "POST",
-            f"{self.base_url}/chat/completions",
-            headers=self.headers,
-            json=data,
-            timeout=120,
-        ) as response:
-            response.raise_for_status()
-            async for line in response.aiter_lines():
-                if not line or not line.startswith("data: "):
-                    continue
-                payload = line[len("data: "):]
-                if payload.strip() == "[DONE]":
-                    break
-                try:
-                    chunk = json.loads(payload)
-                except json.JSONDecodeError:
-                    continue
+        for line in response.iter_lines(decode_unicode=True):
+            if not line or not line.startswith("data: "):
+                continue
+            payload = line[len("data: ") :]
+            if payload.strip() == "[DONE]":
+                break
+            try:
+                chunk = json.loads(payload)
+            except json.JSONDecodeError:
+                continue
 
-                # Usage comes in the final chunk
-                usage = chunk.get("usage")
-                if usage:
-                    prompt_tokens = usage.get("prompt_tokens", 0)
-                    completion_tokens = usage.get("completion_tokens", 0)
+            usage = chunk.get("usage")
+            if usage:
+                prompt_tokens = usage.get("prompt_tokens", 0)
+                completion_tokens = usage.get("completion_tokens", 0)
 
-                choices = chunk.get("choices", [])
-                if choices:
-                    delta = choices[0].get("delta", {})
-                    content = delta.get("content", "")
-                    if content:
-                        full_text += content
-                        yield {"type": "delta", "text": content}
+            choices = chunk.get("choices", [])
+            if choices:
+                delta = choices[0].get("delta", {})
+                content = delta.get("content", "")
+                if content:
+                    full_text += content
+                    yield {"type": "delta", "text": content}
 
         total_tokens = prompt_tokens + completion_tokens
-        total_cost = self._calculate_cost("openrouter", model, prompt_tokens, completion_tokens)
+        total_cost = self._calculate_cost("zai", model, prompt_tokens, completion_tokens)
 
         yield {
             "type": "done",
