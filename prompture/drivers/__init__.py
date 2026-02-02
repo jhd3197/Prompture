@@ -44,6 +44,12 @@ from .async_openai_driver import AsyncOpenAIDriver
 from .async_openrouter_driver import AsyncOpenRouterDriver
 from .async_registry import ASYNC_DRIVER_REGISTRY, get_async_driver, get_async_driver_for_model
 from .async_zai_driver import AsyncZaiDriver
+from .azure_config import (
+    clear_azure_configs,
+    register_azure_config,
+    set_azure_config_resolver,
+    unregister_azure_config,
+)
 from .azure_driver import AzureDriver
 from .claude_driver import ClaudeDriver
 from .google_driver import GoogleDriver
@@ -100,7 +106,10 @@ register_driver(
 register_driver(
     "azure",
     lambda model=None: AzureDriver(
-        api_key=settings.azure_api_key, endpoint=settings.azure_api_endpoint, deployment_id=settings.azure_deployment_id
+        api_key=settings.azure_api_key,
+        endpoint=settings.azure_api_endpoint,
+        deployment_id=settings.azure_deployment_id,
+        model=model or "gpt-4o-mini",
     ),
     overwrite=True,
 )
@@ -249,6 +258,8 @@ __all__ = [
     "OpenAIDriver",
     "OpenRouterDriver",
     "ZaiDriver",
+    # Azure config API
+    "clear_azure_configs",
     "get_async_driver",
     "get_async_driver_for_model",
     # Factory functions
@@ -260,8 +271,11 @@ __all__ = [
     "list_registered_drivers",
     "load_entry_point_drivers",
     "register_async_driver",
+    "register_azure_config",
     # Registry functions (public API)
     "register_driver",
+    "set_azure_config_resolver",
     "unregister_async_driver",
+    "unregister_azure_config",
     "unregister_driver",
 ]

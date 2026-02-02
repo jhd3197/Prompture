@@ -89,10 +89,17 @@ def get_available_models(
                 if settings.openai_api_key or os.getenv("OPENAI_API_KEY"):
                     is_configured = True
             elif provider == "azure":
+                from .drivers.azure_config import has_azure_config_resolver, has_registered_configs
+
                 if (
-                    (settings.azure_api_key or os.getenv("AZURE_API_KEY"))
-                    and (settings.azure_api_endpoint or os.getenv("AZURE_API_ENDPOINT"))
-                    and (settings.azure_deployment_id or os.getenv("AZURE_DEPLOYMENT_ID"))
+                    (
+                        (settings.azure_api_key or os.getenv("AZURE_API_KEY"))
+                        and (settings.azure_api_endpoint or os.getenv("AZURE_API_ENDPOINT"))
+                    )
+                    or (settings.azure_claude_api_key or os.getenv("AZURE_CLAUDE_API_KEY"))
+                    or (settings.azure_mistral_api_key or os.getenv("AZURE_MISTRAL_API_KEY"))
+                    or has_registered_configs()
+                    or has_azure_config_resolver()
                 ):
                     is_configured = True
             elif provider == "claude":

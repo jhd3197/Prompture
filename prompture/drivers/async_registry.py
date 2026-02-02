@@ -62,7 +62,10 @@ register_async_driver(
 register_async_driver(
     "azure",
     lambda model=None: AsyncAzureDriver(
-        api_key=settings.azure_api_key, endpoint=settings.azure_api_endpoint, deployment_id=settings.azure_deployment_id
+        api_key=settings.azure_api_key,
+        endpoint=settings.azure_api_endpoint,
+        deployment_id=settings.azure_deployment_id,
+        model=model or "gpt-4o-mini",
     ),
     overwrite=True,
 )
