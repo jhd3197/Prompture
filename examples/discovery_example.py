@@ -20,6 +20,7 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from prompture import get_available_models
+from prompture.model_rates import get_model_rates
 
 
 def _format_tokens(n: int | None) -> str:
@@ -31,6 +32,15 @@ def _format_tokens(n: int | None) -> str:
     if n >= 1_000:
         return f"{n / 1_000:.0f}K" if n % 1_000 == 0 else f"{n / 1_000:.1f}K"
     return str(n)
+
+
+def _format_price(rate: float) -> str:
+    """Format a per-1M-token rate as a compact dollar string."""
+    if rate == 0:
+        return "free"
+    if rate >= 1:
+        return f"${rate:.2f}"
+    return f"${rate:.4f}".rstrip("0")
 
 
 def _capability_badges(caps: dict) -> str:
@@ -100,6 +110,14 @@ def main():
                 if last_used:
                     use_info = f"  used={entry.get('use_count', 0)}x last={last_used[:10]}"
 
+                # Fetch pricing from models.dev cache
+                rates = get_model_rates(entry["provider"], entry["model_id"])
+                price_str = ""
+                if rates:
+                    inp = _format_price(rates["input"])
+                    outp = _format_price(rates["output"])
+                    price_str = f"  in={inp}  out={outp}/1M"
+
                 if caps:
                     ctx = _format_tokens(caps.get("context_window"))
                     out = _format_tokens(caps.get("max_output_tokens"))
@@ -107,9 +125,14 @@ def main():
                     detail = f"ctx={ctx}  out={out}"
                     if badges:
                         detail += f"  [{badges}]"
+                    if price_str:
+                        detail += price_str
                     print(f"  {entry['model_id']:<40s} {detail}{verified_badge}{use_info}")
                 else:
-                    print(f"  {entry['model_id']}{verified_badge}{use_info}")
+                    line = f"  {entry['model_id']}"
+                    if price_str:
+                        line += f"  {price_str.strip()}"
+                    print(f"{line}{verified_badge}{use_info}")
             print()
 
     except Exception as e:
