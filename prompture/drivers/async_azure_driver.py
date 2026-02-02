@@ -1,4 +1,7 @@
-"""Async Azure OpenAI driver. Requires the ``openai`` package (>=1.0.0)."""
+"""Async Azure driver with multi-endpoint and multi-backend support.
+
+Requires the ``openai`` package (>=1.0.0). Claude backend also requires ``anthropic``.
+"""
 
 from __future__ import annotations
 
@@ -11,8 +14,14 @@ try:
 except Exception:
     AsyncAzureOpenAI = None
 
+try:
+    import anthropic
+except Exception:
+    anthropic = None
+
 from ..async_driver import AsyncDriver
 from ..cost_mixin import CostMixin, prepare_strict_schema
+from .azure_config import classify_backend, resolve_config
 from .azure_driver import AzureDriver
 
 
@@ -31,27 +40,15 @@ class AsyncAzureDriver(CostMixin, AsyncDriver):
         deployment_id: str | None = None,
         model: str = "gpt-4o-mini",
     ):
-        self.api_key = api_key or os.getenv("AZURE_API_KEY")
-        self.endpoint = endpoint or os.getenv("AZURE_API_ENDPOINT")
-        self.deployment_id = deployment_id or os.getenv("AZURE_DEPLOYMENT_ID")
-        self.api_version = os.getenv("AZURE_API_VERSION", "2023-07-01-preview")
         self.model = model
-
-        if not self.api_key:
-            raise ValueError("Missing Azure API key (AZURE_API_KEY).")
-        if not self.endpoint:
-            raise ValueError("Missing Azure API endpoint (AZURE_API_ENDPOINT).")
-        if not self.deployment_id:
-            raise ValueError("Missing Azure deployment ID (AZURE_DEPLOYMENT_ID).")
-
-        if AsyncAzureOpenAI:
-            self.client = AsyncAzureOpenAI(
-                api_key=self.api_key,
-                api_version=self.api_version,
-                azure_endpoint=self.endpoint,
-            )
-        else:
-            self.client = None
+        self._default_config = {
+            "api_key": api_key or os.getenv("AZURE_API_KEY"),
+            "endpoint": endpoint or os.getenv("AZURE_API_ENDPOINT"),
+            "deployment_id": deployment_id or os.getenv("AZURE_DEPLOYMENT_ID"),
+            "api_version": os.getenv("AZURE_API_VERSION", "2024-02-15-preview"),
+        }
+        self._openai_clients: dict[tuple[str, str], AsyncAzureOpenAI] = {}
+        self._anthropic_clients: dict[tuple[str, str], Any] = {}
 
     supports_messages = True
 
@@ -59,6 +56,36 @@ class AsyncAzureDriver(CostMixin, AsyncDriver):
         from .vision_helpers import _prepare_openai_vision_messages
 
         return _prepare_openai_vision_messages(messages)
+
+    def _resolve_model_config(self, model: str, options: dict[str, Any]) -> dict[str, Any]:
+        """Resolve Azure config for this model using the priority chain."""
+        override = options.pop("azure_config", None)
+        return resolve_config(model, override=override, default_config=self._default_config)
+
+    def _get_openai_client(self, config: dict[str, Any]) -> AsyncAzureOpenAI:
+        """Get or create an AsyncAzureOpenAI client for the given config."""
+        if AsyncAzureOpenAI is None:
+            raise RuntimeError("openai package (>=1.0.0) with AsyncAzureOpenAI not installed")
+        cache_key = (config["endpoint"], config["api_key"])
+        if cache_key not in self._openai_clients:
+            self._openai_clients[cache_key] = AsyncAzureOpenAI(
+                api_key=config["api_key"],
+                api_version=config.get("api_version", "2024-02-15-preview"),
+                azure_endpoint=config["endpoint"],
+            )
+        return self._openai_clients[cache_key]
+
+    def _get_anthropic_client(self, config: dict[str, Any]) -> Any:
+        """Get or create an AsyncAnthropic client for the given Azure config."""
+        if anthropic is None:
+            raise RuntimeError("anthropic package not installed (required for Claude on Azure)")
+        cache_key = (config["endpoint"], config["api_key"])
+        if cache_key not in self._anthropic_clients:
+            self._anthropic_clients[cache_key] = anthropic.AsyncAnthropic(
+                base_url=config["endpoint"],
+                api_key=config["api_key"],
+            )
+        return self._anthropic_clients[cache_key]
 
     async def generate(self, prompt: str, options: dict[str, Any]) -> dict[str, Any]:
         messages = [{"role": "user", "content": prompt}]
@@ -68,10 +95,26 @@ class AsyncAzureDriver(CostMixin, AsyncDriver):
         return await self._do_generate(self._prepare_messages(messages), options)
 
     async def _do_generate(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
-        if self.client is None:
-            raise RuntimeError("openai package (>=1.0.0) with AsyncAzureOpenAI not installed")
-
         model = options.get("model", self.model)
+        config = self._resolve_model_config(model, options)
+        backend = classify_backend(model)
+
+        if backend == "claude":
+            return await self._generate_claude(messages, options, config, model)
+        else:
+            return await self._generate_openai(messages, options, config, model)
+
+    async def _generate_openai(
+        self,
+        messages: list[dict[str, Any]],
+        options: dict[str, Any],
+        config: dict[str, Any],
+        model: str,
+    ) -> dict[str, Any]:
+        """Generate via Azure OpenAI (or Mistral OpenAI-compat) endpoint."""
+        client = self._get_openai_client(config)
+        deployment_id = config.get("deployment_id") or model
+
         model_config = self._get_model_config("azure", model)
         tokens_param = model_config["tokens_param"]
         supports_temperature = model_config["supports_temperature"]
@@ -79,7 +122,7 @@ class AsyncAzureDriver(CostMixin, AsyncDriver):
         opts = {"temperature": 1.0, "max_tokens": 512, **options}
 
         kwargs = {
-            "model": self.deployment_id,
+            "model": deployment_id,
             "messages": messages,
         }
         kwargs[tokens_param] = opts.get("max_tokens", 512)
@@ -87,7 +130,6 @@ class AsyncAzureDriver(CostMixin, AsyncDriver):
         if supports_temperature and "temperature" in opts:
             kwargs["temperature"] = opts["temperature"]
 
-        # Native JSON mode support
         if options.get("json_mode"):
             json_schema = options.get("json_schema")
             if json_schema:
@@ -103,7 +145,7 @@ class AsyncAzureDriver(CostMixin, AsyncDriver):
             else:
                 kwargs["response_format"] = {"type": "json_object"}
 
-        resp = await self.client.chat.completions.create(**kwargs)
+        resp = await client.chat.completions.create(**kwargs)
 
         usage = getattr(resp, "usage", None)
         prompt_tokens = getattr(usage, "prompt_tokens", 0)
@@ -119,11 +161,83 @@ class AsyncAzureDriver(CostMixin, AsyncDriver):
             "cost": round(total_cost, 6),
             "raw_response": resp.model_dump(),
             "model_name": model,
-            "deployment_id": self.deployment_id,
+            "deployment_id": deployment_id,
         }
 
         text = resp.choices[0].message.content
         return {"text": text, "meta": meta}
+
+    async def _generate_claude(
+        self,
+        messages: list[dict[str, Any]],
+        options: dict[str, Any],
+        config: dict[str, Any],
+        model: str,
+    ) -> dict[str, Any]:
+        """Generate via Anthropic SDK with Azure endpoint."""
+        client = self._get_anthropic_client(config)
+
+        opts = {**{"temperature": 0.0, "max_tokens": 512}, **options}
+
+        system_content = None
+        api_messages = []
+        for msg in messages:
+            if msg.get("role") == "system":
+                system_content = msg.get("content", "")
+            else:
+                api_messages.append(msg)
+
+        common_kwargs: dict[str, Any] = {
+            "model": model,
+            "messages": api_messages,
+            "temperature": opts["temperature"],
+            "max_tokens": opts["max_tokens"],
+        }
+        if system_content:
+            common_kwargs["system"] = system_content
+
+        if options.get("json_mode"):
+            json_schema = options.get("json_schema")
+            if json_schema:
+                tool_def = {
+                    "name": "extract_json",
+                    "description": "Extract structured data matching the schema",
+                    "input_schema": json_schema,
+                }
+                resp = await client.messages.create(
+                    **common_kwargs,
+                    tools=[tool_def],
+                    tool_choice={"type": "tool", "name": "extract_json"},
+                )
+                text = ""
+                for block in resp.content:
+                    if block.type == "tool_use":
+                        text = json.dumps(block.input)
+                        break
+            else:
+                resp = await client.messages.create(**common_kwargs)
+                text = resp.content[0].text
+        else:
+            resp = await client.messages.create(**common_kwargs)
+            text = resp.content[0].text
+
+        prompt_tokens = resp.usage.input_tokens
+        completion_tokens = resp.usage.output_tokens
+        total_tokens = prompt_tokens + completion_tokens
+
+        total_cost = self._calculate_cost("azure", model, prompt_tokens, completion_tokens)
+
+        meta = {
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": total_tokens,
+            "cost": round(total_cost, 6),
+            "raw_response": dict(resp),
+            "model_name": model,
+        }
+
+        text_result = text or ""
+        return {"text": text_result, "meta": meta}
 
     # ------------------------------------------------------------------
     # Tool use
@@ -136,10 +250,27 @@ class AsyncAzureDriver(CostMixin, AsyncDriver):
         options: dict[str, Any],
     ) -> dict[str, Any]:
         """Generate a response that may include tool calls."""
-        if self.client is None:
-            raise RuntimeError("openai package (>=1.0.0) with AsyncAzureOpenAI not installed")
-
         model = options.get("model", self.model)
+        config = self._resolve_model_config(model, options)
+        backend = classify_backend(model)
+
+        if backend == "claude":
+            return await self._generate_claude_with_tools(messages, tools, options, config, model)
+        else:
+            return await self._generate_openai_with_tools(messages, tools, options, config, model)
+
+    async def _generate_openai_with_tools(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        options: dict[str, Any],
+        config: dict[str, Any],
+        model: str,
+    ) -> dict[str, Any]:
+        """Tool calling via Azure OpenAI endpoint."""
+        client = self._get_openai_client(config)
+        deployment_id = config.get("deployment_id") or model
+
         model_config = self._get_model_config("azure", model)
         tokens_param = model_config["tokens_param"]
         supports_temperature = model_config["supports_temperature"]
@@ -149,7 +280,7 @@ class AsyncAzureDriver(CostMixin, AsyncDriver):
         opts = {"temperature": 1.0, "max_tokens": 512, **options}
 
         kwargs: dict[str, Any] = {
-            "model": self.deployment_id,
+            "model": deployment_id,
             "messages": messages,
             "tools": tools,
         }
@@ -158,7 +289,7 @@ class AsyncAzureDriver(CostMixin, AsyncDriver):
         if supports_temperature and "temperature" in opts:
             kwargs["temperature"] = opts["temperature"]
 
-        resp = await self.client.chat.completions.create(**kwargs)
+        resp = await client.chat.completions.create(**kwargs)
 
         usage = getattr(resp, "usage", None)
         prompt_tokens = getattr(usage, "prompt_tokens", 0)
@@ -173,7 +304,7 @@ class AsyncAzureDriver(CostMixin, AsyncDriver):
             "cost": round(total_cost, 6),
             "raw_response": resp.model_dump(),
             "model_name": model,
-            "deployment_id": self.deployment_id,
+            "deployment_id": deployment_id,
         }
 
         choice = resp.choices[0]
@@ -187,15 +318,101 @@ class AsyncAzureDriver(CostMixin, AsyncDriver):
                     args = json.loads(tc.function.arguments)
                 except (json.JSONDecodeError, TypeError):
                     args = {}
-                tool_calls_out.append({
-                    "id": tc.id,
-                    "name": tc.function.name,
-                    "arguments": args,
-                })
+                tool_calls_out.append(
+                    {
+                        "id": tc.id,
+                        "name": tc.function.name,
+                        "arguments": args,
+                    }
+                )
 
         return {
             "text": text,
             "meta": meta,
             "tool_calls": tool_calls_out,
             "stop_reason": stop_reason,
+        }
+
+    async def _generate_claude_with_tools(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        options: dict[str, Any],
+        config: dict[str, Any],
+        model: str,
+    ) -> dict[str, Any]:
+        """Tool calling via Anthropic SDK with Azure endpoint."""
+        client = self._get_anthropic_client(config)
+
+        opts = {**{"temperature": 0.0, "max_tokens": 512}, **options}
+
+        system_content = None
+        api_messages: list[dict[str, Any]] = []
+        for msg in messages:
+            if msg.get("role") == "system":
+                system_content = msg.get("content", "")
+            else:
+                api_messages.append(msg)
+
+        anthropic_tools = []
+        for t in tools:
+            if "type" in t and t["type"] == "function":
+                fn = t["function"]
+                anthropic_tools.append(
+                    {
+                        "name": fn["name"],
+                        "description": fn.get("description", ""),
+                        "input_schema": fn.get("parameters", {"type": "object", "properties": {}}),
+                    }
+                )
+            elif "input_schema" in t:
+                anthropic_tools.append(t)
+            else:
+                anthropic_tools.append(t)
+
+        kwargs: dict[str, Any] = {
+            "model": model,
+            "messages": api_messages,
+            "temperature": opts["temperature"],
+            "max_tokens": opts["max_tokens"],
+            "tools": anthropic_tools,
+        }
+        if system_content:
+            kwargs["system"] = system_content
+
+        resp = await client.messages.create(**kwargs)
+
+        prompt_tokens = resp.usage.input_tokens
+        completion_tokens = resp.usage.output_tokens
+        total_tokens = prompt_tokens + completion_tokens
+        total_cost = self._calculate_cost("azure", model, prompt_tokens, completion_tokens)
+
+        meta = {
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": total_tokens,
+            "cost": round(total_cost, 6),
+            "raw_response": dict(resp),
+            "model_name": model,
+        }
+
+        text = ""
+        tool_calls_out: list[dict[str, Any]] = []
+        for block in resp.content:
+            if block.type == "text":
+                text += block.text
+            elif block.type == "tool_use":
+                tool_calls_out.append(
+                    {
+                        "id": block.id,
+                        "name": block.name,
+                        "arguments": block.input,
+                    }
+                )
+
+        return {
+            "text": text,
+            "meta": meta,
+            "tool_calls": tool_calls_out,
+            "stop_reason": resp.stop_reason,
         }

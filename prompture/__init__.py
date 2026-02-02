@@ -60,6 +60,8 @@ from .drivers import (
     OllamaDriver,
     OpenAIDriver,
     OpenRouterDriver,
+    # Azure config API
+    clear_azure_configs,
     get_driver,
     get_driver_for_model,
     # Plugin registration API
@@ -69,8 +71,11 @@ from .drivers import (
     list_registered_drivers,
     load_entry_point_drivers,
     register_async_driver,
+    register_azure_config,
     register_driver,
+    set_azure_config_resolver,
     unregister_async_driver,
+    unregister_azure_config,
     unregister_driver,
 )
 from .field_definitions import (
@@ -247,6 +252,7 @@ __all__ = [
     "clean_json_text",
     "clean_json_text_with_ai",
     "clean_toon_text",
+    "clear_azure_configs",
     "clear_persona_registry",
     "clear_registry",
     "configure_cache",
@@ -292,6 +298,7 @@ __all__ = [
     "normalize_enum_value",
     "refresh_rates_cache",
     "register_async_driver",
+    "register_azure_config",
     "register_driver",
     "register_field",
     "register_persona",
@@ -301,9 +308,11 @@ __all__ = [
     "reset_registry",
     "reset_trait_registry",
     "run_suite_from_spec",
+    "set_azure_config_resolver",
     "stepwise_extract_with_model",
     "tool_from_function",
     "unregister_async_driver",
+    "unregister_azure_config",
     "unregister_driver",
     "validate_against_schema",
     "validate_enum_value",

@@ -25,10 +25,20 @@ class Settings(BaseSettings):
     ollama_endpoint: str = "http://localhost:11434/api/generate"
     ollama_model: str = "llama2"
 
-    # Azure
+    # Azure (default / OpenAI backend)
     azure_api_key: Optional[str] = None
     azure_api_endpoint: Optional[str] = None
     azure_deployment_id: Optional[str] = None
+
+    # Azure - Claude backend (optional)
+    azure_claude_api_key: Optional[str] = None
+    azure_claude_endpoint: Optional[str] = None
+    azure_claude_api_version: Optional[str] = None
+
+    # Azure - Mistral backend (optional)
+    azure_mistral_api_key: Optional[str] = None
+    azure_mistral_endpoint: Optional[str] = None
+    azure_mistral_api_version: Optional[str] = None
 
     # LM Studio
     lmstudio_endpoint: str = "http://127.0.0.1:1234/v1/chat/completions"
