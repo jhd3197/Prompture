@@ -76,6 +76,67 @@
 - `serialization.py` (pure data transforms) and `persistence.py` (storage backends) modules
 - Full async support: mirrored on `AsyncConversation`
 
+### v0.0.38–v0.0.39: New Provider Drivers & Reasoning
+- **Moonshot AI (Kimi) driver**: OpenAI-compatible API with vision, tool use, streaming; China endpoint support via `https://api.moonshot.cn/v1`
+- **Z.ai (Zhipu GLM) driver**: Chinese LLM provider with GLM-4 models
+- **ModelScope driver**: Alibaba Cloud AI models
+- Async variants for all new drivers (`AsyncMoonshotDriver`, `AsyncZaiDriver`, `AsyncModelScopeDriver`)
+- **Reasoning extraction**: `reasoning_content` field extracted from thinking models (Claude extended thinking, Moonshot kimi-thinking, DeepSeek R1)
+- `last_reasoning` property on `Conversation` and `AsyncConversation` for accessing model's reasoning chain
+- Reasoning support in Ollama and LM Studio drivers for local reasoning models
+- Fallback pricing from OpenRouter for Moonshot models when models.dev data unavailable
+
+### v0.0.40–v0.0.41: Simulated Tools & Azure Multi-Backend
+- **Simulated tool calling** (`simulated_tools.py`): Prompt-based tool use for drivers without native support
+  - `build_tool_prompt(tools)` generates tool descriptions for system prompt
+  - `parse_simulated_response(text)` extracts tool calls or final answers from JSON
+  - Enables tool use with any model via structured JSON response parsing
+- **Azure multi-backend support** (`azure_config.py`):
+  - Per-model configuration: `register_azure_config("gpt-4o", {...})`
+  - Dynamic resolver: `set_azure_config_resolver(callback)`
+  - Backend classification: `classify_backend(model)` → `"openai"` | `"claude"` | `"mistral"`
+  - Routes Claude and Mistral models through Azure to their respective APIs
+- Strict JSON schema preparation via `prepare_strict_schema()` for OpenAI-style `json_schema` mode
+- `json_schema` response format support for Ollama and LM Studio drivers
+- `shared_state` parameter and `inject_state()` method on group classes for explicit state management
+- Tool use and streaming support added to Google Gemini drivers (sync and async)
+
+### v0.0.42–v0.0.43: Ledger, Discovery & Analysis
+- **Persistent model usage ledger** (`ledger.py`):
+  - SQLite-backed tracking at `~/.prompture/usage/model_ledger.db`
+  - `record_model_usage(model, tokens, cost, status)` — fire-and-forget API
+  - `get_recently_used_models(limit)` — query recent usage
+  - Per-model stats: call count, total tokens, total cost, first/last used timestamps
+  - Thread-safe with internal locking
+- **Model capability metadata**:
+  - `get_available_models(include_capabilities=True)` returns enriched dicts
+  - Capabilities include: context window, vision support, tool use, streaming, JSON mode
+  - `verified_only=True` filters to models with successful usage history
+  - Integration with models.dev live pricing cache
+- **Code analysis module** (`prompture.analysis`):
+  - `analyze_python(source)` → `CodeAnalysis` with AST-based security assessment
+  - Feature extraction: imports, file ops, network calls, system calls, exec/eval usage
+  - Risk scoring: `RiskLevel.LOW`, `MEDIUM`, `HIGH`, `CRITICAL`
+  - `is_safe` determination based on configurable threshold
+- **Python sandbox** (`prompture.sandbox`):
+  - `PythonSandbox` class for safe LLM-generated code execution
+  - Import restrictions via allowlist/blocklist with `ImportRestrictions`
+  - Path restrictions for file access with `PathRestrictions`
+  - Resource limits (timeout, memory) via `ResourceLimits`
+  - `SandboxResult` dataclass with output, error, return value, locals
+- **History utilities** (`prompture.history`):
+  - `filter_steps(steps, step_type, tool_name, timestamp_range)` — filter AgentSteps
+  - `search_messages(messages, role, content_contains, has_tool_calls)` — search message history
+  - `get_tool_call_summary(result)` — summarize all tool calls with arguments and results
+  - `calculate_cost_breakdown(usage)` — detailed token/cost breakdown
+  - `export_result_json(result)` — serialize AgentResult to JSON
+
+### v1.0.0: Stable API Release
+- Version bump to 1.0.0 indicating stable public API
+- All core extraction, conversation, agent, and multi-agent features production-ready
+- 15 provider drivers (sync + async): OpenAI, Claude, Google, Groq, Grok, Azure, Ollama, LM Studio, OpenRouter, HuggingFace, AirLLM, Local HTTP, Moonshot, Z.ai, ModelScope
+- Comprehensive test coverage across all modules
+
 ---
 
 ## Upcoming
