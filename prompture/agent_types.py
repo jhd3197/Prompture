@@ -6,8 +6,10 @@ Defines enums, dataclasses, and exceptions used by :class:`~prompture.agent.Agen
 from __future__ import annotations
 
 import enum
+import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any, Generic, TypeVar
 
 DepsType = TypeVar("DepsType")
@@ -51,6 +53,33 @@ class GuardrailError(Exception):
         super().__init__(message)
 
 
+class ApprovalRequired(Exception):
+    """Raised by tools that require human approval before execution.
+
+    When a tool raises this exception, the agent will invoke the
+    ``on_approval_needed`` callback if configured. If the callback
+    returns True, the tool will be executed; if False, the tool
+    execution will be skipped and an error message returned to the LLM.
+
+    Attributes:
+        tool_name: Name of the tool requesting approval.
+        action: Description of the action requiring approval.
+        details: Additional details about what will be executed.
+    """
+
+    def __init__(
+        self,
+        tool_name: str,
+        action: str,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        self.tool_name = tool_name
+        self.action = action
+        self.details = details or {}
+        message = f"Tool '{tool_name}' requires approval: {action}"
+        super().__init__(message)
+
+
 @dataclass
 class RunContext(Generic[DepsType]):
     """Dependency-injection context available to tools and guardrails.
@@ -83,6 +112,19 @@ class AgentCallbacks:
     Fired at the logical agent layer (steps, tool invocations, output),
     separate from :class:`~prompture.callbacks.DriverCallbacks` which
     fires at the HTTP/driver layer.
+
+    Attributes:
+        on_step: Called for each step during execution.
+        on_tool_start: Called before a tool is invoked with (name, args).
+        on_tool_end: Called after a tool completes with (name, result).
+        on_iteration: Called at the start of each iteration with the index.
+        on_output: Called when the agent produces final output.
+        on_thinking: Called when the agent emits thinking/reasoning content.
+            The callback receives the thinking text (e.g., content within
+            <think> tags for models that support chain-of-thought).
+        on_approval_needed: Called when a tool raises ApprovalRequired.
+            The callback receives (tool_name, action, details) and should
+            return True to approve execution or False to deny.
     """
 
     on_step: Callable[[AgentStep], None] | None = None
@@ -90,6 +132,8 @@ class AgentCallbacks:
     on_tool_end: Callable[[str, Any], None] | None = None
     on_iteration: Callable[[int], None] | None = None
     on_output: Callable[[AgentResult], None] | None = None
+    on_thinking: Callable[[str], None] | None = None
+    on_approval_needed: Callable[[str, str, dict[str, Any]], bool] | None = None
 
 
 @dataclass
@@ -129,6 +173,60 @@ class AgentResult:
     all_tool_calls: list[dict[str, Any]] = field(default_factory=list)
     state: AgentState = AgentState.idle
     run_usage: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self, include_messages: bool = True) -> dict[str, Any]:
+        """Convert this result to a dictionary for serialization.
+
+        Args:
+            include_messages: Whether to include the full message history.
+
+        Returns:
+            Dictionary representation of this result.
+        """
+        data: dict[str, Any] = {
+            "output": str(self.output) if self.output is not None else None,
+            "output_text": self.output_text,
+            "state": self.state.value if hasattr(self.state, "value") else str(self.state),
+            "usage": self.usage,
+            "run_usage": self.run_usage,
+            "steps": [
+                {
+                    "step_type": s.step_type.value if hasattr(s.step_type, "value") else str(s.step_type),
+                    "timestamp": s.timestamp,
+                    "content": s.content,
+                    "tool_name": s.tool_name,
+                    "tool_args": s.tool_args,
+                    "tool_result": s.tool_result,
+                    "duration_ms": s.duration_ms,
+                }
+                for s in self.steps
+            ],
+            "all_tool_calls": self.all_tool_calls,
+            "exported_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        }
+
+        if include_messages:
+            data["messages"] = self.messages
+
+        return data
+
+    def export_json(self, include_messages: bool = True) -> str:
+        """Export this result to a JSON string.
+
+        Args:
+            include_messages: Whether to include the full message history.
+
+        Returns:
+            JSON string representation of this result.
+
+        Example::
+
+            result = agent.run("What is 2+2?")
+            json_str = result.export_json()
+            with open("agent_history.json", "w") as f:
+                f.write(json_str)
+        """
+        return json.dumps(self.to_dict(include_messages=include_messages), indent=2, default=str)
 
 
 class StreamEventType(str, enum.Enum):

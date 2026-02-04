@@ -30,6 +30,7 @@ from .agent_types import (
     AgentResult,
     AgentState,
     AgentStep,
+    ApprovalRequired,
     DepsType,
     ModelRetry,
     RunContext,
@@ -338,6 +339,26 @@ class Agent(Generic[DepsType]):
                             result = _fn(ctx, **kwargs)
                         else:
                             result = _fn(**kwargs)
+                    except ApprovalRequired as exc:
+                        # Handle approval request
+                        if _cb.on_approval_needed:
+                            approved = _cb.on_approval_needed(exc.tool_name, exc.action, exc.details)
+                            if approved:
+                                # Retry the tool call after approval
+                                try:
+                                    if _wants:
+                                        result = _fn(ctx, **kwargs)
+                                    else:
+                                        result = _fn(**kwargs)
+                                except ApprovalRequired:
+                                    # Tool raised ApprovalRequired again - don't loop
+                                    result = f"Error: Tool '{_name}' requires approval but approval was already granted"
+                                except ModelRetry as retry_exc:
+                                    result = f"Error: {retry_exc.message}"
+                            else:
+                                result = f"Error: Tool '{_name}' execution denied - approval required: {exc.action}"
+                        else:
+                            result = f"Error: Tool '{_name}' requires approval but no approval handler is configured"
                     except ModelRetry as exc:
                         result = f"Error: {exc.message}"
                     if _cb.on_tool_end:
@@ -607,12 +628,28 @@ class Agent(Generic[DepsType]):
         all_tool_calls: list[dict[str, Any]],
     ) -> None:
         """Scan conversation messages and populate steps and tool_calls."""
+
         now = time.time()
 
         for msg in messages:
             role = msg.get("role", "")
 
             if role == "assistant":
+                content = msg.get("content", "") or ""
+
+                # Extract thinking content from <think> tags
+                thinking_text = self._extract_thinking(content)
+                if thinking_text and self._agent_callbacks.on_thinking:
+                    self._agent_callbacks.on_thinking(thinking_text)
+                    # Also record as a think step
+                    steps.append(
+                        AgentStep(
+                            step_type=StepType.think,
+                            timestamp=now,
+                            content=thinking_text,
+                        )
+                    )
+
                 tc_list = msg.get("tool_calls", [])
                 if tc_list:
                     # Assistant message with tool calls
@@ -632,7 +669,7 @@ class Agent(Generic[DepsType]):
                             AgentStep(
                                 step_type=StepType.tool_call,
                                 timestamp=now,
-                                content=msg.get("content", ""),
+                                content=content,
                                 tool_name=name,
                                 tool_args=args,
                             )
@@ -644,7 +681,7 @@ class Agent(Generic[DepsType]):
                         AgentStep(
                             step_type=StepType.output,
                             timestamp=now,
-                            content=msg.get("content", ""),
+                            content=content,
                         )
                     )
 
@@ -657,6 +694,28 @@ class Agent(Generic[DepsType]):
                         tool_name=msg.get("tool_call_id"),
                     )
                 )
+
+    def _extract_thinking(self, content: str) -> str | None:
+        """Extract thinking content from <think> tags.
+
+        Some models (like DeepSeek, Qwen) emit chain-of-thought reasoning
+        within <think>...</think> tags. This method extracts that content.
+
+        Args:
+            content: The assistant message content.
+
+        Returns:
+            The thinking text if found, None otherwise.
+        """
+        import re
+
+        # Match <think>...</think> tags (case-insensitive, allows multiline)
+        pattern = r"<think>(.*?)</think>"
+        matches = re.findall(pattern, content, re.DOTALL | re.IGNORECASE)
+        if matches:
+            # Join multiple thinking blocks with newlines
+            return "\n".join(match.strip() for match in matches)
+        return None
 
     def _parse_output(
         self,
