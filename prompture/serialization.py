@@ -97,7 +97,8 @@ def export_usage_session(session: UsageSession) -> dict[str, Any]:
         "prompt_tokens": session.prompt_tokens,
         "completion_tokens": session.completion_tokens,
         "total_tokens": session.total_tokens,
-        "total_cost": session.total_cost,
+        "cost": session.cost,
+        "total_cost": session.cost,  # Deprecated alias for backwards compatibility
         "call_count": session.call_count,
         "errors": session.errors,
         "per_model": dict(session._per_model),
@@ -106,11 +107,13 @@ def export_usage_session(session: UsageSession) -> dict[str, Any]:
 
 def import_usage_session(data: dict[str, Any]) -> UsageSession:
     """Reconstruct a :class:`UsageSession` from an exported dict."""
+    # Support both 'cost' (new) and 'total_cost' (deprecated) for backwards compatibility
+    cost_value = data.get("cost", data.get("total_cost", 0.0))
     session = UsageSession(
         prompt_tokens=data.get("prompt_tokens", 0),
         completion_tokens=data.get("completion_tokens", 0),
         total_tokens=data.get("total_tokens", 0),
-        total_cost=data.get("total_cost", 0.0),
+        cost=cost_value,
         call_count=data.get("call_count", 0),
         errors=data.get("errors", 0),
     )

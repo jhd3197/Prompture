@@ -22,6 +22,7 @@ Usage::
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -33,12 +34,32 @@ class UsageSession:
     prompt_tokens: int = 0
     completion_tokens: int = 0
     total_tokens: int = 0
-    total_cost: float = 0.0
+    cost: float = 0.0
     call_count: int = 0
     errors: int = 0
     total_elapsed_ms: float = 0.0
     _elapsed_samples: list[float] = field(default_factory=list, repr=False)
     _per_model: dict[str, dict[str, Any]] = field(default_factory=dict, repr=False)
+
+    @property
+    def total_cost(self) -> float:
+        """Deprecated: Use ``cost`` instead."""
+        warnings.warn(
+            "UsageSession.total_cost is deprecated, use .cost instead",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.cost
+
+    @total_cost.setter
+    def total_cost(self, value: float) -> None:
+        """Deprecated: Use ``cost`` instead."""
+        warnings.warn(
+            "UsageSession.total_cost is deprecated, use .cost instead",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.cost = value
 
     # ------------------------------------------------------------------ #
     # Recording
@@ -63,7 +84,7 @@ class UsageSession:
         self.prompt_tokens += pt
         self.completion_tokens += ct
         self.total_tokens += tt
-        self.total_cost += cost
+        self.cost += cost
         self.call_count += 1
 
         # Capture timing
@@ -138,7 +159,7 @@ class UsageSession:
         tps = self.tokens_per_second
 
         formatted = (
-            f"Session: {self.total_tokens:,} tokens across {self.call_count} call(s) costing ${self.total_cost:.4f}"
+            f"Session: {self.total_tokens:,} tokens across {self.call_count} call(s) costing ${self.cost:.4f}"
         )
         if self.total_elapsed_ms > 0:
             formatted += f" | {tps:.1f} tok/s avg, {stats['avg_ms']:.0f}ms avg latency"
@@ -149,7 +170,8 @@ class UsageSession:
             "prompt_tokens": self.prompt_tokens,
             "completion_tokens": self.completion_tokens,
             "total_tokens": self.total_tokens,
-            "total_cost": self.total_cost,
+            "cost": self.cost,
+            "total_cost": self.cost,  # Deprecated alias for backwards compatibility
             "call_count": self.call_count,
             "errors": self.errors,
             "total_elapsed_ms": self.total_elapsed_ms,
@@ -164,7 +186,7 @@ class UsageSession:
         self.prompt_tokens = 0
         self.completion_tokens = 0
         self.total_tokens = 0
-        self.total_cost = 0.0
+        self.cost = 0.0
         self.call_count = 0
         self.errors = 0
         self.total_elapsed_ms = 0.0

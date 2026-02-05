@@ -158,11 +158,21 @@ class AgentResult:
             or the raw text response.
         output_text: The raw text from the final LLM response.
         messages: Full conversation message history from the run.
-        usage: Accumulated token/cost totals.
+        usage: Per-call usage from the conversation. Contains token counts
+            and cost for this specific run, accumulated across tool rounds
+            within a single ``ask()`` call.
+            Keys: ``prompt_tokens``, ``completion_tokens``, ``total_tokens``,
+            ``cost``, ``turns``.
         steps: Ordered list of :class:`AgentStep` recorded during the run.
         all_tool_calls: Flat list of tool-call dicts extracted from messages.
         state: Final :class:`AgentState` after the run completes.
-        run_usage: Per-run :class:`UsageSession` summary dict.
+        run_usage: Aggregated session usage from
+            :meth:`~prompture.session.UsageSession.summary`. Contains totals
+            across all API calls during the run, including timing metrics
+            and per-model breakdowns.
+            Keys: ``prompt_tokens``, ``completion_tokens``, ``total_tokens``,
+            ``cost``, ``call_count``, ``errors``, ``total_elapsed_ms``,
+            ``tokens_per_second``, ``latency_stats``, ``per_model``.
     """
 
     output: Any
