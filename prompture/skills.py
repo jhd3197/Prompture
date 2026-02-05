@@ -10,17 +10,19 @@ Features:
 - Thread-safe global skill registry with dict-like proxy
 - Auto-discovery from standard skill locations
 - Resource path resolution for skill assets
+- Async variants for web framework compatibility
 """
 
 from __future__ import annotations
 
+import asyncio
 import collections.abc
 import dataclasses
 import logging
 import re
 import threading
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
     from .persona import Persona
@@ -28,6 +30,49 @@ if TYPE_CHECKING:
 logger = logging.getLogger("prompture.skills")
 
 _SERIALIZATION_VERSION = 1
+
+# Type alias for skill source locations
+SkillSource = Literal["project", "user", "node_modules", "additional"]
+
+
+# ------------------------------------------------------------------
+# Exceptions
+# ------------------------------------------------------------------
+
+
+class SkillParseError(Exception):
+    """Raised when a SKILL.md file cannot be parsed.
+
+    Attributes:
+        message: Human-readable error description.
+        path: Path to the file that failed to parse.
+        line: Line number where the error occurred (if applicable).
+        suggestion: Suggested fix for the error.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        path: Path | str | None = None,
+        line: int | None = None,
+        suggestion: str | None = None,
+    ) -> None:
+        self.message = message
+        self.path = Path(path) if path else None
+        self.line = line
+        self.suggestion = suggestion
+
+        # Build detailed error message
+        parts = [message]
+        if path:
+            parts.append(f"File: {path}")
+        if line:
+            parts.append(f"Line: {line}")
+        if suggestion:
+            parts.append(f"Suggestion: {suggestion}")
+
+        super().__init__("\n".join(parts))
 
 # Regex pattern for YAML frontmatter (--- delimited block at start of file)
 _FRONTMATTER_PATTERN = re.compile(
@@ -56,6 +101,8 @@ class SkillInfo:
         metadata: Additional metadata from the YAML frontmatter.
         source_path: Path to the SKILL.md file (if loaded from file).
         skill_dir: Directory containing the skill (for resource resolution).
+        source: Where the skill was discovered from ("project", "user",
+            "node_modules", or "additional"). None if loaded directly.
     """
 
     name: str
@@ -65,6 +112,13 @@ class SkillInfo:
     metadata: dict[str, Any] = dataclasses.field(default_factory=dict)
     source_path: Path | None = None
     skill_dir: Path | None = None
+    source: SkillSource | None = None
+
+    # Backwards-compatible alias for source_path
+    @property
+    def path(self) -> Path | None:
+        """Alias for source_path (for backwards compatibility)."""
+        return self.source_path
 
     def as_persona(self) -> Persona:
         """Convert this skill to a Prompture Persona.
@@ -117,6 +171,8 @@ class SkillInfo:
             data["source_path"] = str(self.source_path)
         if self.skill_dir is not None:
             data["skill_dir"] = str(self.skill_dir)
+        if self.source is not None:
+            data["source"] = self.source
         return data
 
     @classmethod
@@ -132,6 +188,7 @@ class SkillInfo:
             metadata=dict(data.get("metadata", {})),
             source_path=Path(source_path) if source_path else None,
             skill_dir=Path(skill_dir) if skill_dir else None,
+            source=data.get("source"),
         )
 
 
@@ -140,15 +197,23 @@ class SkillInfo:
 # ------------------------------------------------------------------
 
 
-def _parse_frontmatter(content: str) -> tuple[dict[str, Any], str]:
+def _parse_frontmatter(
+    content: str,
+    *,
+    filepath: Path | None = None,
+) -> tuple[dict[str, Any], str]:
     """Parse YAML frontmatter from markdown content.
 
     Args:
         content: The full file content with optional YAML frontmatter.
+        filepath: Optional path for error reporting.
 
     Returns:
         Tuple of (frontmatter_dict, body_text).
         If no frontmatter is found, returns ({}, original_content).
+
+    Raises:
+        SkillParseError: If YAML frontmatter is malformed.
     """
     try:
         import yaml
@@ -167,24 +232,38 @@ def _parse_frontmatter(content: str) -> tuple[dict[str, Any], str]:
         if frontmatter is None:
             frontmatter = {}
     except yaml.YAMLError as e:
-        logger.warning(f"Failed to parse YAML frontmatter: {e}")
-        return {}, content
+        # Extract line number from YAML error if available
+        line = None
+        if hasattr(e, "problem_mark") and e.problem_mark is not None:
+            line = e.problem_mark.line + 1  # YAML uses 0-indexed lines
+
+        raise SkillParseError(
+            f"Invalid YAML frontmatter: {e}",
+            path=filepath,
+            line=line,
+            suggestion="Ensure YAML frontmatter is enclosed in --- delimiters and uses valid YAML syntax",
+        ) from e
 
     return frontmatter, body
 
 
-def load_skill(path: str | Path) -> SkillInfo:
+def load_skill(
+    path: str | Path,
+    *,
+    source: SkillSource | None = None,
+) -> SkillInfo:
     """Load a skill from a SKILL.md file.
 
     Args:
         path: Path to the SKILL.md file.
+        source: Where the skill was discovered from (for discovery tracking).
 
     Returns:
         SkillInfo instance with parsed data.
 
     Raises:
         FileNotFoundError: If the file does not exist.
-        ValueError: If required fields are missing from frontmatter.
+        SkillParseError: If the file cannot be parsed.
         ImportError: If pyyaml is not installed.
     """
     path = Path(path)
@@ -192,7 +271,7 @@ def load_skill(path: str | Path) -> SkillInfo:
         raise FileNotFoundError(f"Skill file not found: {path}")
 
     content = path.read_text(encoding="utf-8")
-    frontmatter, body = _parse_frontmatter(content)
+    frontmatter, body = _parse_frontmatter(content, filepath=path)
 
     # Extract required fields
     name = frontmatter.get("name")
@@ -223,14 +302,45 @@ def load_skill(path: str | Path) -> SkillInfo:
         metadata=metadata,
         source_path=path.resolve(),
         skill_dir=path.parent.resolve(),
+        source=source,
     )
 
 
-def load_skill_from_directory(directory: str | Path) -> SkillInfo:
+async def load_skill_async(
+    path: str | Path,
+    *,
+    source: SkillSource | None = None,
+) -> SkillInfo:
+    """Async variant of :func:`load_skill`.
+
+    Runs file I/O in a thread pool to avoid blocking the event loop.
+
+    Args:
+        path: Path to the SKILL.md file.
+        source: Where the skill was discovered from (for discovery tracking).
+
+    Returns:
+        SkillInfo instance with parsed data.
+
+    Raises:
+        FileNotFoundError: If the file does not exist.
+        SkillParseError: If the file cannot be parsed.
+        ImportError: If pyyaml is not installed.
+    """
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, lambda: load_skill(path, source=source))
+
+
+def load_skill_from_directory(
+    directory: str | Path,
+    *,
+    source: SkillSource | None = None,
+) -> SkillInfo:
     """Load a skill from a directory containing SKILL.md.
 
     Args:
         directory: Path to the skill directory.
+        source: Where the skill was discovered from (for discovery tracking).
 
     Returns:
         SkillInfo instance.
@@ -242,7 +352,7 @@ def load_skill_from_directory(directory: str | Path) -> SkillInfo:
     skill_file = directory / "SKILL.md"
     if not skill_file.exists():
         raise FileNotFoundError(f"No SKILL.md found in directory: {directory}")
-    return load_skill(skill_file)
+    return load_skill(skill_file, source=source)
 
 
 # ------------------------------------------------------------------
@@ -407,6 +517,7 @@ def load_skills_from_directory(
     path: str | Path,
     *,
     register: bool = True,
+    source: SkillSource | None = None,
 ) -> list[SkillInfo]:
     """Bulk-load skills from a directory.
 
@@ -415,6 +526,7 @@ def load_skills_from_directory(
     Args:
         path: Directory to scan for skill subdirectories.
         register: If True, register each loaded skill in the global registry.
+        source: Where the skills were discovered from (for discovery tracking).
 
     Returns:
         List of loaded SkillInfo instances.
@@ -435,7 +547,7 @@ def load_skills_from_directory(
             continue
 
         try:
-            skill = load_skill(skill_file)
+            skill = load_skill(skill_file, source=source)
             if register:
                 register_skill(skill)
             loaded.append(skill)
@@ -449,49 +561,135 @@ def load_skills_from_directory(
 def discover_skills(
     *,
     additional_paths: list[str | Path] | None = None,
+    exclude_paths: list[str | Path] | None = None,
     scan_node_modules: bool = False,
     register: bool = True,
 ) -> list[SkillInfo]:
     """Discover and load skills from standard locations.
 
     Scans the following locations:
-    - ``./.claude/skills/*/SKILL.md`` (project-local)
-    - ``~/.claude/skills/*/SKILL.md`` (user-global)
-    - Any additional paths provided
+    - ``./.claude/skills/*/SKILL.md`` (project-local, source="project")
+    - ``~/.claude/skills/*/SKILL.md`` (user-global, source="user")
+    - Any additional paths provided (source="additional")
+
+    Each discovered skill has its ``source`` attribute set to indicate where
+    it was found: "project", "user", "node_modules", or "additional".
 
     Args:
         additional_paths: Extra directories to scan for skills.
+        exclude_paths: Directories to exclude from scanning (e.g., to skip
+            user-global skills when only project skills are desired).
         scan_node_modules: If True, also scan ``./node_modules/.claude/skills/``.
             Disabled by default for performance.
         register: If True, register discovered skills in the global registry.
 
     Returns:
         List of all discovered SkillInfo instances.
+
+    Example:
+        >>> # Discover only project-local skills
+        >>> from pathlib import Path
+        >>> skills = discover_skills(
+        ...     exclude_paths=[Path.home() / ".claude" / "skills"]
+        ... )
+        >>> for skill in skills:
+        ...     print(f"{skill.name}: {skill.source}")
     """
     all_skills: list[SkillInfo] = []
     scanned_dirs: set[Path] = set()
 
-    # Standard paths
-    for skill_dir in _get_standard_skill_paths():
-        if skill_dir in scanned_dirs:
-            continue
-        scanned_dirs.add(skill_dir)
-        all_skills.extend(load_skills_from_directory(skill_dir, register=register))
+    # Build exclusion set
+    excluded: set[Path] = set()
+    if exclude_paths:
+        for p in exclude_paths:
+            excluded.add(Path(p).resolve())
+
+    # Project-local skills
+    cwd_skills = Path.cwd() / ".claude" / "skills"
+    if cwd_skills.exists() and cwd_skills.resolve() not in excluded:
+        scanned_dirs.add(cwd_skills)
+        all_skills.extend(
+            load_skills_from_directory(cwd_skills, register=register, source="project")
+        )
+
+    # User-global skills
+    home_skills = Path.home() / ".claude" / "skills"
+    if (
+        home_skills.exists()
+        and home_skills.resolve() not in excluded
+        and home_skills not in scanned_dirs
+    ):
+        scanned_dirs.add(home_skills)
+        all_skills.extend(
+            load_skills_from_directory(home_skills, register=register, source="user")
+        )
 
     # Additional paths
     if additional_paths:
         for path in additional_paths:
             path = Path(path)
+            if path.resolve() in excluded:
+                continue
             if path in scanned_dirs:
                 continue
             scanned_dirs.add(path)
-            all_skills.extend(load_skills_from_directory(path, register=register))
+            all_skills.extend(
+                load_skills_from_directory(path, register=register, source="additional")
+            )
 
     # Optional: node_modules
     if scan_node_modules:
         node_skills = Path.cwd() / "node_modules" / ".claude" / "skills"
-        if node_skills.exists() and node_skills not in scanned_dirs:
-            all_skills.extend(load_skills_from_directory(node_skills, register=register))
+        if (
+            node_skills.exists()
+            and node_skills.resolve() not in excluded
+            and node_skills not in scanned_dirs
+        ):
+            scanned_dirs.add(node_skills)
+            all_skills.extend(
+                load_skills_from_directory(
+                    node_skills, register=register, source="node_modules"
+                )
+            )
 
     logger.info(f"Discovered {len(all_skills)} skills from {len(scanned_dirs)} directories")
     return all_skills
+
+
+async def discover_skills_async(
+    *,
+    additional_paths: list[str | Path] | None = None,
+    exclude_paths: list[str | Path] | None = None,
+    scan_node_modules: bool = False,
+    register: bool = True,
+) -> list[SkillInfo]:
+    """Async variant of :func:`discover_skills`.
+
+    Runs file I/O in a thread pool to avoid blocking the event loop.
+    Useful for web applications using async frameworks like FastAPI or aiohttp.
+
+    Args:
+        additional_paths: Extra directories to scan for skills.
+        exclude_paths: Directories to exclude from scanning.
+        scan_node_modules: If True, also scan ``./node_modules/.claude/skills/``.
+        register: If True, register discovered skills in the global registry.
+
+    Returns:
+        List of all discovered SkillInfo instances.
+
+    Example:
+        >>> # In an async context (e.g., FastAPI startup)
+        >>> skills = await discover_skills_async()
+        >>> for skill in skills:
+        ...     print(f"{skill.name} from {skill.source}")
+    """
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(
+        None,
+        lambda: discover_skills(
+            additional_paths=additional_paths,
+            exclude_paths=exclude_paths,
+            scan_node_modules=scan_node_modules,
+            register=register,
+        ),
+    )
