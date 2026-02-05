@@ -44,6 +44,13 @@ from .cache import (
     get_cache,
 )
 from .callbacks import DriverCallbacks
+from .consensus import (
+    ConsensusResult,
+    ConsensusStrategy,
+    ModelVote,
+    extract_with_consensus,
+    extract_with_consensus_async,
+)
 from .conversation import Conversation
 from .core import (
     Driver,
@@ -158,25 +165,24 @@ from .persona import (
     reset_persona_registry,
     reset_trait_registry,
 )
-from .runner import run_suite_from_spec
-from .skills import (
-    SKILLS,
-    SkillInfo,
-    SkillParseError,
-    SkillSource,
-    clear_skill_registry,
-    discover_skills,
-    discover_skills_async,
-    get_skill,
-    get_skill_names,
-    get_skill_registry_snapshot,
-    load_skill,
-    load_skill_async,
-    load_skill_from_directory,
-    load_skills_from_directory,
-    register_skill,
-    unregister_skill,
+from .pipeline import (
+    PipelineResult,
+    PipelineStep,
+    SkillPipeline,
+    StepResult,
+    create_pipeline,
 )
+
+# New modules: Routing, Pipelines, Consensus
+from .routing import (
+    ComplexityAnalysis,
+    ModelRouter,
+    RoutingConfig,
+    RoutingResult,
+    RoutingStrategy,
+    route_model,
+)
+from .runner import run_suite_from_spec
 from .sandbox import (
     ALWAYS_BLOCKED_IMPORTS,
     ImportRestrictions,
@@ -200,6 +206,24 @@ from .serialization import (
 )
 from .session import UsageSession
 from .settings import settings as _settings
+from .skills import (
+    SKILLS,
+    SkillInfo,
+    SkillParseError,
+    SkillSource,
+    clear_skill_registry,
+    discover_skills,
+    discover_skills_async,
+    get_skill,
+    get_skill_names,
+    get_skill_registry_snapshot,
+    load_skill,
+    load_skill_async,
+    load_skill_from_directory,
+    load_skills_from_directory,
+    register_skill,
+    unregister_skill,
+)
 from .tools import clean_json_text, clean_toon_text
 from .tools_schema import ToolDefinition, ToolRegistry, tool_from_function
 from .validator import validate_against_schema
@@ -240,9 +264,6 @@ __all__ = [
     "FIELD_DEFINITIONS",
     "PERSONAS",
     "SKILLS",
-    "SkillInfo",
-    "SkillParseError",
-    "SkillSource",
     "Agent",
     "AgentCallbacks",
     "AgentError",
@@ -266,6 +287,11 @@ __all__ = [
     # Analysis module
     "CodeAnalysis",
     "CodeFeatures",
+    # Routing module
+    "ComplexityAnalysis",
+    # Consensus module
+    "ConsensusResult",
+    "ConsensusStrategy",
     "Conversation",
     "ConversationStore",
     "Driver",
@@ -291,7 +317,9 @@ __all__ = [
     "MemoryCacheBackend",
     "ModelCapabilities",
     "ModelRetry",
+    "ModelRouter",
     "ModelUsageLedger",
+    "ModelVote",
     "OllamaDriver",
     "OpenAIDriver",
     "OpenRouterDriver",
@@ -299,6 +327,9 @@ __all__ = [
     "PathRestrictions",
     "PathViolationError",
     "Persona",
+    # Pipeline module
+    "PipelineResult",
+    "PipelineStep",
     "PythonSandbox",
     "RedisCacheBackend",
     "ResourceContext",
@@ -308,12 +339,20 @@ __all__ = [
     "RiskAssessment",
     "RiskLevel",
     "RouterAgent",
+    "RoutingConfig",
+    "RoutingResult",
+    "RoutingStrategy",
     "RunContext",
     "SQLiteCacheBackend",
     "SandboxError",
     "SandboxResult",
     "SandboxTimeoutError",
     "SequentialGroup",
+    "SkillInfo",
+    "SkillParseError",
+    "SkillPipeline",
+    "SkillSource",
+    "StepResult",
     "StepType",
     "StreamEvent",
     "StreamEventType",
@@ -337,6 +376,7 @@ __all__ = [
     "clear_skill_registry",
     "configure_cache",
     "configure_logging",
+    "create_pipeline",
     "discover_skills",
     "discover_skills_async",
     "export_conversation",
@@ -345,6 +385,8 @@ __all__ = [
     "extract_and_jsonify",
     "extract_from_data",
     "extract_from_pandas",
+    "extract_with_consensus",
+    "extract_with_consensus_async",
     "extract_with_model",
     "field_from_registry",
     "filter_steps",
@@ -401,6 +443,7 @@ __all__ = [
     "reset_registry",
     "reset_trait_registry",
     "result_to_dict",
+    "route_model",
     "run_suite_from_spec",
     "search_messages",
     "set_azure_config_resolver",
