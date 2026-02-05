@@ -221,6 +221,23 @@ class Persona:
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
         return cls.from_dict(data)
 
+    @classmethod
+    def from_skill(cls, path: str | Path) -> Persona:
+        """Create a Persona from a SKILL.md file.
+
+        Loads the skill and converts it to a Persona using :meth:`SkillInfo.as_persona`.
+
+        Args:
+            path: Path to the SKILL.md file.
+
+        Returns:
+            A Persona instance configured with the skill's data.
+        """
+        from .skills import load_skill
+
+        skill = load_skill(path)
+        return skill.as_persona()
+
 
 # ------------------------------------------------------------------
 # Trait registry
