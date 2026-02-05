@@ -95,6 +95,7 @@ class Settings(BaseSettings):
         env_file=".env",
         extra="ignore",
         env_prefix="",
+        protected_namespaces=(),  # Allow model_* field names (e.g., model_rates_ttl_days)
     )
 
 
