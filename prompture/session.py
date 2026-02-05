@@ -36,6 +36,8 @@ class UsageSession:
     total_cost: float = 0.0
     call_count: int = 0
     errors: int = 0
+    total_elapsed_ms: float = 0.0
+    _elapsed_samples: list[float] = field(default_factory=list, repr=False)
     _per_model: dict[str, dict[str, Any]] = field(default_factory=dict, repr=False)
 
     # ------------------------------------------------------------------ #
@@ -64,16 +66,33 @@ class UsageSession:
         self.total_cost += cost
         self.call_count += 1
 
+        # Capture timing
+        elapsed_ms = response_info.get("elapsed_ms", 0.0)
+        if elapsed_ms > 0:
+            self.total_elapsed_ms += elapsed_ms
+            self._elapsed_samples.append(elapsed_ms)
+
         model = response_info.get("driver", "unknown")
         bucket = self._per_model.setdefault(
             model,
-            {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "cost": 0.0, "calls": 0},
+            {
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "total_tokens": 0,
+                "cost": 0.0,
+                "calls": 0,
+                "elapsed_ms": 0.0,
+                "elapsed_samples": [],
+            },
         )
         bucket["prompt_tokens"] += pt
         bucket["completion_tokens"] += ct
         bucket["total_tokens"] += tt
         bucket["cost"] += cost
         bucket["calls"] += 1
+        if elapsed_ms > 0:
+            bucket["elapsed_ms"] += elapsed_ms
+            bucket["elapsed_samples"].append(elapsed_ms)
 
     def record_error(self, error_info: dict[str, Any]) -> None:
         """Record a driver error.
@@ -84,14 +103,45 @@ class UsageSession:
         self.errors += 1
 
     # ------------------------------------------------------------------ #
+    # Computed timing properties
+    # ------------------------------------------------------------------ #
+
+    @property
+    def tokens_per_second(self) -> float:
+        """Average output tokens per second across all calls."""
+        if self.total_elapsed_ms <= 0:
+            return 0.0
+        return self.completion_tokens / (self.total_elapsed_ms / 1000)
+
+    @property
+    def latency_stats(self) -> dict[str, float]:
+        """Return min/max/avg/p95 latency in milliseconds."""
+        if not self._elapsed_samples:
+            return {"min_ms": 0.0, "max_ms": 0.0, "avg_ms": 0.0, "p95_ms": 0.0}
+
+        samples = sorted(self._elapsed_samples)
+        p95_idx = int(len(samples) * 0.95)
+        return {
+            "min_ms": min(samples),
+            "max_ms": max(samples),
+            "avg_ms": sum(samples) / len(samples),
+            "p95_ms": samples[min(p95_idx, len(samples) - 1)],
+        }
+
+    # ------------------------------------------------------------------ #
     # Reporting
     # ------------------------------------------------------------------ #
 
     def summary(self) -> dict[str, Any]:
         """Return a machine-readable summary with a ``formatted`` string."""
+        stats = self.latency_stats
+        tps = self.tokens_per_second
+
         formatted = (
             f"Session: {self.total_tokens:,} tokens across {self.call_count} call(s) costing ${self.total_cost:.4f}"
         )
+        if self.total_elapsed_ms > 0:
+            formatted += f" | {tps:.1f} tok/s avg, {stats['avg_ms']:.0f}ms avg latency"
         if self.errors:
             formatted += f" ({self.errors} error(s))"
 
@@ -102,6 +152,9 @@ class UsageSession:
             "total_cost": self.total_cost,
             "call_count": self.call_count,
             "errors": self.errors,
+            "total_elapsed_ms": self.total_elapsed_ms,
+            "tokens_per_second": tps,
+            "latency_stats": stats,
             "per_model": dict(self._per_model),
             "formatted": formatted,
         }
@@ -114,4 +167,6 @@ class UsageSession:
         self.total_cost = 0.0
         self.call_count = 0
         self.errors = 0
+        self.total_elapsed_ms = 0.0
+        self._elapsed_samples.clear()
         self._per_model.clear()
