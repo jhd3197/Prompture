@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import threading
 
 import pytest
@@ -9,12 +10,15 @@ import pytest
 from prompture.skills import (
     SKILLS,
     SkillInfo,
+    SkillParseError,
     clear_skill_registry,
     discover_skills,
+    discover_skills_async,
     get_skill,
     get_skill_names,
     get_skill_registry_snapshot,
     load_skill,
+    load_skill_async,
     load_skill_from_directory,
     load_skills_from_directory,
     register_skill,
@@ -176,6 +180,7 @@ class TestSkillInfoConstruction:
         assert basic_skill.metadata == {}
         assert basic_skill.source_path is None
         assert basic_skill.skill_dir is None
+        assert basic_skill.source is None
 
     def test_full_construction(self, skill_with_metadata):
         assert skill_with_metadata.name == "meta-skill"
@@ -195,6 +200,29 @@ class TestSkillInfoConstruction:
         assert skill.metadata == {}
         assert skill.source_path is None
         assert skill.skill_dir is None
+        assert skill.source is None
+
+    def test_source_field(self, tmp_path):
+        """Test that source field tracks skill origin."""
+        skill = SkillInfo(
+            name="sourced",
+            description="",
+            instructions="",
+            source="project",
+        )
+        assert skill.source == "project"
+
+    def test_path_alias(self, tmp_path):
+        """Test that path property is an alias for source_path."""
+        skill_path = tmp_path / "SKILL.md"
+        skill = SkillInfo(
+            name="test",
+            description="",
+            instructions="",
+            source_path=skill_path,
+        )
+        assert skill.path == skill_path
+        assert skill.path == skill.source_path
 
 
 class TestSkillInfoAsPersona:
@@ -273,6 +301,26 @@ class TestSkillInfoSerialization:
         assert skill.source_path == tmp_path / "SKILL.md"
         assert skill.skill_dir == tmp_path
 
+    def test_to_dict_with_source(self):
+        skill = SkillInfo(
+            name="test",
+            description="desc",
+            instructions="inst",
+            source="project",
+        )
+        d = skill.to_dict()
+        assert d["source"] == "project"
+
+    def test_from_dict_with_source(self):
+        d = {
+            "name": "test",
+            "description": "desc",
+            "instructions": "inst",
+            "source": "user",
+        }
+        skill = SkillInfo.from_dict(d)
+        assert skill.source == "user"
+
 
 # ==================================================================
 # Parsing
@@ -314,6 +362,31 @@ class TestLoadSkill:
         empty_dir.mkdir()
         with pytest.raises(FileNotFoundError, match="No SKILL.md found"):
             load_skill_from_directory(empty_dir)
+
+    def test_load_skill_with_source(self, sample_skill_md):
+        """Test that source parameter is passed through."""
+        skill = load_skill(sample_skill_md, source="project")
+        assert skill.source == "project"
+
+    def test_load_skill_invalid_yaml(self, tmp_path):
+        """Test that invalid YAML raises SkillParseError."""
+        skill_dir = tmp_path / "bad-yaml"
+        skill_dir.mkdir()
+        skill_file = skill_dir / "SKILL.md"
+        skill_file.write_text(
+            """---
+name: broken
+description: [unclosed bracket
+---
+
+Instructions here.
+""",
+            encoding="utf-8",
+        )
+        with pytest.raises(SkillParseError) as exc_info:
+            load_skill(skill_file)
+        assert exc_info.value.path == skill_file
+        assert "Suggestion" in str(exc_info.value)
 
 
 class TestLoadSkillsFromDirectory:
@@ -491,6 +564,43 @@ class TestDiscoverSkills:
         names = [s.name for s in skills]
         assert names.count("skill-one") == 1
 
+    def test_discover_skills_sets_source(self, skills_directory):
+        """Test that discovered skills from additional_paths have source='additional'."""
+        skills = discover_skills(additional_paths=[skills_directory], register=False)
+        # Filter to just the skills from our test directory
+        test_skills = [s for s in skills if s.name in ("skill-one", "skill-two")]
+        assert len(test_skills) == 2
+        for skill in test_skills:
+            assert skill.source == "additional"
+
+    def test_discover_skills_exclude_paths(self, skills_directory, tmp_path):
+        """Test that exclude_paths prevents scanning certain directories."""
+        # Create another skills directory
+        other_dir = tmp_path / "other-skills"
+        other_dir.mkdir()
+        skill_dir = other_dir / "excluded-skill"
+        skill_dir.mkdir()
+        (skill_dir / "SKILL.md").write_text(
+            """---
+name: excluded-skill
+description: Should not be found
+---
+
+Excluded instructions.
+""",
+            encoding="utf-8",
+        )
+
+        # Discover with exclusion
+        skills = discover_skills(
+            additional_paths=[skills_directory, other_dir],
+            exclude_paths=[other_dir],
+            register=False,
+        )
+        names = [s.name for s in skills]
+        assert "skill-one" in names
+        assert "excluded-skill" not in names
+
 
 # ==================================================================
 # Persona Integration
@@ -512,17 +622,85 @@ class TestPersonaFromSkill:
 # ==================================================================
 
 
+class TestAsyncFunctions:
+    """Tests for async variants of skill functions."""
+
+    def test_load_skill_async(self, sample_skill_md):
+        """Test async skill loading."""
+        skill = asyncio.run(load_skill_async(sample_skill_md))
+        assert skill.name == "sample-skill"
+        assert skill.description == "A sample skill for testing"
+
+    def test_load_skill_async_with_source(self, sample_skill_md):
+        """Test async skill loading with source parameter."""
+        skill = asyncio.run(load_skill_async(sample_skill_md, source="project"))
+        assert skill.source == "project"
+
+    def test_discover_skills_async(self, skills_directory):
+        """Test async skill discovery."""
+        skills = asyncio.run(
+            discover_skills_async(additional_paths=[skills_directory], register=False)
+        )
+        assert len(skills) >= 2
+        names = [s.name for s in skills]
+        assert "skill-one" in names
+        assert "skill-two" in names
+
+    def test_discover_skills_async_with_exclude(self, skills_directory, tmp_path):
+        """Test async discovery with exclusions."""
+        skills = asyncio.run(
+            discover_skills_async(
+                additional_paths=[skills_directory],
+                exclude_paths=[tmp_path / "nonexistent"],
+                register=False,
+            )
+        )
+        assert len(skills) >= 2
+
+
+class TestSkillParseError:
+    """Tests for the SkillParseError exception."""
+
+    def test_basic_error(self):
+        err = SkillParseError("Test error")
+        assert err.message == "Test error"
+        assert err.path is None
+        assert err.line is None
+        assert err.suggestion is None
+
+    def test_full_error(self, tmp_path):
+        err = SkillParseError(
+            "Invalid syntax",
+            path=tmp_path / "SKILL.md",
+            line=5,
+            suggestion="Check your YAML",
+        )
+        assert err.message == "Invalid syntax"
+        assert err.path == tmp_path / "SKILL.md"
+        assert err.line == 5
+        assert err.suggestion == "Check your YAML"
+        # Check string representation includes all parts
+        err_str = str(err)
+        assert "Invalid syntax" in err_str
+        assert "Line: 5" in err_str
+        assert "Suggestion:" in err_str
+
+
 class TestPackageExports:
     def test_all_exports_available(self):
         from prompture import (
             SKILLS,
             SkillInfo,
+            SkillParseError,
+            SkillSource,
             clear_skill_registry,
             discover_skills,
+            discover_skills_async,
             get_skill,
             get_skill_names,
             get_skill_registry_snapshot,
             load_skill,
+            load_skill_async,
             load_skill_from_directory,
             load_skills_from_directory,
             register_skill,
@@ -532,12 +710,16 @@ class TestPackageExports:
         # Just verify they're importable
         assert SKILLS is not None
         assert SkillInfo is not None
+        assert SkillParseError is not None
+        assert SkillSource is not None
         assert clear_skill_registry is not None
         assert discover_skills is not None
+        assert discover_skills_async is not None
         assert get_skill is not None
         assert get_skill_names is not None
         assert get_skill_registry_snapshot is not None
         assert load_skill is not None
+        assert load_skill_async is not None
         assert load_skill_from_directory is not None
         assert load_skills_from_directory is not None
         assert register_skill is not None
