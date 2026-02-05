@@ -150,6 +150,39 @@ class AsyncDriver:
         )
         return resp
 
+    async def generate_messages_with_tools_with_hooks(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        options: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Wrap :meth:`generate_messages_with_tools` with callbacks."""
+        driver_name = getattr(self, "model", self.__class__.__name__)
+        self._fire_callback(
+            "on_request",
+            {"prompt": None, "messages": messages, "options": options, "driver": driver_name},
+        )
+        t0 = time.perf_counter()
+        try:
+            resp = await self.generate_messages_with_tools(messages, tools, options)
+        except Exception as exc:
+            self._fire_callback(
+                "on_error",
+                {"error": exc, "prompt": None, "messages": messages, "options": options, "driver": driver_name},
+            )
+            raise
+        elapsed_ms = (time.perf_counter() - t0) * 1000
+        self._fire_callback(
+            "on_response",
+            {
+                "text": resp.get("text", ""),
+                "meta": resp.get("meta", {}),
+                "driver": driver_name,
+                "elapsed_ms": elapsed_ms,
+            },
+        )
+        return resp
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------

@@ -474,7 +474,7 @@ class AsyncAgent(Generic[DepsType]):
     def _is_over_budget(self, session: UsageSession) -> bool:
         if self._max_cost is None:
             return False
-        return session.total_cost >= self._max_cost
+        return session.cost >= self._max_cost
 
     # ------------------------------------------------------------------
     # Internals

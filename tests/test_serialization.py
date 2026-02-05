@@ -85,7 +85,7 @@ class TestUsageSessionSerialization:
             prompt_tokens=100,
             completion_tokens=50,
             total_tokens=150,
-            total_cost=0.005,
+            cost=0.005,
             call_count=3,
             errors=1,
         )
@@ -99,16 +99,31 @@ class TestUsageSessionSerialization:
 
         exported = export_usage_session(session)
         assert exported["prompt_tokens"] == 100
-        assert exported["total_cost"] == 0.005
+        assert exported["cost"] == 0.005
+        assert exported["total_cost"] == 0.005  # Deprecated alias still present
         assert "openai/gpt-4" in exported["per_model"]
 
         restored = import_usage_session(exported)
         assert restored.prompt_tokens == 100
         assert restored.completion_tokens == 50
-        assert restored.total_cost == 0.005
+        assert restored.cost == 0.005
         assert restored.call_count == 3
         assert restored.errors == 1
         assert "openai/gpt-4" in restored._per_model
+
+    def test_import_from_old_format(self):
+        """Import should work with old format using only total_cost (no cost key)."""
+        old_format = {
+            "prompt_tokens": 100,
+            "completion_tokens": 50,
+            "total_tokens": 150,
+            "total_cost": 0.005,  # Old format only has total_cost
+            "call_count": 1,
+            "errors": 0,
+            "per_model": {},
+        }
+        restored = import_usage_session(old_format)
+        assert restored.cost == 0.005
 
     def test_empty_session(self):
         session = UsageSession()
@@ -237,7 +252,7 @@ class TestConversationExportImport:
         assert imported["messages"][2]["role"] == "tool"
 
     def test_usage_session_included(self):
-        session = UsageSession(prompt_tokens=500, total_tokens=700, total_cost=0.015, call_count=5)
+        session = UsageSession(prompt_tokens=500, total_tokens=700, cost=0.015, call_count=5)
         exported = self._make_export(usage_session=session)
         assert "usage_session" in exported
         assert exported["usage_session"]["prompt_tokens"] == 500

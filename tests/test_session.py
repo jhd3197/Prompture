@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import warnings
+
+import pytest
+
 from prompture.session import UsageSession
 
 
@@ -13,7 +17,7 @@ class TestUsageSession:
         assert session.prompt_tokens == 0
         assert session.completion_tokens == 0
         assert session.total_tokens == 0
-        assert session.total_cost == 0.0
+        assert session.cost == 0.0
         assert session.call_count == 0
         assert session.errors == 0
 
@@ -34,7 +38,7 @@ class TestUsageSession:
         assert session.prompt_tokens == 100
         assert session.completion_tokens == 50
         assert session.total_tokens == 150
-        assert session.total_cost == 0.003
+        assert session.cost == 0.003
         assert session.call_count == 1
 
     def test_record_multiple_responses(self):
@@ -55,7 +59,7 @@ class TestUsageSession:
         assert session.prompt_tokens == 300
         assert session.completion_tokens == 150
         assert session.total_tokens == 450
-        assert abs(session.total_cost - 0.009) < 1e-9
+        assert abs(session.cost - 0.009) < 1e-9
         assert session.call_count == 2
 
     def test_record_error(self):
@@ -122,10 +126,45 @@ class TestUsageSession:
         assert session.prompt_tokens == 0
         assert session.completion_tokens == 0
         assert session.total_tokens == 0
-        assert session.total_cost == 0.0
+        assert session.cost == 0.0
         assert session.call_count == 0
         assert session.errors == 0
         assert session.summary()["per_model"] == {}
+
+    def test_total_cost_deprecated_property(self):
+        """Deprecated total_cost property should still work with warning."""
+        session = UsageSession()
+        session.record(
+            {
+                "meta": {"prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150, "cost": 0.003},
+                "driver": "openai/gpt-4",
+            }
+        )
+
+        # Reading total_cost should emit deprecation warning
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            value = session.total_cost
+            assert value == 0.003
+            assert len(w) == 1
+            assert issubclass(w[0].category, DeprecationWarning)
+            assert "total_cost" in str(w[0].message)
+
+    def test_summary_includes_both_cost_keys(self):
+        """Summary should include both 'cost' and 'total_cost' for backwards compatibility."""
+        session = UsageSession()
+        session.record(
+            {
+                "meta": {"prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150, "cost": 0.003},
+                "driver": "openai/gpt-4",
+            }
+        )
+
+        summary = session.summary()
+        assert "cost" in summary
+        assert "total_cost" in summary
+        assert summary["cost"] == 0.003
+        assert summary["total_cost"] == 0.003  # Deprecated alias
 
     def test_record_missing_meta(self):
         """Record should handle missing meta gracefully."""

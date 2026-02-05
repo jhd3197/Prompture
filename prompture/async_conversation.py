@@ -374,7 +374,7 @@ class AsyncConversation:
         msgs = self._build_messages_raw()
 
         for _round in range(self._max_tool_rounds):
-            resp = await self._driver.generate_messages_with_tools(msgs, tool_defs, merged)
+            resp = await self._driver.generate_messages_with_tools_with_hooks(msgs, tool_defs, merged)
 
             meta = resp.get("meta", {})
             self._accumulate_usage(meta)
