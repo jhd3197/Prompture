@@ -7,7 +7,10 @@ import logging
 import sys
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any, Literal, Union
+from typing import TYPE_CHECKING, Any, Literal, Union
+
+if TYPE_CHECKING:
+    from .routing import RoutingConfig
 
 import requests
 
@@ -619,7 +622,7 @@ def manual_extract_and_jsonify(
 def extract_with_model(
     model_cls: Union[type[BaseModel], str],  # Can be model class or model name string for legacy support
     text: Union[str, dict[str, Any]],  # Can be text or schema for legacy support
-    model_name: Union[str, dict[str, Any]],  # Can be model name or text for legacy support
+    model_name: Union[str, dict[str, Any], None] = None,  # Can be model name, text, or None for routing
     instruction_template: str = "Extract information from the following text:",
     ai_cleanup: bool = True,
     output_format: Literal["json", "toon"] = "json",
@@ -628,6 +631,7 @@ def extract_with_model(
     json_mode: Literal["auto", "on", "off"] = "auto",
     system_prompt: str | None = None,
     images: list[ImageInput] | None = None,
+    routing: Union[str, RoutingConfig, None] = None,
 ) -> dict[str, Any]:
     """Extracts structured information into a Pydantic model instance.
 
@@ -638,20 +642,29 @@ def extract_with_model(
         model_cls: The Pydantic BaseModel class to extract into.
         text: The raw text to extract information from.
         model_name: Model identifier in format "provider/model" (e.g., "openai/gpt-4-turbo-preview").
+            Can be None when using routing.
         instruction_template: Instructional text to prepend to the content.
         ai_cleanup: Whether to attempt AI-based cleanup if JSON parsing fails.
         output_format: Response serialization format ("json" or "toon").
         options: Additional options to pass to the driver.
         cache: Override for response caching.  ``True`` forces caching on,
             ``False`` forces it off, ``None`` defers to the global setting.
+        routing: Smart model routing configuration. Can be:
+            - A RoutingStrategy string ("cost_optimized", "quality_first", "balanced", "fast")
+            - A RoutingConfig instance for full control
+            - None to disable routing (requires model_name)
 
     Returns:
-        A validated instance of the Pydantic model.
+        A validated instance of the Pydantic model. When routing is used,
+        the result also includes a "routing" key with routing metadata.
 
     Raises:
         ValueError: If text is empty or None, or if model_name format is invalid.
         ValidationError: If the extracted data doesn't match the model schema.
     """
+    # Import routing types (avoid circular import)
+    from .routing import ModelRouter, RoutingConfig, RoutingResult
+
     # Handle legacy format where first arg is model class
     if options is None:
         options = {}
@@ -667,6 +680,26 @@ def extract_with_model(
 
     if not isinstance(actual_text, str) or not actual_text.strip():
         raise ValueError("Text input cannot be empty")
+
+    # --- Smart Routing ---
+    routing_result: RoutingResult | None = None
+    if routing is not None:
+        # Build routing config
+        if isinstance(routing, str):
+            routing_config = RoutingConfig(strategy=routing)
+        else:
+            routing_config = routing
+
+        # Generate schema for routing analysis
+        schema = actual_cls.model_json_schema()
+
+        # Select model via router
+        router = ModelRouter(routing_config)
+        selected_model, routing_result = router.select_model(actual_text, schema)
+        actual_model = selected_model
+        logger.info("[extract] Routing selected model: %s", selected_model)
+    elif actual_model is None or (isinstance(actual_model, str) and not actual_model.strip()):
+        raise ValueError("Either model_name or routing must be provided")
 
     # --- cache lookup ---
     from .cache import get_cache, make_cache_key
@@ -749,6 +782,10 @@ def extract_with_model(
 
     # Return dictionary with all required fields and backwards compatibility
     result_dict = {"json_string": result["json_string"], "json_object": result["json_object"], "usage": result["usage"]}
+
+    # --- Add routing metadata if routing was used ---
+    if routing_result is not None:
+        result_dict["routing"] = routing_result.to_dict()
 
     # --- cache store ---
     if use_cache and cache_key is not None:
