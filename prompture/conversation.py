@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 import uuid
 from collections.abc import Iterator
 from datetime import date, datetime, timezone
@@ -689,19 +690,47 @@ class Conversation:
         user_content = self._build_content_with_images(content, images)
         self._messages.append({"role": "user", "content": user_content})
 
+        driver_name = getattr(self._driver, "model", self._driver.__class__.__name__)
+
+        # Fire on_request callback before streaming begins
+        self._driver._fire_callback(
+            "on_request",
+            {"prompt": None, "messages": messages, "options": merged, "driver": driver_name},
+        )
+
+        t0 = time.perf_counter()
         full_text = ""
-        for chunk in self._driver.generate_messages_stream(messages, merged):
-            if chunk["type"] == "delta":
-                full_text += chunk["text"]
-                # Fire stream delta callback
-                self._driver._fire_callback(
-                    "on_stream_delta",
-                    {"text": chunk["text"], "driver": getattr(self._driver, "model", self._driver.__class__.__name__)},
-                )
-                yield chunk["text"]
-            elif chunk["type"] == "done":
-                meta = chunk.get("meta", {})
-                self._accumulate_usage(meta)
+        try:
+            for chunk in self._driver.generate_messages_stream(messages, merged):
+                if chunk["type"] == "delta":
+                    full_text += chunk["text"]
+                    # Fire stream delta callback
+                    self._driver._fire_callback(
+                        "on_stream_delta",
+                        {"text": chunk["text"], "driver": driver_name},
+                    )
+                    yield chunk["text"]
+                elif chunk["type"] == "done":
+                    meta = chunk.get("meta", {})
+                    elapsed_ms = (time.perf_counter() - t0) * 1000
+                    # Fire on_response callback with usage metadata
+                    self._driver._fire_callback(
+                        "on_response",
+                        {
+                            "text": chunk.get("text", full_text),
+                            "meta": meta,
+                            "driver": driver_name,
+                            "elapsed_ms": elapsed_ms,
+                        },
+                    )
+                    self._accumulate_usage(meta)
+        except Exception as exc:
+            elapsed_ms = (time.perf_counter() - t0) * 1000
+            self._driver._fire_callback(
+                "on_error",
+                {"error": exc, "prompt": None, "messages": messages, "options": merged, "driver": driver_name},
+            )
+            raise
 
         self._messages.append({"role": "assistant", "content": full_text})
 

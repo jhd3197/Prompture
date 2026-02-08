@@ -226,7 +226,53 @@ from .skills import (
 )
 from .tools import clean_json_text, clean_toon_text
 from .tools_schema import ToolDefinition, ToolRegistry, tool_from_function
+
+# Tukuy bridge
+from .tukuy_bridge import (
+    TukuyChainStep,
+    apply_safety_policy,
+    make_transform_chain,
+    registry_to_skill_dict,
+    skill_to_tool_definition,
+    skills_to_registry,
+    tool_definition_to_skill,
+)
 from .validator import validate_against_schema
+
+# Tukuy type re-exports (aliased to avoid collision with Prompture names)
+try:
+    from tukuy import (
+        Branch as TukuyBranch,
+    )
+    from tukuy import (
+        Chain as TukuyChain,
+    )
+    from tukuy import (
+        Parallel as TukuyParallel,
+    )
+    from tukuy import (
+        SafetyPolicy as TukuySafetyPolicy,
+    )
+    from tukuy import (
+        Skill as TukuySkill,
+    )
+    from tukuy import (
+        SkillContext as TukuySkillContext,
+    )
+    from tukuy import (
+        SkillResult as TukuySkillResult,
+    )
+    from tukuy import (
+        branch as tukuy_branch,
+    )
+    from tukuy import (
+        parallel as tukuy_parallel,
+    )
+    from tukuy import (
+        skill as tukuy_skill,
+    )
+except ImportError:
+    pass
 
 # Load environment variables from .env file
 load_dotenv()
@@ -359,10 +405,20 @@ __all__ = [
     "StreamedAgentResult",
     "ToolDefinition",
     "ToolRegistry",
+    # Tukuy bridge
+    "TukuyBranch",
+    "TukuyChain",
+    "TukuyChainStep",
+    "TukuyParallel",
+    "TukuySafetyPolicy",
+    "TukuySkill",
+    "TukuySkillContext",
+    "TukuySkillResult",
     "UsageSession",
     "add_field_definition",
     "add_field_definitions",
     "analyze_python",
+    "apply_safety_policy",
     "ask_for_json",
     # History module
     "calculate_cost_breakdown",
@@ -428,6 +484,7 @@ __all__ = [
     "load_skill_from_directory",
     "load_skills_from_directory",
     "make_image",
+    "make_transform_chain",
     "manual_extract_and_jsonify",
     "normalize_enum_value",
     "refresh_rates_cache",
@@ -438,6 +495,7 @@ __all__ = [
     "register_persona",
     "register_skill",
     "register_trait",
+    "registry_to_skill_dict",
     "render_output",
     "reset_persona_registry",
     "reset_registry",
@@ -447,8 +505,14 @@ __all__ = [
     "run_suite_from_spec",
     "search_messages",
     "set_azure_config_resolver",
+    "skill_to_tool_definition",
+    "skills_to_registry",
     "stepwise_extract_with_model",
+    "tool_definition_to_skill",
     "tool_from_function",
+    "tukuy_branch",
+    "tukuy_parallel",
+    "tukuy_skill",
     "unregister_async_driver",
     "unregister_azure_config",
     "unregister_driver",

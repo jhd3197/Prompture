@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass
 from typing import Any
 
@@ -2065,3 +2066,94 @@ class TestExtractionResilience:
 
         assert result["model"].name == "test"
         assert call_count[0] == 2
+
+
+# ---------------------------------------------------------------------------
+# Streaming usage tracking (run_stream + UsageSession)
+# ---------------------------------------------------------------------------
+
+
+class MockStreamDriver(Driver):
+    """Mock driver that supports streaming and returns usage metadata."""
+
+    supports_messages = True
+    supports_streaming = True
+
+    def __init__(self):
+        self.model = "mock-stream-model"
+
+    def generate_messages(self, messages, options):
+        return {
+            "text": "fallback response",
+            "meta": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15, "cost": 0.001},
+        }
+
+    def generate_messages_stream(self, messages, options) -> Iterator[dict[str, Any]]:
+        yield {"type": "delta", "text": "Hello"}
+        yield {"type": "delta", "text": " world"}
+        yield {
+            "type": "done",
+            "text": "Hello world",
+            "meta": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15, "cost": 0.001},
+        }
+
+
+class MockAsyncStreamDriver(AsyncDriver):
+    """Mock async driver that supports streaming and returns usage metadata."""
+
+    supports_messages = True
+    supports_streaming = True
+
+    def __init__(self):
+        self.model = "mock-async-stream-model"
+
+    async def generate_messages(self, messages, options):
+        return {
+            "text": "fallback response",
+            "meta": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15, "cost": 0.001},
+        }
+
+    async def generate_messages_stream(self, messages, options) -> AsyncIterator[dict[str, Any]]:
+        yield {"type": "delta", "text": "Hello"}
+        yield {"type": "delta", "text": " world"}
+        yield {
+            "type": "done",
+            "text": "Hello world",
+            "meta": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15, "cost": 0.001},
+        }
+
+
+class TestRunStreamUsageTracking:
+    def test_run_stream_run_usage_populated(self):
+        """Agent.run_stream() produces non-zero run_usage when streaming."""
+        driver = MockStreamDriver()
+        agent = Agent("test/model", driver=driver)
+        stream = agent.run_stream("test")
+
+        for _ in stream:
+            pass
+
+        result = stream.result
+        assert result is not None
+        assert result.run_usage["total_tokens"] > 0
+        assert result.run_usage["cost"] > 0
+        assert result.run_usage["call_count"] >= 1
+
+    def test_async_run_stream_run_usage_populated(self):
+        """AsyncAgent.run_stream() produces non-zero run_usage when streaming."""
+
+        async def _test():
+            driver = MockAsyncStreamDriver()
+            agent = AsyncAgent("test/model", driver=driver)
+            stream = agent.run_stream("test")
+
+            async for _ in stream:
+                pass
+
+            result = stream.result
+            assert result is not None
+            assert result.run_usage["total_tokens"] > 0
+            assert result.run_usage["cost"] > 0
+            assert result.run_usage["call_count"] >= 1
+
+        asyncio.run(_test())

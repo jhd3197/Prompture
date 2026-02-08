@@ -366,6 +366,48 @@ class ToolRegistry:
         return new
 
     # ------------------------------------------------------------------
+    # Tukuy integration
+    # ------------------------------------------------------------------
+
+    def add_tukuy_skill(
+        self,
+        skill_or_fn: Any,
+        *,
+        name: str | None = None,
+        description: str | None = None,
+    ) -> ToolDefinition:
+        """Register a tukuy ``Skill`` or ``@skill``-decorated function as a tool.
+
+        Args:
+            skill_or_fn: A tukuy ``Skill`` instance or ``@skill``-decorated function.
+            name: Override the tool name.
+            description: Override the tool description.
+
+        Returns:
+            The registered :class:`ToolDefinition`.
+        """
+        from .tukuy_bridge import skill_to_tool_definition
+
+        td = skill_to_tool_definition(skill_or_fn)
+        if name:
+            td = ToolDefinition(name=name, description=td.description, parameters=td.parameters, function=td.function)
+        if description:
+            td = ToolDefinition(name=td.name, description=description, parameters=td.parameters, function=td.function)
+        self._tools[td.name] = td
+        return td
+
+    def add_tukuy_skills(self, skills: list[Any]) -> list[ToolDefinition]:
+        """Register multiple tukuy skills at once.
+
+        Args:
+            skills: List of tukuy ``Skill`` instances or ``@skill``-decorated functions.
+
+        Returns:
+            List of registered :class:`ToolDefinition` instances.
+        """
+        return [self.add_tukuy_skill(s) for s in skills]
+
+    # ------------------------------------------------------------------
     # Serialisation
     # ------------------------------------------------------------------
 
