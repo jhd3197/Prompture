@@ -285,9 +285,13 @@ class Agent(Generic[DepsType]):
         def _call_agent(prompt: str) -> str:
             """Run the wrapped agent with the given prompt."""
             result = agent.run(prompt)
+            _call_agent._last_agent_result = result
             if extractor is not None:
                 return extractor(result)
             return result.output_text
+
+        _call_agent._source_agent = agent
+        _call_agent._last_agent_result = None
 
         return ToolDefinition(
             name=tool_name,
@@ -351,7 +355,9 @@ class Agent(Generic[DepsType]):
     # Tool wrapping (RunContext injection + ModelRetry + callbacks)
     # ------------------------------------------------------------------
 
-    def _wrap_tools_with_context(self, ctx: RunContext[Any]) -> ToolRegistry:
+    def _wrap_tools_with_context(
+        self, ctx: RunContext[Any], session: UsageSession | None = None
+    ) -> ToolRegistry:
         """Return a new :class:`ToolRegistry` with wrapped tool functions.
 
         For each registered tool:
@@ -359,6 +365,8 @@ class Agent(Generic[DepsType]):
         - Catch :class:`ModelRetry` and convert to an error string.
         - Fire ``agent_callbacks.on_tool_start`` / ``on_tool_end``.
         - Strip the ``RunContext`` parameter from the JSON schema sent to the LLM.
+        - If the tool wraps a child agent (via ``as_tool``), aggregate its
+          usage into the parent *session*.
         """
         if not self._tools:
             return ToolRegistry()
@@ -377,6 +385,7 @@ class Agent(Generic[DepsType]):
                 _wants: bool,
                 _name: str,
                 _cb: AgentCallbacks = cb,
+                _session: UsageSession | None = session,
             ) -> Callable[..., Any]:
                 def wrapper(**kwargs: Any) -> Any:
                     if _cb.on_tool_start:
@@ -408,6 +417,23 @@ class Agent(Generic[DepsType]):
                             result = f"Error: Tool '{_name}' requires approval but no approval handler is configured"
                     except ModelRetry as exc:
                         result = f"Error: {exc.message}"
+
+                    # Aggregate child agent usage to parent session
+                    if _session is not None and hasattr(_fn, "_source_agent"):
+                        agent_result = getattr(_fn, "_last_agent_result", None)
+                        if agent_result is not None and hasattr(agent_result, "run_usage"):
+                            child_usage = agent_result.run_usage
+                            child_name = getattr(_fn._source_agent, "name", "") or _name
+                            _session.record({
+                                "meta": {
+                                    "prompt_tokens": child_usage.get("prompt_tokens", 0),
+                                    "completion_tokens": child_usage.get("completion_tokens", 0),
+                                    "total_tokens": child_usage.get("total_tokens", 0),
+                                    "cost": child_usage.get("cost", 0.0),
+                                },
+                                "driver": f"sub-agent:{child_name}",
+                            })
+
                     if _cb.on_tool_end:
                         _cb.on_tool_end(_name, result)
                     return result
@@ -630,8 +656,8 @@ class Agent(Generic[DepsType]):
         # 4. Resolve system prompt (call it if callable, passing ctx)
         resolved_system_prompt = self._resolve_system_prompt(ctx)
 
-        # 5. Wrap tools with context
-        wrapped_tools = self._wrap_tools_with_context(ctx)
+        # 5. Wrap tools with context (pass session for child agent usage aggregation)
+        wrapped_tools = self._wrap_tools_with_context(ctx, session)
 
         # 6. Build Conversation
         conv = self._build_conversation(
@@ -701,6 +727,16 @@ class Agent(Generic[DepsType]):
 
         for msg in messages:
             role = msg.get("role", "")
+            # Extract usage from message meta if present
+            msg_meta = msg.get("meta")
+            step_usage = None
+            if isinstance(msg_meta, dict):
+                step_usage = {
+                    "prompt_tokens": msg_meta.get("prompt_tokens", 0),
+                    "completion_tokens": msg_meta.get("completion_tokens", 0),
+                    "total_tokens": msg_meta.get("total_tokens", 0),
+                    "cost": msg_meta.get("cost", 0.0),
+                }
 
             if role == "assistant":
                 content = msg.get("content", "") or ""
@@ -715,6 +751,7 @@ class Agent(Generic[DepsType]):
                             step_type=StepType.think,
                             timestamp=now,
                             content=thinking_text,
+                            usage=step_usage,
                         )
                     )
 
@@ -740,6 +777,7 @@ class Agent(Generic[DepsType]):
                                 content=content,
                                 tool_name=name,
                                 tool_args=args,
+                                usage=step_usage,
                             )
                         )
                         all_tool_calls.append({"name": name, "arguments": args, "id": tc.get("id", "")})
@@ -750,6 +788,7 @@ class Agent(Generic[DepsType]):
                             step_type=StepType.output,
                             timestamp=now,
                             content=content,
+                            usage=step_usage,
                         )
                     )
 
@@ -905,8 +944,8 @@ class Agent(Generic[DepsType]):
             # 4. Resolve system prompt
             resolved_system_prompt = self._resolve_system_prompt(ctx)
 
-            # 5. Wrap tools with context
-            wrapped_tools = self._wrap_tools_with_context(ctx)
+            # 5. Wrap tools with context (pass session for child agent usage aggregation)
+            wrapped_tools = self._wrap_tools_with_context(ctx, session)
             has_tools = bool(wrapped_tools)
 
             # 6. Build Conversation

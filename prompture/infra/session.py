@@ -22,9 +22,12 @@ Usage::
 
 from __future__ import annotations
 
+import logging
 import warnings
 from dataclasses import dataclass, field
 from typing import Any
+
+logger = logging.getLogger("prompture.session")
 
 
 @dataclass
@@ -87,13 +90,23 @@ class UsageSession:
         self.cost += cost
         self.call_count += 1
 
+        model = response_info.get("driver", "unknown")
+        logger.debug(
+            "[session] record driver=%s delta_tokens=%d delta_cost=%.6f | session total_tokens=%d cost=%.6f calls=%d",
+            model,
+            tt,
+            cost,
+            self.total_tokens,
+            self.cost,
+            self.call_count,
+        )
+
         # Capture timing
         elapsed_ms = response_info.get("elapsed_ms", 0.0)
         if elapsed_ms > 0:
             self.total_elapsed_ms += elapsed_ms
             self._elapsed_samples.append(elapsed_ms)
 
-        model = response_info.get("driver", "unknown")
         bucket = self._per_model.setdefault(
             model,
             {

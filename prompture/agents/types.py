@@ -151,6 +151,7 @@ class AgentStep:
     tool_args: dict[str, Any] | None = None
     tool_result: Any = None
     duration_ms: float = 0.0
+    usage: dict[str, Any] | None = None
 
 
 @dataclass
@@ -212,6 +213,7 @@ class AgentResult:
                     "tool_args": s.tool_args,
                     "tool_result": s.tool_result,
                     "duration_ms": s.duration_ms,
+                    "usage": s.usage,
                 }
                 for s in self.steps
             ],

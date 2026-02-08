@@ -315,11 +315,21 @@ class Conversation:
         return msgs
 
     def _accumulate_usage(self, meta: dict[str, Any]) -> None:
+        delta_tokens = meta.get("total_tokens", 0)
+        delta_cost = meta.get("cost", 0.0)
         self._usage["prompt_tokens"] += meta.get("prompt_tokens", 0)
         self._usage["completion_tokens"] += meta.get("completion_tokens", 0)
-        self._usage["total_tokens"] += meta.get("total_tokens", 0)
-        self._usage["cost"] += meta.get("cost", 0.0)
+        self._usage["total_tokens"] += delta_tokens
+        self._usage["cost"] += delta_cost
         self._usage["turns"] += 1
+        logger.debug(
+            "[conversation] usage delta tokens=%d cost=%.6f | running total tokens=%d cost=%.6f turns=%d",
+            delta_tokens,
+            delta_cost,
+            self._usage["total_tokens"],
+            self._usage["cost"],
+            self._usage["turns"],
+        )
         self._maybe_auto_save()
 
         from ..infra.ledger import _resolve_api_key_hash, record_model_usage
@@ -810,8 +820,11 @@ class Conversation:
             if ai_cleanup:
                 from ..extraction.core import clean_json_text_with_ai
 
-                cleaned = clean_json_text_with_ai(self._driver, cleaned, self._model_name, merged)
+                cleaned, cleanup_meta = clean_json_text_with_ai(self._driver, cleaned, self._model_name, merged)
                 json_obj = json.loads(cleaned)
+                # Track cleanup call tokens in conversation usage
+                if cleanup_meta:
+                    self._accumulate_usage(cleanup_meta)
             else:
                 raise
 
