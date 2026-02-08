@@ -50,6 +50,36 @@ try:
     from tukuy.safety import (
         SecurityContext as TukuySecurityContext,
     )
+    from tukuy import (
+        RiskLevel as TukuyRiskLevel,
+    )
+    from tukuy import (
+        ConfigScope as TukuyConfigScope,
+    )
+    from tukuy import (
+        ConfigParam as TukuyConfigParam,
+    )
+    from tukuy import (
+        PluginManifest as TukuyPluginManifest,
+    )
+    from tukuy import (
+        PluginRequirements as TukuyPluginRequirements,
+    )
+    from tukuy import (
+        AvailabilityReason as TukuyAvailabilityReason,
+    )
+    from tukuy import (
+        SkillAvailability as TukuySkillAvailability,
+    )
+    from tukuy import (
+        PluginDiscoveryResult as TukuyPluginDiscoveryResult,
+    )
+    from tukuy import (
+        get_available_skills as tukuy_get_available_skills,
+    )
+    from tukuy import (
+        discover_plugins as tukuy_discover_plugins,
+    )
 except ImportError:
     pass
 

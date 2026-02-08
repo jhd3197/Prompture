@@ -473,3 +473,265 @@ class TestReExports:
         assert callable(tukuy_skill)
         assert callable(tukuy_branch)
         assert callable(tukuy_parallel)
+
+
+# ------------------------------------------------------------------
+# TestSecurityMetadataEnriched (tukuy >= 0.0.20)
+# ------------------------------------------------------------------
+
+
+@skill(
+    name="enriched_skill",
+    description="A skill with UI metadata",
+    risk_level="moderate",
+    display_name="Enriched Skill",
+    icon="wrench",
+    group="tools",
+)
+def enriched_skill(x: int) -> int:
+    return x + 1
+
+
+@skill(
+    name="hidden_skill",
+    description="A hidden skill",
+    hidden=True,
+    deprecated="Use enriched_skill instead",
+)
+def hidden_skill(x: int) -> int:
+    return x
+
+
+class TestSecurityMetadataEnriched:
+    """Test enriched security_metadata with UI metadata from tukuy >= 0.0.20."""
+
+    def test_risk_level_present(self):
+        td = skill_to_tool_definition(enriched_skill)
+        meta = td.security_metadata
+        assert meta is not None
+        assert "risk_level" in meta
+        assert meta["risk_level"] == "moderate"
+
+    def test_display_name_present(self):
+        td = skill_to_tool_definition(enriched_skill)
+        meta = td.security_metadata
+        assert meta is not None
+        assert meta["display_name"] == "Enriched Skill"
+
+    def test_icon_present(self):
+        td = skill_to_tool_definition(enriched_skill)
+        meta = td.security_metadata
+        assert meta is not None
+        assert meta["icon"] == "wrench"
+
+    def test_group_present(self):
+        td = skill_to_tool_definition(enriched_skill)
+        meta = td.security_metadata
+        assert meta is not None
+        assert meta["group"] == "tools"
+
+    def test_hidden_absent_by_default(self):
+        td = skill_to_tool_definition(enriched_skill)
+        meta = td.security_metadata
+        assert meta is not None
+        assert "hidden" not in meta
+
+    def test_hidden_present_when_true(self):
+        td = skill_to_tool_definition(hidden_skill)
+        meta = td.security_metadata
+        assert meta is not None
+        assert meta.get("hidden") is True
+
+    def test_deprecated_absent_by_default(self):
+        td = skill_to_tool_definition(enriched_skill)
+        meta = td.security_metadata
+        assert meta is not None
+        assert "deprecated" not in meta
+
+    def test_deprecated_present_when_set(self):
+        td = skill_to_tool_definition(hidden_skill)
+        meta = td.security_metadata
+        assert meta is not None
+        assert meta["deprecated"] == "Use enriched_skill instead"
+
+    def test_basic_fields_still_present(self):
+        td = skill_to_tool_definition(enriched_skill)
+        meta = td.security_metadata
+        assert meta is not None
+        assert meta["name"] == "enriched_skill"
+        assert meta["is_tukuy_skill"] is True
+
+
+# ------------------------------------------------------------------
+# TestFilterAvailableSkills
+# ------------------------------------------------------------------
+
+
+class TestFilterAvailableSkills:
+    """Test filter_available_skills bridge function."""
+
+    def test_permissive_keeps_all(self):
+        from prompture import filter_available_skills
+
+        reg = skills_to_registry([double, greet, net_skill])
+        filtered = filter_available_skills(reg, policy=SafetyPolicy.permissive())
+        assert len(filtered) == 3
+
+    def test_restrictive_blocks_network(self):
+        from prompture import filter_available_skills
+
+        reg = skills_to_registry([double, net_skill])
+        filtered = filter_available_skills(reg, policy=SafetyPolicy(allow_network=False))
+        assert "double" in filtered.names
+        assert "net_skill" not in filtered.names
+
+    def test_native_tools_pass_through(self):
+        from prompture import filter_available_skills
+
+        reg = ToolRegistry()
+        reg.register(lambda x: x + 1, name="inc", description="Increment")
+        reg.add_tukuy_skill(net_skill)
+        filtered = filter_available_skills(reg, policy=SafetyPolicy(allow_network=False))
+        assert "inc" in filtered.names
+        assert "net_skill" not in filtered.names
+
+    def test_no_policy_keeps_all(self):
+        from prompture import filter_available_skills
+
+        reg = skills_to_registry([double, net_skill])
+        filtered = filter_available_skills(reg)
+        assert len(filtered) == 2
+
+
+# ------------------------------------------------------------------
+# TestDiscoverAndRegisterPlugins
+# ------------------------------------------------------------------
+
+
+class TestDiscoverAndRegisterPlugins:
+    """Test discover_and_register_plugins bridge function."""
+
+    def test_available_plugins_registered(self):
+        from tukuy.plugins.base import TransformerPlugin
+
+        from prompture import discover_and_register_plugins
+
+        class TestPlugin(TransformerPlugin):
+            @property
+            def skills(self):
+                return {"double": double.__skill__}
+
+            @property
+            def transformers(self):
+                return {}
+
+        plugin = TestPlugin("test_plugin")
+        reg = discover_and_register_plugins([plugin])
+        assert "double" in reg.names
+
+    def test_empty_list_returns_empty_registry(self):
+        from prompture import discover_and_register_plugins
+
+        reg = discover_and_register_plugins([])
+        assert len(reg) == 0
+
+
+# ------------------------------------------------------------------
+# TestSkillToToolDefinitionConfig
+# ------------------------------------------------------------------
+
+
+class TestSkillToToolDefinitionConfig:
+    """Test skill_to_tool_definition with config parameter."""
+
+    def test_config_passed_through(self):
+        """When config is provided, a SkillContext with that config should be injected."""
+        td = skill_to_tool_definition(double, config={"api_key": "test123"})
+        # The wrapper still works (config is injected but skill may ignore it)
+        result = td.function(x=5)
+        assert result == 10
+
+    def test_no_config_no_context(self):
+        """When config is None (default), no context injection happens."""
+        td = skill_to_tool_definition(double)
+        result = td.function(x=5)
+        assert result == 10
+
+
+# ------------------------------------------------------------------
+# TestNewReExports (tukuy >= 0.0.20)
+# ------------------------------------------------------------------
+
+
+class TestNewReExports:
+    """Test that all 10 new tukuy re-exports are importable from prompture."""
+
+    def test_risk_level(self):
+        from tukuy import RiskLevel
+
+        from prompture import TukuyRiskLevel
+
+        assert TukuyRiskLevel is RiskLevel
+
+    def test_config_scope(self):
+        from tukuy import ConfigScope
+
+        from prompture import TukuyConfigScope
+
+        assert TukuyConfigScope is ConfigScope
+
+    def test_config_param(self):
+        from tukuy import ConfigParam
+
+        from prompture import TukuyConfigParam
+
+        assert TukuyConfigParam is ConfigParam
+
+    def test_plugin_manifest(self):
+        from tukuy import PluginManifest
+
+        from prompture import TukuyPluginManifest
+
+        assert TukuyPluginManifest is PluginManifest
+
+    def test_plugin_requirements(self):
+        from tukuy import PluginRequirements
+
+        from prompture import TukuyPluginRequirements
+
+        assert TukuyPluginRequirements is PluginRequirements
+
+    def test_availability_reason(self):
+        from tukuy import AvailabilityReason
+
+        from prompture import TukuyAvailabilityReason
+
+        assert TukuyAvailabilityReason is AvailabilityReason
+
+    def test_skill_availability(self):
+        from tukuy import SkillAvailability
+
+        from prompture import TukuySkillAvailability
+
+        assert TukuySkillAvailability is SkillAvailability
+
+    def test_plugin_discovery_result(self):
+        from tukuy import PluginDiscoveryResult
+
+        from prompture import TukuyPluginDiscoveryResult
+
+        assert TukuyPluginDiscoveryResult is PluginDiscoveryResult
+
+    def test_get_available_skills(self):
+        from tukuy import get_available_skills
+
+        from prompture import tukuy_get_available_skills
+
+        assert tukuy_get_available_skills is get_available_skills
+
+    def test_discover_plugins(self):
+        from tukuy import discover_plugins
+
+        from prompture import tukuy_discover_plugins
+
+        assert tukuy_discover_plugins is discover_plugins

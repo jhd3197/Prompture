@@ -115,19 +115,38 @@ class ToolDefinition:
 
         Returns ``None`` for native Prompture tools.  For tukuy-backed
         tools, returns a dict with ``name``, ``description``,
-        ``side_effects``, ``requires_network``, and ``is_tukuy_skill``.
+        ``side_effects``, ``requires_network``, ``is_tukuy_skill``,
+        and UI metadata fields from tukuy >= 0.0.20.
         """
         skill_obj = getattr(self.function, "__skill__", None)
         if skill_obj is None:
             return None
         desc = skill_obj.descriptor
-        return {
+        meta: dict[str, Any] = {
             "name": desc.name,
             "description": desc.description,
             "side_effects": getattr(desc, "side_effects", False),
             "requires_network": getattr(desc, "requires_network", False),
             "is_tukuy_skill": True,
         }
+        # UI metadata (tukuy >= 0.0.20)
+        if hasattr(desc, "resolved_risk_level"):
+            rl = desc.resolved_risk_level
+            meta["risk_level"] = rl.value if hasattr(rl, "value") else str(rl)
+        if hasattr(desc, "resolved_display_name"):
+            meta["display_name"] = desc.resolved_display_name
+        if getattr(desc, "icon", None) is not None:
+            meta["icon"] = desc.icon
+        if getattr(desc, "group", None) is not None:
+            meta["group"] = desc.group
+        if getattr(desc, "hidden", False):
+            meta["hidden"] = True
+        if getattr(desc, "deprecated", None) is not None:
+            meta["deprecated"] = desc.deprecated
+        config_params = getattr(desc, "config_params", None)
+        if config_params:
+            meta["config_params"] = [cp.to_dict() for cp in config_params]
+        return meta
 
     def to_prompt_format(self) -> str:
         """Plain-text description suitable for prompt-based tool calling."""
