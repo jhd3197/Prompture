@@ -386,6 +386,11 @@ class MoonshotDriver(CostMixin, Driver):
             try:
                 args = json.loads(tc["function"]["arguments"])
             except (json.JSONDecodeError, TypeError):
+                raw = tc["function"].get("arguments")
+                logger.warning(
+                    "Failed to parse tool arguments for %s: %r",
+                    tc["function"]["name"], raw,
+                )
                 args = {}
             tool_calls_out.append(
                 {

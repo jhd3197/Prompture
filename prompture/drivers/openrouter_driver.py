@@ -4,6 +4,7 @@ Requires the `requests` package. Uses OPENROUTER_API_KEY env var.
 
 import contextlib
 import json
+import logging
 import os
 from collections.abc import Iterator
 from typing import Any
@@ -12,6 +13,8 @@ import requests
 
 from ..cost_mixin import CostMixin, prepare_strict_schema
 from ..driver import Driver
+
+logger = logging.getLogger(__name__)
 
 
 class OpenRouterDriver(CostMixin, Driver):
@@ -266,6 +269,11 @@ class OpenRouterDriver(CostMixin, Driver):
             try:
                 args = json.loads(tc["function"]["arguments"])
             except (json.JSONDecodeError, TypeError):
+                raw = tc["function"].get("arguments")
+                logger.warning(
+                    "Failed to parse tool arguments for %s: %r",
+                    tc["function"]["name"], raw,
+                )
                 args = {}
             tool_calls_out.append(
                 {

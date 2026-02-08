@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from typing import Any
 
@@ -11,6 +12,8 @@ import httpx
 from ..async_driver import AsyncDriver
 from ..cost_mixin import CostMixin
 from .grok_driver import GrokDriver
+
+logger = logging.getLogger(__name__)
 
 
 class AsyncGrokDriver(CostMixin, AsyncDriver):
@@ -181,6 +184,11 @@ class AsyncGrokDriver(CostMixin, AsyncDriver):
             try:
                 args = json.loads(tc["function"]["arguments"])
             except (json.JSONDecodeError, TypeError):
+                raw = tc["function"].get("arguments")
+                logger.warning(
+                    "Failed to parse tool arguments for %s: %r",
+                    tc["function"]["name"], raw,
+                )
                 args = {}
             tool_calls_out.append(
                 {

@@ -3,6 +3,7 @@ Requires the `groq` package. Uses GROQ_API_KEY env var.
 """
 
 import json
+import logging
 import os
 from typing import Any
 
@@ -13,6 +14,8 @@ except Exception:
 
 from ..cost_mixin import CostMixin
 from ..driver import Driver
+
+logger = logging.getLogger(__name__)
 
 
 class GroqDriver(CostMixin, Driver):
@@ -193,6 +196,12 @@ class GroqDriver(CostMixin, Driver):
                 try:
                     args = json.loads(tc.function.arguments)
                 except (json.JSONDecodeError, TypeError):
+                    raw = tc.function.arguments
+                    logger.warning(
+                        "Failed to parse tool arguments for %s: %r",
+                        tc.function.name,
+                        raw,
+                    )
                     args = {}
                 tool_calls_out.append(
                     {
