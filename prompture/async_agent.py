@@ -303,7 +303,7 @@ class AsyncAgent(Generic[DepsType]):
             self._lifecycle = AgentState.errored
             raise
 
-    async def iter(self, prompt: str, *, deps: Any = None) -> AsyncAgentIterator:
+    def iter(self, prompt: str, *, deps: Any = None) -> AsyncAgentIterator:
         """Execute the agent loop and iterate over steps asynchronously.
 
         Returns an :class:`AsyncAgentIterator` yielding :class:`AgentStep` objects.
@@ -312,7 +312,7 @@ class AsyncAgent(Generic[DepsType]):
         gen = self._execute_iter(prompt, deps)
         return AsyncAgentIterator(gen)
 
-    async def run_stream(self, prompt: str, *, deps: Any = None) -> AsyncStreamedAgentResult:
+    def run_stream(self, prompt: str, *, deps: Any = None) -> AsyncStreamedAgentResult:
         """Execute the agent loop with streaming output (async).
 
         Returns an :class:`AsyncStreamedAgentResult` yielding :class:`StreamEvent` objects.

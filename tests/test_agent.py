@@ -1403,7 +1403,7 @@ class TestAsyncAgentIter:
         async def _test():
             driver = MockAsyncDriver(["Hello!"])
             agent = AsyncAgent("test/model", driver=driver)
-            it = await agent.iter("test")
+            it = agent.iter("test")
             assert isinstance(it, AsyncAgentIterator)
 
         asyncio.run(_test())
@@ -1414,7 +1414,7 @@ class TestAsyncAgentIter:
         async def _test():
             driver = MockAsyncDriver(["Hello!"])
             agent = AsyncAgent("test/model", driver=driver)
-            it = await agent.iter("test")
+            it = agent.iter("test")
 
             steps = []
             async for step in it:
@@ -1433,7 +1433,7 @@ class TestAsyncAgentIter:
         async def _test():
             driver = MockAsyncDriver(["Hello!"])
             agent = AsyncAgent("test/model", driver=driver)
-            it = await agent.iter("test")
+            it = agent.iter("test")
             assert it.result is None
 
             async for _ in it:
@@ -1459,7 +1459,7 @@ class TestAsyncAgentStream:
         async def _test():
             driver = MockAsyncDriver(["Hello!"])
             agent = AsyncAgent("test/model", driver=driver)
-            stream = await agent.run_stream("test")
+            stream = agent.run_stream("test")
             assert isinstance(stream, AsyncStreamedAgentResult)
 
         asyncio.run(_test())
@@ -1470,7 +1470,7 @@ class TestAsyncAgentStream:
         async def _test():
             driver = MockAsyncDriver(["Hello!"])
             agent = AsyncAgent("test/model", driver=driver)
-            stream = await agent.run_stream("test")
+            stream = agent.run_stream("test")
 
             events = []
             async for event in stream:
@@ -1491,7 +1491,7 @@ class TestAsyncAgentStream:
         async def _test():
             driver = MockAsyncDriver(["Hello!"])
             agent = AsyncAgent("test/model", driver=driver)
-            stream = await agent.run_stream("test")
+            stream = agent.run_stream("test")
             assert stream.result is None
 
             async for _ in stream:
@@ -1861,7 +1861,7 @@ class TestStreamingWithTools:
         async def _test():
             driver = MockAsyncToolDriver(responses)
             agent = AsyncAgent("test/model", driver=driver, tools=[get_time])
-            stream = await agent.run_stream("What time is it?")
+            stream = agent.run_stream("What time is it?")
 
             events = []
             async for event in stream:
