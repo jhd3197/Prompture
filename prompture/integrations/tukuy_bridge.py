@@ -22,7 +22,7 @@ logger = logging.getLogger("prompture.tukuy_bridge")
 # ------------------------------------------------------------------
 
 
-def skill_to_tool_definition(skill_or_fn: Any) -> ToolDefinition:
+def skill_to_tool_definition(skill_or_fn: Any, *, config: dict[str, Any] | None = None) -> ToolDefinition:
     """Convert a tukuy :class:`Skill` or ``@skill``-decorated function to a :class:`ToolDefinition`.
 
     Uses tukuy's ``bridges._normalize()`` and ``bridges._wrap_as_parameters()``
@@ -32,6 +32,9 @@ def skill_to_tool_definition(skill_or_fn: Any) -> ToolDefinition:
 
     Args:
         skill_or_fn: A tukuy ``Skill`` instance or a ``@skill``-decorated function.
+        config: Optional configuration dict injected as a
+            :class:`SkillContext` into ``invoke()`` when no context is
+            already present in kwargs.
 
     Returns:
         A :class:`ToolDefinition` wrapping the skill.
@@ -48,7 +51,13 @@ def skill_to_tool_definition(skill_or_fn: Any) -> ToolDefinition:
 
     # Build wrapper that calls invoke() and unwraps SkillResult
     def _wrapper(**kwargs: Any) -> Any:
-        result = skill_obj.invoke(**kwargs)
+        invoke_kwargs = dict(kwargs)
+        if config is not None and "context" not in invoke_kwargs:
+            from tukuy import SkillContext
+
+            ctx = SkillContext(config=config)
+            invoke_kwargs["context"] = ctx
+        result = skill_obj.invoke(**invoke_kwargs)
         if result.success:
             return result.value
         return f"Error: {result.error}"
@@ -290,6 +299,106 @@ def apply_security_context(registry: ToolRegistry, security_context: Any) -> Too
             new_registry.add(td)
 
     return new_registry
+
+
+# ------------------------------------------------------------------
+# Availability filtering
+# ------------------------------------------------------------------
+
+
+def filter_available_skills(
+    registry: ToolRegistry,
+    *,
+    policy: Any | None = None,
+) -> ToolRegistry:
+    """Return a new :class:`ToolRegistry` containing only available tukuy skills.
+
+    Uses tukuy's :func:`get_available_skills` with a virtual plugin wrapper
+    to filter a :class:`ToolRegistry`.  Non-tukuy tools always pass through.
+
+    Args:
+        registry: The source tool registry.
+        policy: Optional tukuy ``SafetyPolicy``.  When ``None``, all
+            skills are considered available.
+
+    Returns:
+        A new :class:`ToolRegistry` with only available tools.
+    """
+    from tukuy import get_available_skills
+    from tukuy.plugins.base import TransformerPlugin
+
+    new_registry = ToolRegistry()
+
+    # Collect tukuy skills for availability check
+    tukuy_tools: list[tuple[ToolDefinition, Any]] = []
+    for td in registry.definitions:
+        skill_obj = getattr(td.function, "__skill__", None)
+        if skill_obj is not None:
+            tukuy_tools.append((td, skill_obj))
+        else:
+            # Non-tukuy tools pass through unchanged
+            new_registry.add(td)
+
+    if not tukuy_tools:
+        return new_registry
+
+    # Build a virtual plugin wrapping the registry's tukuy skills
+    skill_dict = {s.descriptor.name: s for _, s in tukuy_tools}
+
+    class _VirtualPlugin(TransformerPlugin):
+        @property
+        def skills(self) -> dict[str, Any]:
+            return skill_dict
+
+        @property
+        def transformers(self) -> dict[str, Any]:
+            return {}
+
+    virtual = _VirtualPlugin("_prompture_filter")
+    available = get_available_skills([virtual], policy=policy)
+    available_names = {a.skill.descriptor.name for a in available if a.available}
+
+    for td, skill_obj in tukuy_tools:
+        if skill_obj.descriptor.name in available_names:
+            new_registry.add(td)
+
+    return new_registry
+
+
+def discover_and_register_plugins(
+    plugins: list[Any],
+    *,
+    config: dict[str, Any] | None = None,
+) -> ToolRegistry:
+    """Discover available plugins and register their skills into a new :class:`ToolRegistry`.
+
+    Takes a list of tukuy ``TransformerPlugin`` instances, runs
+    :func:`discover_plugins`, and registers all skills from available
+    plugins.
+
+    Args:
+        plugins: List of tukuy ``TransformerPlugin`` instances.
+        config: Optional configuration dict forwarded to
+            :func:`skill_to_tool_definition`.
+
+    Returns:
+        A :class:`ToolRegistry` populated with skills from available plugins.
+    """
+    from tukuy import discover_plugins
+
+    registry = ToolRegistry()
+
+    if not plugins:
+        return registry
+
+    results = discover_plugins(plugins)
+    for result in results:
+        if result.available:
+            for skill_obj in result.plugin.skills.values():
+                td = skill_to_tool_definition(skill_obj, config=config)
+                registry.add(td)
+
+    return registry
 
 
 # ------------------------------------------------------------------

@@ -151,6 +151,9 @@ class AsyncAgent(Generic[DepsType]):
             ``requires_network=True`` will raise
             :class:`ApprovalRequired` before execution.  Default
             ``False``.
+        skill_config: Optional configuration dict injected as a
+            :class:`SkillContext` into tukuy skill ``invoke()`` calls.
+            When ``None`` (default) no config is injected.
     """
 
     def __init__(
@@ -174,6 +177,7 @@ class AsyncAgent(Generic[DepsType]):
         persistent_conversation: bool = False,
         security_context: Any | None = None,
         auto_approve_safe_only: bool = False,
+        skill_config: dict[str, Any] | None = None,
     ) -> None:
         if not model and driver is None:
             raise ValueError("Either model or driver must be provided")
@@ -195,6 +199,7 @@ class AsyncAgent(Generic[DepsType]):
         self._persistent_conversation = persistent_conversation
         self._security_context = security_context
         self._auto_approve_safe_only = auto_approve_safe_only
+        self._skill_config = skill_config
         self._conversation: Any = None
 
         # Build internal tool registry
@@ -429,6 +434,14 @@ class AsyncAgent(Generic[DepsType]):
                     if _cb.on_tool_start:
                         _invoke_cb_sync(_cb.on_tool_start, _name, kwargs)
                     try:
+                        # Inject skill config via SkillContext for tukuy skills
+                        if self._skill_config is not None:
+                            _skill_obj = getattr(_fn, "__skill__", None)
+                            if _skill_obj is not None:
+                                from tukuy import SkillContext
+
+                                kwargs["context"] = SkillContext(config=self._skill_config)
+
                         # Auto-approve gate: block tukuy skills with side effects
                         if self._auto_approve_safe_only:
                             skill_obj = getattr(_fn, "__skill__", None)
