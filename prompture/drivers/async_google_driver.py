@@ -8,7 +8,8 @@ import uuid
 from collections.abc import AsyncIterator
 from typing import Any
 
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 from ..async_driver import AsyncDriver
 from ..cost_mixin import CostMixin
@@ -34,7 +35,7 @@ class AsyncGoogleDriver(CostMixin, AsyncDriver):
         if not self.api_key:
             raise ValueError("Google API key not found. Set GOOGLE_API_KEY env var or pass api_key to constructor")
         self.model = model
-        genai.configure(api_key=self.api_key)
+        self._client = genai.Client(api_key=self.api_key)
         self.options: dict[str, Any] = {}
 
     def _calculate_cost_chars(self, prompt_chars: int, completion_chars: int) -> float:
@@ -96,30 +97,38 @@ class AsyncGoogleDriver(CostMixin, AsyncDriver):
 
     def _build_generation_args(
         self, messages: list[dict[str, Any]], options: dict[str, Any] | None = None
-    ) -> tuple[Any, dict[str, Any], dict[str, Any]]:
-        """Parse messages and options into (gen_input, gen_kwargs, model_kwargs)."""
+    ) -> tuple[Any, dict[str, Any]]:
+        """Parse messages and options into (contents, config_dict)."""
         merged_options = self.options.copy()
         if options:
             merged_options.update(options)
 
-        generation_config = merged_options.get("generation_config", {})
-        safety_settings = merged_options.get("safety_settings", {})
+        config_dict: dict[str, Any] = {}
 
-        if "temperature" in merged_options and "temperature" not in generation_config:
-            generation_config["temperature"] = merged_options["temperature"]
-        if "max_tokens" in merged_options and "max_output_tokens" not in generation_config:
-            generation_config["max_output_tokens"] = merged_options["max_tokens"]
-        if "top_p" in merged_options and "top_p" not in generation_config:
-            generation_config["top_p"] = merged_options["top_p"]
-        if "top_k" in merged_options and "top_k" not in generation_config:
-            generation_config["top_k"] = merged_options["top_k"]
+        if "temperature" in merged_options:
+            config_dict.setdefault("temperature", merged_options["temperature"])
+        if "max_tokens" in merged_options:
+            config_dict.setdefault("max_output_tokens", merged_options["max_tokens"])
+        if "top_p" in merged_options:
+            config_dict.setdefault("top_p", merged_options["top_p"])
+        if "top_k" in merged_options:
+            config_dict.setdefault("top_k", merged_options["top_k"])
+
+        # Forward explicit generation_config entries
+        for k, v in merged_options.get("generation_config", {}).items():
+            config_dict.setdefault(k, v)
+
+        # Forward safety_settings
+        safety_settings = merged_options.get("safety_settings")
+        if safety_settings:
+            config_dict["safety_settings"] = safety_settings
 
         # Native JSON mode support
         if merged_options.get("json_mode"):
-            generation_config["response_mime_type"] = "application/json"
+            config_dict["response_mime_type"] = "application/json"
             json_schema = merged_options.get("json_schema")
             if json_schema:
-                generation_config["response_schema"] = json_schema
+                config_dict["response_schema"] = json_schema
 
         # Convert messages to Gemini format
         system_instruction = None
@@ -146,16 +155,10 @@ class AsyncGoogleDriver(CostMixin, AsyncDriver):
         else:
             gen_input = contents
 
-        model_kwargs: dict[str, Any] = {}
         if system_instruction:
-            model_kwargs["system_instruction"] = system_instruction
+            config_dict["system_instruction"] = system_instruction
 
-        gen_kwargs: dict[str, Any] = {
-            "generation_config": generation_config if generation_config else None,
-            "safety_settings": safety_settings if safety_settings else None,
-        }
-
-        return gen_input, gen_kwargs, model_kwargs
+        return gen_input, config_dict
 
     async def generate(self, prompt: str, options: dict[str, Any] | None = None) -> dict[str, Any]:
         messages = [{"role": "user", "content": prompt}]
@@ -167,7 +170,7 @@ class AsyncGoogleDriver(CostMixin, AsyncDriver):
     async def _do_generate(
         self, messages: list[dict[str, str]], options: dict[str, Any] | None = None
     ) -> dict[str, Any]:
-        gen_input, gen_kwargs, model_kwargs = self._build_generation_args(messages, options)
+        gen_input, config_dict = self._build_generation_args(messages, options)
 
         # Validate capabilities against models.dev metadata
         self._validate_model_capabilities(
@@ -177,8 +180,12 @@ class AsyncGoogleDriver(CostMixin, AsyncDriver):
         )
 
         try:
-            model = genai.GenerativeModel(self.model, **model_kwargs)
-            response = await model.generate_content_async(gen_input, **gen_kwargs)
+            config = types.GenerateContentConfig(**config_dict)
+            response = await self._client.aio.models.generate_content(
+                model=self.model,
+                contents=gen_input,
+                config=config,
+            )
 
             if not response.text:
                 raise ValueError("Empty response from model")
@@ -211,35 +218,49 @@ class AsyncGoogleDriver(CostMixin, AsyncDriver):
         model = options.get("model", self.model)
         self._validate_model_capabilities("google", model, using_tool_use=True)
 
-        gen_input, gen_kwargs, model_kwargs = self._build_generation_args(
-            self._prepare_messages(messages), options
-        )
+        gen_input, config_dict = self._build_generation_args(self._prepare_messages(messages), options)
 
         # Convert tools from OpenAI format to Gemini function declarations
         function_declarations = []
         for t in tools:
             if "type" in t and t["type"] == "function":
                 fn = t["function"]
-                decl = {
-                    "name": fn["name"],
-                    "description": fn.get("description", ""),
-                }
+                decl = types.FunctionDeclaration(
+                    name=fn["name"],
+                    description=fn.get("description", ""),
+                )
                 params = fn.get("parameters")
                 if params:
-                    decl["parameters"] = params
+                    decl = types.FunctionDeclaration(
+                        name=fn["name"],
+                        description=fn.get("description", ""),
+                        parameters_json_schema=params,
+                    )
                 function_declarations.append(decl)
             elif "name" in t:
-                decl = {"name": t["name"], "description": t.get("description", "")}
                 params = t.get("parameters") or t.get("input_schema")
                 if params:
-                    decl["parameters"] = params
+                    decl = types.FunctionDeclaration(
+                        name=t["name"],
+                        description=t.get("description", ""),
+                        parameters_json_schema=params,
+                    )
+                else:
+                    decl = types.FunctionDeclaration(
+                        name=t["name"],
+                        description=t.get("description", ""),
+                    )
                 function_declarations.append(decl)
 
-        try:
-            model = genai.GenerativeModel(self.model, **model_kwargs)
+        config_dict["tools"] = [types.Tool(function_declarations=function_declarations)]
 
-            gemini_tools = [genai.types.Tool(function_declarations=function_declarations)]
-            response = await model.generate_content_async(gen_input, tools=gemini_tools, **gen_kwargs)
+        try:
+            config = types.GenerateContentConfig(**config_dict)
+            response = await self._client.aio.models.generate_content(
+                model=self.model,
+                contents=gen_input,
+                config=config,
+            )
 
             usage_meta = self._extract_usage_metadata(response, messages)
             meta = {
@@ -258,11 +279,13 @@ class AsyncGoogleDriver(CostMixin, AsyncDriver):
                         text += part.text
                     if hasattr(part, "function_call") and part.function_call.name:
                         fc = part.function_call
-                        tool_calls_out.append({
-                            "id": str(uuid.uuid4()),
-                            "name": fc.name,
-                            "arguments": dict(fc.args) if fc.args else {},
-                        })
+                        tool_calls_out.append(
+                            {
+                                "id": str(uuid.uuid4()),
+                                "name": fc.name,
+                                "arguments": dict(fc.args) if fc.args else {},
+                            }
+                        )
 
                 finish_reason = getattr(candidate, "finish_reason", None)
                 if finish_reason is not None:
@@ -293,13 +316,15 @@ class AsyncGoogleDriver(CostMixin, AsyncDriver):
         options: dict[str, Any],
     ) -> AsyncIterator[dict[str, Any]]:
         """Yield response chunks via Gemini async streaming API."""
-        gen_input, gen_kwargs, model_kwargs = self._build_generation_args(
-            self._prepare_messages(messages), options
-        )
+        gen_input, config_dict = self._build_generation_args(self._prepare_messages(messages), options)
 
         try:
-            model = genai.GenerativeModel(self.model, **model_kwargs)
-            response = await model.generate_content_async(gen_input, stream=True, **gen_kwargs)
+            config = types.GenerateContentConfig(**config_dict)
+            response = self._client.aio.models.generate_content_stream(
+                model=self.model,
+                contents=gen_input,
+                config=config,
+            )
 
             full_text = ""
             async for chunk in response:

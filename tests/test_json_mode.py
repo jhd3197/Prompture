@@ -453,7 +453,7 @@ class TestClaudeJsonMode:
 
 
 class TestGoogleJsonMode:
-    """Verify Google driver adds response_mime_type to generation_config."""
+    """Verify Google driver adds response_mime_type to config_dict."""
 
     def test_json_mode_adds_response_mime_type(self):
         from prompture.drivers.google_driver import GoogleDriver
@@ -463,20 +463,9 @@ class TestGoogleJsonMode:
         driver.model = "gemini-1.5-pro"
         driver.options = {}
 
-        mock_response = MagicMock()
-        mock_response.text = '{"name": "Alice"}'
-        mock_response.prompt_feedback = {}
-
-        mock_model = MagicMock()
-        mock_model.generate_content.return_value = mock_response
-
-        with patch("prompture.drivers.google_driver.genai") as mock_genai:
-            mock_genai.GenerativeModel.return_value = mock_model
-            driver.generate("test", {"json_mode": True})
-
-            call_kwargs = mock_model.generate_content.call_args
-            gen_config = call_kwargs[1]["generation_config"]
-            assert gen_config["response_mime_type"] == "application/json"
+        messages = [{"role": "user", "content": "test"}]
+        _gen_input, config_dict = driver._build_generation_args(messages, {"json_mode": True})
+        assert config_dict["response_mime_type"] == "application/json"
 
     def test_json_mode_with_schema(self):
         from prompture.drivers.google_driver import GoogleDriver
@@ -486,21 +475,12 @@ class TestGoogleJsonMode:
         driver.model = "gemini-1.5-pro"
         driver.options = {}
 
-        mock_response = MagicMock()
-        mock_response.text = '{"name": "Alice"}'
-        mock_response.prompt_feedback = {}
-
-        mock_model = MagicMock()
-        mock_model.generate_content.return_value = mock_response
-
-        with patch("prompture.drivers.google_driver.genai") as mock_genai:
-            mock_genai.GenerativeModel.return_value = mock_model
-            driver.generate("test", {"json_mode": True, "json_schema": SAMPLE_SCHEMA})
-
-            call_kwargs = mock_model.generate_content.call_args
-            gen_config = call_kwargs[1]["generation_config"]
-            assert gen_config["response_mime_type"] == "application/json"
-            assert gen_config["response_schema"] == SAMPLE_SCHEMA
+        messages = [{"role": "user", "content": "test"}]
+        _gen_input, config_dict = driver._build_generation_args(
+            messages, {"json_mode": True, "json_schema": SAMPLE_SCHEMA}
+        )
+        assert config_dict["response_mime_type"] == "application/json"
+        assert config_dict["response_schema"] == SAMPLE_SCHEMA
 
 
 # ---------------------------------------------------------------------------
