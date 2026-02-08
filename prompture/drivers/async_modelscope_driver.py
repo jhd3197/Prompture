@@ -134,14 +134,14 @@ class AsyncModelScopeDriver(CostMixin, AsyncDriver):
 
         self._validate_model_capabilities("modelscope", model, using_tool_use=True)
 
-        opts = {"temperature": 1.0, "max_tokens": 512, **options}
+        opts = {"temperature": 1.0, "max_tokens": 4096, **options}
 
         data: dict[str, Any] = {
             "model": model,
             "messages": messages,
             "tools": tools,
         }
-        data[tokens_param] = opts.get("max_tokens", 512)
+        data[tokens_param] = opts.get("max_tokens", 4096)
 
         if supports_temperature and "temperature" in opts:
             data["temperature"] = opts["temperature"]
@@ -190,10 +190,18 @@ class AsyncModelScopeDriver(CostMixin, AsyncDriver):
                 args = json.loads(tc["function"]["arguments"])
             except (json.JSONDecodeError, TypeError):
                 raw = tc["function"].get("arguments")
-                logger.warning(
-                    "Failed to parse tool arguments for %s: %r",
-                    tc["function"]["name"], raw,
-                )
+                if stop_reason == "length":
+                    logger.warning(
+                        "Tool arguments for %s were truncated due to max_tokens limit. "
+                        "Increase max_tokens in options to allow longer tool outputs. "
+                        "Truncated arguments: %r",
+                        tc["function"]["name"], raw[:200] if raw else raw,
+                    )
+                else:
+                    logger.warning(
+                        "Failed to parse tool arguments for %s: %r",
+                        tc["function"]["name"], raw,
+                    )
                 args = {}
             tool_calls_out.append(
                 {
