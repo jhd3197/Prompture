@@ -128,6 +128,69 @@ class ToolDefinition:
         return "\n".join(lines)
 
 
+def _parse_docstring_params(docstring: str | None) -> dict[str, str]:
+    """Extract parameter descriptions from a Google-style docstring ``Args:`` section."""
+    if not docstring:
+        return {}
+    lines = docstring.split("\n")
+    params: dict[str, str] = {}
+    in_args = False
+    current_param: str | None = None
+    current_desc_parts: list[str] = []
+    args_indent: int | None = None
+
+    for line in lines:
+        stripped = line.strip()
+
+        # Detect start of Args section
+        if stripped in ("Args:", "Arguments:", "Parameters:"):
+            in_args = True
+            args_indent = None
+            continue
+
+        if not in_args:
+            continue
+
+        # Detect end of Args section (next section header like Returns:, Raises:, etc.)
+        if stripped and not stripped.startswith("-") and stripped.endswith(":") and " " not in stripped:
+            # Save last param
+            if current_param is not None:
+                params[current_param] = " ".join(current_desc_parts).strip()
+            break
+
+        # Empty line inside Args might end the section or just be spacing
+        if not stripped:
+            continue
+
+        # Determine indentation level of Args entries
+        content_indent = len(line) - len(line.lstrip())
+        if args_indent is None and stripped:
+            args_indent = content_indent
+
+        # New parameter line: "param_name: description" or "param_name (type): description"
+        if content_indent == args_indent and ":" in stripped:
+            # Save previous param
+            if current_param is not None:
+                params[current_param] = " ".join(current_desc_parts).strip()
+            # Parse "param_name: desc" or "param_name (type): desc"
+            colon_idx = stripped.index(":")
+            param_part = stripped[:colon_idx].strip()
+            # Remove type annotation in parens: "param_name (str)"
+            if " (" in param_part:
+                param_part = param_part[: param_part.index(" (")]
+            current_param = param_part
+            current_desc_parts = [stripped[colon_idx + 1 :].strip()]
+        elif current_param is not None and content_indent > (args_indent or 0):
+            # Continuation line for current parameter
+            current_desc_parts.append(stripped)
+
+    # Save last parameter
+    if current_param is not None:
+        params[current_param] = " ".join(current_desc_parts).strip()
+
+    return params
+
+
 def tool_from_function(
     fn: Callable[..., Any], *, name: str | None = None, description: str | None = None
 ) -> ToolDefinition:
@@ -139,7 +202,9 @@ def tool_from_function(
         description: Override the description (defaults to the first line of the docstring).
     """
     tool_name = name or fn.__name__
-    tool_desc = description or (inspect.getdoc(fn) or "").split("\n")[0] or f"Call {tool_name}"
+    raw_doc = inspect.getdoc(fn) or ""
+    tool_desc = description or raw_doc.split("\n")[0] or f"Call {tool_name}"
+    param_docs = _parse_docstring_params(raw_doc)
 
     sig = inspect.signature(fn)
     try:
@@ -156,8 +221,12 @@ def tool_from_function(
         annotation = hints.get(param_name, param.annotation)
         prop = _python_type_to_json_schema(annotation)
 
-        # Use parameter name as description fallback
-        prop.setdefault("description", f"Parameter: {param_name}")
+        # Use docstring description if available, else fall back to parameter name
+        doc_desc = param_docs.get(param_name)
+        if doc_desc:
+            prop.setdefault("description", doc_desc)
+        else:
+            prop.setdefault("description", f"Parameter: {param_name}")
 
         properties[param_name] = prop
 

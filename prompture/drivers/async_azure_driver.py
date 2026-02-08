@@ -6,6 +6,7 @@ Requires the ``openai`` package (>=1.0.0). Claude backend also requires ``anthro
 from __future__ import annotations
 
 import json
+import logging
 import os
 from typing import Any
 
@@ -23,6 +24,8 @@ from ..async_driver import AsyncDriver
 from ..cost_mixin import CostMixin, prepare_strict_schema
 from .azure_config import classify_backend, resolve_config
 from .azure_driver import AzureDriver
+
+logger = logging.getLogger(__name__)
 
 
 class AsyncAzureDriver(CostMixin, AsyncDriver):
@@ -317,6 +320,12 @@ class AsyncAzureDriver(CostMixin, AsyncDriver):
                 try:
                     args = json.loads(tc.function.arguments)
                 except (json.JSONDecodeError, TypeError):
+                    raw = tc.function.arguments
+                    logger.warning(
+                        "Failed to parse tool arguments for %s: %r",
+                        tc.function.name,
+                        raw,
+                    )
                     args = {}
                 tool_calls_out.append(
                     {

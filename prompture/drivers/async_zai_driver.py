@@ -6,6 +6,7 @@ All pricing comes from models.dev (provider: "zai") — no hardcoded pricing.
 from __future__ import annotations
 
 import json
+import logging
 import os
 from collections.abc import AsyncIterator
 from typing import Any
@@ -15,6 +16,8 @@ import httpx
 from ..async_driver import AsyncDriver
 from ..cost_mixin import CostMixin, prepare_strict_schema
 from .zai_driver import ZaiDriver
+
+logger = logging.getLogger(__name__)
 
 
 class AsyncZaiDriver(CostMixin, AsyncDriver):
@@ -203,6 +206,11 @@ class AsyncZaiDriver(CostMixin, AsyncDriver):
             try:
                 args = json.loads(tc["function"]["arguments"])
             except (json.JSONDecodeError, TypeError):
+                raw = tc["function"].get("arguments")
+                logger.warning(
+                    "Failed to parse tool arguments for %s: %r",
+                    tc["function"]["name"], raw,
+                )
                 args = {}
             tool_calls_out.append(
                 {

@@ -3,6 +3,7 @@ Requires the `openai` package. Uses OPENAI_API_KEY env var.
 """
 
 import json
+import logging
 import os
 from collections.abc import Iterator
 from typing import Any
@@ -14,6 +15,8 @@ except Exception:
 
 from ..cost_mixin import CostMixin, prepare_strict_schema
 from ..driver import Driver
+
+logger = logging.getLogger(__name__)
 
 
 class OpenAIDriver(CostMixin, Driver):
@@ -221,12 +224,20 @@ class OpenAIDriver(CostMixin, Driver):
                 try:
                     args = json.loads(tc.function.arguments)
                 except (json.JSONDecodeError, TypeError):
+                    raw = tc.function.arguments
+                    logger.warning(
+                        "Failed to parse tool arguments for %s: %r",
+                        tc.function.name,
+                        raw,
+                    )
                     args = {}
-                tool_calls_out.append({
-                    "id": tc.id,
-                    "name": tc.function.name,
-                    "arguments": args,
-                })
+                tool_calls_out.append(
+                    {
+                        "id": tc.id,
+                        "name": tc.function.name,
+                        "arguments": args,
+                    }
+                )
 
         return {
             "text": text,

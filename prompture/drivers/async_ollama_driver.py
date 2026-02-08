@@ -163,6 +163,10 @@ class AsyncOllamaDriver(AsyncDriver):
                 try:
                     args = json.loads(args)
                 except (json.JSONDecodeError, TypeError):
+                    logger.warning(
+                        "Failed to parse tool arguments for %s: %r",
+                        func.get("name", ""), args,
+                    )
                     args = {}
             tool_calls_out.append({
                 # Ollama does not return tool_call IDs — generate one locally

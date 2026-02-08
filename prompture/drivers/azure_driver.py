@@ -10,6 +10,7 @@ Requires the ``openai`` package. Claude backend also requires ``anthropic``.
 """
 
 import json
+import logging
 import os
 from typing import Any
 
@@ -26,6 +27,8 @@ except Exception:
 from ..cost_mixin import CostMixin, prepare_strict_schema
 from ..driver import Driver
 from .azure_config import classify_backend, resolve_config
+
+logger = logging.getLogger(__name__)
 
 
 class AzureDriver(CostMixin, Driver):
@@ -392,6 +395,12 @@ class AzureDriver(CostMixin, Driver):
                 try:
                     args = json.loads(tc.function.arguments)
                 except (json.JSONDecodeError, TypeError):
+                    raw = tc.function.arguments
+                    logger.warning(
+                        "Failed to parse tool arguments for %s: %r",
+                        tc.function.name,
+                        raw,
+                    )
                     args = {}
                 tool_calls_out.append(
                     {

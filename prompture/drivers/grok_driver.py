@@ -3,6 +3,7 @@ Requires the `requests` package. Uses GROK_API_KEY env var.
 """
 
 import json
+import logging
 import os
 from typing import Any
 
@@ -10,6 +11,8 @@ import requests
 
 from ..cost_mixin import CostMixin
 from ..driver import Driver
+
+logger = logging.getLogger(__name__)
 
 
 class GrokDriver(CostMixin, Driver):
@@ -235,6 +238,11 @@ class GrokDriver(CostMixin, Driver):
             try:
                 args = json.loads(tc["function"]["arguments"])
             except (json.JSONDecodeError, TypeError):
+                raw = tc["function"].get("arguments")
+                logger.warning(
+                    "Failed to parse tool arguments for %s: %r",
+                    tc["function"]["name"], raw,
+                )
                 args = {}
             tool_calls_out.append(
                 {
