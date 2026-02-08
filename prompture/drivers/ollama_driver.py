@@ -221,10 +221,18 @@ class OllamaDriver(Driver):
                 try:
                     args = json.loads(args)
                 except (json.JSONDecodeError, TypeError):
-                    logger.warning(
-                        "Failed to parse tool arguments for %s: %r",
-                        func.get("name", ""), args,
-                    )
+                    if stop_reason == "length":
+                        logger.warning(
+                            "Tool arguments for %s were truncated due to max_tokens limit. "
+                            "Increase max_tokens in options to allow longer tool outputs. "
+                            "Truncated arguments: %r",
+                            func.get("name", ""), args[:200] if args else args,
+                        )
+                    else:
+                        logger.warning(
+                            "Failed to parse tool arguments for %s: %r",
+                            func.get("name", ""), args,
+                        )
                     args = {}
             tool_calls_out.append({
                 # Ollama does not return tool_call IDs — generate one locally

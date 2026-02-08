@@ -280,14 +280,14 @@ class AsyncAzureDriver(CostMixin, AsyncDriver):
 
         self._validate_model_capabilities("azure", model, using_tool_use=True)
 
-        opts = {"temperature": 1.0, "max_tokens": 512, **options}
+        opts = {"temperature": 1.0, "max_tokens": 4096, **options}
 
         kwargs: dict[str, Any] = {
             "model": deployment_id,
             "messages": messages,
             "tools": tools,
         }
-        kwargs[tokens_param] = opts.get("max_tokens", 512)
+        kwargs[tokens_param] = opts.get("max_tokens", 4096)
 
         if supports_temperature and "temperature" in opts:
             kwargs["temperature"] = opts["temperature"]
@@ -321,11 +321,18 @@ class AsyncAzureDriver(CostMixin, AsyncDriver):
                     args = json.loads(tc.function.arguments)
                 except (json.JSONDecodeError, TypeError):
                     raw = tc.function.arguments
-                    logger.warning(
-                        "Failed to parse tool arguments for %s: %r",
-                        tc.function.name,
-                        raw,
-                    )
+                    if stop_reason == "length":
+                        logger.warning(
+                            "Tool arguments for %s were truncated due to max_tokens limit. "
+                            "Increase max_tokens in options to allow longer tool outputs. "
+                            "Truncated arguments: %r",
+                            tc.function.name, raw[:200] if raw else raw,
+                        )
+                    else:
+                        logger.warning(
+                            "Failed to parse tool arguments for %s: %r",
+                            tc.function.name, raw,
+                        )
                     args = {}
                 tool_calls_out.append(
                     {
@@ -353,7 +360,7 @@ class AsyncAzureDriver(CostMixin, AsyncDriver):
         """Tool calling via Anthropic SDK with Azure endpoint."""
         client = self._get_anthropic_client(config)
 
-        opts = {**{"temperature": 0.0, "max_tokens": 512}, **options}
+        opts = {**{"temperature": 0.0, "max_tokens": 4096}, **options}
 
         system_content = None
         api_messages: list[dict[str, Any]] = []
