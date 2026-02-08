@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
-import prompture.model_rates as mr
+import prompture.infra.model_rates as mr
 
 # Sample API data mimicking models.dev structure (with capability fields)
 SAMPLE_API_DATA = {
@@ -446,7 +446,7 @@ class TestGetModelConfig:
 
     def test_live_data_overrides_hardcoded_temperature(self):
         """Live models.dev data overrides hardcoded supports_temperature."""
-        from prompture.cost_mixin import CostMixin
+        from prompture.infra.cost_mixin import CostMixin
 
         mixin = CostMixin()
         mixin.MODEL_PRICING = {
@@ -460,7 +460,7 @@ class TestGetModelConfig:
 
         # Mock get_model_capabilities to return supports_temperature=False
         caps = mr.ModelCapabilities(supports_temperature=False, context_window=200000)
-        with patch("prompture.model_rates.get_model_capabilities", return_value=caps):
+        with patch("prompture.infra.model_rates.get_model_capabilities", return_value=caps):
             config = mixin._get_model_config("openai", "test-model")
 
         assert config["supports_temperature"] is False
@@ -469,7 +469,7 @@ class TestGetModelConfig:
 
     def test_tokens_param_always_from_hardcoded(self):
         """tokens_param is always from MODEL_PRICING, never from models.dev."""
-        from prompture.cost_mixin import CostMixin
+        from prompture.infra.cost_mixin import CostMixin
 
         mixin = CostMixin()
         mixin.MODEL_PRICING = {
@@ -482,14 +482,14 @@ class TestGetModelConfig:
         }
 
         caps = mr.ModelCapabilities(supports_temperature=True)
-        with patch("prompture.model_rates.get_model_capabilities", return_value=caps):
+        with patch("prompture.infra.model_rates.get_model_capabilities", return_value=caps):
             config = mixin._get_model_config("openai", "test-model")
 
         assert config["tokens_param"] == "max_completion_tokens"
 
     def test_fallback_when_no_live_data(self):
         """Falls back to hardcoded values when models.dev returns None."""
-        from prompture.cost_mixin import CostMixin
+        from prompture.infra.cost_mixin import CostMixin
 
         mixin = CostMixin()
         mixin.MODEL_PRICING = {
@@ -501,7 +501,7 @@ class TestGetModelConfig:
             }
         }
 
-        with patch("prompture.model_rates.get_model_capabilities", return_value=None):
+        with patch("prompture.infra.model_rates.get_model_capabilities", return_value=None):
             config = mixin._get_model_config("openai", "test-model")
 
         assert config["supports_temperature"] is False
@@ -511,12 +511,12 @@ class TestGetModelConfig:
 
     def test_unknown_model_defaults(self):
         """Unknown model gets default values."""
-        from prompture.cost_mixin import CostMixin
+        from prompture.infra.cost_mixin import CostMixin
 
         mixin = CostMixin()
         mixin.MODEL_PRICING = {}
 
-        with patch("prompture.model_rates.get_model_capabilities", return_value=None):
+        with patch("prompture.infra.model_rates.get_model_capabilities", return_value=None):
             config = mixin._get_model_config("openai", "unknown-model")
 
         assert config["tokens_param"] == "max_tokens"

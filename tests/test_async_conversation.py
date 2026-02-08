@@ -9,9 +9,9 @@ from unittest.mock import patch
 import pytest
 from pydantic import BaseModel
 
-from prompture.async_conversation import AsyncConversation
-from prompture.async_driver import AsyncDriver
-from prompture.serialization import EXPORT_VERSION
+from prompture.agents.async_conversation import AsyncConversation
+from prompture.drivers.async_base import AsyncDriver
+from prompture.persistence.serialization import EXPORT_VERSION
 
 
 class MockAsyncDriver(AsyncDriver):
@@ -235,7 +235,7 @@ class TestAsyncConversationPersistence:
         await conv.ask("hello")
         data = conv.export()
 
-        with patch("prompture.async_conversation.get_async_driver_for_model") as mock_get:
+        with patch("prompture.agents.async_conversation.get_async_driver_for_model") as mock_get:
             mock_get.return_value = MockAsyncDriver()
             restored = AsyncConversation.from_export(data)
             assert restored.conversation_id == conv.conversation_id
@@ -253,7 +253,7 @@ class TestAsyncConversationPersistence:
 
         assert path.exists()
 
-        with patch("prompture.async_conversation.get_async_driver_for_model") as mock_get:
+        with patch("prompture.agents.async_conversation.get_async_driver_for_model") as mock_get:
             mock_get.return_value = MockAsyncDriver()
             loaded = AsyncConversation.load(path)
             assert loaded.conversation_id == conv.conversation_id

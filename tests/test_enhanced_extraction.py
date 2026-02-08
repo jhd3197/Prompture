@@ -11,8 +11,8 @@ from unittest.mock import patch
 import pytest
 from pydantic import BaseModel, Field
 
-from prompture.core import stepwise_extract_with_model
-from prompture.field_definitions import FIELD_DEFINITIONS
+from prompture.extraction.core import stepwise_extract_with_model
+from prompture.extraction.fields import FIELD_DEFINITIONS
 
 
 # Test models for extraction
@@ -60,12 +60,12 @@ class TestStepwiseExtractionBasic:
 
         # Invalid field names should raise KeyError
         with pytest.raises(KeyError, match="Fields not found in model"):
-            with patch("prompture.core.extract_and_jsonify"):
+            with patch("prompture.extraction.core.extract_and_jsonify"):
                 stepwise_extract_with_model(
                     PersonModel, "test text", model_name="test/model", fields=["nonexistent_field"]
                 )
 
-    @patch("prompture.core.extract_and_jsonify")
+    @patch("prompture.extraction.core.extract_and_jsonify")
     def test_successful_extraction_all_fields(self, mock_extract):
         """Test successful extraction of all fields."""
         # Mock successful extractions for each field
@@ -117,7 +117,7 @@ class TestStepwiseExtractionBasic:
             assert field_results[field_name]["status"] == "success"
             assert not field_results[field_name]["used_default"]
 
-    @patch("prompture.core.extract_and_jsonify")
+    @patch("prompture.extraction.core.extract_and_jsonify")
     def test_extraction_with_field_subset(self, mock_extract):
         """Test extraction with only specific fields."""
         mock_extract.side_effect = [
@@ -150,7 +150,7 @@ class TestStepwiseExtractionBasic:
 class TestStepwiseExtractionWithFailures:
     """Test stepwise extraction with various failure scenarios."""
 
-    @patch("prompture.core.extract_and_jsonify")
+    @patch("prompture.extraction.core.extract_and_jsonify")
     def test_extraction_failure_with_defaults(self, mock_extract):
         """Test extraction failure with graceful default handling."""
         # First field succeeds, second fails, third succeeds
@@ -190,7 +190,7 @@ class TestStepwiseExtractionWithFailures:
         assert field_results["email"]["status"] == "success"
         assert field_results["occupation"]["status"] == "success"
 
-    @patch("prompture.core.extract_and_jsonify")
+    @patch("prompture.extraction.core.extract_and_jsonify")
     def test_conversion_failure_with_defaults(self, mock_extract):
         """Test type conversion failure with graceful default handling."""
         mock_extract.side_effect = [
@@ -238,7 +238,7 @@ class TestStepwiseExtractionWithFailures:
 class TestStepwiseExtractionWithFieldDefinitions:
     """Test stepwise extraction with field definitions for enhanced defaults."""
 
-    @patch("prompture.core.extract_and_jsonify")
+    @patch("prompture.extraction.core.extract_and_jsonify")
     def test_extraction_with_field_definitions(self, mock_extract):
         """Test extraction using field definitions for defaults."""
         # Mock one successful extraction and one failure
@@ -271,7 +271,7 @@ class TestStepwiseExtractionWithFieldDefinitions:
         assert field_results["value"]["status"] == "extraction_failed"
         assert field_results["value"]["used_default"]
 
-    @patch("prompture.core.extract_and_jsonify")
+    @patch("prompture.extraction.core.extract_and_jsonify")
     def test_custom_field_definitions(self, mock_extract):
         """Test extraction with custom field definitions."""
         custom_definitions = {
@@ -307,7 +307,7 @@ class TestStepwiseExtractionWithFieldDefinitions:
 class TestStepwiseExtractionUsageTracking:
     """Test usage tracking and metadata in stepwise extraction."""
 
-    @patch("prompture.core.extract_and_jsonify")
+    @patch("prompture.extraction.core.extract_and_jsonify")
     def test_usage_accumulation(self, mock_extract):
         """Test that usage statistics are properly accumulated."""
         mock_extract.side_effect = [
@@ -335,7 +335,7 @@ class TestStepwiseExtractionUsageTracking:
         assert "name" in usage["field_usages"]
         assert "value" in usage["field_usages"]
 
-    @patch("prompture.core.extract_and_jsonify")
+    @patch("prompture.extraction.core.extract_and_jsonify")
     def test_usage_with_failures(self, mock_extract):
         """Test usage tracking when some extractions fail."""
         mock_extract.side_effect = [
@@ -364,7 +364,7 @@ class TestStepwiseExtractionUsageTracking:
 class TestStepwiseExtractionBackwardCompatibility:
     """Test backward compatibility of enhanced stepwise extraction."""
 
-    @patch("prompture.core.extract_and_jsonify")
+    @patch("prompture.extraction.core.extract_and_jsonify")
     def test_original_call_signature(self, mock_extract):
         """Test that original way of calling stepwise_extract_with_model still works."""
         mock_extract.side_effect = [
@@ -385,7 +385,7 @@ class TestStepwiseExtractionBackwardCompatibility:
         assert result["model"].name == "Test Name"
         assert result["model"].value == 42
 
-    @patch("prompture.core.extract_and_jsonify")
+    @patch("prompture.extraction.core.extract_and_jsonify")
     def test_enhanced_call_signature(self, mock_extract):
         """Test that new enhanced parameters work correctly."""
         mock_extract.return_value = {
@@ -419,7 +419,7 @@ class TestStepwiseExtractionBackwardCompatibility:
 class TestStepwiseExtractionComplexScenarios:
     """Test complex scenarios with multiple failures and recoveries."""
 
-    @patch("prompture.core.extract_and_jsonify")
+    @patch("prompture.extraction.core.extract_and_jsonify")
     def test_partial_success_scenario(self, mock_extract):
         """Test scenario where some fields succeed and others fail."""
         # Simulate mixed success/failure for a complex model

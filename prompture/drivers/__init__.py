@@ -26,7 +26,7 @@ Entry Point Discovery:
 
 from typing import Optional
 
-from ..settings import settings
+from ..infra.settings import settings
 from .airllm_driver import AirLLMDriver
 from .async_airllm_driver import AsyncAirLLMDriver
 from .async_azure_driver import AsyncAzureDriver
@@ -76,6 +76,7 @@ from .registry import (
     unregister_async_driver,
     unregister_driver,
 )
+from .async_base import AsyncDriver
 from .zai_driver import ZaiDriver
 
 # Register built-in sync drivers
@@ -225,6 +226,8 @@ def get_driver_for_model(model_str: str):
 
 __all__ = [
     "ASYNC_DRIVER_REGISTRY",
+    # Async base class
+    "AsyncDriver",
     # Legacy registry dicts (for backwards compatibility)
     "DRIVER_REGISTRY",
     # Sync drivers

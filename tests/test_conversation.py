@@ -9,9 +9,9 @@ from unittest.mock import patch
 import pytest
 from pydantic import BaseModel
 
-from prompture.conversation import Conversation
-from prompture.driver import Driver
-from prompture.serialization import EXPORT_VERSION
+from prompture.agents.conversation import Conversation
+from prompture.drivers.base import Driver
+from prompture.persistence.serialization import EXPORT_VERSION
 
 
 class MockDriver(Driver):
@@ -62,7 +62,7 @@ class TestConversationInit:
         assert conv.messages == []
 
     def test_init_with_model_name(self):
-        with patch("prompture.conversation.get_driver_for_model") as mock_get:
+        with patch("prompture.agents.conversation.get_driver_for_model") as mock_get:
             mock_get.return_value = MockDriver()
             conv = Conversation(model_name="openai/gpt-4")
             assert conv._model_name == "openai/gpt-4"
@@ -312,7 +312,7 @@ class TestConversationPersistence:
         conv.ask("hello")
         data = conv.export()
 
-        with patch("prompture.conversation.get_driver_for_model") as mock_get:
+        with patch("prompture.agents.conversation.get_driver_for_model") as mock_get:
             mock_get.return_value = MockDriver()
             restored = Conversation.from_export(data)
             assert restored.conversation_id == conv.conversation_id
@@ -331,7 +331,7 @@ class TestConversationPersistence:
 
         assert path.exists()
 
-        with patch("prompture.conversation.get_driver_for_model") as mock_get:
+        with patch("prompture.agents.conversation.get_driver_for_model") as mock_get:
             mock_get.return_value = MockDriver()
             loaded = Conversation.load(path)
             assert loaded.conversation_id == conv.conversation_id

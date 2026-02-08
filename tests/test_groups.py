@@ -10,10 +10,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from prompture.agent import Agent
-from prompture.agent_types import AgentResult, AgentState
-from prompture.driver import Driver
-from prompture.group_types import (
+from prompture.agents.agent import Agent
+from prompture.agents.types import AgentResult, AgentState
+from prompture.drivers.base import Driver
+from prompture.groups.types import (
     AgentError,
     ErrorPolicy,
     GroupCallbacks,
@@ -21,14 +21,14 @@ from prompture.group_types import (
     GroupStep,
     _aggregate_usage,
 )
-from prompture.groups import (
+from prompture.groups.groups import (
     GroupAsAgent,
     LoopGroup,
     RouterAgent,
     SequentialGroup,
     _inject_state,
 )
-from prompture.tools_schema import ToolDefinition
+from prompture.agents.tools_schema import ToolDefinition
 
 
 # ---------------------------------------------------------------------------

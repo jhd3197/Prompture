@@ -1,8 +1,8 @@
-"""Tests for prompture.callbacks module."""
+"""Tests for prompture.infra.callbacks module."""
 
 from __future__ import annotations
 
-from prompture.callbacks import DriverCallbacks
+from prompture.infra.callbacks import DriverCallbacks
 
 
 class TestDriverCallbacks:

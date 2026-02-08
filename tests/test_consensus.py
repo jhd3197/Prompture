@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 import pytest
 
-from prompture.consensus import (
+from prompture.groups.consensus import (
     ConsensusResult,
     ModelVote,
     _compute_highest_confidence_consensus,
@@ -363,7 +363,7 @@ class TestExtractWithConsensus:
         with pytest.raises(ValueError, match="(?i)at least one model"):
             extract_with_consensus(Person, "text", models=[])
 
-    @patch("prompture.consensus._extract_single_model")
+    @patch("prompture.groups.consensus._extract_single_model")
     def test_parallel_execution(self, mock_extract):
         """Should execute models in parallel by default."""
         from pydantic import BaseModel
@@ -392,7 +392,7 @@ class TestExtractWithConsensus:
         assert result.total_cost == 0.002
         assert result.total_tokens == 200
 
-    @patch("prompture.consensus._extract_single_model")
+    @patch("prompture.groups.consensus._extract_single_model")
     def test_sequential_execution(self, mock_extract):
         """Should execute models sequentially when parallel=False."""
         from pydantic import BaseModel
@@ -417,7 +417,7 @@ class TestExtractWithConsensus:
 
         assert mock_extract.call_count == 2
 
-    @patch("prompture.consensus._extract_single_model")
+    @patch("prompture.groups.consensus._extract_single_model")
     def test_majority_vote_strategy(self, mock_extract):
         """Should use majority vote by default."""
         from pydantic import BaseModel
@@ -442,7 +442,7 @@ class TestExtractWithConsensus:
         assert result.consensus["name"] == "John"
         assert result.strategy == "majority_vote"
 
-    @patch("prompture.consensus._extract_single_model")
+    @patch("prompture.groups.consensus._extract_single_model")
     def test_unanimous_strategy_fails(self, mock_extract):
         """Should fail unanimous strategy when disagreement exists."""
         from pydantic import BaseModel
@@ -463,7 +463,7 @@ class TestExtractWithConsensus:
                 strategy="unanimous",
             )
 
-    @patch("prompture.consensus._extract_single_model")
+    @patch("prompture.groups.consensus._extract_single_model")
     def test_min_agreement_threshold(self, mock_extract):
         """Should fail when below min_agreement threshold."""
         from pydantic import BaseModel
@@ -486,7 +486,7 @@ class TestExtractWithConsensus:
                 min_agreement=0.9,  # Require 90% agreement
             )
 
-    @patch("prompture.consensus._extract_single_model")
+    @patch("prompture.groups.consensus._extract_single_model")
     def test_handles_extraction_failures(self, mock_extract):
         """Should handle some extraction failures gracefully."""
         from pydantic import BaseModel
@@ -511,7 +511,7 @@ class TestExtractWithConsensus:
         assert len([v for v in result.votes if v.success]) == 2
         assert len([v for v in result.votes if not v.success]) == 1
 
-    @patch("prompture.consensus._extract_single_model")
+    @patch("prompture.groups.consensus._extract_single_model")
     def test_all_extractions_fail(self, mock_extract):
         """Should fail when all extractions fail."""
         from pydantic import BaseModel
@@ -528,7 +528,7 @@ class TestExtractWithConsensus:
                 models=["m1", "m2"],
             )
 
-    @patch("prompture.consensus._extract_single_model")
+    @patch("prompture.groups.consensus._extract_single_model")
     def test_disagreement_detection(self, mock_extract):
         """Should detect and report disagreements."""
         from pydantic import BaseModel
@@ -553,7 +553,7 @@ class TestExtractWithConsensus:
         assert "age" in result.disagreements
         assert set(result.disagreements["age"]) == {30, 31}
 
-    @patch("prompture.consensus._extract_single_model")
+    @patch("prompture.groups.consensus._extract_single_model")
     def test_cost_aggregation(self, mock_extract):
         """Should aggregate costs across all models."""
         from pydantic import BaseModel
@@ -581,12 +581,12 @@ class TestExtractWithConsensusAsync:
     """Tests for async consensus extraction."""
 
     @pytest.mark.asyncio
-    @patch("prompture.consensus._extract_single_model")
+    @patch("prompture.groups.consensus._extract_single_model")
     async def test_async_execution(self, mock_extract):
         """Should run asynchronously."""
         from pydantic import BaseModel
 
-        from prompture.consensus import extract_with_consensus_async
+        from prompture.groups.consensus import extract_with_consensus_async
 
         class Person(BaseModel):
             name: str

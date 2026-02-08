@@ -8,8 +8,8 @@ All functions mirror their synchronous counterparts in ``prompture.core``
 but are ``async def`` and must be ``await``-ed.
 """
 
-from ..async_conversation import AsyncConversation
-from ..async_core import (
+from ..agents.async_conversation import AsyncConversation
+from ..extraction.async_core import (
     ask_for_json,
     clean_json_text_with_ai,
     extract_and_jsonify,
@@ -21,7 +21,7 @@ from ..async_core import (
     render_output,
     stepwise_extract_with_model,
 )
-from ..async_driver import AsyncDriver
+from ..drivers.async_base import AsyncDriver
 from ..drivers import (
     AsyncAirLLMDriver,
     AsyncAzureDriver,

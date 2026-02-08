@@ -17,8 +17,8 @@ from typing import Any
 
 import requests
 
-from ..cost_mixin import CostMixin, prepare_strict_schema
-from ..driver import Driver
+from ..infra.cost_mixin import CostMixin, prepare_strict_schema
+from .base import Driver
 
 logger = logging.getLogger("prompture.drivers.moonshot")
 
@@ -190,7 +190,7 @@ class MoonshotDriver(CostMixin, Driver):
         # Native JSON mode support — skip for reasoning models where
         # Moonshot's API does not reliably support response_format.
         if options.get("json_mode"):
-            from ..model_rates import get_model_capabilities
+            from ..infra.model_rates import get_model_capabilities
 
             caps = get_model_capabilities("moonshot", model)
             is_reasoning = caps is not None and caps.is_reasoning is True

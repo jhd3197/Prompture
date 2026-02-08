@@ -1,6 +1,6 @@
 """Tests for smart model routing module."""
 
-from prompture.routing import (
+from prompture.pipeline.routing import (
     ComplexityAnalysis,
     ModelRouter,
     RoutingConfig,

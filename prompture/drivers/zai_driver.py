@@ -13,8 +13,8 @@ from typing import Any
 
 import requests
 
-from ..cost_mixin import CostMixin, prepare_strict_schema
-from ..driver import Driver
+from ..infra.cost_mixin import CostMixin, prepare_strict_schema
+from .base import Driver
 
 logger = logging.getLogger(__name__)
 

@@ -6,8 +6,8 @@ from typing import Any
 
 import pytest
 
-from prompture.async_driver import AsyncDriver
-from prompture.driver import Driver
+from prompture.drivers.async_base import AsyncDriver
+from prompture.drivers.base import Driver
 
 
 class TestFlattenMessages:

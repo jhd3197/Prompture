@@ -4,7 +4,7 @@ import os
 import pytest
 from click.testing import CliRunner
 
-from prompture.cli import cli
+from prompture.cli.cli import cli
 
 
 @pytest.mark.integration

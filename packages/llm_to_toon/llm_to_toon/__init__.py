@@ -3,7 +3,7 @@ try:
     from prompture import extract_and_jsonify as _extract_and_jsonify
     from prompture.drivers import OllamaDriver
 except Exception:
-    from prompture.core import extract_and_jsonify as _extract_and_jsonify
+    from prompture.extraction.core import extract_and_jsonify as _extract_and_jsonify
     from prompture.drivers import OllamaDriver
 
 

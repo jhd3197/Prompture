@@ -7,7 +7,7 @@ from typing import Any
 
 import httpx
 
-from ..async_driver import AsyncDriver
+from .async_base import AsyncDriver
 
 
 class AsyncLocalHTTPDriver(AsyncDriver):

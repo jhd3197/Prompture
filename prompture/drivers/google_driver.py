@@ -7,8 +7,8 @@ from typing import Any, Optional
 from google import genai
 from google.genai import types
 
-from ..cost_mixin import CostMixin
-from ..driver import Driver
+from ..infra.cost_mixin import CostMixin
+from .base import Driver
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +97,7 @@ class GoogleDriver(CostMixin, Driver):
         Live rates use token-based pricing (estimate ~4 chars/token).
         Hardcoded MODEL_PRICING uses per-1M-character rates.
         """
-        from ..model_rates import get_model_rates
+        from ..infra.model_rates import get_model_rates
 
         live_rates = get_model_rates("google", self.model)
         if live_rates:

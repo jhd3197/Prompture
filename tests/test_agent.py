@@ -11,8 +11,8 @@ from typing import Any
 import pytest
 from pydantic import BaseModel
 
-from prompture.agent import Agent, AgentIterator, StreamedAgentResult, _get_first_param_name, _tool_wants_context
-from prompture.agent_types import (
+from prompture.agents.agent import Agent, AgentIterator, StreamedAgentResult, _get_first_param_name, _tool_wants_context
+from prompture.agents.types import (
     AgentCallbacks,
     AgentResult,
     AgentState,
@@ -23,10 +23,10 @@ from prompture.agent_types import (
     StreamEvent,
     StreamEventType,
 )
-from prompture.async_agent import AsyncAgent, AsyncAgentIterator, AsyncStreamedAgentResult, _is_async_callable
-from prompture.async_driver import AsyncDriver
-from prompture.driver import Driver
-from prompture.tools_schema import ToolRegistry
+from prompture.agents.async_agent import AsyncAgent, AsyncAgentIterator, AsyncStreamedAgentResult, _is_async_callable
+from prompture.drivers.async_base import AsyncDriver
+from prompture.drivers.base import Driver
+from prompture.agents.tools_schema import ToolRegistry
 
 # ---------------------------------------------------------------------------
 # Mock drivers
@@ -634,7 +634,7 @@ class TestRunContextInjection:
 
         agent = Agent("test/model", driver=MockDriver(), tools=[ctx_tool])
         # Access the wrapping logic directly
-        from prompture.session import UsageSession
+        from prompture.infra.session import UsageSession
 
         session = UsageSession()
         ctx = agent._build_run_context("test", None, session, [], 0)
@@ -1182,7 +1182,7 @@ class TestAgentIterator:
 
         steps = list(it)
         assert len(steps) >= 1
-        from prompture.agent_types import AgentStep
+        from prompture.agents.types import AgentStep
 
         assert all(isinstance(s, AgentStep) for s in steps)
 
@@ -1421,7 +1421,7 @@ class TestAsyncAgentIter:
             async for step in it:
                 steps.append(step)
 
-            from prompture.agent_types import AgentStep
+            from prompture.agents.types import AgentStep
 
             assert len(steps) >= 1
             assert all(isinstance(s, AgentStep) for s in steps)
@@ -1884,7 +1884,7 @@ class TestStreamingWithTools:
 class TestAsyncApprovalFlow:
     def test_async_approval_needed_with_sync_callback(self):
         """ApprovalRequired in AsyncAgent with sync on_approval_needed."""
-        from prompture.agent_types import ApprovalRequired
+        from prompture.agents.types import ApprovalRequired
 
         approval_log: list[tuple[str, str]] = []
 
@@ -1921,7 +1921,7 @@ class TestAsyncApprovalFlow:
 
     def test_async_approval_denied(self):
         """ApprovalRequired denied returns error message."""
-        from prompture.agent_types import ApprovalRequired
+        from prompture.agents.types import ApprovalRequired
 
         def deny_handler(tool_name: str, action: str, details: dict) -> bool:
             return False
@@ -1967,7 +1967,7 @@ class TestExtractionResilience:
         """Default max_retries=1 preserves existing single-attempt behavior."""
         import inspect
 
-        from prompture.core import extract_with_model
+        from prompture.extraction.core import extract_with_model
 
         sig = inspect.signature(extract_with_model)
         assert sig.parameters["max_retries"].default == 1
@@ -1976,14 +1976,14 @@ class TestExtractionResilience:
         """Default fallback=None preserves existing behavior."""
         import inspect
 
-        from prompture.core import extract_with_model
+        from prompture.extraction.core import extract_with_model
 
         sig = inspect.signature(extract_with_model)
         assert sig.parameters["fallback"].default is None
 
     def test_fallback_used_on_failure(self):
         """When extraction fails and fallback is provided, returns fallback."""
-        from prompture.core import extract_with_model
+        from prompture.extraction.core import extract_with_model
 
         class SimpleModel(BaseModel):
             name: str
@@ -1996,7 +1996,7 @@ class TestExtractionResilience:
         # by mocking extract_and_jsonify to always raise
         import unittest.mock as mock
 
-        with mock.patch("prompture.core.extract_and_jsonify", side_effect=ValueError("Parse error")):
+        with mock.patch("prompture.extraction.core.extract_and_jsonify", side_effect=ValueError("Parse error")):
             result = extract_with_model(
                 SimpleModel,
                 "some text",
@@ -2011,14 +2011,14 @@ class TestExtractionResilience:
 
     def test_no_fallback_reraises(self):
         """When no fallback is provided and all retries fail, re-raises."""
-        from prompture.core import extract_with_model
+        from prompture.extraction.core import extract_with_model
 
         class SimpleModel(BaseModel):
             name: str
 
         import unittest.mock as mock
 
-        with mock.patch("prompture.core.extract_and_jsonify", side_effect=ValueError("Parse error")):
+        with mock.patch("prompture.extraction.core.extract_and_jsonify", side_effect=ValueError("Parse error")):
             with pytest.raises(ValueError, match="Parse error"):
                 extract_with_model(
                     SimpleModel,
@@ -2029,7 +2029,7 @@ class TestExtractionResilience:
 
     def test_retry_succeeds_on_second_attempt(self):
         """When first attempt fails but second succeeds, returns success."""
-        from prompture.core import extract_with_model
+        from prompture.extraction.core import extract_with_model
 
         class SimpleModel(BaseModel):
             name: str
@@ -2056,7 +2056,7 @@ class TestExtractionResilience:
                 raise ValueError("First attempt fails")
             return good_result
 
-        with mock.patch("prompture.core.extract_and_jsonify", side_effect=mock_extract):
+        with mock.patch("prompture.extraction.core.extract_and_jsonify", side_effect=mock_extract):
             result = extract_with_model(
                 SimpleModel,
                 "some text",

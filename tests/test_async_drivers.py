@@ -6,8 +6,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from prompture.async_driver import AsyncDriver
-from prompture.cost_mixin import CostMixin
+from prompture.drivers.async_base import AsyncDriver
+from prompture.infra.cost_mixin import CostMixin
 
 # ---------------------------------------------------------------------------
 # AsyncDriver base
@@ -29,7 +29,7 @@ class TestAsyncDriverBase:
 class TestCostMixin:
     def test_calculate_cost_with_live_rates(self):
         mixin = CostMixin()
-        with patch("prompture.model_rates.get_model_rates") as mock_rates:
+        with patch("prompture.infra.model_rates.get_model_rates") as mock_rates:
             mock_rates.return_value = {"input": 10.0, "output": 30.0}
             cost = mixin._calculate_cost("openai", "gpt-4", 1000, 500)
             # (1000 / 1_000_000) * 10.0 + (500 / 1_000_000) * 30.0
@@ -41,7 +41,7 @@ class TestCostMixin:
             MODEL_PRICING = {"test-model": {"prompt": 0.01, "completion": 0.02}}
 
         driver = TestDriver()
-        with patch("prompture.model_rates.get_model_rates", return_value=None):
+        with patch("prompture.infra.model_rates.get_model_rates", return_value=None):
             cost = driver._calculate_cost("test", "test-model", 1000, 500)
             # (1000 / 1000) * 0.01 + (500 / 1000) * 0.02
             expected = round(0.01 + 0.01, 6)
@@ -53,7 +53,7 @@ class TestCostMixin:
             MODEL_PRICING = {"test-model": {"prompt": 3.0, "completion": 15.0}}
 
         driver = TestDriver()
-        with patch("prompture.model_rates.get_model_rates", return_value=None):
+        with patch("prompture.infra.model_rates.get_model_rates", return_value=None):
             cost = driver._calculate_cost("test", "test-model", 1000, 500)
             # (1000 / 1_000_000) * 3.0 + (500 / 1_000_000) * 15.0
             expected = round(0.003 + 0.0075, 6)
@@ -61,7 +61,7 @@ class TestCostMixin:
 
     def test_calculate_cost_unknown_model_returns_zero(self):
         mixin = CostMixin()
-        with patch("prompture.model_rates.get_model_rates", return_value=None):
+        with patch("prompture.infra.model_rates.get_model_rates", return_value=None):
             cost = mixin._calculate_cost("unknown", "unknown-model", 1000, 500)
             assert cost == 0.0
 

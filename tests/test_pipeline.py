@@ -4,9 +4,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from prompture.group_types import ErrorPolicy
-from prompture.persona import Persona
-from prompture.pipeline import (
+from prompture.groups.types import ErrorPolicy
+from prompture.agents.persona import Persona
+from prompture.pipeline.pipeline import (
     PipelineResult,
     PipelineStep,
     SkillPipeline,
@@ -14,7 +14,7 @@ from prompture.pipeline import (
     _inject_state,
     create_pipeline,
 )
-from prompture.skills import SkillInfo
+from prompture.agents.skills import SkillInfo
 
 
 class TestInjectState:
@@ -307,7 +307,7 @@ class TestSkillPipelineAggregateUsage:
 class TestSkillPipelineRun:
     """Tests for pipeline execution."""
 
-    @patch("prompture.conversation.Conversation")
+    @patch("prompture.agents.conversation.Conversation")
     def test_run_with_persona(self, mock_conv_cls):
         """Should run pipeline with persona steps."""
         # Mock conversation

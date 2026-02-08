@@ -1,6 +1,6 @@
 import pytest
 
-from prompture.core import (
+from prompture.extraction.core import (
     extract_and_jsonify,
     extract_with_model,
     manual_extract_and_jsonify,

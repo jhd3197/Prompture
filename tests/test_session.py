@@ -1,4 +1,4 @@
-"""Tests for prompture.session module."""
+"""Tests for prompture.infra.session module."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import warnings
 
 import pytest
 
-from prompture.session import UsageSession
+from prompture.infra.session import UsageSession
 
 
 class TestUsageSession:

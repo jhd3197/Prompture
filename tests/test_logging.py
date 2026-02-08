@@ -1,11 +1,11 @@
-"""Tests for prompture.logging module."""
+"""Tests for prompture.infra.logging module."""
 
 from __future__ import annotations
 
 import json
 import logging
 
-from prompture.logging import JSONFormatter, configure_logging
+from prompture.infra.logging import JSONFormatter, configure_logging
 
 
 class TestJSONFormatter:
