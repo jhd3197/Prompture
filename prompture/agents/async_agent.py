@@ -276,9 +276,13 @@ class AsyncAgent(Generic[DepsType]):
             else:
                 result = asyncio.run(agent.run(prompt))
 
+            _call_agent._last_agent_result = result
             if extractor is not None:
                 return extractor(result)
             return result.output_text
+
+        _call_agent._source_agent = agent
+        _call_agent._last_agent_result = None
 
         return ToolDefinition(
             name=tool_name,
@@ -364,12 +368,15 @@ class AsyncAgent(Generic[DepsType]):
     # Tool wrapping (RunContext injection + ModelRetry + callbacks)
     # ------------------------------------------------------------------
 
-    def _wrap_tools_with_context(self, ctx: RunContext[Any]) -> ToolRegistry:
+    def _wrap_tools_with_context(
+        self, ctx: RunContext[Any], session: UsageSession | None = None
+    ) -> ToolRegistry:
         """Return a new :class:`ToolRegistry` with wrapped tool functions.
 
         All wrappers are **sync** so they work with ``ToolRegistry.execute()``.
         For async tool functions, the wrapper uses
         ``asyncio.get_event_loop().run_until_complete()`` as a fallback.
+        If *session* is provided, child agent usage is aggregated into it.
         """
         if not self._tools:
             return ToolRegistry()
@@ -389,6 +396,7 @@ class AsyncAgent(Generic[DepsType]):
                 _name: str,
                 _is_async: bool,
                 _cb: AgentCallbacks = cb,
+                _session: UsageSession | None = session,
             ) -> Callable[..., Any]:
                 def _invoke_cb_sync(callback: Callable[..., Any], *cb_args: Any) -> Any:
                     """Invoke a possibly-async callback from a sync tool wrapper."""
@@ -466,6 +474,23 @@ class AsyncAgent(Generic[DepsType]):
                             result = f"Error: Tool '{_name}' requires approval but no approval handler is configured"
                     except ModelRetry as exc:
                         result = f"Error: {exc.message}"
+
+                    # Aggregate child agent usage to parent session
+                    if _session is not None and hasattr(_fn, "_source_agent"):
+                        agent_result = getattr(_fn, "_last_agent_result", None)
+                        if agent_result is not None and hasattr(agent_result, "run_usage"):
+                            child_usage = agent_result.run_usage
+                            child_name = getattr(_fn._source_agent, "name", "") or _name
+                            _session.record({
+                                "meta": {
+                                    "prompt_tokens": child_usage.get("prompt_tokens", 0),
+                                    "completion_tokens": child_usage.get("completion_tokens", 0),
+                                    "total_tokens": child_usage.get("total_tokens", 0),
+                                    "cost": child_usage.get("cost", 0.0),
+                                },
+                                "driver": f"sub-agent:{child_name}",
+                            })
+
                     if _cb.on_tool_end:
                         _invoke_cb_sync(_cb.on_tool_end, _name, result)
                     return result
@@ -668,8 +693,8 @@ class AsyncAgent(Generic[DepsType]):
         # 4. Resolve system prompt
         resolved_system_prompt = self._resolve_system_prompt(ctx)
 
-        # 5. Wrap tools with context
-        wrapped_tools = self._wrap_tools_with_context(ctx)
+        # 5. Wrap tools with context (pass session for child agent usage aggregation)
+        wrapped_tools = self._wrap_tools_with_context(ctx, session)
 
         # 6. Build AsyncConversation
         conv = self._build_conversation(
@@ -738,6 +763,16 @@ class AsyncAgent(Generic[DepsType]):
 
         for msg in messages:
             role = msg.get("role", "")
+            # Extract usage from message meta if present
+            msg_meta = msg.get("meta")
+            step_usage = None
+            if isinstance(msg_meta, dict):
+                step_usage = {
+                    "prompt_tokens": msg_meta.get("prompt_tokens", 0),
+                    "completion_tokens": msg_meta.get("completion_tokens", 0),
+                    "total_tokens": msg_meta.get("total_tokens", 0),
+                    "cost": msg_meta.get("cost", 0.0),
+                }
 
             if role == "assistant":
                 tc_list = msg.get("tool_calls", [])
@@ -761,6 +796,7 @@ class AsyncAgent(Generic[DepsType]):
                                 content=msg.get("content", ""),
                                 tool_name=name,
                                 tool_args=args,
+                                usage=step_usage,
                             )
                         )
                         all_tool_calls.append({"name": name, "arguments": args, "id": tc.get("id", "")})
@@ -770,6 +806,7 @@ class AsyncAgent(Generic[DepsType]):
                             step_type=StepType.output,
                             timestamp=now,
                             content=msg.get("content", ""),
+                            usage=step_usage,
                         )
                     )
 
@@ -863,7 +900,7 @@ class AsyncAgent(Generic[DepsType]):
             ctx = self._build_run_context(prompt, deps, session, [], 0)
             effective_prompt = self._run_input_guardrails(ctx, prompt)
             resolved_system_prompt = self._resolve_system_prompt(ctx)
-            wrapped_tools = self._wrap_tools_with_context(ctx)
+            wrapped_tools = self._wrap_tools_with_context(ctx, session)
             has_tools = bool(wrapped_tools)
 
             conv = self._build_conversation(

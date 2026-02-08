@@ -49,13 +49,18 @@ def _record_usage_to_ledger(model_name: str, meta: dict[str, Any]) -> None:
 
 async def clean_json_text_with_ai(
     driver: AsyncDriver, text: str, model_name: str = "", options: dict[str, Any] | None = None
-) -> str:
-    """Use LLM to fix malformed JSON strings (async version)."""
+) -> tuple[str, dict[str, Any]]:
+    """Use LLM to fix malformed JSON strings (async version).
+
+    Returns:
+        A tuple of (cleaned_text, meta) where cleaned_text is the fixed
+        JSON string and meta is the usage metadata dict from the driver.
+    """
     if options is None:
         options = {}
     try:
         json.loads(text)
-        return text
+        return text, {}
     except json.JSONDecodeError:
         pass
 
@@ -66,8 +71,9 @@ async def clean_json_text_with_ai(
     )
     resp = await driver.generate(prompt, options)
     raw = resp.get("text", "")
+    meta = resp.get("meta", {})
     cleaned = clean_json_text(raw)
-    return cleaned
+    return cleaned, meta
 
 
 async def render_output(
@@ -258,20 +264,34 @@ async def ask_for_json(
         return result
     except json.JSONDecodeError as e:
         if ai_cleanup:
-            cleaned_fixed = await clean_json_text_with_ai(driver, cleaned, model_name, options)
+            cleaned_fixed, cleanup_meta = await clean_json_text_with_ai(driver, cleaned, model_name, options)
+
+            # Record cleanup call to ledger
+            if cleanup_meta:
+                _record_usage_to_ledger(model_name, cleanup_meta)
+
             try:
                 json_obj = json.loads(cleaned_fixed)
+
+                # Combine usage from original call and cleanup call
+                original_meta = resp.get("meta", {})
+                combined_usage = {
+                    "prompt_tokens": original_meta.get("prompt_tokens", 0)
+                    + cleanup_meta.get("prompt_tokens", 0),
+                    "completion_tokens": original_meta.get("completion_tokens", 0)
+                    + cleanup_meta.get("completion_tokens", 0),
+                    "total_tokens": original_meta.get("total_tokens", 0)
+                    + cleanup_meta.get("total_tokens", 0),
+                    "cost": original_meta.get("cost", 0.0) + cleanup_meta.get("cost", 0.0),
+                    "model_name": model_name or options.get("model", getattr(driver, "model", "")),
+                    "raw_response": resp,
+                    "ai_cleanup_used": True,
+                }
+
                 result = {
                     "json_string": cleaned_fixed,
                     "json_object": json_obj,
-                    "usage": {
-                        "prompt_tokens": 0,
-                        "completion_tokens": 0,
-                        "total_tokens": 0,
-                        "cost": 0.0,
-                        "model_name": options.get("model", getattr(driver, "model", "")),
-                        "raw_response": {},
-                    },
+                    "usage": combined_usage,
                     "output_format": "json" if output_format != "toon" else "toon",
                 }
                 if output_format == "toon":
@@ -279,7 +299,8 @@ async def ask_for_json(
 
                 # --- cache store (ai cleanup path) ---
                 if use_cache and cache_key is not None:
-                    _cache.set(cache_key, result, force=_force)
+                    cached_copy = {**result, "usage": {**result["usage"], "raw_response": {}}}
+                    _cache.set(cache_key, cached_copy, force=_force)
 
                 return result
             except json.JSONDecodeError:

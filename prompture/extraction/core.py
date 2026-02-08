@@ -418,9 +418,12 @@ def ask_for_json(
                 # Combine usage from original call and cleanup call
                 original_meta = resp.get("meta", {})
                 combined_usage = {
-                    "prompt_tokens": original_meta.get("prompt_tokens", 0) + cleanup_meta.get("prompt_tokens", 0),
-                    "completion_tokens": original_meta.get("completion_tokens", 0) + cleanup_meta.get("completion_tokens", 0),
-                    "total_tokens": original_meta.get("total_tokens", 0) + cleanup_meta.get("total_tokens", 0),
+                    "prompt_tokens": original_meta.get("prompt_tokens", 0)
+                    + cleanup_meta.get("prompt_tokens", 0),
+                    "completion_tokens": original_meta.get("completion_tokens", 0)
+                    + cleanup_meta.get("completion_tokens", 0),
+                    "total_tokens": original_meta.get("total_tokens", 0)
+                    + cleanup_meta.get("total_tokens", 0),
                     "cost": original_meta.get("cost", 0.0) + cleanup_meta.get("cost", 0.0),
                     "model_name": model_name or options.get("model", getattr(driver, "model", "")),
                     "raw_response": resp,

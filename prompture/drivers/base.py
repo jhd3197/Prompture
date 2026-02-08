@@ -201,7 +201,8 @@ class Driver:
         elapsed_ms = (time.perf_counter() - t0) * 1000
         meta = resp.get("meta", {})
         logger.debug(
-            "[driver] generate_messages_with_tools driver=%s tokens=%d (prompt=%d completion=%d) cost=%.6f elapsed=%.0fms",
+            "[driver] generate_messages_with_tools driver=%s tokens=%d "
+            "(prompt=%d completion=%d) cost=%.6f elapsed=%.0fms",
             driver_name,
             meta.get("total_tokens", 0),
             meta.get("prompt_tokens", 0),
