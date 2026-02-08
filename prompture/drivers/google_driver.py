@@ -4,7 +4,8 @@ import uuid
 from collections.abc import Iterator
 from typing import Any, Optional
 
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 from ..cost_mixin import CostMixin
 from ..driver import Driver
@@ -73,8 +74,8 @@ class GoogleDriver(CostMixin, Driver):
         if model not in self.MODEL_PRICING:
             logger.warning(f"Model {model} not found in pricing table. Cost calculations will be 0.")
 
-        # Configure google.generativeai
-        genai.configure(api_key=self.api_key)
+        # Create google-genai client
+        self._client = genai.Client(api_key=self.api_key)
         self.options: dict[str, Any] = {}
 
         # Validate connection and model availability
@@ -84,7 +85,7 @@ class GoogleDriver(CostMixin, Driver):
         """Validate connection to Google's API and model availability."""
         try:
             # List models to validate API key and connectivity
-            genai.list_models()
+            list(self._client.models.list(config={"page_size": 1}))
             logger.debug("Connection to Google API validated successfully")
         except Exception as e:
             logger.warning(f"Could not validate connection to Google API: {e}")
@@ -154,33 +155,41 @@ class GoogleDriver(CostMixin, Driver):
     def _build_generation_args(
         self, messages: list[dict[str, Any]], options: Optional[dict[str, Any]] = None
     ) -> tuple[Any, dict[str, Any]]:
-        """Parse messages and options into (gen_input, kwargs) for generate_content.
+        """Parse messages and options into (contents, config_dict) for generate_content.
 
-        Returns the content input and a dict of keyword arguments
-        (generation_config, safety_settings, model kwargs including system_instruction).
+        Returns the content input and a config dict suitable for
+        constructing ``types.GenerateContentConfig(**config_dict)``.
         """
         merged_options = self.options.copy()
         if options:
             merged_options.update(options)
 
-        generation_config = merged_options.get("generation_config", {})
-        safety_settings = merged_options.get("safety_settings", {})
+        config_dict: dict[str, Any] = {}
 
-        if "temperature" in merged_options and "temperature" not in generation_config:
-            generation_config["temperature"] = merged_options["temperature"]
-        if "max_tokens" in merged_options and "max_output_tokens" not in generation_config:
-            generation_config["max_output_tokens"] = merged_options["max_tokens"]
-        if "top_p" in merged_options and "top_p" not in generation_config:
-            generation_config["top_p"] = merged_options["top_p"]
-        if "top_k" in merged_options and "top_k" not in generation_config:
-            generation_config["top_k"] = merged_options["top_k"]
+        if "temperature" in merged_options:
+            config_dict.setdefault("temperature", merged_options["temperature"])
+        if "max_tokens" in merged_options:
+            config_dict.setdefault("max_output_tokens", merged_options["max_tokens"])
+        if "top_p" in merged_options:
+            config_dict.setdefault("top_p", merged_options["top_p"])
+        if "top_k" in merged_options:
+            config_dict.setdefault("top_k", merged_options["top_k"])
+
+        # Forward explicit generation_config entries
+        for k, v in merged_options.get("generation_config", {}).items():
+            config_dict.setdefault(k, v)
+
+        # Forward safety_settings
+        safety_settings = merged_options.get("safety_settings")
+        if safety_settings:
+            config_dict["safety_settings"] = safety_settings
 
         # Native JSON mode support
         if merged_options.get("json_mode"):
-            generation_config["response_mime_type"] = "application/json"
+            config_dict["response_mime_type"] = "application/json"
             json_schema = merged_options.get("json_schema")
             if json_schema:
-                generation_config["response_schema"] = json_schema
+                config_dict["response_schema"] = json_schema
 
         # Convert messages to Gemini format
         system_instruction = None
@@ -207,16 +216,10 @@ class GoogleDriver(CostMixin, Driver):
         else:
             gen_input = contents
 
-        model_kwargs: dict[str, Any] = {}
         if system_instruction:
-            model_kwargs["system_instruction"] = system_instruction
+            config_dict["system_instruction"] = system_instruction
 
-        gen_kwargs: dict[str, Any] = {
-            "generation_config": generation_config if generation_config else None,
-            "safety_settings": safety_settings if safety_settings else None,
-        }
-
-        return gen_input, gen_kwargs, model_kwargs
+        return gen_input, config_dict
 
     def generate(self, prompt: str, options: Optional[dict[str, Any]] = None) -> dict[str, Any]:
         messages = [{"role": "user", "content": prompt}]
@@ -226,7 +229,7 @@ class GoogleDriver(CostMixin, Driver):
         return self._do_generate(self._prepare_messages(messages), options)
 
     def _do_generate(self, messages: list[dict[str, str]], options: Optional[dict[str, Any]] = None) -> dict[str, Any]:
-        gen_input, gen_kwargs, model_kwargs = self._build_generation_args(messages, options)
+        gen_input, config_dict = self._build_generation_args(messages, options)
 
         # Validate capabilities against models.dev metadata
         self._validate_model_capabilities(
@@ -236,11 +239,13 @@ class GoogleDriver(CostMixin, Driver):
         )
 
         try:
-            logger.debug(f"Initializing {self.model} for generation")
-            model = genai.GenerativeModel(self.model, **model_kwargs)
-
             logger.debug(f"Generating with model {self.model}")
-            response = model.generate_content(gen_input, **gen_kwargs)
+            config = types.GenerateContentConfig(**config_dict)
+            response = self._client.models.generate_content(
+                model=self.model,
+                contents=gen_input,
+                config=config,
+            )
 
             if not response.text:
                 raise ValueError("Empty response from model")
@@ -273,36 +278,50 @@ class GoogleDriver(CostMixin, Driver):
         model = options.get("model", self.model)
         self._validate_model_capabilities("google", model, using_tool_use=True)
 
-        gen_input, gen_kwargs, model_kwargs = self._build_generation_args(
-            self._prepare_messages(messages), options
-        )
+        gen_input, config_dict = self._build_generation_args(self._prepare_messages(messages), options)
 
         # Convert tools from OpenAI format to Gemini function declarations
         function_declarations = []
         for t in tools:
             if "type" in t and t["type"] == "function":
                 fn = t["function"]
-                decl = {
-                    "name": fn["name"],
-                    "description": fn.get("description", ""),
-                }
+                decl = types.FunctionDeclaration(
+                    name=fn["name"],
+                    description=fn.get("description", ""),
+                )
                 params = fn.get("parameters")
                 if params:
-                    decl["parameters"] = params
+                    decl = types.FunctionDeclaration(
+                        name=fn["name"],
+                        description=fn.get("description", ""),
+                        parameters_json_schema=params,
+                    )
                 function_declarations.append(decl)
             elif "name" in t:
                 # Already in a generic format
-                decl = {"name": t["name"], "description": t.get("description", "")}
                 params = t.get("parameters") or t.get("input_schema")
                 if params:
-                    decl["parameters"] = params
+                    decl = types.FunctionDeclaration(
+                        name=t["name"],
+                        description=t.get("description", ""),
+                        parameters_json_schema=params,
+                    )
+                else:
+                    decl = types.FunctionDeclaration(
+                        name=t["name"],
+                        description=t.get("description", ""),
+                    )
                 function_declarations.append(decl)
 
-        try:
-            model = genai.GenerativeModel(self.model, **model_kwargs)
+        config_dict["tools"] = [types.Tool(function_declarations=function_declarations)]
 
-            gemini_tools = [genai.types.Tool(function_declarations=function_declarations)]
-            response = model.generate_content(gen_input, tools=gemini_tools, **gen_kwargs)
+        try:
+            config = types.GenerateContentConfig(**config_dict)
+            response = self._client.models.generate_content(
+                model=self.model,
+                contents=gen_input,
+                config=config,
+            )
 
             usage_meta = self._extract_usage_metadata(response, messages)
             meta = {
@@ -321,11 +340,13 @@ class GoogleDriver(CostMixin, Driver):
                         text += part.text
                     if hasattr(part, "function_call") and part.function_call.name:
                         fc = part.function_call
-                        tool_calls_out.append({
-                            "id": str(uuid.uuid4()),
-                            "name": fc.name,
-                            "arguments": dict(fc.args) if fc.args else {},
-                        })
+                        tool_calls_out.append(
+                            {
+                                "id": str(uuid.uuid4()),
+                                "name": fc.name,
+                                "arguments": dict(fc.args) if fc.args else {},
+                            }
+                        )
 
                 finish_reason = getattr(candidate, "finish_reason", None)
                 if finish_reason is not None:
@@ -357,13 +378,15 @@ class GoogleDriver(CostMixin, Driver):
         options: dict[str, Any],
     ) -> Iterator[dict[str, Any]]:
         """Yield response chunks via Gemini streaming API."""
-        gen_input, gen_kwargs, model_kwargs = self._build_generation_args(
-            self._prepare_messages(messages), options
-        )
+        gen_input, config_dict = self._build_generation_args(self._prepare_messages(messages), options)
 
         try:
-            model = genai.GenerativeModel(self.model, **model_kwargs)
-            response = model.generate_content(gen_input, stream=True, **gen_kwargs)
+            config = types.GenerateContentConfig(**config_dict)
+            response = self._client.models.generate_content_stream(
+                model=self.model,
+                contents=gen_input,
+                config=config,
+            )
 
             full_text = ""
             for chunk in response:
@@ -372,7 +395,7 @@ class GoogleDriver(CostMixin, Driver):
                     full_text += chunk_text
                     yield {"type": "delta", "text": chunk_text}
 
-            # After iteration completes, resolve() has been called on the response
+            # After iteration completes, usage_metadata should be available
             usage_meta = self._extract_usage_metadata(response, messages)
 
             yield {

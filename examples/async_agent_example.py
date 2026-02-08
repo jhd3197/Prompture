@@ -64,7 +64,7 @@ async def main():
     print("=" * 60)
 
     stream_agent = AsyncAgent(MODEL, system_prompt="Be concise.")
-    stream = await stream_agent.run_stream("Tell me a short joke.")
+    stream = stream_agent.run_stream("Tell me a short joke.")
 
     print("Streaming:")
     async for event in stream:
