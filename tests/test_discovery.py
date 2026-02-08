@@ -1,7 +1,7 @@
 import os
 from unittest.mock import MagicMock, patch
 
-from prompture.discovery import get_available_models
+from prompture.infra.discovery import get_available_models
 
 
 class TestDiscovery:
@@ -18,9 +18,9 @@ class TestDiscovery:
         """Test that no static models are returned when no keys are present (except maybe Ollama/LMStudio if configured)."""
         # Ensure no env vars are set
         with (
-            patch("prompture.settings.settings.openai_api_key", None),
-            patch("prompture.settings.settings.claude_api_key", None),
-            patch("prompture.settings.settings.google_api_key", None),
+            patch("prompture.infra.settings.settings.openai_api_key", None),
+            patch("prompture.infra.settings.settings.claude_api_key", None),
+            patch("prompture.infra.settings.settings.google_api_key", None),
         ):
             models = get_available_models()
             # Should not contain openai models

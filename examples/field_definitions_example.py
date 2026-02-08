@@ -20,7 +20,7 @@ from prompture import (
     get_required_fields,
     register_field,
 )
-from prompture.tools import (
+from prompture.extraction.tools import (
     load_field_definitions,  # Still works for loading external files
     validate_field_definition,  # Still useful for validation
 )

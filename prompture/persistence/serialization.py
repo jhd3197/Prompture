@@ -11,8 +11,8 @@ import copy
 from datetime import datetime, timezone
 from typing import Any
 
-from .image import ImageContent
-from .session import UsageSession
+from ..media.image import ImageContent
+from ..infra.session import UsageSession
 
 EXPORT_VERSION = 1
 

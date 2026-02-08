@@ -1,4 +1,4 @@
-"""Tests for prompture.cache module."""
+"""Tests for prompture.infra.cache module."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from unittest.mock import Mock, patch
 import pytest
 from pydantic import BaseModel
 
-from prompture.cache import (
+from prompture.infra.cache import (
     MemoryCacheBackend,
     ResponseCache,
     SQLiteCacheBackend,
@@ -135,7 +135,7 @@ class TestMemoryCacheBackend:
         be.set("k", "v", ttl=1)
         assert be.get("k") == "v"
         # Simulate time passing
-        with patch("prompture.cache.time") as mock_time:
+        with patch("prompture.infra.cache.time") as mock_time:
             mock_time.time.return_value = time.time() + 2
             assert be.get("k") is None
 
@@ -226,7 +226,7 @@ class TestSQLiteCacheBackend:
         be.set("k", "v", ttl=1)
         assert be.get("k") == "v"
         # Simulate expiration by patching time
-        with patch("prompture.cache.time") as mock_time:
+        with patch("prompture.infra.cache.time") as mock_time:
             mock_time.time.return_value = time.time() + 2
             assert be.get("k") is None
 
@@ -321,7 +321,7 @@ class TestCachedAskForJson:
     """Tests for cache integration in ask_for_json."""
 
     def test_cache_miss_calls_driver(self):
-        from prompture.core import ask_for_json
+        from prompture.extraction.core import ask_for_json
 
         configure_cache(backend="memory", enabled=True, ttl=60)
         driver = _make_mock_driver()
@@ -333,7 +333,7 @@ class TestCachedAskForJson:
         assert result["json_object"]["name"] == "Alice"
 
     def test_cache_hit_skips_driver(self):
-        from prompture.core import ask_for_json
+        from prompture.extraction.core import ask_for_json
 
         configure_cache(backend="memory", enabled=True, ttl=60)
         driver = _make_mock_driver()
@@ -348,7 +348,7 @@ class TestCachedAskForJson:
         assert result["usage"].get("cache_hit") is True
 
     def test_cache_hit_strips_raw_response(self):
-        from prompture.core import ask_for_json
+        from prompture.extraction.core import ask_for_json
 
         configure_cache(backend="memory", enabled=True, ttl=60)
         driver = _make_mock_driver()
@@ -360,7 +360,7 @@ class TestCachedAskForJson:
         assert result["usage"]["raw_response"] == {}
 
     def test_cache_false_bypasses(self):
-        from prompture.core import ask_for_json
+        from prompture.extraction.core import ask_for_json
 
         configure_cache(backend="memory", enabled=True, ttl=60)
         driver = _make_mock_driver()
@@ -372,7 +372,7 @@ class TestCachedAskForJson:
         assert driver.generate.call_count == 2  # both calls hit the driver
 
     def test_cache_true_overrides_disabled(self):
-        from prompture.core import ask_for_json
+        from prompture.extraction.core import ask_for_json
 
         configure_cache(backend="memory", enabled=False, ttl=60)
         driver = _make_mock_driver()
@@ -399,7 +399,7 @@ class TestCachedExtractWithModel:
     """Tests for cache integration in extract_with_model."""
 
     def test_pydantic_model_reconstructed_on_hit(self):
-        from prompture.core import extract_with_model
+        from prompture.extraction.core import extract_with_model
 
         configure_cache(backend="memory", enabled=True, ttl=60)
 
@@ -417,7 +417,7 @@ class TestCachedExtractWithModel:
             "output_format": "json",
         }
 
-        with patch("prompture.core.extract_and_jsonify", return_value=mock_result):
+        with patch("prompture.extraction.core.extract_and_jsonify", return_value=mock_result):
             # First call — miss
             extract_with_model(_PersonModel, "Alice is 30", "openai/gpt-4")
             # Second call — hit
@@ -485,7 +485,7 @@ class TestCacheSettings:
     """Tests for cache-related settings fields."""
 
     def test_default_values(self):
-        from prompture.settings import Settings
+        from prompture.infra.settings import Settings
 
         s = Settings()
         assert s.cache_enabled is False
@@ -496,7 +496,7 @@ class TestCacheSettings:
         assert s.cache_redis_url is None
 
     def test_env_var_override(self, monkeypatch):
-        from prompture.settings import Settings
+        from prompture.infra.settings import Settings
 
         monkeypatch.setenv("CACHE_ENABLED", "true")
         monkeypatch.setenv("CACHE_BACKEND", "sqlite")

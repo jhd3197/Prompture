@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from prompture.tools_schema import ToolRegistry
+from prompture.agents.tools_schema import ToolRegistry
 
 # ---------------------------------------------------------------------------
 # Helpers

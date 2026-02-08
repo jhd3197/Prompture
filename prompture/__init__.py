@@ -2,8 +2,8 @@
 
 from dotenv import load_dotenv
 
-from .agent import Agent, AgentIterator, StreamedAgentResult
-from .agent_types import (
+from .agents.agent import Agent, AgentIterator, StreamedAgentResult
+from .agents.types import (
     AgentCallbacks,
     AgentResult,
     AgentState,
@@ -25,16 +25,16 @@ from .analysis import (
     analyze_python,
     calculate_risk,
 )
-from .async_agent import AsyncAgent, AsyncAgentIterator, AsyncStreamedAgentResult
-from .async_conversation import AsyncConversation
-from .async_driver import AsyncDriver
-from .async_groups import (
+from .agents.async_agent import AsyncAgent, AsyncAgentIterator, AsyncStreamedAgentResult
+from .agents.async_conversation import AsyncConversation
+from .drivers.async_base import AsyncDriver
+from .groups.async_groups import (
     AsyncLoopGroup,
     AsyncRouterAgent,
     AsyncSequentialGroup,
     ParallelGroup,
 )
-from .cache import (
+from .infra.cache import (
     CacheBackend,
     MemoryCacheBackend,
     RedisCacheBackend,
@@ -43,16 +43,16 @@ from .cache import (
     configure_cache,
     get_cache,
 )
-from .callbacks import DriverCallbacks
-from .consensus import (
+from .infra.callbacks import DriverCallbacks
+from .groups.consensus import (
     ConsensusResult,
     ConsensusStrategy,
     ModelVote,
     extract_with_consensus,
     extract_with_consensus_async,
 )
-from .conversation import Conversation
-from .core import (
+from .agents.conversation import Conversation
+from .extraction.core import (
     Driver,
     ask_for_json,
     clean_json_text_with_ai,
@@ -64,7 +64,7 @@ from .core import (
     render_output,
     stepwise_extract_with_model,
 )
-from .discovery import get_available_models
+from .infra.discovery import get_available_models
 from .drivers import (
     AirLLMDriver,
     AzureDriver,
@@ -95,7 +95,7 @@ from .drivers import (
     unregister_azure_config,
     unregister_driver,
 )
-from .field_definitions import (
+from .extraction.fields import (
     FIELD_DEFINITIONS,
     add_field_definition,
     add_field_definitions,
@@ -110,20 +110,20 @@ from .field_definitions import (
     reset_registry,
     validate_enum_value,
 )
-from .group_types import (
+from .groups.types import (
     AgentError,
     ErrorPolicy,
     GroupCallbacks,
     GroupResult,
     GroupStep,
 )
-from .groups import (
+from .groups.groups import (
     GroupAsAgent,
     LoopGroup,
     RouterAgent,
     SequentialGroup,
 )
-from .history import (
+from .persistence.history import (
     calculate_cost_breakdown,
     export_result_json,
     filter_steps,
@@ -131,7 +131,7 @@ from .history import (
     result_to_dict,
     search_messages,
 )
-from .image import (
+from .media.image import (
     ImageContent,
     ImageInput,
     image_from_base64,
@@ -140,17 +140,17 @@ from .image import (
     image_from_url,
     make_image,
 )
-from .ledger import ModelUsageLedger, get_recently_used_models
-from .logging import JSONFormatter, configure_logging
-from .model_rates import (
+from .infra.ledger import ModelUsageLedger, get_recently_used_models
+from .infra.logging import JSONFormatter, configure_logging
+from .infra.model_rates import (
     ModelCapabilities,
     get_model_capabilities,
     get_model_info,
     get_model_rates,
     refresh_rates_cache,
 )
-from .persistence import ConversationStore
-from .persona import (
+from .persistence.store import ConversationStore
+from .agents.persona import (
     PERSONAS,
     Persona,
     clear_persona_registry,
@@ -165,7 +165,7 @@ from .persona import (
     reset_persona_registry,
     reset_trait_registry,
 )
-from .pipeline import (
+from .pipeline.pipeline import (
     PipelineResult,
     PipelineStep,
     SkillPipeline,
@@ -174,7 +174,7 @@ from .pipeline import (
 )
 
 # New modules: Routing, Pipelines, Consensus
-from .routing import (
+from .pipeline.routing import (
     ComplexityAnalysis,
     ModelRouter,
     RoutingConfig,
@@ -182,7 +182,7 @@ from .routing import (
     RoutingStrategy,
     route_model,
 )
-from .runner import run_suite_from_spec
+from .cli.runner import run_suite_from_spec
 from .sandbox import (
     ALWAYS_BLOCKED_IMPORTS,
     ImportRestrictions,
@@ -197,16 +197,16 @@ from .sandbox import (
     SandboxResult,
     SandboxTimeoutError,
 )
-from .serialization import (
+from .persistence.serialization import (
     EXPORT_VERSION,
     export_conversation,
     export_usage_session,
     import_conversation,
     import_usage_session,
 )
-from .session import UsageSession
-from .settings import settings as _settings
-from .skills import (
+from .infra.session import UsageSession
+from .infra.settings import settings as _settings
+from .agents.skills import (
     SKILLS,
     SkillInfo,
     SkillParseError,
@@ -224,11 +224,11 @@ from .skills import (
     register_skill,
     unregister_skill,
 )
-from .tools import clean_json_text, clean_toon_text
-from .tools_schema import ToolDefinition, ToolRegistry, tool_from_function
+from .extraction.tools import clean_json_text, clean_toon_text
+from .agents.tools_schema import ToolDefinition, ToolRegistry, tool_from_function
 
 # Tukuy bridge
-from .tukuy_bridge import (
+from .integrations.tukuy_bridge import (
     TukuyChainStep,
     apply_safety_policy,
     make_transform_chain,
@@ -237,7 +237,7 @@ from .tukuy_bridge import (
     skills_to_registry,
     tool_definition_to_skill,
 )
-from .validator import validate_against_schema
+from .extraction.validator import validate_against_schema
 
 # Tukuy type re-exports (aliased to avoid collision with Prompture names)
 try:

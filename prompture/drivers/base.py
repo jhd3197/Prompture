@@ -7,7 +7,7 @@ import time
 from collections.abc import Iterator
 from typing import Any
 
-from .callbacks import DriverCallbacks
+from ..infra.callbacks import DriverCallbacks
 
 logger = logging.getLogger("prompture.driver")
 
@@ -220,7 +220,7 @@ class Driver:
         Uses models.dev metadata as a secondary signal.  Warnings only — the
         API is the final authority and models.dev data may be stale.
         """
-        from .model_rates import get_model_capabilities
+        from ..infra.model_rates import get_model_capabilities
 
         caps = get_model_capabilities(provider, model)
         if caps is None:

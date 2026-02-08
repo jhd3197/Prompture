@@ -384,7 +384,7 @@ def _extract_single_model(
     Returns:
         ModelVote with extraction result.
     """
-    from .core import extract_with_model
+    from ..extraction.core import extract_with_model
 
     try:
         result = extract_with_model(

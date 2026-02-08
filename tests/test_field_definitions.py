@@ -12,13 +12,13 @@ import tempfile
 
 import pytest
 
-from prompture.field_definitions import (
+from prompture.extraction.fields import (
     FIELD_DEFINITIONS,
     get_field_definition,
     get_field_names,
     get_required_fields,
 )
-from prompture.tools import get_field_default, get_type_default, load_field_definitions, validate_field_definition
+from prompture.extraction.tools import get_field_default, get_type_default, load_field_definitions, validate_field_definition
 
 
 class TestFieldDefinitionsModule:

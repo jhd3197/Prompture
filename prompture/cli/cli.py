@@ -2,7 +2,7 @@ import json
 
 import click
 
-from .drivers import OllamaDriver
+from ..drivers import OllamaDriver
 from .runner import run_suite_from_spec
 
 

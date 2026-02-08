@@ -44,8 +44,8 @@ def create_app(
             "The 'serve' extra is required: pip install prompture[serve]"
         ) from exc
 
-    from .async_conversation import AsyncConversation
-    from .tools_schema import ToolRegistry
+    from ..agents.async_conversation import AsyncConversation
+    from ..agents.tools_schema import ToolRegistry
 
     # ---- Pydantic request/response models ----
 
@@ -171,7 +171,7 @@ def create_app(
 
     @app.get("/v1/models", response_model=ModelInfo)
     async def list_models():
-        from .discovery import get_available_models
+        from ..infra.discovery import get_available_models
 
         try:
             models = get_available_models()

@@ -3,7 +3,7 @@ from typing import Any
 
 import requests
 
-from ..driver import Driver
+from .base import Driver
 
 
 class HuggingFaceDriver(Driver):

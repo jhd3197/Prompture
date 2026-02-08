@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Callable
 
-from .tools_schema import ToolDefinition, ToolRegistry
+from ..agents.tools_schema import ToolDefinition, ToolRegistry
 
 logger = logging.getLogger("prompture.tukuy_bridge")
 

@@ -24,8 +24,8 @@ try:
 except Exception:
     anthropic = None
 
-from ..cost_mixin import CostMixin, prepare_strict_schema
-from ..driver import Driver
+from ..infra.cost_mixin import CostMixin, prepare_strict_schema
+from .base import Driver
 from .azure_config import classify_backend, resolve_config
 
 logger = logging.getLogger(__name__)

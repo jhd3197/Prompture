@@ -20,7 +20,7 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from prompture import get_available_models
-from prompture.model_rates import get_model_rates
+from prompture.infra.model_rates import get_model_rates
 
 
 def _format_tokens(n: int | None) -> str:

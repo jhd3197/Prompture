@@ -36,7 +36,7 @@ from typing import Any, Generic
 
 from pydantic import BaseModel
 
-from .agent_types import (
+from .types import (
     AgentCallbacks,
     AgentResult,
     AgentState,
@@ -49,12 +49,12 @@ from .agent_types import (
     StreamEvent,
     StreamEventType,
 )
-from .callbacks import DriverCallbacks
+from ..infra.callbacks import DriverCallbacks
 from .conversation import Conversation
-from .driver import Driver
+from ..drivers.base import Driver
 from .persona import Persona
-from .session import UsageSession
-from .tools import clean_json_text
+from ..infra.session import UsageSession
+from ..extraction.tools import clean_json_text
 from .tools_schema import ToolDefinition, ToolRegistry
 
 logger = logging.getLogger("prompture.agent")

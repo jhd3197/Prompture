@@ -6,9 +6,9 @@ import json
 from typing import Any
 from unittest.mock import MagicMock, patch
 
-from prompture.async_driver import AsyncDriver
-from prompture.core import ask_for_json
-from prompture.driver import Driver
+from prompture.drivers.async_base import AsyncDriver
+from prompture.extraction.core import ask_for_json
+from prompture.drivers.base import Driver
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -556,12 +556,12 @@ class TestCacheKeyJsonMode:
     """Verify json_mode is included in cache key generation."""
 
     def test_json_mode_in_cache_relevant_options(self):
-        from prompture.cache import _CACHE_RELEVANT_OPTIONS
+        from prompture.infra.cache import _CACHE_RELEVANT_OPTIONS
 
         assert "json_mode" in _CACHE_RELEVANT_OPTIONS
 
     def test_different_json_mode_produces_different_key(self):
-        from prompture.cache import make_cache_key
+        from prompture.infra.cache import make_cache_key
 
         key_on = make_cache_key(
             prompt="test",

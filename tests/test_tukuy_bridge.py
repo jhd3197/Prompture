@@ -372,7 +372,7 @@ class TestPipelineChainStep:
     """Test TukuyChainStep normalizes and executes in SkillPipeline.run()."""
 
     def test_chain_step_normalizes(self):
-        from prompture.pipeline import SkillPipeline
+        from prompture.pipeline.pipeline import SkillPipeline
 
         chain = Chain(["strip", "lowercase"])
         step = TukuyChainStep(chain, name="clean")
@@ -386,7 +386,7 @@ class TestPipelineChainStep:
         assert len(pipeline.steps) == 1
 
     def test_chain_step_executes_in_pipeline(self):
-        from prompture.pipeline import SkillPipeline
+        from prompture.pipeline.pipeline import SkillPipeline
 
         chain = Chain(["strip", "lowercase"])
         step = TukuyChainStep(chain, name="normalizer")
@@ -404,7 +404,7 @@ class TestPipelineChainStep:
         assert result.steps[0].success
 
     def test_chain_step_state_passing(self):
-        from prompture.pipeline import SkillPipeline
+        from prompture.pipeline.pipeline import SkillPipeline
 
         chain1 = Chain(["strip"])
         chain2 = Chain(["lowercase"])

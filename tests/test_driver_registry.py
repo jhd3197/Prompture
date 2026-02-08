@@ -2,8 +2,8 @@
 
 import pytest
 
-from prompture.async_driver import AsyncDriver
-from prompture.driver import Driver
+from prompture.drivers.async_base import AsyncDriver
+from prompture.drivers.base import Driver
 from prompture.drivers import (
     DRIVER_REGISTRY,
     get_driver_for_model,

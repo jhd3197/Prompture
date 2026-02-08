@@ -5,7 +5,7 @@ from typing import Any, Optional
 
 import requests
 
-from ..driver import Driver
+from .base import Driver
 
 logger = logging.getLogger(__name__)
 

@@ -13,7 +13,7 @@ import json
 import logging
 from typing import Any
 
-from .tools import clean_json_text
+from ..extraction.tools import clean_json_text
 from .tools_schema import ToolRegistry
 
 logger = logging.getLogger("prompture.simulated_tools")

@@ -38,7 +38,7 @@ import warnings
 from pathlib import Path
 from typing import Any
 
-from .field_definitions import _apply_templates, _get_template_variables
+from ..extraction.fields import _apply_templates, _get_template_variables
 
 logger = logging.getLogger("prompture.persona")
 

@@ -386,7 +386,7 @@ class ToolRegistry:
         Returns:
             The registered :class:`ToolDefinition`.
         """
-        from .tukuy_bridge import skill_to_tool_definition
+        from ..integrations.tukuy_bridge import skill_to_tool_definition
 
         td = skill_to_tool_definition(skill_or_fn)
         if name:

@@ -8,10 +8,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from prompture.callbacks import DriverCallbacks
-from prompture.conversation import Conversation
-from prompture.driver import Driver
-from prompture.tools_schema import ToolDefinition, ToolRegistry, tool_from_function
+from prompture.infra.callbacks import DriverCallbacks
+from prompture.agents.conversation import Conversation
+from prompture.drivers.base import Driver
+from prompture.agents.tools_schema import ToolDefinition, ToolRegistry, tool_from_function
 
 
 # ---------------------------------------------------------------------------

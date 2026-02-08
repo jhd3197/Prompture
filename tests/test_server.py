@@ -7,14 +7,14 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from prompture.async_driver import AsyncDriver
+from prompture.drivers.async_base import AsyncDriver
 
 # Skip entire module if fastapi is not installed
 pytest.importorskip("fastapi")
 
 from fastapi.testclient import TestClient
 
-from prompture.server import create_app
+from prompture.cli.server import create_app
 
 
 # ---------------------------------------------------------------------------
@@ -57,7 +57,7 @@ def app(mock_driver):
 
 @pytest.fixture
 def client(app, mock_driver):
-    with patch("prompture.async_conversation.get_async_driver_for_model", return_value=mock_driver):
+    with patch("prompture.agents.async_conversation.get_async_driver_for_model", return_value=mock_driver):
         with TestClient(app) as c:
             yield c
 

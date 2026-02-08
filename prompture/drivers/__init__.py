@@ -26,7 +26,7 @@ Entry Point Discovery:
 
 from typing import Optional
 
-from ..settings import settings
+from ..infra.settings import settings
 from .airllm_driver import AirLLMDriver
 from .async_airllm_driver import AsyncAirLLMDriver
 from .async_azure_driver import AsyncAzureDriver

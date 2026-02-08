@@ -7,14 +7,14 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from prompture.agent_types import AgentResult, AgentState
-from prompture.async_groups import (
+from prompture.agents.types import AgentResult, AgentState
+from prompture.groups.async_groups import (
     AsyncLoopGroup,
     AsyncRouterAgent,
     AsyncSequentialGroup,
     ParallelGroup,
 )
-from prompture.group_types import ErrorPolicy, GroupCallbacks
+from prompture.groups.types import ErrorPolicy, GroupCallbacks
 
 
 # ---------------------------------------------------------------------------
@@ -283,16 +283,16 @@ class TestAsyncRouterAgent:
         mock_conv_instance.usage = {}
         mock_conv_class.return_value = mock_conv_instance
 
-        import prompture.async_groups as ag
+        import prompture.groups.async_groups as ag
         original = ag.__dict__.get("AsyncConversation")
 
         # Patch at module level
-        import prompture.async_conversation
+        import prompture.agents.async_conversation
 
-        original_cls = prompture.async_conversation.AsyncConversation
+        original_cls = prompture.agents.async_conversation.AsyncConversation
 
         try:
-            prompture.async_conversation.AsyncConversation = mock_conv_class
+            prompture.agents.async_conversation.AsyncConversation = mock_conv_class
             router = AsyncRouterAgent(
                 model="test/model",
                 agents=[writer, coder],
@@ -302,7 +302,7 @@ class TestAsyncRouterAgent:
             writer.run.assert_called_once_with("Write me a story")
             assert result.output_text == "written content"
         finally:
-            prompture.async_conversation.AsyncConversation = original_cls
+            prompture.agents.async_conversation.AsyncConversation = original_cls
 
     @pytest.mark.asyncio
     async def test_async_router_fuzzy_match(self):

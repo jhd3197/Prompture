@@ -7,10 +7,10 @@ from typing import Any
 
 import pytest
 
-from prompture.callbacks import DriverCallbacks
-from prompture.conversation import Conversation
-from prompture.driver import Driver
-from prompture.session import UsageSession
+from prompture.infra.callbacks import DriverCallbacks
+from prompture.agents.conversation import Conversation
+from prompture.drivers.base import Driver
+from prompture.infra.session import UsageSession
 
 # ---------------------------------------------------------------------------
 # Mock streaming driver

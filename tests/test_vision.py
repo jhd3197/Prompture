@@ -9,7 +9,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from prompture.image import (
+from prompture.media.image import (
     ImageContent,
     image_from_base64,
     image_from_bytes,
@@ -135,25 +135,25 @@ class TestMakeImage:
 
 class TestBuildContentWithImages:
     def test_no_images_returns_string(self):
-        from prompture.conversation import Conversation
+        from prompture.agents.conversation import Conversation
 
         result = Conversation._build_content_with_images("hello")
         assert result == "hello"
 
     def test_no_images_none_returns_string(self):
-        from prompture.conversation import Conversation
+        from prompture.agents.conversation import Conversation
 
         result = Conversation._build_content_with_images("hello", None)
         assert result == "hello"
 
     def test_empty_list_returns_string(self):
-        from prompture.conversation import Conversation
+        from prompture.agents.conversation import Conversation
 
         result = Conversation._build_content_with_images("hello", [])
         assert result == "hello"
 
     def test_with_images_returns_blocks(self):
-        from prompture.conversation import Conversation
+        from prompture.agents.conversation import Conversation
 
         result = Conversation._build_content_with_images("hello", [_PNG_BYTES])
         assert isinstance(result, list)
@@ -171,7 +171,7 @@ class TestBuildContentWithImages:
 class TestConversationAskWithImages:
     def _make_conv(self) -> tuple:
         """Create a Conversation with a mock driver."""
-        from prompture.conversation import Conversation
+        from prompture.agents.conversation import Conversation
 
         mock_driver = MagicMock()
         mock_driver.supports_tool_use = False
@@ -318,7 +318,7 @@ class TestPrepareMessagesOllama:
 
 class TestFlattenWithImages:
     def test_flatten_with_image_blocks(self):
-        from prompture.driver import Driver
+        from prompture.drivers.base import Driver
 
         msgs = _universal_msgs("hello")
         result = Driver._flatten_messages(msgs)
@@ -326,7 +326,7 @@ class TestFlattenWithImages:
         assert "hello" in result
 
     def test_flatten_string_content_unchanged(self):
-        from prompture.driver import Driver
+        from prompture.drivers.base import Driver
 
         msgs = [{"role": "user", "content": "plain text"}]
         result = Driver._flatten_messages(msgs)
@@ -340,7 +340,7 @@ class TestFlattenWithImages:
 
 class TestNonVisionDriverRaises:
     def test_check_raises_on_image_input(self):
-        from prompture.driver import Driver
+        from prompture.drivers.base import Driver
 
         d = Driver()
         assert d.supports_vision is False
@@ -348,13 +348,13 @@ class TestNonVisionDriverRaises:
             d._check_vision_support(_universal_msgs())
 
     def test_check_passes_for_text_only(self):
-        from prompture.driver import Driver
+        from prompture.drivers.base import Driver
 
         d = Driver()
         d._check_vision_support([{"role": "user", "content": "hello"}])
 
     def test_prepare_messages_raises_on_non_vision_driver(self):
-        from prompture.driver import Driver
+        from prompture.drivers.base import Driver
 
         d = Driver()
         with pytest.raises(NotImplementedError, match="does not support vision"):
@@ -369,7 +369,7 @@ class TestNonVisionDriverRaises:
 class TestBackwardCompatibility:
     def test_conversation_ask_without_images(self):
         """String-only ask still works identically."""
-        from prompture.conversation import Conversation
+        from prompture.agents.conversation import Conversation
 
         mock_driver = MagicMock()
         mock_driver.supports_tool_use = False
@@ -386,7 +386,7 @@ class TestBackwardCompatibility:
         assert msgs[-1]["content"] == "hello"
 
     def test_build_messages_no_images(self):
-        from prompture.conversation import Conversation
+        from prompture.agents.conversation import Conversation
 
         mock_driver = MagicMock()
         mock_driver.supports_tool_use = False
@@ -396,7 +396,7 @@ class TestBackwardCompatibility:
         assert msgs[1] == {"role": "user", "content": "hello"}
 
     def test_add_context_without_images(self):
-        from prompture.conversation import Conversation
+        from prompture.agents.conversation import Conversation
 
         mock_driver = MagicMock()
         mock_driver.supports_tool_use = False

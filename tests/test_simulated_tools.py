@@ -7,13 +7,13 @@ from typing import Any
 
 import pytest
 
-from prompture.driver import Driver
-from prompture.simulated_tools import (
+from prompture.drivers.base import Driver
+from prompture.agents.simulated_tools import (
     build_tool_prompt,
     format_tool_result,
     parse_simulated_response,
 )
-from prompture.tools_schema import ToolDefinition, ToolRegistry
+from prompture.agents.tools_schema import ToolDefinition, ToolRegistry
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -300,7 +300,7 @@ class TestFormatToolResult:
 class TestSimulatedToolLoop:
     def test_single_round(self, tools):
         """Mock driver returns tool call, then final answer."""
-        from prompture.conversation import Conversation
+        from prompture.agents.conversation import Conversation
 
         responses = [
             json.dumps({"type": "tool_call", "name": "get_weather", "arguments": {"city": "London"}}),
@@ -314,7 +314,7 @@ class TestSimulatedToolLoop:
 
     def test_max_rounds_exceeded(self, tools):
         """Should raise RuntimeError when max rounds exceeded."""
-        from prompture.conversation import Conversation
+        from prompture.agents.conversation import Conversation
 
         # Always returns tool calls, never a final answer
         responses = [json.dumps({"type": "tool_call", "name": "get_weather", "arguments": {"city": "London"}})] * 5
@@ -325,7 +325,7 @@ class TestSimulatedToolLoop:
 
     def test_tool_error_becomes_message(self, tools):
         """Tool execution errors are sent back as user messages."""
-        from prompture.conversation import Conversation
+        from prompture.agents.conversation import Conversation
 
         def bad_tool(x: str) -> str:
             """A tool that always fails."""
@@ -344,7 +344,7 @@ class TestSimulatedToolLoop:
 
     def test_auto_mode_activates(self, tools):
         """simulated_tools='auto' with no native support → simulation path."""
-        from prompture.conversation import Conversation
+        from prompture.agents.conversation import Conversation
 
         responses = [
             json.dumps({"type": "final_answer", "content": "done"}),
@@ -359,7 +359,7 @@ class TestSimulatedToolLoop:
 
     def test_auto_mode_prefers_native(self, tools):
         """simulated_tools='auto' with native support → native tool path."""
-        from prompture.conversation import Conversation
+        from prompture.agents.conversation import Conversation
 
         driver = NativeToolDriver()
         conv = Conversation(driver=driver, tools=tools, simulated_tools="auto")
@@ -368,7 +368,7 @@ class TestSimulatedToolLoop:
 
     def test_disabled_mode(self, tools):
         """simulated_tools=False → tools ignored, plain ask."""
-        from prompture.conversation import Conversation
+        from prompture.agents.conversation import Conversation
 
         responses = [
             json.dumps({"type": "final_answer", "content": "ignored"}),
@@ -381,7 +381,7 @@ class TestSimulatedToolLoop:
 
     def test_forced_mode(self, tools):
         """simulated_tools=True → simulation even with native support."""
-        from prompture.conversation import Conversation
+        from prompture.agents.conversation import Conversation
 
         # Use a driver that has supports_tool_use=True but we force simulation
         driver = NativeToolDriver()
@@ -410,7 +410,7 @@ class TestSimulatedToolLoop:
 
     def test_history_format(self, tools):
         """After simulation, all messages should use user/assistant roles."""
-        from prompture.conversation import Conversation
+        from prompture.agents.conversation import Conversation
 
         responses = [
             json.dumps({"type": "tool_call", "name": "get_weather", "arguments": {"city": "NYC"}}),
@@ -432,7 +432,7 @@ class TestSimulatedToolLoop:
 class TestLastReasoning:
     def test_last_reasoning_none_by_default(self):
         """last_reasoning should be None before any ask() call."""
-        from prompture.conversation import Conversation
+        from prompture.agents.conversation import Conversation
 
         driver = MockDriver([json.dumps({"type": "final_answer", "content": "hi"})])
         conv = Conversation(driver=driver, system_prompt="test")
@@ -440,7 +440,7 @@ class TestLastReasoning:
 
     def test_last_reasoning_none_after_simulated_tools(self, tools):
         """Simulated tool path does not produce reasoning_content."""
-        from prompture.conversation import Conversation
+        from prompture.agents.conversation import Conversation
 
         responses = [
             json.dumps({"type": "tool_call", "name": "get_weather", "arguments": {"city": "London"}}),
@@ -453,7 +453,7 @@ class TestLastReasoning:
 
     def test_last_reasoning_populated_from_driver(self):
         """last_reasoning should be set when driver returns reasoning_content."""
-        from prompture.conversation import Conversation
+        from prompture.agents.conversation import Conversation
 
         driver = MockReasoningDriver(
             [
@@ -467,7 +467,7 @@ class TestLastReasoning:
 
     def test_last_reasoning_reset_between_calls(self):
         """last_reasoning should reset at the start of each ask() call."""
-        from prompture.conversation import Conversation
+        from prompture.agents.conversation import Conversation
 
         driver = MockReasoningDriver(
             [
@@ -485,7 +485,7 @@ class TestLastReasoning:
 
     def test_last_reasoning_with_native_tools(self, tools):
         """last_reasoning should be set from the final tool response."""
-        from prompture.conversation import Conversation
+        from prompture.agents.conversation import Conversation
 
         driver = NativeToolReasoningDriver()
         conv = Conversation(driver=driver, tools=tools, simulated_tools=False)
@@ -495,7 +495,7 @@ class TestLastReasoning:
 
     def test_last_reasoning_in_ask_for_json(self):
         """ask_for_json should populate last_reasoning and include it in the result."""
-        from prompture.conversation import Conversation
+        from prompture.agents.conversation import Conversation
 
         driver = MockReasoningDriver(
             [
@@ -514,7 +514,7 @@ class TestLastReasoning:
 
     def test_ask_for_json_reasoning_none_without_reasoning_model(self):
         """ask_for_json result should have reasoning=None for non-reasoning models."""
-        from prompture.conversation import Conversation
+        from prompture.agents.conversation import Conversation
 
         driver = MockDriver(['{"name": "Jane"}'])
         conv = Conversation(driver=driver, system_prompt="Extract data")

@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 
-from prompture.persistence import ConversationStore, load_from_file, save_to_file
+from prompture.persistence.store import ConversationStore, load_from_file, save_to_file
 
 # ------------------------------------------------------------------
 # File-based persistence

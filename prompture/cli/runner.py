@@ -2,9 +2,9 @@
 
 from typing import Any
 
-from prompture.validator import validate_against_schema
+from prompture.extraction.validator import validate_against_schema
 
-from .core import Driver, ask_for_json
+from ..extraction.core import Driver, ask_for_json
 
 
 def run_suite_from_spec(spec: dict[str, Any], drivers: dict[str, Driver]) -> dict[str, Any]:

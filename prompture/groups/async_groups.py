@@ -13,8 +13,8 @@ import time
 from collections.abc import Callable
 from typing import Any
 
-from .agent_types import AgentResult, AgentState
-from .group_types import (
+from ..agents.types import AgentResult, AgentState
+from .types import (
     AgentError,
     ErrorPolicy,
     GroupCallbacks,
@@ -563,7 +563,7 @@ class AsyncRouterAgent:
 
     async def run(self, prompt: str, *, deps: Any = None) -> AgentResult:
         """Route the prompt to the best agent (async)."""
-        from .async_conversation import AsyncConversation
+        from ..agents.async_conversation import AsyncConversation
 
         agent_lines = []
         for name, agent in self._agents.items():

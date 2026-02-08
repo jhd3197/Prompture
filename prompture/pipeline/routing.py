@@ -364,7 +364,7 @@ class ModelRouter:
             List of model strings that can be used.
         """
         try:
-            from .discovery import get_available_models
+            from ..infra.discovery import get_available_models
 
             available = get_available_models()
         except Exception:

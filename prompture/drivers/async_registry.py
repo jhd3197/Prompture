@@ -13,7 +13,7 @@ Entry Point Discovery:
 
 from __future__ import annotations
 
-from ..settings import settings
+from ..infra.settings import settings
 from .async_airllm_driver import AsyncAirLLMDriver
 from .async_azure_driver import AsyncAzureDriver
 from .async_claude_driver import AsyncClaudeDriver

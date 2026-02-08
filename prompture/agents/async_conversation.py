@@ -14,16 +14,16 @@ from typing import Any, Callable, Literal, Union
 
 from pydantic import BaseModel
 
-from .async_driver import AsyncDriver
-from .callbacks import DriverCallbacks
-from .drivers.async_registry import get_async_driver_for_model
-from .field_definitions import get_registry_snapshot
-from .image import ImageInput, make_image
-from .persistence import load_from_file, save_to_file
+from ..drivers.async_base import AsyncDriver
+from ..infra.callbacks import DriverCallbacks
+from ..drivers.async_registry import get_async_driver_for_model
+from ..extraction.fields import get_registry_snapshot
+from ..media.image import ImageInput, make_image
+from ..persistence.store import load_from_file, save_to_file
 from .persona import Persona, get_persona
-from .serialization import export_conversation, import_conversation
-from .session import UsageSession
-from .tools import (
+from ..persistence.serialization import export_conversation, import_conversation
+from ..infra.session import UsageSession
+from ..extraction.tools import (
     clean_json_text,
     convert_value,
     get_field_default,
@@ -315,7 +315,7 @@ class AsyncConversation:
         self._usage["turns"] += 1
         self._maybe_auto_save()
 
-        from .ledger import _resolve_api_key_hash, record_model_usage
+        from ..infra.ledger import _resolve_api_key_hash, record_model_usage
 
         record_model_usage(
             self._model_name,
@@ -765,7 +765,7 @@ class AsyncConversation:
             json_obj = json.loads(cleaned)
         except json.JSONDecodeError:
             if ai_cleanup:
-                from .async_core import clean_json_text_with_ai
+                from ..extraction.async_core import clean_json_text_with_ai
 
                 cleaned = await clean_json_text_with_ai(self._driver, cleaned, self._model_name, merged)
                 json_obj = json.loads(cleaned)
@@ -816,7 +816,7 @@ class AsyncConversation:
         images: list[ImageInput] | None = None,
     ) -> dict[str, Any]:
         """Extract structured information into a Pydantic model with conversation context (async)."""
-        from .core import normalize_field_value
+        from ..extraction.core import normalize_field_value
 
         schema = model_cls.model_json_schema()
         content_prompt = f"{instruction_template} {text}"
@@ -948,7 +948,7 @@ class AsyncConversation:
                 else:
                     raw_value = extracted_value
 
-                from .core import normalize_field_value
+                from ..extraction.core import normalize_field_value
 
                 field_def = {}
                 if field_definitions and field_name in field_definitions:

@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from prompture.persona import (
+from prompture.agents.persona import (
     BASE_PERSONAS,
     PERSONAS,
     Persona,
@@ -439,7 +439,7 @@ class TestBuiltinPersonas:
 class TestConversationPersonaIntegration:
     def test_persona_string_lookup(self):
         """Conversation(persona="json_extractor") should resolve from registry."""
-        from prompture.conversation import Conversation
+        from prompture.agents.conversation import Conversation
 
         driver = MagicMock()
         conv = Conversation(driver=driver, persona="json_extractor")
@@ -448,7 +448,7 @@ class TestConversationPersonaIntegration:
 
     def test_persona_instance(self):
         """Conversation(persona=my_persona) should render directly."""
-        from prompture.conversation import Conversation
+        from prompture.agents.conversation import Conversation
 
         driver = MagicMock()
         p = Persona(name="test", system_prompt="Custom persona prompt.")
@@ -457,7 +457,7 @@ class TestConversationPersonaIntegration:
 
     def test_persona_and_system_prompt_raises(self):
         """Providing both persona and system_prompt should raise ValueError."""
-        from prompture.conversation import Conversation
+        from prompture.agents.conversation import Conversation
 
         driver = MagicMock()
         with pytest.raises(ValueError, match="Cannot provide both"):
@@ -465,7 +465,7 @@ class TestConversationPersonaIntegration:
 
     def test_persona_settings_as_defaults(self):
         """persona.settings should be applied as default options."""
-        from prompture.conversation import Conversation
+        from prompture.agents.conversation import Conversation
 
         driver = MagicMock()
         conv = Conversation(driver=driver, persona="json_extractor")
@@ -473,7 +473,7 @@ class TestConversationPersonaIntegration:
 
     def test_persona_settings_overridden_by_explicit_options(self):
         """Explicit options should override persona.settings."""
-        from prompture.conversation import Conversation
+        from prompture.agents.conversation import Conversation
 
         driver = MagicMock()
         conv = Conversation(driver=driver, persona="json_extractor", options={"temperature": 0.7})
@@ -481,7 +481,7 @@ class TestConversationPersonaIntegration:
 
     def test_persona_model_hint_used(self):
         """persona.model_hint should be used if model_name is not provided."""
-        from prompture.conversation import Conversation
+        from prompture.agents.conversation import Conversation
 
         p = Persona(name="hinted", system_prompt="With model hint.", model_hint="ollama/test:latest")
         # This would normally call get_driver_for_model("ollama/test:latest")
@@ -492,7 +492,7 @@ class TestConversationPersonaIntegration:
 
     def test_persona_string_not_found_raises(self):
         """Passing an unregistered persona string should raise ValueError."""
-        from prompture.conversation import Conversation
+        from prompture.agents.conversation import Conversation
 
         driver = MagicMock()
         with pytest.raises(ValueError, match="not found"):
@@ -501,7 +501,7 @@ class TestConversationPersonaIntegration:
 
 class TestAsyncConversationPersonaIntegration:
     def test_persona_string_lookup(self):
-        from prompture.async_conversation import AsyncConversation
+        from prompture.agents.async_conversation import AsyncConversation
 
         driver = MagicMock()
         conv = AsyncConversation(driver=driver, persona="json_extractor")
@@ -509,7 +509,7 @@ class TestAsyncConversationPersonaIntegration:
         assert "extraction" in conv._system_prompt.lower()
 
     def test_persona_and_system_prompt_raises(self):
-        from prompture.async_conversation import AsyncConversation
+        from prompture.agents.async_conversation import AsyncConversation
 
         driver = MagicMock()
         with pytest.raises(ValueError, match="Cannot provide both"):
@@ -519,7 +519,7 @@ class TestAsyncConversationPersonaIntegration:
 class TestAgentPersonaIntegration:
     def test_agent_with_persona_instance(self):
         """Agent(system_prompt=my_persona) should use Persona."""
-        from prompture.agent import Agent
+        from prompture.agents.agent import Agent
 
         p = Persona(name="agent_test", system_prompt="I am an agent persona.")
         agent = Agent(model="test/model", driver=MagicMock(), system_prompt=p)
@@ -528,8 +528,8 @@ class TestAgentPersonaIntegration:
 
     def test_agent_persona_render_with_context(self):
         """Persona should render with RunContext variables."""
-        from prompture.agent import Agent
-        from prompture.agent_types import RunContext
+        from prompture.agents.agent import Agent
+        from prompture.agents.types import RunContext
 
         p = Persona(name="ctx_test", system_prompt="Model: {{model}}")
         agent = Agent(model="test/model", driver=MagicMock(), system_prompt=p)
@@ -542,7 +542,7 @@ class TestAgentPersonaIntegration:
         """Persona + output_type should concatenate correctly."""
         from pydantic import BaseModel
 
-        from prompture.agent import Agent
+        from prompture.agents.agent import Agent
 
         class Output(BaseModel):
             value: str
@@ -556,7 +556,7 @@ class TestAgentPersonaIntegration:
 
 class TestAsyncAgentPersonaIntegration:
     def test_async_agent_with_persona(self):
-        from prompture.async_agent import AsyncAgent
+        from prompture.agents.async_agent import AsyncAgent
 
         p = Persona(name="async_test", system_prompt="Async persona.")
         agent = AsyncAgent(model="test/model", driver=MagicMock(), system_prompt=p)

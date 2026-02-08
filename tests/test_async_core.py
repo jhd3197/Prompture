@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from prompture.async_core import (
+from prompture.extraction.async_core import (
     ask_for_json,
     clean_json_text_with_ai,
     extract_and_jsonify,
@@ -17,7 +17,7 @@ from prompture.async_core import (
     render_output,
     stepwise_extract_with_model,
 )
-from prompture.async_driver import AsyncDriver
+from prompture.drivers.async_base import AsyncDriver
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -134,7 +134,7 @@ class TestAsyncExtractAndJsonify:
         with pytest.raises(ValueError, match="Expected format"):
             await extract_and_jsonify(text="some text", json_schema={}, model_name="invalid")
 
-    @patch("prompture.async_core.get_async_driver_for_model")
+    @patch("prompture.extraction.async_core.get_async_driver_for_model")
     async def test_successful_extraction(self, mock_get_driver):
         driver = _mock_async_driver()
         mock_get_driver.return_value = driver
@@ -180,7 +180,7 @@ class TestAsyncExtractWithModel:
         with pytest.raises(ValueError, match="cannot be empty"):
             await extract_with_model(Person, "", "openai/gpt-4")
 
-    @patch("prompture.async_core.get_async_driver_for_model")
+    @patch("prompture.extraction.async_core.get_async_driver_for_model")
     async def test_returns_model_instance(self, mock_get_driver):
         from pydantic import BaseModel
 
@@ -211,7 +211,7 @@ class TestAsyncStepwiseExtractWithModel:
         with pytest.raises(ValueError, match="cannot be empty"):
             await stepwise_extract_with_model(Person, "", model_name="openai/gpt-4")
 
-    @patch("prompture.async_core.get_async_driver_for_model")
+    @patch("prompture.extraction.async_core.get_async_driver_for_model")
     async def test_extracts_fields_sequentially(self, mock_get_driver):
         from pydantic import BaseModel
 
@@ -243,7 +243,7 @@ class TestAsyncStepwiseExtractWithModel:
 
 
 class TestGatherExtract:
-    @patch("prompture.async_core.get_async_driver_for_model")
+    @patch("prompture.extraction.async_core.get_async_driver_for_model")
     async def test_concurrent_extraction(self, mock_get_driver):
         driver = _mock_async_driver()
         mock_get_driver.return_value = driver

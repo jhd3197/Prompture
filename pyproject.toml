@@ -42,7 +42,7 @@ serve = ["fastapi>=0.100", "uvicorn[standard]>=0.20", "sse-starlette>=1.6"]
 scaffold = ["jinja2>=3.0"]
 
 [project.scripts]
-prompture = "prompture.cli:cli"
+prompture = "prompture.cli.cli:cli"
 
 [project.urls]
 Homepage = "https://github.com/jhd3197/prompture"

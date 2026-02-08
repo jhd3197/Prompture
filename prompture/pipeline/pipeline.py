@@ -23,11 +23,11 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Union
 
-from .group_types import ErrorPolicy
+from ..groups.types import ErrorPolicy
 
 if TYPE_CHECKING:
-    from .persona import Persona
-    from .skills import SkillInfo
+    from ..agents.persona import Persona
+    from ..agents.skills import SkillInfo
 
 logger = logging.getLogger("prompture.pipeline")
 
@@ -250,15 +250,15 @@ class SkillPipeline:
         Raises:
             ValueError: If skill name not found in registry.
         """
-        from .persona import Persona
-        from .skills import SkillInfo, get_skill
+        from ..agents.persona import Persona
+        from ..agents.skills import SkillInfo, get_skill
 
         if isinstance(skill, str):
             # Look up from skill registry
             skill_info = get_skill(skill)
             if skill_info is None:
                 # Try persona registry as fallback
-                from .persona import get_persona
+                from ..agents.persona import get_persona
 
                 persona = get_persona(skill)
                 if persona is not None:
@@ -316,7 +316,7 @@ class SkillPipeline:
             >>> print(result.final_output)
             >>> print(f"Total cost: ${result.usage['cost']:.4f}")
         """
-        from .conversation import Conversation
+        from ..agents.conversation import Conversation
 
         t0 = time.perf_counter()
         state: dict[str, Any] = dict(initial_state) if initial_state else {}
@@ -362,7 +362,7 @@ class SkillPipeline:
                     continue
 
             # Handle TukuyChainStep directly (no LLM call needed)
-            from .tukuy_bridge import TukuyChainStep
+            from ..integrations.tukuy_bridge import TukuyChainStep
 
             if isinstance(step.skill, TukuyChainStep):
                 if step.input_template:

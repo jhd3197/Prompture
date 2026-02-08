@@ -17,15 +17,15 @@ except ImportError:
 
 from pydantic import BaseModel
 
-from .async_driver import AsyncDriver
+from ..drivers.async_base import AsyncDriver
 from .core import (
     _calculate_token_savings,
     _dataframe_to_toon,
     _json_to_toon,
     normalize_field_value,
 )
-from .drivers.async_registry import get_async_driver_for_model
-from .field_definitions import get_registry_snapshot
+from ..drivers.async_registry import get_async_driver_for_model
+from .fields import get_registry_snapshot
 from .tools import (
     clean_json_text,
     convert_value,
@@ -37,7 +37,7 @@ logger = logging.getLogger("prompture.async_core")
 
 def _record_usage_to_ledger(model_name: str, meta: dict[str, Any]) -> None:
     """Fire-and-forget ledger recording for standalone async core functions."""
-    from .ledger import _resolve_api_key_hash, record_model_usage
+    from ..infra.ledger import _resolve_api_key_hash, record_model_usage
 
     record_model_usage(
         model_name,
@@ -153,7 +153,7 @@ async def ask_for_json(
         raise ValueError(f"Unsupported output_format '{output_format}'. Use 'json' or 'toon'.")
 
     # --- cache lookup ---
-    from .cache import get_cache, make_cache_key
+    from ..infra.cache import get_cache, make_cache_key
 
     _cache = get_cache()
     use_cache = cache if cache is not None else _cache.enabled
@@ -414,7 +414,7 @@ async def extract_with_model(
         raise ValueError("Text input cannot be empty")
 
     # --- cache lookup ---
-    from .cache import get_cache, make_cache_key
+    from ..infra.cache import get_cache, make_cache_key
 
     _cache = get_cache()
     use_cache = cache if cache is not None else _cache.enabled
@@ -517,7 +517,7 @@ async def stepwise_extract_with_model(
 
     # When share_context=True, delegate to AsyncConversation-based extraction
     if share_context:
-        from .async_conversation import AsyncConversation
+        from ..agents.async_conversation import AsyncConversation
 
         conv = AsyncConversation(model_name=model_name, system_prompt=system_prompt, options=options)
         return await conv._stepwise_extract(

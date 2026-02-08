@@ -8,7 +8,7 @@ from typing import Any
 
 import httpx
 
-from ..async_driver import AsyncDriver
+from .async_base import AsyncDriver
 
 logger = logging.getLogger(__name__)
 

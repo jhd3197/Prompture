@@ -13,8 +13,8 @@ import time
 from collections.abc import Callable
 from typing import Any
 
-from .agent_types import AgentResult, AgentState
-from .group_types import (
+from ..agents.types import AgentResult, AgentState
+from .types import (
     AgentError,
     ErrorPolicy,
     GroupCallbacks,
@@ -460,7 +460,7 @@ class RouterAgent:
 
     def run(self, prompt: str, *, deps: Any = None) -> AgentResult:
         """Route the prompt to the best agent and return its result."""
-        from .conversation import Conversation
+        from ..agents.conversation import Conversation
 
         # Build agent list for routing prompt
         agent_lines = []

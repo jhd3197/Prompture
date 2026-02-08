@@ -7,7 +7,7 @@ import threading
 
 import pytest
 
-from prompture.skills import (
+from prompture.agents.skills import (
     SKILLS,
     SkillInfo,
     SkillParseError,
@@ -609,7 +609,7 @@ Excluded instructions.
 
 class TestPersonaFromSkill:
     def test_persona_from_skill(self, sample_skill_md):
-        from prompture.persona import Persona
+        from prompture.agents.persona import Persona
 
         persona = Persona.from_skill(sample_skill_md)
         assert persona.name == "sample_skill"  # hyphens to underscores

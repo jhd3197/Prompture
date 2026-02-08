@@ -1,4 +1,4 @@
-"""Tests for the model usage ledger (prompture.ledger)."""
+"""Tests for the model usage ledger (prompture.infra.ledger)."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from prompture.ledger import (
+from prompture.infra.ledger import (
     ModelUsageLedger,
     _resolve_api_key_hash,
     get_recently_used_models,
@@ -128,7 +128,7 @@ class TestRecentlyUsed:
 class TestFireAndForget:
     def test_record_model_usage_fire_and_forget(self, tmp_path):
         """Verify that record_model_usage swallows exceptions."""
-        with patch("prompture.ledger._get_ledger") as mock_get:
+        with patch("prompture.infra.ledger._get_ledger") as mock_get:
             mock_ledger = MagicMock()
             mock_ledger.record_usage.side_effect = RuntimeError("DB exploded")
             mock_get.return_value = mock_ledger
@@ -138,7 +138,7 @@ class TestFireAndForget:
 
     def test_get_recently_used_models_empty(self, tmp_path):
         """Convenience function returns empty list when ledger errors."""
-        with patch("prompture.ledger._get_ledger") as mock_get:
+        with patch("prompture.infra.ledger._get_ledger") as mock_get:
             mock_get.side_effect = RuntimeError("Cannot open DB")
             result = get_recently_used_models()
             assert result == []
@@ -151,14 +151,14 @@ class TestFireAndForget:
 
 class TestResolveApiKeyHash:
     def test_resolve_api_key_hash(self):
-        with patch("prompture.settings.settings") as mock_settings:
+        with patch("prompture.infra.settings.settings") as mock_settings:
             mock_settings.openai_api_key = "sk-test-key-12345"
             result = _resolve_api_key_hash("openai/gpt-4")
             assert len(result) == 8
             assert all(c in "0123456789abcdef" for c in result)
 
     def test_resolve_api_key_hash_missing(self):
-        with patch("prompture.settings.settings") as mock_settings:
+        with patch("prompture.infra.settings.settings") as mock_settings:
             mock_settings.openai_api_key = None
             result = _resolve_api_key_hash("openai/gpt-4")
             assert result == ""
@@ -185,10 +185,10 @@ class TestDiscoveryIntegration:
         mock_ledger.get_all_stats.return_value = []
 
         with (
-            patch("prompture.ledger._get_ledger", return_value=mock_ledger),
-            patch("prompture.discovery.settings") as mock_settings,
-            patch("prompture.discovery.requests"),
-            patch("prompture.model_rates.PROVIDER_MAP", {}),
+            patch("prompture.infra.ledger._get_ledger", return_value=mock_ledger),
+            patch("prompture.infra.discovery.settings") as mock_settings,
+            patch("prompture.infra.discovery.requests"),
+            patch("prompture.infra.model_rates.PROVIDER_MAP", {}),
         ):
             # Configure only ollama as available
             mock_settings.openai_api_key = None
@@ -202,7 +202,7 @@ class TestDiscoveryIntegration:
             mock_settings.lmstudio_endpoint = "http://127.0.0.1:1234/v1/chat/completions"
             mock_settings.lmstudio_api_key = None
 
-            from prompture.discovery import get_available_models
+            from prompture.infra.discovery import get_available_models
 
             # Without verified_only, ollama models show up (from MODEL_PRICING)
             all_models = get_available_models(verified_only=False)
@@ -233,10 +233,10 @@ class TestDiscoveryIntegration:
         ]
 
         with (
-            patch("prompture.ledger._get_ledger", return_value=mock_ledger),
-            patch("prompture.discovery.settings") as mock_settings,
-            patch("prompture.discovery.requests"),
-            patch("prompture.model_rates.PROVIDER_MAP", {}),
+            patch("prompture.infra.ledger._get_ledger", return_value=mock_ledger),
+            patch("prompture.infra.discovery.settings") as mock_settings,
+            patch("prompture.infra.discovery.requests"),
+            patch("prompture.infra.model_rates.PROVIDER_MAP", {}),
         ):
             mock_settings.openai_api_key = None
             mock_settings.azure_api_key = None
@@ -249,7 +249,7 @@ class TestDiscoveryIntegration:
             mock_settings.lmstudio_endpoint = "http://127.0.0.1:1234/v1/chat/completions"
             mock_settings.lmstudio_api_key = None
 
-            from prompture.discovery import get_available_models
+            from prompture.infra.discovery import get_available_models
 
             enriched = get_available_models(include_capabilities=True)
 

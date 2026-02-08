@@ -11,8 +11,8 @@ from typing import Optional, Union
 
 import pytest
 
-from prompture.field_definitions import FIELD_DEFINITIONS
-from prompture.tools import convert_value, parse_boolean
+from prompture.extraction.fields import FIELD_DEFINITIONS
+from prompture.extraction.tools import convert_value, parse_boolean
 
 
 class TestParseBoolean:

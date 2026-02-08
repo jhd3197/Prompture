@@ -9,7 +9,7 @@ import json
 from datetime import datetime, timezone
 from typing import Any
 
-from .agent_types import AgentResult, AgentStep, StepType
+from ..agents.types import AgentResult, AgentStep, StepType
 
 
 def filter_steps(

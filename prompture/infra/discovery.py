@@ -9,7 +9,7 @@ from typing import Any, overload
 
 import requests
 
-from .drivers import (
+from ..drivers import (
     AirLLMDriver,
     AzureDriver,
     ClaudeDriver,
