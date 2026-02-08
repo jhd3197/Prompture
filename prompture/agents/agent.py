@@ -161,6 +161,15 @@ class Agent(Generic[DepsType]):
             sees the full multi-turn history.  Use
             :meth:`clear_history` to reset.  Default ``False``
             preserves the existing one-shot behaviour.
+        security_context: Optional tukuy ``SecurityContext`` activated
+            around tool execution so tukuy skills run with filesystem
+            and network scoping.  When ``None`` (default) no scoping
+            is applied.
+        auto_approve_safe_only: When ``True``, tools backed by tukuy
+            skills that declare ``side_effects=True`` or
+            ``requires_network=True`` will raise
+            :class:`ApprovalRequired` before execution.  Default
+            ``False``.
     """
 
     def __init__(
@@ -182,6 +191,8 @@ class Agent(Generic[DepsType]):
         description: str = "",
         output_key: str | None = None,
         persistent_conversation: bool = False,
+        security_context: Any | None = None,
+        auto_approve_safe_only: bool = False,
     ) -> None:
         if not model and driver is None:
             raise ValueError("Either model or driver must be provided")
@@ -201,6 +212,8 @@ class Agent(Generic[DepsType]):
         self.description = description
         self.output_key = output_key
         self._persistent_conversation = persistent_conversation
+        self._security_context = security_context
+        self._auto_approve_safe_only = auto_approve_safe_only
         self._conversation: Conversation | None = None
 
         # Build internal tool registry
@@ -355,9 +368,7 @@ class Agent(Generic[DepsType]):
     # Tool wrapping (RunContext injection + ModelRetry + callbacks)
     # ------------------------------------------------------------------
 
-    def _wrap_tools_with_context(
-        self, ctx: RunContext[Any], session: UsageSession | None = None
-    ) -> ToolRegistry:
+    def _wrap_tools_with_context(self, ctx: RunContext[Any], session: UsageSession | None = None) -> ToolRegistry:
         """Return a new :class:`ToolRegistry` with wrapped tool functions.
 
         For each registered tool:
@@ -391,6 +402,24 @@ class Agent(Generic[DepsType]):
                     if _cb.on_tool_start:
                         _cb.on_tool_start(_name, kwargs)
                     try:
+                        # Auto-approve gate: block tukuy skills with side effects
+                        if self._auto_approve_safe_only:
+                            skill_obj = getattr(_fn, "__skill__", None)
+                            if skill_obj is not None:
+                                desc = skill_obj.descriptor
+                                has_side_effects = getattr(desc, "side_effects", False)
+                                has_network = getattr(desc, "requires_network", False)
+                                if has_side_effects or has_network:
+                                    raise ApprovalRequired(
+                                        tool_name=_name,
+                                        action="execute tool with side effects",
+                                        details={
+                                            "side_effects": has_side_effects,
+                                            "requires_network": has_network,
+                                            "skill_name": desc.name,
+                                        },
+                                    )
+
                         if _wants:
                             result = _fn(ctx, **kwargs)
                         else:
@@ -424,15 +453,17 @@ class Agent(Generic[DepsType]):
                         if agent_result is not None and hasattr(agent_result, "run_usage"):
                             child_usage = agent_result.run_usage
                             child_name = getattr(_fn._source_agent, "name", "") or _name
-                            _session.record({
-                                "meta": {
-                                    "prompt_tokens": child_usage.get("prompt_tokens", 0),
-                                    "completion_tokens": child_usage.get("completion_tokens", 0),
-                                    "total_tokens": child_usage.get("total_tokens", 0),
-                                    "cost": child_usage.get("cost", 0.0),
-                                },
-                                "driver": f"sub-agent:{child_name}",
-                            })
+                            _session.record(
+                                {
+                                    "meta": {
+                                        "prompt_tokens": child_usage.get("prompt_tokens", 0),
+                                        "completion_tokens": child_usage.get("completion_tokens", 0),
+                                        "total_tokens": child_usage.get("total_tokens", 0),
+                                        "cost": child_usage.get("cost", 0.0),
+                                    },
+                                    "driver": f"sub-agent:{child_name}",
+                                }
+                            )
 
                     if _cb.on_tool_end:
                         _cb.on_tool_end(_name, result)
@@ -672,7 +703,18 @@ class Agent(Generic[DepsType]):
 
         # 8. Ask the conversation (handles full tool loop internally)
         t0 = time.perf_counter()
-        response_text = conv.ask(effective_prompt)
+        security_token = None
+        if self._security_context is not None:
+            from tukuy.safety import set_security_context
+
+            security_token = set_security_context(self._security_context)
+        try:
+            response_text = conv.ask(effective_prompt)
+        finally:
+            if security_token is not None:
+                from tukuy.safety import reset_security_context
+
+                reset_security_context(security_token)
         elapsed_ms = (time.perf_counter() - t0) * 1000
 
         # 9. Extract steps and tool calls from conversation messages
@@ -959,36 +1001,47 @@ class Agent(Generic[DepsType]):
             if self._agent_callbacks.on_iteration:
                 self._agent_callbacks.on_iteration(0)
 
-            if has_tools:
-                # Tools registered: stream tool events and final response
-                response_text = ""
-                for event in conv.ask_with_tool_events(effective_prompt):
-                    if event["type"] == "tool_call":
-                        yield StreamEvent(
-                            event_type=StreamEventType.tool_call,
-                            data=event,
-                        )
-                    elif event["type"] == "tool_result":
-                        yield StreamEvent(
-                            event_type=StreamEventType.tool_result,
-                            data=event,
-                        )
-                    elif event["type"] == "text_delta":
-                        response_text += event["text"]
+            security_token = None
+            if self._security_context is not None:
+                from tukuy.safety import set_security_context
+
+                security_token = set_security_context(self._security_context)
+            try:
+                if has_tools:
+                    # Tools registered: stream tool events and final response
+                    response_text = ""
+                    for event in conv.ask_with_tool_events(effective_prompt):
+                        if event["type"] == "tool_call":
+                            yield StreamEvent(
+                                event_type=StreamEventType.tool_call,
+                                data=event,
+                            )
+                        elif event["type"] == "tool_result":
+                            yield StreamEvent(
+                                event_type=StreamEventType.tool_result,
+                                data=event,
+                            )
+                        elif event["type"] == "text_delta":
+                            response_text += event["text"]
+                            yield StreamEvent(
+                                event_type=StreamEventType.text_delta,
+                                data=event["text"],
+                            )
+                else:
+                    # No tools: use streaming if available
+                    response_text = ""
+                    stream_iter: Iterator[str] = conv.ask_stream(effective_prompt)
+                    for chunk in stream_iter:
+                        response_text += chunk
                         yield StreamEvent(
                             event_type=StreamEventType.text_delta,
-                            data=event["text"],
+                            data=chunk,
                         )
-            else:
-                # No tools: use streaming if available
-                response_text = ""
-                stream_iter: Iterator[str] = conv.ask_stream(effective_prompt)
-                for chunk in stream_iter:
-                    response_text += chunk
-                    yield StreamEvent(
-                        event_type=StreamEventType.text_delta,
-                        data=chunk,
-                    )
+            finally:
+                if security_token is not None:
+                    from tukuy.safety import reset_security_context
+
+                    reset_security_context(security_token)
 
             # 8. Extract steps
             all_tool_calls: list[dict[str, Any]] = []

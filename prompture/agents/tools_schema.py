@@ -109,6 +109,26 @@ class ToolDefinition:
             "input_schema": self.parameters,
         }
 
+    @property
+    def security_metadata(self) -> dict[str, Any] | None:
+        """Return tukuy security metadata if the tool wraps a tukuy skill.
+
+        Returns ``None`` for native Prompture tools.  For tukuy-backed
+        tools, returns a dict with ``name``, ``description``,
+        ``side_effects``, ``requires_network``, and ``is_tukuy_skill``.
+        """
+        skill_obj = getattr(self.function, "__skill__", None)
+        if skill_obj is None:
+            return None
+        desc = skill_obj.descriptor
+        return {
+            "name": desc.name,
+            "description": desc.description,
+            "side_effects": getattr(desc, "side_effects", False),
+            "requires_network": getattr(desc, "requires_network", False),
+            "is_tukuy_skill": True,
+        }
+
     def to_prompt_format(self) -> str:
         """Plain-text description suitable for prompt-based tool calling."""
         lines = [f"Tool: {self.name}", f"  Description: {self.description}", "  Parameters:"]

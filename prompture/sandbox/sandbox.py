@@ -404,3 +404,20 @@ class PythonSandbox:
         if not self.path_restrictions.can_write(path):
             raise PathViolationError(str(path), "write")
         Path(path).write_text(content)
+
+    def to_security_context(self) -> Any:
+        """Convert this sandbox's path restrictions to a tukuy ``SecurityContext``.
+
+        Returns:
+            A tukuy ``SecurityContext`` with read/write paths and working
+            directory derived from :attr:`path_restrictions`.
+        """
+        from tukuy.safety import SecurityContext
+
+        return SecurityContext(
+            allowed_read_paths=[str(p) for p in self.path_restrictions.allowed_read],
+            allowed_write_paths=[str(p) for p in self.path_restrictions.allowed_write],
+            working_directory=str(self.path_restrictions.working_directory)
+            if self.path_restrictions.working_directory
+            else None,
+        )
