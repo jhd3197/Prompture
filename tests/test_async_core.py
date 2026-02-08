@@ -52,13 +52,14 @@ def _mock_async_driver(text: str = '{"name": "Alice", "age": 30}') -> AsyncDrive
 class TestAsyncCleanJsonTextWithAI:
     async def test_already_valid_json_returns_unchanged(self):
         driver = _mock_async_driver()
-        result = await clean_json_text_with_ai(driver, '{"key": "value"}')
+        result, meta = await clean_json_text_with_ai(driver, '{"key": "value"}')
         assert result == '{"key": "value"}'
+        assert meta == {}
         driver.generate.assert_not_called()
 
     async def test_malformed_json_calls_driver(self):
         driver = _mock_async_driver(text='{"key": "fixed"}')
-        result = await clean_json_text_with_ai(driver, '{"key": broken}')
+        result, meta = await clean_json_text_with_ai(driver, '{"key": broken}')
         driver.generate.assert_called_once()
         assert json.loads(result) == {"key": "fixed"}
 
