@@ -3,6 +3,7 @@
 from .tukuy_bridge import (
     TukuyChainStep,
     apply_safety_policy,
+    apply_security_context,
     make_transform_chain,
     registry_to_skill_dict,
     skill_to_tool_definition,
@@ -13,6 +14,7 @@ from .tukuy_bridge import (
 __all__ = [
     "TukuyChainStep",
     "apply_safety_policy",
+    "apply_security_context",
     "make_transform_chain",
     "registry_to_skill_dict",
     "skill_to_tool_definition",

@@ -237,6 +237,62 @@ def apply_safety_policy(registry: ToolRegistry, policy: Any) -> ToolRegistry:
 
 
 # ------------------------------------------------------------------
+# Security context gating
+# ------------------------------------------------------------------
+
+
+def apply_security_context(registry: ToolRegistry, security_context: Any) -> ToolRegistry:
+    """Return a new :class:`ToolRegistry` where tukuy-backed tools run inside *security_context*.
+
+    For each tool whose function has a ``__skill__`` attribute (i.e. it was
+    created from a tukuy skill), the wrapper is replaced with one that calls
+    ``set_security_context()`` before execution and ``reset_security_context()``
+    after (even on error).
+
+    Non-tukuy tools pass through unchanged.
+
+    Args:
+        registry: The source tool registry.
+        security_context: A tukuy ``SecurityContext`` instance.
+
+    Returns:
+        A new :class:`ToolRegistry` with security-scoped tools.
+    """
+    from tukuy.safety import reset_security_context, set_security_context
+
+    new_registry = ToolRegistry()
+
+    for td in registry.definitions:
+        skill_obj = getattr(td.function, "__skill__", None)
+        if skill_obj is not None:
+            original_fn = td.function
+
+            def _make_scoped(fn: Callable[..., Any], skill: Any) -> Callable[..., Any]:
+                def _scoped_wrapper(**kwargs: Any) -> Any:
+                    token = set_security_context(security_context)
+                    try:
+                        return fn(**kwargs)
+                    finally:
+                        reset_security_context(token)
+
+                _scoped_wrapper.__skill__ = skill  # type: ignore[attr-defined]
+                return _scoped_wrapper
+
+            scoped = _make_scoped(original_fn, skill_obj)
+            new_td = ToolDefinition(
+                name=td.name,
+                description=td.description,
+                parameters=td.parameters,
+                function=scoped,
+            )
+            new_registry.add(new_td)
+        else:
+            new_registry.add(td)
+
+    return new_registry
+
+
+# ------------------------------------------------------------------
 # Transform chain convenience
 # ------------------------------------------------------------------
 
