@@ -11,6 +11,17 @@ Example::
     agent = Agent("openai/gpt-4o", system_prompt="You are a helpful assistant.")
     result = agent.run("What is the capital of France?")
     print(result.output)
+
+    # Using a Persona for reusable, templated system prompts:
+    from prompture import Persona
+
+    persona = Persona(
+        name="analyst",
+        system_prompt="You are {{agent_name}}, a data analyst.\\nWorkspace: {{workspace}}",
+        variables={"agent_name": "DataBot"},
+    )
+    agent = Agent("openai/gpt-4o", system_prompt=persona)
+    result = agent.run("Summarize the quarterly data.")
 """
 
 from __future__ import annotations
@@ -137,11 +148,19 @@ class Agent(Generic[DepsType]):
         max_iterations: Maximum tool-use rounds per run.
         max_cost: Soft budget in USD.  When exceeded, output parse and
             guardrail retries are skipped.
-        options: Extra driver options forwarded to every call.
+        options: Extra driver options forwarded to every LLM call.
+            Common keys include ``"temperature"`` (float, 0.0-2.0),
+            ``"max_tokens"`` (int), and ``"top_p"`` (float).
+            Example: ``options={"temperature": 0.7, "max_tokens": 1024}``.
         deps_type: Type hint for dependencies (for docs/IDE only).
         agent_callbacks: Agent-level observability callbacks.
         input_guardrails: Functions called before the prompt is sent.
         output_guardrails: Functions called after output is parsed.
+        persistent_conversation: When ``True``, subsequent ``run()``
+            calls reuse the same :class:`Conversation` so the model
+            sees the full multi-turn history.  Use
+            :meth:`clear_history` to reset.  Default ``False``
+            preserves the existing one-shot behaviour.
     """
 
     def __init__(
@@ -162,6 +181,7 @@ class Agent(Generic[DepsType]):
         name: str = "",
         description: str = "",
         output_key: str | None = None,
+        persistent_conversation: bool = False,
     ) -> None:
         if not model and driver is None:
             raise ValueError("Either model or driver must be provided")
@@ -180,6 +200,8 @@ class Agent(Generic[DepsType]):
         self.name = name
         self.description = description
         self.output_key = output_key
+        self._persistent_conversation = persistent_conversation
+        self._conversation: Conversation | None = None
 
         # Build internal tool registry
         self._tools = ToolRegistry()
@@ -212,6 +234,23 @@ class Agent(Generic[DepsType]):
     def stop(self) -> None:
         """Request graceful shutdown after the current iteration."""
         self._stop_requested = True
+
+    @property
+    def conversation(self) -> Conversation | None:
+        """The current persistent conversation, or ``None``."""
+        return self._conversation
+
+    @property
+    def messages(self) -> list[dict[str, Any]]:
+        """Message history from the persistent conversation, or ``[]``."""
+        if self._conversation is not None:
+            return self._conversation.messages
+        return []
+
+    def clear_history(self) -> None:
+        """Reset the persistent conversation history."""
+        if self._conversation is not None:
+            self._conversation.clear()
 
     def as_tool(
         self,
@@ -527,7 +566,22 @@ class Agent(Generic[DepsType]):
         tools: ToolRegistry | None = None,
         driver_callbacks: DriverCallbacks | None = None,
     ) -> Conversation:
-        """Create a fresh Conversation for a single run."""
+        """Create or reuse a Conversation for a run.
+
+        When ``persistent_conversation=True`` and a conversation already
+        exists, it is reused (with updated tools and callbacks).
+        Otherwise a fresh :class:`Conversation` is created.
+        """
+        # Reuse existing conversation in persistent mode
+        if self._persistent_conversation and self._conversation is not None:
+            conv = self._conversation
+            # Update tools and callbacks for this run
+            if tools is not None:
+                conv._tools = tools
+            if driver_callbacks is not None:
+                conv._driver.callbacks = driver_callbacks
+            return conv
+
         effective_tools = tools if tools is not None else (self._tools if self._tools else None)
 
         kwargs: dict[str, Any] = {
@@ -545,7 +599,10 @@ class Agent(Generic[DepsType]):
         else:
             kwargs["model_name"] = self._model
 
-        return Conversation(**kwargs)
+        conv = Conversation(**kwargs)
+        if self._persistent_conversation:
+            self._conversation = conv
+        return conv
 
     def _execute(self, prompt: str, steps: list[AgentStep], deps: Any) -> AgentResult:
         """Core execution: run conversation, extract steps, parse output."""
@@ -618,6 +675,9 @@ class Agent(Generic[DepsType]):
 
         if self._agent_callbacks.on_output:
             self._agent_callbacks.on_output(result)
+
+        if self._agent_callbacks.on_message:
+            self._agent_callbacks.on_message(result.output_text)
 
         return result
 
@@ -853,14 +913,25 @@ class Agent(Generic[DepsType]):
                 self._agent_callbacks.on_iteration(0)
 
             if has_tools:
-                # Tools registered: fall back to non-streaming conv.ask()
-                response_text = conv.ask(effective_prompt)
-
-                # Yield the full text as a single delta
-                yield StreamEvent(
-                    event_type=StreamEventType.text_delta,
-                    data=response_text,
-                )
+                # Tools registered: stream tool events and final response
+                response_text = ""
+                for event in conv.ask_with_tool_events(effective_prompt):
+                    if event["type"] == "tool_call":
+                        yield StreamEvent(
+                            event_type=StreamEventType.tool_call,
+                            data=event,
+                        )
+                    elif event["type"] == "tool_result":
+                        yield StreamEvent(
+                            event_type=StreamEventType.tool_result,
+                            data=event,
+                        )
+                    elif event["type"] == "text_delta":
+                        response_text += event["text"]
+                        yield StreamEvent(
+                            event_type=StreamEventType.text_delta,
+                            data=event["text"],
+                        )
             else:
                 # No tools: use streaming if available
                 response_text = ""
@@ -905,6 +976,9 @@ class Agent(Generic[DepsType]):
                     self._agent_callbacks.on_step(step)
             if self._agent_callbacks.on_output:
                 self._agent_callbacks.on_output(result)
+
+            if self._agent_callbacks.on_message:
+                self._agent_callbacks.on_message(result.output_text)
 
             # 13. Yield final output event
             yield StreamEvent(

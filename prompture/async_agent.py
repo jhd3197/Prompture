@@ -30,6 +30,7 @@ from .agent_types import (
     AgentResult,
     AgentState,
     AgentStep,
+    ApprovalRequired,
     DepsType,
     ModelRetry,
     RunContext,
@@ -130,11 +131,17 @@ class AsyncAgent(Generic[DepsType]):
         output_type: Optional Pydantic model class for structured output.
         max_iterations: Maximum tool-use rounds per run.
         max_cost: Soft budget in USD.
-        options: Extra driver options forwarded to every call.
+        options: Extra driver options forwarded to every LLM call.
+            Common keys include ``"temperature"`` (float, 0.0-2.0),
+            ``"max_tokens"`` (int), and ``"top_p"`` (float).
+            Example: ``options={"temperature": 0.7, "max_tokens": 1024}``.
         deps_type: Type hint for dependencies.
         agent_callbacks: Agent-level observability callbacks.
         input_guardrails: Functions called before the prompt is sent.
         output_guardrails: Functions called after output is parsed.
+        persistent_conversation: When ``True``, subsequent ``run()``
+            calls reuse the same :class:`AsyncConversation` so the model
+            sees the full multi-turn history.  Default ``False``.
     """
 
     def __init__(
@@ -155,6 +162,7 @@ class AsyncAgent(Generic[DepsType]):
         name: str = "",
         description: str = "",
         output_key: str | None = None,
+        persistent_conversation: bool = False,
     ) -> None:
         if not model and driver is None:
             raise ValueError("Either model or driver must be provided")
@@ -173,6 +181,8 @@ class AsyncAgent(Generic[DepsType]):
         self.name = name
         self.description = description
         self.output_key = output_key
+        self._persistent_conversation = persistent_conversation
+        self._conversation: Any = None
 
         # Build internal tool registry
         self._tools = ToolRegistry()
@@ -202,6 +212,23 @@ class AsyncAgent(Generic[DepsType]):
     def stop(self) -> None:
         """Request graceful shutdown after the current iteration."""
         self._stop_requested = True
+
+    @property
+    def conversation(self) -> Any:
+        """The current persistent conversation, or ``None``."""
+        return self._conversation
+
+    @property
+    def messages(self) -> list[dict[str, Any]]:
+        """Message history from the persistent conversation, or ``[]``."""
+        if self._conversation is not None:
+            return self._conversation.messages
+        return []
+
+    def clear_history(self) -> None:
+        """Reset the persistent conversation history."""
+        if self._conversation is not None:
+            self._conversation.clear()
 
     def as_tool(
         self,
@@ -294,6 +321,17 @@ class AsyncAgent(Generic[DepsType]):
         return AsyncStreamedAgentResult(gen)
 
     # ------------------------------------------------------------------
+    # Async callback helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    async def _invoke_callback(cb: Callable[..., Any], *args: Any) -> Any:
+        """Invoke a callback, awaiting it if it's async."""
+        if _is_async_callable(cb):
+            return await cb(*args)
+        return cb(*args)
+
+    # ------------------------------------------------------------------
     # RunContext helpers
     # ------------------------------------------------------------------
 
@@ -344,9 +382,25 @@ class AsyncAgent(Generic[DepsType]):
                 _is_async: bool,
                 _cb: AgentCallbacks = cb,
             ) -> Callable[..., Any]:
+                def _invoke_cb_sync(callback: Callable[..., Any], *cb_args: Any) -> Any:
+                    """Invoke a possibly-async callback from a sync tool wrapper."""
+                    if _is_async_callable(callback):
+                        try:
+                            loop = asyncio.get_running_loop()
+                        except RuntimeError:
+                            loop = None
+                        if loop is not None and loop.is_running():
+                            import concurrent.futures
+
+                            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                                return pool.submit(asyncio.run, callback(*cb_args)).result()
+                        else:
+                            return asyncio.run(callback(*cb_args))
+                    return callback(*cb_args)
+
                 def wrapper(**kwargs: Any) -> Any:
                     if _cb.on_tool_start:
-                        _cb.on_tool_start(_name, kwargs)
+                        _invoke_cb_sync(_cb.on_tool_start, _name, kwargs)
                     try:
                         if _wants:
                             call_args = (ctx,)
@@ -370,10 +424,42 @@ class AsyncAgent(Generic[DepsType]):
                                 result = asyncio.run(coro)
                         else:
                             result = _fn(*call_args, **kwargs)
+                    except ApprovalRequired as exc:
+                        # Handle approval request
+                        if _cb.on_approval_needed:
+                            approved = _invoke_cb_sync(_cb.on_approval_needed, exc.tool_name, exc.action, exc.details)
+                            if approved:
+                                try:
+                                    if _is_async:
+                                        coro = _fn(*call_args, **kwargs) if not _wants else _fn(ctx, **kwargs)
+                                        try:
+                                            loop = asyncio.get_running_loop()
+                                        except RuntimeError:
+                                            loop = None
+                                        if loop is not None and loop.is_running():
+                                            import concurrent.futures
+
+                                            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                                                result = pool.submit(asyncio.run, coro).result()
+                                        else:
+                                            result = asyncio.run(coro)
+                                    else:
+                                        if _wants:
+                                            result = _fn(ctx, **kwargs)
+                                        else:
+                                            result = _fn(**kwargs)
+                                except ApprovalRequired:
+                                    result = f"Error: Tool '{_name}' requires approval but approval was already granted"
+                                except ModelRetry as retry_exc:
+                                    result = f"Error: {retry_exc.message}"
+                            else:
+                                result = f"Error: Tool '{_name}' execution denied - approval required: {exc.action}"
+                        else:
+                            result = f"Error: Tool '{_name}' requires approval but no approval handler is configured"
                     except ModelRetry as exc:
                         result = f"Error: {exc.message}"
                     if _cb.on_tool_end:
-                        _cb.on_tool_end(_name, result)
+                        _invoke_cb_sync(_cb.on_tool_end, _name, result)
                     return result
 
                 return wrapper
@@ -517,8 +603,22 @@ class AsyncAgent(Generic[DepsType]):
         tools: ToolRegistry | None = None,
         driver_callbacks: DriverCallbacks | None = None,
     ) -> Any:
-        """Create a fresh AsyncConversation for a single run."""
+        """Create or reuse an AsyncConversation for a run.
+
+        When ``persistent_conversation=True`` and a conversation already
+        exists, it is reused (with updated tools and callbacks).
+        Otherwise a fresh :class:`AsyncConversation` is created.
+        """
         from .async_conversation import AsyncConversation
+
+        # Reuse existing conversation in persistent mode
+        if self._persistent_conversation and self._conversation is not None:
+            conv = self._conversation
+            if tools is not None:
+                conv._tools = tools
+            if driver_callbacks is not None:
+                conv._driver.callbacks = driver_callbacks
+            return conv
 
         effective_tools = tools if tools is not None else (self._tools if self._tools else None)
 
@@ -537,7 +637,10 @@ class AsyncAgent(Generic[DepsType]):
         else:
             kwargs["model_name"] = self._model
 
-        return AsyncConversation(**kwargs)
+        conv = AsyncConversation(**kwargs)
+        if self._persistent_conversation:
+            self._conversation = conv
+        return conv
 
     async def _execute(self, prompt: str, steps: list[AgentStep], deps: Any) -> AgentResult:
         """Core async execution: run conversation, extract steps, parse output."""
@@ -569,7 +672,7 @@ class AsyncAgent(Generic[DepsType]):
 
         # 7. Fire on_iteration callback
         if self._agent_callbacks.on_iteration:
-            self._agent_callbacks.on_iteration(0)
+            await self._invoke_callback(self._agent_callbacks.on_iteration, 0)
 
         # 8. Ask the conversation (handles full tool loop internally)
         t0 = time.perf_counter()
@@ -604,12 +707,15 @@ class AsyncAgent(Generic[DepsType]):
         if self._output_guardrails:
             result = await self._run_output_guardrails(ctx, result, conv, session, steps, all_tool_calls)
 
-        # 11. Fire callbacks
+        # 11. Fire callbacks (async-aware)
         if self._agent_callbacks.on_step:
             for step in steps:
-                self._agent_callbacks.on_step(step)
+                await self._invoke_callback(self._agent_callbacks.on_step, step)
         if self._agent_callbacks.on_output:
-            self._agent_callbacks.on_output(result)
+            await self._invoke_callback(self._agent_callbacks.on_output, result)
+
+        if self._agent_callbacks.on_message:
+            await self._invoke_callback(self._agent_callbacks.on_message, result.output_text)
 
         return result
 
@@ -759,11 +865,18 @@ class AsyncAgent(Generic[DepsType]):
             )
 
             if self._agent_callbacks.on_iteration:
-                self._agent_callbacks.on_iteration(0)
+                await self._invoke_callback(self._agent_callbacks.on_iteration, 0)
 
             if has_tools:
-                response_text = await conv.ask(effective_prompt)
-                yield StreamEvent(event_type=StreamEventType.text_delta, data=response_text)
+                response_text = ""
+                async for event in conv.ask_with_tool_events(effective_prompt):
+                    if event["type"] == "tool_call":
+                        yield StreamEvent(event_type=StreamEventType.tool_call, data=event)
+                    elif event["type"] == "tool_result":
+                        yield StreamEvent(event_type=StreamEventType.tool_result, data=event)
+                    elif event["type"] == "text_delta":
+                        response_text += event["text"]
+                        yield StreamEvent(event_type=StreamEventType.text_delta, data=event["text"])
             else:
                 response_text = ""
                 async for chunk in conv.ask_stream(effective_prompt):
@@ -797,9 +910,12 @@ class AsyncAgent(Generic[DepsType]):
 
             if self._agent_callbacks.on_step:
                 for step in steps:
-                    self._agent_callbacks.on_step(step)
+                    await self._invoke_callback(self._agent_callbacks.on_step, step)
             if self._agent_callbacks.on_output:
-                self._agent_callbacks.on_output(result)
+                await self._invoke_callback(self._agent_callbacks.on_output, result)
+
+            if self._agent_callbacks.on_message:
+                await self._invoke_callback(self._agent_callbacks.on_message, result.output_text)
 
             yield StreamEvent(event_type=StreamEventType.output, data=result)
 

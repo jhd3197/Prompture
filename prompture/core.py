@@ -632,6 +632,8 @@ def extract_with_model(
     system_prompt: str | None = None,
     images: list[ImageInput] | None = None,
     routing: Union[str, RoutingConfig, None] = None,
+    max_retries: int = 1,
+    fallback: BaseModel | None = None,
 ) -> dict[str, Any]:
     """Extracts structured information into a Pydantic model instance.
 
@@ -653,6 +655,12 @@ def extract_with_model(
             - A RoutingStrategy string ("cost_optimized", "quality_first", "balanced", "fast")
             - A RoutingConfig instance for full control
             - None to disable routing (requires model_name)
+        max_retries: Number of extraction attempts before giving up. Defaults to 1
+            (single attempt, preserving existing behavior). Set to 2+ to enable
+            automatic retries on extraction/validation failures.
+        fallback: Optional Pydantic model instance to return when all retries are
+            exhausted. When provided, the result will include ``"fallback_used": True``
+            in its usage metadata instead of raising an exception.
 
     Returns:
         A validated instance of the Pydantic model. When routing is used,
@@ -660,7 +668,8 @@ def extract_with_model(
 
     Raises:
         ValueError: If text is empty or None, or if model_name format is invalid.
-        ValidationError: If the extracted data doesn't match the model schema.
+        ValidationError: If the extracted data doesn't match the model schema
+            and no fallback is provided.
     """
     # Import routing types (avoid circular import)
     from .routing import ModelRouter, RoutingConfig, RoutingResult
@@ -740,71 +749,115 @@ def extract_with_model(
     schema = actual_cls.model_json_schema()
     logger.debug("[extract] Generated JSON schema")
 
-    result = extract_and_jsonify(
-        text=actual_text,
-        json_schema=schema,
-        model_name=actual_model,
-        instruction_template=instruction_template,
-        ai_cleanup=ai_cleanup,
-        output_format=output_format,
-        options=options,
-        json_mode=json_mode,
-        system_prompt=system_prompt,
-        images=images,
-    )
-    logger.debug("[extract] Extraction completed successfully")
+    last_error: Exception | None = None
 
-    # Post-process the extracted JSON object to normalize invalid values
-    json_object = result["json_object"]
-    schema_properties = schema.get("properties", {})
+    for attempt in range(max(1, max_retries)):
+        try:
+            result = extract_and_jsonify(
+                text=actual_text,
+                json_schema=schema,
+                model_name=actual_model,
+                instruction_template=instruction_template,
+                ai_cleanup=ai_cleanup,
+                output_format=output_format,
+                options=options,
+                json_mode=json_mode,
+                system_prompt=system_prompt,
+                images=images,
+            )
+            logger.debug("[extract] Extraction completed successfully")
 
-    for field_name, field_info in actual_cls.model_fields.items():
-        if field_name in json_object and field_name in schema_properties:
-            schema_properties[field_name]
-            field_def = {
-                "nullable": not schema_properties[field_name].get("type")
-                or "null"
-                in (
-                    schema_properties[field_name].get("anyOf", [])
-                    if isinstance(schema_properties[field_name].get("anyOf"), list)
-                    else []
-                ),
-                "default": field_info.default
-                if hasattr(field_info, "default") and field_info.default is not ...
-                else None,
+            # Post-process the extracted JSON object to normalize invalid values
+            json_object = result["json_object"]
+            schema_properties = schema.get("properties", {})
+
+            for field_name, field_info in actual_cls.model_fields.items():
+                if field_name in json_object and field_name in schema_properties:
+                    schema_properties[field_name]
+                    field_def = {
+                        "nullable": not schema_properties[field_name].get("type")
+                        or "null"
+                        in (
+                            schema_properties[field_name].get("anyOf", [])
+                            if isinstance(schema_properties[field_name].get("anyOf"), list)
+                            else []
+                        ),
+                        "default": field_info.default
+                        if hasattr(field_info, "default") and field_info.default is not ...
+                        else None,
+                    }
+
+                    # Normalize the value
+                    json_object[field_name] = normalize_field_value(
+                        json_object[field_name], field_info.annotation, field_def
+                    )
+
+            # Create model instance for validation
+            model_instance = actual_cls(**json_object)
+
+            # Return dictionary with all required fields and backwards compatibility
+            result_dict = {
+                "json_string": result["json_string"],
+                "json_object": result["json_object"],
+                "usage": result["usage"],
             }
 
-            # Normalize the value
-            json_object[field_name] = normalize_field_value(json_object[field_name], field_info.annotation, field_def)
+            # --- Add routing metadata if routing was used ---
+            if routing_result is not None:
+                result_dict["routing"] = routing_result.to_dict()
 
-    # Create model instance for validation
-    model_instance = actual_cls(**json_object)
+            # --- cache store ---
+            if use_cache and cache_key is not None:
+                cached_copy = {
+                    "json_string": result_dict["json_string"],
+                    "json_object": result_dict["json_object"],
+                    "usage": {**result_dict["usage"], "raw_response": {}},
+                }
+                _cache.set(cache_key, cached_copy, force=_force)
 
-    # Return dictionary with all required fields and backwards compatibility
-    result_dict = {"json_string": result["json_string"], "json_object": result["json_object"], "usage": result["usage"]}
+            # Add backwards compatibility property
+            result_dict["model"] = model_instance
 
-    # --- Add routing metadata if routing was used ---
-    if routing_result is not None:
-        result_dict["routing"] = routing_result.to_dict()
+            # Return value can be used both as a dict and accessed as model directly
+            return type(
+                "ExtractResult",
+                (dict,),
+                {"__getattr__": lambda self, key: self.get(key), "__call__": lambda self: self["model"]},
+            )(result_dict)
 
-    # --- cache store ---
-    if use_cache and cache_key is not None:
-        cached_copy = {
-            "json_string": result_dict["json_string"],
-            "json_object": result_dict["json_object"],
-            "usage": {**result_dict["usage"], "raw_response": {}},
+        except Exception as exc:
+            last_error = exc
+            if attempt < max(1, max_retries) - 1:
+                logger.debug("[extract] Attempt %d failed: %s, retrying...", attempt + 1, exc)
+                continue
+
+    # All retries exhausted — use fallback or re-raise
+    if fallback is not None:
+        logger.info("[extract] All %d attempts failed, using fallback", max_retries)
+        fallback_dict = fallback.model_dump()
+        fallback_json = json.dumps(fallback_dict)
+        fallback_result = {
+            "json_string": fallback_json,
+            "json_object": json.loads(fallback_json),
+            "usage": {
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "total_tokens": 0,
+                "cost": 0.0,
+                "model_name": actual_model if isinstance(actual_model, str) else "",
+                "fallback_used": True,
+            },
+            "model": fallback,
         }
-        _cache.set(cache_key, cached_copy, force=_force)
+        if routing_result is not None:
+            fallback_result["routing"] = routing_result.to_dict()
+        return type(
+            "ExtractResult",
+            (dict,),
+            {"__getattr__": lambda self, key: self.get(key), "__call__": lambda self: self["model"]},
+        )(fallback_result)
 
-    # Add backwards compatibility property
-    result_dict["model"] = model_instance
-
-    # Return value can be used both as a dict and accessed as model directly
-    return type(
-        "ExtractResult",
-        (dict,),
-        {"__getattr__": lambda self, key: self.get(key), "__call__": lambda self: self["model"]},
-    )(result_dict)
+    raise last_error  # type: ignore[misc]
 
 
 def stepwise_extract_with_model(
