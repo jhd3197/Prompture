@@ -1527,3 +1527,541 @@ class TestAsyncToolDetection:
                 return "async callable"
 
         assert _is_async_callable(AsyncCallable()) is True
+
+
+# ===========================================================================
+# New feature tests (Items 1-7 from FEEDBACK.md)
+# ===========================================================================
+
+
+# ---------------------------------------------------------------------------
+# Item 7: on_message callback
+# ---------------------------------------------------------------------------
+
+
+class TestOnMessageCallback:
+    def test_on_message_fired_with_output_text(self):
+        """on_message callback receives the final output text string."""
+        message_log: list[str] = []
+        cb = AgentCallbacks(on_message=lambda text: message_log.append(text))
+
+        driver = MockDriver(["Hello from agent!"])
+        agent = Agent("test/model", driver=driver, agent_callbacks=cb)
+        result = agent.run("test")
+
+        assert len(message_log) == 1
+        assert message_log[0] == "Hello from agent!"
+        assert message_log[0] == result.output_text
+
+    def test_on_message_not_fired_when_none(self):
+        """on_message is not called when set to None."""
+        cb = AgentCallbacks(on_message=None)
+        driver = MockDriver(["ok"])
+        agent = Agent("test/model", driver=driver, agent_callbacks=cb)
+        result = agent.run("test")
+        assert result.output == "ok"
+
+    def test_on_message_fired_in_stream(self):
+        """on_message fires in run_stream()."""
+        message_log: list[str] = []
+        cb = AgentCallbacks(on_message=lambda text: message_log.append(text))
+
+        driver = MockDriver(["streamed response"])
+        agent = Agent("test/model", driver=driver, agent_callbacks=cb)
+        stream = agent.run_stream("test")
+        for _ in stream:
+            pass
+
+        assert len(message_log) == 1
+        assert message_log[0] == "streamed response"
+
+    def test_async_on_message_fired(self):
+        """on_message fires in AsyncAgent.run()."""
+        message_log: list[str] = []
+
+        async def async_on_message(text: str) -> None:
+            message_log.append(text)
+
+        cb = AgentCallbacks(on_message=async_on_message)
+        driver = MockAsyncDriver(["Async hello!"])
+        agent = AsyncAgent("test/model", driver=driver, agent_callbacks=cb)
+        asyncio.run(agent.run("test"))
+
+        assert len(message_log) == 1
+        assert message_log[0] == "Async hello!"
+
+
+# ---------------------------------------------------------------------------
+# Item 1: Async callbacks in AsyncAgent
+# ---------------------------------------------------------------------------
+
+
+class TestAsyncCallbacks:
+    def test_async_on_output_called(self):
+        """Async on_output callback is awaited properly."""
+        output_log: list[str] = []
+
+        async def async_on_output(result: AgentResult) -> None:
+            output_log.append(result.output_text)
+
+        cb = AgentCallbacks(on_output=async_on_output)
+        driver = MockAsyncDriver(["async result"])
+        agent = AsyncAgent("test/model", driver=driver, agent_callbacks=cb)
+        asyncio.run(agent.run("test"))
+
+        assert len(output_log) == 1
+        assert output_log[0] == "async result"
+
+    def test_async_on_step_called(self):
+        """Async on_step callback is awaited for each step."""
+        step_log: list[Any] = []
+
+        async def async_on_step(step: Any) -> None:
+            step_log.append(step)
+
+        cb = AgentCallbacks(on_step=async_on_step)
+        driver = MockAsyncDriver(["ok"])
+        agent = AsyncAgent("test/model", driver=driver, agent_callbacks=cb)
+        asyncio.run(agent.run("test"))
+
+        assert len(step_log) >= 1
+
+    def test_async_on_iteration_called(self):
+        """Async on_iteration callback is awaited."""
+        iter_log: list[int] = []
+
+        async def async_on_iteration(i: int) -> None:
+            iter_log.append(i)
+
+        cb = AgentCallbacks(on_iteration=async_on_iteration)
+        driver = MockAsyncDriver(["ok"])
+        agent = AsyncAgent("test/model", driver=driver, agent_callbacks=cb)
+        asyncio.run(agent.run("test"))
+
+        assert iter_log == [0]
+
+    def test_sync_callbacks_still_work_in_async_agent(self):
+        """Sync callbacks continue to work in AsyncAgent."""
+        output_log: list[str] = []
+
+        def sync_on_output(result: AgentResult) -> None:
+            output_log.append(result.output_text)
+
+        cb = AgentCallbacks(on_output=sync_on_output)
+        driver = MockAsyncDriver(["sync callback test"])
+        agent = AsyncAgent("test/model", driver=driver, agent_callbacks=cb)
+        asyncio.run(agent.run("test"))
+
+        assert output_log == ["sync callback test"]
+
+
+# ---------------------------------------------------------------------------
+# Item 4: Conversation continuity
+# ---------------------------------------------------------------------------
+
+
+class TestConversationContinuity:
+    def test_persistent_conversation_shares_history(self):
+        """With persistent_conversation=True, runs share conversation history."""
+        driver = MockDriver(["first", "second"])
+        agent = Agent("test/model", driver=driver, persistent_conversation=True)
+
+        r1 = agent.run("prompt 1")
+        r2 = agent.run("prompt 2")
+
+        assert r1.output == "first"
+        assert r2.output == "second"
+        # Second result should have messages from both runs
+        assert len(r2.messages) > len(r1.messages)
+
+    def test_non_persistent_conversation_is_default(self):
+        """Default behavior creates fresh conversations."""
+        driver = MockDriver(["first", "second"])
+        agent = Agent("test/model", driver=driver)
+
+        r1 = agent.run("prompt 1")
+        r2 = agent.run("prompt 2")
+
+        # Messages from run 1 should not appear in run 2
+        assert len(r1.messages) == len(r2.messages)
+
+    def test_conversation_property(self):
+        """conversation property returns the persistent conversation."""
+        driver = MockDriver(["hello"])
+        agent = Agent("test/model", driver=driver, persistent_conversation=True)
+
+        assert agent.conversation is None  # before first run
+        agent.run("test")
+        assert agent.conversation is not None
+
+    def test_conversation_property_none_without_persistence(self):
+        """conversation property is None without persistence."""
+        driver = MockDriver(["hello"])
+        agent = Agent("test/model", driver=driver)
+        agent.run("test")
+        assert agent.conversation is None
+
+    def test_messages_property(self):
+        """messages property returns conversation messages."""
+        driver = MockDriver(["hello"])
+        agent = Agent("test/model", driver=driver, persistent_conversation=True)
+
+        assert agent.messages == []
+        agent.run("test")
+        assert len(agent.messages) > 0
+
+    def test_clear_history(self):
+        """clear_history() resets the conversation."""
+        driver = MockDriver(["first", "second"])
+        agent = Agent("test/model", driver=driver, persistent_conversation=True)
+
+        agent.run("prompt 1")
+        assert len(agent.messages) > 0
+
+        agent.clear_history()
+        assert agent.messages == []
+
+        # Can still run after clearing
+        agent.run("prompt 2")
+        assert len(agent.messages) > 0
+
+    def test_async_persistent_conversation(self):
+        """AsyncAgent supports persistent_conversation."""
+
+        async def _test():
+            driver = MockAsyncDriver(["first", "second"])
+            agent = AsyncAgent("test/model", driver=driver, persistent_conversation=True)
+
+            r1 = await agent.run("prompt 1")
+            r2 = await agent.run("prompt 2")
+
+            assert r1.output == "first"
+            assert r2.output == "second"
+            assert len(r2.messages) > len(r1.messages)
+
+        asyncio.run(_test())
+
+    def test_async_clear_history(self):
+        """AsyncAgent.clear_history() works."""
+
+        async def _test():
+            driver = MockAsyncDriver(["hello", "world"])
+            agent = AsyncAgent("test/model", driver=driver, persistent_conversation=True)
+
+            await agent.run("test")
+            assert len(agent.messages) > 0
+
+            agent.clear_history()
+            assert agent.messages == []
+
+        asyncio.run(_test())
+
+
+# ---------------------------------------------------------------------------
+# Item 2: Streaming with tools emits events
+# ---------------------------------------------------------------------------
+
+
+class TestStreamingWithTools:
+    def test_stream_emits_tool_events(self):
+        """run_stream() with tools emits tool_call and tool_result events."""
+
+        def get_weather(city: str) -> str:
+            """Get the weather."""
+            return f"Sunny in {city}"
+
+        responses = [
+            {
+                "text": "",
+                "meta": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15, "cost": 0.001},
+                "tool_calls": [{"id": "call_1", "name": "get_weather", "arguments": {"city": "Paris"}}],
+                "stop_reason": "tool_use",
+            },
+            {
+                "text": "It's sunny in Paris.",
+                "meta": {"prompt_tokens": 20, "completion_tokens": 10, "total_tokens": 30, "cost": 0.002},
+                "tool_calls": [],
+                "stop_reason": "end_turn",
+            },
+        ]
+
+        driver = MockToolDriver(responses)
+        agent = Agent("test/model", driver=driver, tools=[get_weather])
+        stream = agent.run_stream("What's the weather?")
+
+        events = list(stream)
+        event_types = [e.event_type for e in events]
+
+        assert StreamEventType.tool_call in event_types
+        assert StreamEventType.tool_result in event_types
+        assert StreamEventType.text_delta in event_types
+        assert StreamEventType.output in event_types
+
+    def test_stream_tool_call_event_has_data(self):
+        """tool_call event data contains name, arguments, id."""
+
+        def echo(text: str) -> str:
+            """Echo text."""
+            return text
+
+        responses = [
+            {
+                "text": "",
+                "meta": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15, "cost": 0.001},
+                "tool_calls": [{"id": "call_echo", "name": "echo", "arguments": {"text": "hello"}}],
+                "stop_reason": "tool_use",
+            },
+            {
+                "text": "Echoed: hello",
+                "meta": {"prompt_tokens": 20, "completion_tokens": 10, "total_tokens": 30, "cost": 0.002},
+                "tool_calls": [],
+                "stop_reason": "end_turn",
+            },
+        ]
+
+        driver = MockToolDriver(responses)
+        agent = Agent("test/model", driver=driver, tools=[echo])
+        stream = agent.run_stream("Echo hello")
+
+        events = list(stream)
+        tc_events = [e for e in events if e.event_type == StreamEventType.tool_call]
+        tr_events = [e for e in events if e.event_type == StreamEventType.tool_result]
+
+        assert len(tc_events) == 1
+        assert tc_events[0].data["name"] == "echo"
+        assert tc_events[0].data["arguments"] == {"text": "hello"}
+        assert tc_events[0].data["id"] == "call_echo"
+
+        assert len(tr_events) == 1
+        assert tr_events[0].data["name"] == "echo"
+        assert tr_events[0].data["result"] == "hello"
+
+    def test_async_stream_emits_tool_events(self):
+        """AsyncAgent.run_stream() with tools emits tool events."""
+
+        def get_time() -> str:
+            """Get current time."""
+            return "12:00 PM"
+
+        responses = [
+            {
+                "text": "",
+                "meta": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15, "cost": 0.001},
+                "tool_calls": [{"id": "call_1", "name": "get_time", "arguments": {}}],
+                "stop_reason": "tool_use",
+            },
+            {
+                "text": "The time is 12:00 PM.",
+                "meta": {"prompt_tokens": 20, "completion_tokens": 10, "total_tokens": 30, "cost": 0.002},
+                "tool_calls": [],
+                "stop_reason": "end_turn",
+            },
+        ]
+
+        async def _test():
+            driver = MockAsyncToolDriver(responses)
+            agent = AsyncAgent("test/model", driver=driver, tools=[get_time])
+            stream = await agent.run_stream("What time is it?")
+
+            events = []
+            async for event in stream:
+                events.append(event)
+
+            event_types = [e.event_type for e in events]
+            assert StreamEventType.tool_call in event_types
+            assert StreamEventType.tool_result in event_types
+            assert StreamEventType.text_delta in event_types
+
+        asyncio.run(_test())
+
+
+# ---------------------------------------------------------------------------
+# Item 3: Async approval flow
+# ---------------------------------------------------------------------------
+
+
+class TestAsyncApprovalFlow:
+    def test_async_approval_needed_with_sync_callback(self):
+        """ApprovalRequired in AsyncAgent with sync on_approval_needed."""
+        from prompture.agent_types import ApprovalRequired
+
+        approval_log: list[tuple[str, str]] = []
+
+        def approval_handler(tool_name: str, action: str, details: dict) -> bool:
+            approval_log.append((tool_name, action))
+            return True
+
+        def dangerous_tool(command: str) -> str:
+            """Run a dangerous command."""
+            raise ApprovalRequired("dangerous_tool", f"Execute: {command}")
+
+        responses = [
+            {
+                "text": "",
+                "meta": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15, "cost": 0.001},
+                "tool_calls": [{"id": "call_1", "name": "dangerous_tool", "arguments": {"command": "rm -rf"}}],
+                "stop_reason": "tool_use",
+            },
+            {
+                "text": "Executed.",
+                "meta": {"prompt_tokens": 20, "completion_tokens": 10, "total_tokens": 30, "cost": 0.002},
+                "tool_calls": [],
+                "stop_reason": "end_turn",
+            },
+        ]
+
+        cb = AgentCallbacks(on_approval_needed=approval_handler)
+        driver = MockAsyncToolDriver(responses)
+        agent = AsyncAgent("test/model", driver=driver, tools=[dangerous_tool], agent_callbacks=cb)
+        asyncio.run(agent.run("Run dangerous command"))
+
+        assert len(approval_log) == 1
+        assert approval_log[0][0] == "dangerous_tool"
+
+    def test_async_approval_denied(self):
+        """ApprovalRequired denied returns error message."""
+        from prompture.agent_types import ApprovalRequired
+
+        def deny_handler(tool_name: str, action: str, details: dict) -> bool:
+            return False
+
+        def dangerous_tool(command: str) -> str:
+            """Run a dangerous command."""
+            raise ApprovalRequired("dangerous_tool", f"Execute: {command}")
+
+        responses = [
+            {
+                "text": "",
+                "meta": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15, "cost": 0.001},
+                "tool_calls": [{"id": "call_1", "name": "dangerous_tool", "arguments": {"command": "rm -rf"}}],
+                "stop_reason": "tool_use",
+            },
+            {
+                "text": "Tool was denied.",
+                "meta": {"prompt_tokens": 20, "completion_tokens": 10, "total_tokens": 30, "cost": 0.002},
+                "tool_calls": [],
+                "stop_reason": "end_turn",
+            },
+        ]
+
+        cb = AgentCallbacks(on_approval_needed=deny_handler)
+        driver = MockAsyncToolDriver(responses)
+        agent = AsyncAgent("test/model", driver=driver, tools=[dangerous_tool], agent_callbacks=cb)
+        result = asyncio.run(agent.run("test"))
+
+        # Tool result should contain denial message
+        tool_results = [m for m in result.messages if m.get("role") == "tool"]
+        assert any("denied" in m.get("content", "").lower() for m in tool_results)
+
+
+# ---------------------------------------------------------------------------
+# Item 5: Extraction resilience (extract_with_model)
+# ---------------------------------------------------------------------------
+
+
+class TestExtractionResilience:
+    """Tests for max_retries and fallback params in extract_with_model."""
+
+    def test_max_retries_default_is_one(self):
+        """Default max_retries=1 preserves existing single-attempt behavior."""
+        import inspect
+
+        from prompture.core import extract_with_model
+
+        sig = inspect.signature(extract_with_model)
+        assert sig.parameters["max_retries"].default == 1
+
+    def test_fallback_default_is_none(self):
+        """Default fallback=None preserves existing behavior."""
+        import inspect
+
+        from prompture.core import extract_with_model
+
+        sig = inspect.signature(extract_with_model)
+        assert sig.parameters["fallback"].default is None
+
+    def test_fallback_used_on_failure(self):
+        """When extraction fails and fallback is provided, returns fallback."""
+        from prompture.core import extract_with_model
+
+        class SimpleModel(BaseModel):
+            name: str
+            value: int = 0
+
+        fallback = SimpleModel(name="default", value=-1)
+
+        # Mock the extraction to fail by providing invalid driver
+        # We'll test the retry/fallback mechanism via direct call
+        # by mocking extract_and_jsonify to always raise
+        import unittest.mock as mock
+
+        with mock.patch("prompture.core.extract_and_jsonify", side_effect=ValueError("Parse error")):
+            result = extract_with_model(
+                SimpleModel,
+                "some text",
+                model_name="mock/model",
+                max_retries=2,
+                fallback=fallback,
+            )
+
+        assert result["model"].name == "default"
+        assert result["model"].value == -1
+        assert result["usage"]["fallback_used"] is True
+
+    def test_no_fallback_reraises(self):
+        """When no fallback is provided and all retries fail, re-raises."""
+        from prompture.core import extract_with_model
+
+        class SimpleModel(BaseModel):
+            name: str
+
+        import unittest.mock as mock
+
+        with mock.patch("prompture.core.extract_and_jsonify", side_effect=ValueError("Parse error")):
+            with pytest.raises(ValueError, match="Parse error"):
+                extract_with_model(
+                    SimpleModel,
+                    "some text",
+                    model_name="mock/model",
+                    max_retries=2,
+                )
+
+    def test_retry_succeeds_on_second_attempt(self):
+        """When first attempt fails but second succeeds, returns success."""
+        from prompture.core import extract_with_model
+
+        class SimpleModel(BaseModel):
+            name: str
+
+        call_count = [0]
+        good_result = {
+            "json_string": '{"name": "test"}',
+            "json_object": {"name": "test"},
+            "usage": {
+                "prompt_tokens": 10,
+                "completion_tokens": 5,
+                "total_tokens": 15,
+                "cost": 0.001,
+                "model_name": "mock",
+                "raw_response": {},
+            },
+        }
+
+        import unittest.mock as mock
+
+        def mock_extract(*args, **kwargs):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                raise ValueError("First attempt fails")
+            return good_result
+
+        with mock.patch("prompture.core.extract_and_jsonify", side_effect=mock_extract):
+            result = extract_with_model(
+                SimpleModel,
+                "some text",
+                model_name="mock/model",
+                max_retries=3,
+            )
+
+        assert result["model"].name == "test"
+        assert call_count[0] == 2

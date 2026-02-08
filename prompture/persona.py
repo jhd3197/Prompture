@@ -11,6 +11,20 @@ Features:
 - Thread-safe global persona registry with dict-like proxy
 - 5 built-in personas for common use cases
 - JSON/YAML serialization and directory loading
+
+Usage with :class:`~prompture.agent.Agent`::
+
+    from prompture import Agent, Persona
+
+    persona = Persona(
+        name="cachibot",
+        system_prompt="You are {{agent_name}}, a helpful assistant.\\nWorkspace: {{workspace}}",
+        variables={"agent_name": "Cachibot"},
+        constraints=["Only access files within the workspace", "Use python_execute for code"],
+    )
+
+    agent = Agent("openai/gpt-4o", system_prompt=persona)
+    result = agent.run("What files are in the workspace?")
 """
 
 from __future__ import annotations

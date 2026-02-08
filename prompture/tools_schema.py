@@ -253,6 +253,50 @@ class ToolRegistry:
         return list(self._tools.values())
 
     # ------------------------------------------------------------------
+    # Filtering
+    # ------------------------------------------------------------------
+
+    def subset(self, names: set[str] | list[str]) -> ToolRegistry:
+        """Return a new registry containing only the named tools.
+
+        Raises:
+            KeyError: If any name is not registered.
+        """
+        names_set = set(names)
+        unknown = names_set - set(self._tools)
+        if unknown:
+            raise KeyError(f"Unknown tools: {', '.join(sorted(unknown))}")
+        new = ToolRegistry()
+        for n in names_set:
+            new.add(self._tools[n])
+        return new
+
+    def filter(self, predicate: Callable[[ToolDefinition], bool]) -> ToolRegistry:
+        """Return a new registry with tools matching *predicate*.
+
+        Args:
+            predicate: A callable that receives a :class:`ToolDefinition`
+                and returns ``True`` to include the tool.
+        """
+        new = ToolRegistry()
+        for td in self._tools.values():
+            if predicate(td):
+                new.add(td)
+        return new
+
+    def exclude(self, names: set[str] | list[str]) -> ToolRegistry:
+        """Return a new registry without the named tools.
+
+        Missing names are silently ignored (no error).
+        """
+        names_set = set(names)
+        new = ToolRegistry()
+        for name, td in self._tools.items():
+            if name not in names_set:
+                new.add(td)
+        return new
+
+    # ------------------------------------------------------------------
     # Serialisation
     # ------------------------------------------------------------------
 

@@ -7,10 +7,10 @@ from __future__ import annotations
 
 import enum
 import json
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Generic, TypeVar
+from typing import Any, Generic, TypeVar, Union
 
 DepsType = TypeVar("DepsType")
 
@@ -125,15 +125,19 @@ class AgentCallbacks:
         on_approval_needed: Called when a tool raises ApprovalRequired.
             The callback receives (tool_name, action, details) and should
             return True to approve execution or False to deny.
+        on_message: Called with the final output text string after a run
+            completes.  Useful for forwarding the response to a UI
+            without processing the full :class:`AgentResult`.
     """
 
-    on_step: Callable[[AgentStep], None] | None = None
-    on_tool_start: Callable[[str, dict[str, Any]], None] | None = None
-    on_tool_end: Callable[[str, Any], None] | None = None
-    on_iteration: Callable[[int], None] | None = None
-    on_output: Callable[[AgentResult], None] | None = None
-    on_thinking: Callable[[str], None] | None = None
-    on_approval_needed: Callable[[str, str, dict[str, Any]], bool] | None = None
+    on_step: Union[Callable[[AgentStep], None], Callable[[AgentStep], Awaitable[None]], None] = None
+    on_tool_start: Union[Callable[[str, dict[str, Any]], None], Callable[[str, dict[str, Any]], Awaitable[None]], None] = None
+    on_tool_end: Union[Callable[[str, Any], None], Callable[[str, Any], Awaitable[None]], None] = None
+    on_iteration: Union[Callable[[int], None], Callable[[int], Awaitable[None]], None] = None
+    on_output: Union[Callable[[AgentResult], None], Callable[[AgentResult], Awaitable[None]], None] = None
+    on_thinking: Union[Callable[[str], None], Callable[[str], Awaitable[None]], None] = None
+    on_approval_needed: Union[Callable[[str, str, dict[str, Any]], bool], Callable[[str, str, dict[str, Any]], Awaitable[bool]], None] = None
+    on_message: Union[Callable[[str], None], Callable[[str], Awaitable[None]], None] = None
 
 
 @dataclass

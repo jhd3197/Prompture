@@ -440,6 +440,164 @@ class Conversation:
 
         raise RuntimeError(f"Tool execution loop exceeded {self._max_tool_rounds} rounds")
 
+    def ask_with_tool_events(
+        self,
+        content: str,
+        options: dict[str, Any] | None = None,
+        images: list[ImageInput] | None = None,
+    ) -> Iterator[dict[str, Any]]:
+        """Run the tool loop yielding events for each tool call and result.
+
+        Yields dicts with ``type`` in ``("tool_call", "tool_result",
+        "text_delta")``.  Tool calls and results are emitted during the
+        loop; the final model response is streamed as ``text_delta`` events
+        via :meth:`ask_stream` when streaming is supported.
+
+        This method is intended for use by ``Agent.run_stream()`` to
+        provide real-time feedback when tools are registered.
+        """
+        self._last_reasoning = None
+
+        if not self._tools:
+            # No tools — just stream directly
+            for chunk in self.ask_stream(content, options, images=images):
+                yield {"type": "text_delta", "text": chunk}
+            return
+
+        use_native = getattr(self._driver, "supports_tool_use", False)
+        if self._simulated_tools is True or (self._simulated_tools == "auto" and not use_native):
+            # Simulated tools — fall back to non-streaming with events
+            yield from self._ask_with_simulated_tool_events(content, options, images=images)
+            return
+
+        # Native tool calling with event emission
+        merged = {**self._options, **(options or {})}
+        tool_defs = self._tools.to_openai_format()
+
+        user_content = self._build_content_with_images(content, images)
+        self._messages.append({"role": "user", "content": user_content})
+        msgs = self._build_messages_raw()
+
+        for _round in range(self._max_tool_rounds):
+            resp = self._driver.generate_messages_with_tools_with_hooks(msgs, tool_defs, merged)
+
+            meta = resp.get("meta", {})
+            self._accumulate_usage(meta)
+
+            tool_calls = resp.get("tool_calls", [])
+            text = resp.get("text", "")
+
+            if not tool_calls:
+                # Final response — stream it if possible
+                self._last_reasoning = resp.get("reasoning_content")
+                self._messages.append({"role": "assistant", "content": text})
+                # Yield final text as deltas (single chunk since we already have the full text)
+                yield {"type": "text_delta", "text": text}
+                return
+
+            # Record assistant message with tool_calls
+            assistant_msg: dict[str, Any] = {"role": "assistant", "content": text}
+            assistant_msg["tool_calls"] = [
+                {
+                    "id": tc["id"],
+                    "type": "function",
+                    "function": {"name": tc["name"], "arguments": json.dumps(tc["arguments"])},
+                }
+                for tc in tool_calls
+            ]
+            if resp.get("reasoning_content") is not None:
+                assistant_msg["reasoning_content"] = resp["reasoning_content"]
+
+            self._messages.append(assistant_msg)
+            msgs.append(assistant_msg)
+
+            # Execute each tool and yield events
+            for tc in tool_calls:
+                yield {
+                    "type": "tool_call",
+                    "name": tc["name"],
+                    "arguments": tc["arguments"],
+                    "id": tc["id"],
+                }
+                try:
+                    result = self._tools.execute(tc["name"], tc["arguments"])
+                    result_str = json.dumps(result) if not isinstance(result, str) else result
+                except Exception as exc:
+                    result_str = f"Error: {exc}"
+
+                yield {
+                    "type": "tool_result",
+                    "name": tc["name"],
+                    "result": result_str,
+                    "id": tc["id"],
+                }
+
+                tool_result_msg: dict[str, Any] = {
+                    "role": "tool",
+                    "tool_call_id": tc["id"],
+                    "content": result_str,
+                }
+                self._messages.append(tool_result_msg)
+                msgs.append(tool_result_msg)
+
+        raise RuntimeError(f"Tool execution loop exceeded {self._max_tool_rounds} rounds")
+
+    def _ask_with_simulated_tool_events(
+        self,
+        content: str,
+        options: dict[str, Any] | None = None,
+        images: list[ImageInput] | None = None,
+    ) -> Iterator[dict[str, Any]]:
+        """Simulated tool calling with event emission."""
+        from .simulated_tools import build_tool_prompt, format_tool_result, parse_simulated_response
+
+        merged = {**self._options, **(options or {})}
+        tool_prompt = build_tool_prompt(self._tools)
+
+        augmented_system = tool_prompt
+        if self._system_prompt:
+            augmented_system = f"{self._system_prompt}\n\n{tool_prompt}"
+
+        user_content = self._build_content_with_images(content, images)
+        self._messages.append({"role": "user", "content": user_content})
+
+        for _round in range(self._max_tool_rounds):
+            msgs: list[dict[str, Any]] = []
+            msgs.append({"role": "system", "content": augmented_system})
+            msgs.extend(self._messages)
+
+            resp = self._driver.generate_messages_with_hooks(msgs, merged)
+            text = resp.get("text", "")
+            meta = resp.get("meta", {})
+            self._accumulate_usage(meta)
+
+            parsed = parse_simulated_response(text, self._tools)
+
+            if parsed["type"] == "final_answer":
+                answer = parsed["content"]
+                self._messages.append({"role": "assistant", "content": answer})
+                yield {"type": "text_delta", "text": answer}
+                return
+
+            tool_name = parsed["name"]
+            tool_args = parsed["arguments"]
+
+            self._messages.append({"role": "assistant", "content": text})
+
+            yield {"type": "tool_call", "name": tool_name, "arguments": tool_args, "id": ""}
+
+            try:
+                result = self._tools.execute(tool_name, tool_args)
+                result_msg = format_tool_result(tool_name, result)
+            except Exception as exc:
+                result_msg = format_tool_result(tool_name, f"Error: {exc}")
+
+            yield {"type": "tool_result", "name": tool_name, "result": result_msg, "id": ""}
+
+            self._messages.append({"role": "user", "content": result_msg})
+
+        raise RuntimeError(f"Simulated tool execution loop exceeded {self._max_tool_rounds} rounds")
+
     def _ask_with_simulated_tools(
         self,
         content: str,
