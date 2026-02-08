@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-from typing import Any, Iterator
-from unittest.mock import MagicMock
+from collections.abc import Iterator
+from typing import Any
 
 import pytest
 
 from prompture.callbacks import DriverCallbacks
 from prompture.conversation import Conversation
 from prompture.driver import Driver
-
+from prompture.session import UsageSession
 
 # ---------------------------------------------------------------------------
 # Mock streaming driver
@@ -173,3 +173,92 @@ class TestStreamingMultipleTurns:
 
         assert result == "regular response"
         assert len(conv.messages) == 4  # 2 from stream + 2 from regular
+
+
+class TestStreamingCallbacks:
+    """Tests that on_request / on_response / on_error callbacks fire during streaming."""
+
+    def _make_chunks(self) -> list[dict[str, Any]]:
+        return [
+            {"type": "delta", "text": "Hello"},
+            {"type": "delta", "text": " world"},
+            {"type": "done", "text": "Hello world", "meta": {
+                "prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15, "cost": 0.001,
+            }},
+        ]
+
+    def test_ask_stream_fires_on_response_callback(self):
+        """on_response fires once with correct meta and elapsed_ms."""
+        response_log: list[dict[str, Any]] = []
+        callbacks = DriverCallbacks(on_response=lambda info: response_log.append(info))
+
+        driver = MockStreamDriver(self._make_chunks())
+        conv = Conversation(driver=driver, callbacks=callbacks)
+        list(conv.ask_stream("Hi"))
+
+        assert len(response_log) == 1
+        info = response_log[0]
+        assert info["meta"]["total_tokens"] == 15
+        assert info["meta"]["cost"] == 0.001
+        assert "elapsed_ms" in info
+        assert info["elapsed_ms"] >= 0
+
+    def test_ask_stream_fires_on_request_callback(self):
+        """on_request fires once before streaming begins."""
+        request_log: list[dict[str, Any]] = []
+        callbacks = DriverCallbacks(on_request=lambda info: request_log.append(info))
+
+        driver = MockStreamDriver(self._make_chunks())
+        conv = Conversation(driver=driver, callbacks=callbacks)
+        list(conv.ask_stream("Hi"))
+
+        assert len(request_log) == 1
+        info = request_log[0]
+        assert info["prompt"] is None
+        assert isinstance(info["messages"], list)
+        assert "driver" in info
+
+    def test_ask_stream_session_records_usage(self):
+        """UsageSession wired as on_response records tokens/cost/call_count."""
+        session = UsageSession()
+        callbacks = DriverCallbacks(
+            on_response=session.record,
+            on_error=session.record_error,
+        )
+
+        driver = MockStreamDriver(self._make_chunks())
+        conv = Conversation(driver=driver, callbacks=callbacks)
+        list(conv.ask_stream("Hi"))
+
+        assert session.total_tokens == 15
+        assert session.prompt_tokens == 10
+        assert session.completion_tokens == 5
+        assert session.cost == 0.001
+        assert session.call_count == 1
+
+    def test_ask_stream_fires_on_error_callback(self):
+        """on_error fires when the stream raises an exception."""
+
+        class FailStreamDriver(Driver):
+            supports_messages = True
+            supports_streaming = True
+
+            def generate_messages(self, messages, options):
+                return {"text": "fallback", "meta": {}}
+
+            def generate_messages_stream(self, messages, options) -> Iterator[dict[str, Any]]:
+                yield {"type": "delta", "text": "partial"}
+                raise RuntimeError("stream broke")
+
+        error_log: list[dict[str, Any]] = []
+        callbacks = DriverCallbacks(on_error=lambda info: error_log.append(info))
+
+        driver = FailStreamDriver()
+        conv = Conversation(driver=driver, callbacks=callbacks)
+
+        with pytest.raises(RuntimeError, match="stream broke"):
+            list(conv.ask_stream("Hi"))
+
+        assert len(error_log) == 1
+        assert isinstance(error_log[0]["error"], RuntimeError)
+        assert "driver" in error_log[0]

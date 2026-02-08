@@ -204,6 +204,14 @@ class AsyncAgent(Generic[DepsType]):
         self._tools.register(fn)
         return fn
 
+    def add_tukuy_tools(self, skills: list[Any]) -> None:
+        """Register tukuy skills as tools on this agent.
+
+        Args:
+            skills: List of tukuy ``Skill`` instances or ``@skill``-decorated functions.
+        """
+        self._tools.add_tukuy_skills(skills)
+
     @property
     def state(self) -> AgentState:
         """Current lifecycle state of the agent."""

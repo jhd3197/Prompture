@@ -230,6 +230,9 @@ class SkillPipeline:
             elif isinstance(step, str):
                 # Skill name from registry
                 result.append(PipelineStep(skill=step, output_key=f"step_{i}"))
+            elif hasattr(step, "chain") and hasattr(step, "run"):
+                # TukuyChainStep
+                result.append(PipelineStep(skill=step, output_key=f"step_{i}"))
             else:
                 # SkillInfo or Persona directly
                 result.append(PipelineStep(skill=step, output_key=f"step_{i}"))
@@ -357,6 +360,47 @@ class SkillPipeline:
                     )
                     logger.debug("Step %d skipped due to condition", i)
                     continue
+
+            # Handle TukuyChainStep directly (no LLM call needed)
+            from .tukuy_bridge import TukuyChainStep
+
+            if isinstance(step.skill, TukuyChainStep):
+                if step.input_template:
+                    step_input = _inject_state(step.input_template, state)
+                else:
+                    step_input = current_input
+                try:
+                    step_output = step.skill.run(step_input)
+                    state[output_key] = step_output
+                    current_input = step_output
+                    final_output = step_output
+                    step_results.append(
+                        StepResult(
+                            step_index=i,
+                            skill_name=step.skill.name,
+                            output_key=output_key,
+                            output=str(step_output),
+                            success=True,
+                            duration_ms=(time.perf_counter() - step_t0) * 1000,
+                        )
+                    )
+                except Exception as e:
+                    error_msg = str(e)
+                    step_results.append(
+                        StepResult(
+                            step_index=i,
+                            skill_name=step.skill.name,
+                            output_key=output_key,
+                            success=False,
+                            error=error_msg,
+                            duration_ms=(time.perf_counter() - step_t0) * 1000,
+                        )
+                    )
+                    if self.error_policy == ErrorPolicy.raise_on_error:
+                        raise
+                    if self.error_policy == ErrorPolicy.fail_fast:
+                        break
+                continue
 
             # Resolve skill to persona
             try:
