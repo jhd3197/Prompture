@@ -112,10 +112,12 @@ class Driver:
         try:
             resp = self.generate(prompt, options)
         except Exception as exc:
+            elapsed_ms = (time.perf_counter() - t0) * 1000
             self._fire_callback(
                 "on_error",
                 {"error": exc, "prompt": prompt, "messages": None, "options": options, "driver": driver_name},
             )
+            self._auto_record_usage({}, elapsed_ms, status="error", error=exc)
             raise
         elapsed_ms = (time.perf_counter() - t0) * 1000
         meta = resp.get("meta", {})
@@ -137,6 +139,7 @@ class Driver:
                 "elapsed_ms": elapsed_ms,
             },
         )
+        self._auto_record_usage(resp, elapsed_ms)
         return resp
 
     def generate_messages_with_hooks(self, messages: list[dict[str, Any]], options: dict[str, Any]) -> dict[str, Any]:
@@ -150,10 +153,12 @@ class Driver:
         try:
             resp = self.generate_messages(messages, options)
         except Exception as exc:
+            elapsed_ms = (time.perf_counter() - t0) * 1000
             self._fire_callback(
                 "on_error",
                 {"error": exc, "prompt": None, "messages": messages, "options": options, "driver": driver_name},
             )
+            self._auto_record_usage({}, elapsed_ms, status="error", error=exc)
             raise
         elapsed_ms = (time.perf_counter() - t0) * 1000
         meta = resp.get("meta", {})
@@ -175,6 +180,7 @@ class Driver:
                 "elapsed_ms": elapsed_ms,
             },
         )
+        self._auto_record_usage(resp, elapsed_ms)
         return resp
 
     def generate_messages_with_tools_with_hooks(
@@ -193,10 +199,12 @@ class Driver:
         try:
             resp = self.generate_messages_with_tools(messages, tools, options)
         except Exception as exc:
+            elapsed_ms = (time.perf_counter() - t0) * 1000
             self._fire_callback(
                 "on_error",
                 {"error": exc, "prompt": None, "messages": messages, "options": options, "driver": driver_name},
             )
+            self._auto_record_usage({}, elapsed_ms, status="error", error=exc)
             raise
         elapsed_ms = (time.perf_counter() - t0) * 1000
         meta = resp.get("meta", {})
@@ -219,7 +227,57 @@ class Driver:
                 "elapsed_ms": elapsed_ms,
             },
         )
+        self._auto_record_usage(resp, elapsed_ms)
         return resp
+
+    # ------------------------------------------------------------------
+    # Auto-recording to usage tracker
+    # ------------------------------------------------------------------
+
+    def _auto_record_usage(
+        self,
+        resp: dict[str, Any],
+        elapsed_ms: float,
+        *,
+        status: str = "success",
+        error: Exception | None = None,
+    ) -> None:
+        """Record a usage event to the global tracker.  Fire-and-forget."""
+        try:
+            from ..infra.ledger import _resolve_api_key_hash
+            from ..infra.tracker import UsageEvent, get_tracker
+
+            tracker = get_tracker()
+            if not tracker._enabled:
+                return
+
+            meta = resp.get("meta", {}) if resp else {}
+            driver_name = getattr(self, "model", self.__class__.__name__)
+
+            # Parse provider/model
+            if "/" in driver_name:
+                provider, model = driver_name.split("/", 1)
+            else:
+                provider = self.__class__.__name__.replace("Driver", "").lower()
+                model = driver_name
+
+            model_name = f"{provider}/{model}" if provider else model
+
+            event = UsageEvent(
+                model_name=model_name,
+                provider=provider,
+                api_key_hash=_resolve_api_key_hash(model_name),
+                prompt_tokens=meta.get("prompt_tokens", 0),
+                completion_tokens=meta.get("completion_tokens", 0),
+                total_tokens=meta.get("total_tokens", 0),
+                cost=meta.get("cost", 0.0),
+                elapsed_ms=elapsed_ms,
+                status=status,
+                error_type=type(error).__name__ if error else None,
+            )
+            tracker.record(event)
+        except Exception:
+            pass  # fire-and-forget
 
     # ------------------------------------------------------------------
     # Internal helpers

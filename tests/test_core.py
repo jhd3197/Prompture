@@ -244,9 +244,11 @@ class TestAskForJson:
     def test_ai_cleanup_disabled_raises_error(self, sample_json_schema):
         """Test that invalid JSON raises exception when AI cleanup is disabled."""
         mock_driver = Mock()
-        mock_driver.generate.return_value = {
+        _response = {
             "text": '{"name": "Test", "incomplete": true'  # Missing closing brace keeps JSON invalid
         }
+        mock_driver.generate.return_value = _response
+        mock_driver.generate_with_hooks.return_value = _response
 
         content_prompt = "Extract user info"
         with pytest.raises(json.JSONDecodeError):

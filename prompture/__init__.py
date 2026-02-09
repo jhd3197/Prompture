@@ -97,6 +97,14 @@ if _settings.cache_enabled:
         redis_url=_settings.cache_redis_url,
     )
 
+# Auto-configure usage tracker from settings if enabled
+if _settings.usage_tracking_enabled:
+    configure_tracker(
+        enabled=True,
+        db_path=_settings.usage_db_path,
+        flush_threshold=_settings.usage_flush_threshold,
+    )
+
 # runtime package version (from installed metadata)
 try:
     # Python 3.8+

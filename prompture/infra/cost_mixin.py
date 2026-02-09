@@ -6,6 +6,29 @@ import copy
 from typing import Any
 
 
+def calculate_cost(
+    model_name: str,
+    input_tokens: int,
+    output_tokens: int,
+) -> float:
+    """Calculate USD cost for a model call (public API).
+
+    This is the recommended way for external consumers to calculate
+    costs.  Delegates to :meth:`UsageTracker.calculate_cost`.
+
+    Args:
+        model_name: Full model identifier (e.g. ``"openai/gpt-4"``).
+        input_tokens: Number of prompt/input tokens.
+        output_tokens: Number of completion/output tokens.
+
+    Returns:
+        Estimated cost in USD (rounded to 6 decimal places).
+    """
+    from .tracker import UsageTracker
+
+    return UsageTracker.calculate_cost(model_name, input_tokens, output_tokens)
+
+
 def prepare_strict_schema(schema: dict[str, Any]) -> dict[str, Any]:
     """Prepare a JSON schema for OpenAI strict structured-output mode.
 

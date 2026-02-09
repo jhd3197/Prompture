@@ -85,10 +85,11 @@ def test_extract_with_model_and_stepwise_extract_with_model():
     assert "usage" in result2
 
 
+@pytest.mark.integration
 def test_manual_extract_and_jsonify_explicit_driver():
     # Use OpenAI as an example, skip if not configured
     try:
-        driver = get_driver_for_model("openai/gpt-3.5-turbo")
+        driver = get_driver_for_model("openai/gpt-4o-mini")
     except Exception:
         pytest.skip("OpenAI driver not available.")
     result = manual_extract_and_jsonify(driver, SIMPLE_TEXT, SIMPLE_SCHEMA)

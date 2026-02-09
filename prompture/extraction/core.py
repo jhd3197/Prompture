@@ -34,18 +34,6 @@ from .tools import (
 logger = logging.getLogger("prompture.core")
 
 
-def _record_usage_to_ledger(model_name: str, meta: dict[str, Any]) -> None:
-    """Fire-and-forget ledger recording for standalone core functions."""
-    from ..infra.ledger import _resolve_api_key_hash, record_model_usage
-
-    record_model_usage(
-        model_name,
-        api_key_hash=_resolve_api_key_hash(model_name),
-        tokens=meta.get("total_tokens", 0),
-        cost=meta.get("cost", 0.0),
-    )
-
-
 def _build_content_with_images(text: str, images: list[ImageInput] | None = None) -> str | list[dict[str, Any]]:
     """Return plain string when no images, or a list of content blocks."""
     if not images:
@@ -158,7 +146,7 @@ def clean_json_text_with_ai(
         "Please correct it and return only the valid JSON object. Do not add any explanations or markdown. "
         f"The text to correct is:\n\n{text}"
     )
-    resp = driver.generate(prompt, options)
+    resp = driver.generate_with_hooks(prompt, options)
     raw = resp.get("text", "")
     meta = resp.get("meta", {})
     cleaned = clean_json_text(raw)
@@ -223,9 +211,9 @@ def render_output(
         messages = [{"role": "user", "content": user_content}]
         if system_prompt is not None:
             messages.insert(0, {"role": "system", "content": system_prompt})
-        resp = driver.generate_messages(messages, options)
+        resp = driver.generate_messages_with_hooks(messages, options)
     else:
-        resp = driver.generate(full_prompt, options)
+        resp = driver.generate_with_hooks(full_prompt, options)
     raw = resp.get("text", "")
 
     # Clean up potential markdown fences if the model disobeyed for text/html
@@ -248,8 +236,6 @@ def render_output(
         "cost": resp.get("meta", {}).get("cost", 0.0),
         "model_name": model_name or getattr(driver, "model", ""),
     }
-
-    _record_usage_to_ledger(model_name, resp.get("meta", {}))
 
     return {"text": raw, "usage": usage, "output_format": output_format}
 
@@ -367,13 +353,11 @@ def ask_for_json(
         messages = [{"role": "user", "content": user_content}]
         if system_prompt is not None:
             messages.insert(0, {"role": "system", "content": system_prompt})
-        resp = driver.generate_messages(messages, options)
+        resp = driver.generate_messages_with_hooks(messages, options)
     else:
-        resp = driver.generate(full_prompt, options)
+        resp = driver.generate_with_hooks(full_prompt, options)
     raw = resp.get("text", "")
     cleaned = clean_json_text(raw)
-
-    _record_usage_to_ledger(model_name, resp.get("meta", {}))
 
     try:
         json_obj = json.loads(cleaned)
@@ -407,10 +391,6 @@ def ask_for_json(
     except json.JSONDecodeError as e:
         if ai_cleanup:
             cleaned_fixed, cleanup_meta = clean_json_text_with_ai(driver, cleaned, model_name, options)
-
-            # Record cleanup call to ledger
-            if cleanup_meta:
-                _record_usage_to_ledger(model_name, cleanup_meta)
 
             try:
                 json_obj = json.loads(cleaned_fixed)

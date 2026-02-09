@@ -684,6 +684,10 @@ class Agent(Generic[DepsType]):
 
     def _execute(self, prompt: str, steps: list[AgentStep], deps: Any) -> AgentResult:
         """Core execution: run conversation, extract steps, parse output."""
+        from ..infra.tracker import get_tracker
+
+        tracker = get_tracker()
+
         # 1. Create per-run UsageSession and wire into DriverCallbacks
         session = UsageSession()
         driver_callbacks = DriverCallbacks(
@@ -715,60 +719,62 @@ class Agent(Generic[DepsType]):
             self._agent_callbacks.on_iteration(0)
 
         # 8. Ask the conversation (handles full tool loop internally)
-        t0 = time.perf_counter()
-        security_token = None
-        if self._security_context is not None:
-            from tukuy.safety import set_security_context
+        agent_name = self.name or self.__class__.__name__
+        with tracker.agent(agent_name):
+            t0 = time.perf_counter()
+            security_token = None
+            if self._security_context is not None:
+                from tukuy.safety import set_security_context
 
-            security_token = set_security_context(self._security_context)
-        try:
-            response_text = conv.ask(effective_prompt)
-        finally:
-            if security_token is not None:
-                from tukuy.safety import reset_security_context
+                security_token = set_security_context(self._security_context)
+            try:
+                response_text = conv.ask(effective_prompt)
+            finally:
+                if security_token is not None:
+                    from tukuy.safety import reset_security_context
 
-                reset_security_context(security_token)
-        elapsed_ms = (time.perf_counter() - t0) * 1000
+                    reset_security_context(security_token)
+            elapsed_ms = (time.perf_counter() - t0) * 1000
 
-        # 9. Extract steps and tool calls from conversation messages
-        all_tool_calls: list[dict[str, Any]] = []
-        self._extract_steps(conv.messages, steps, all_tool_calls)
+            # 9. Extract steps and tool calls from conversation messages
+            all_tool_calls: list[dict[str, Any]] = []
+            self._extract_steps(conv.messages, steps, all_tool_calls)
 
-        # Handle output_type parsing
-        if self._output_type is not None:
-            output, output_text = self._parse_output(conv, response_text, steps, all_tool_calls, elapsed_ms, session)
-        else:
-            output = response_text
-            output_text = response_text
+            # Handle output_type parsing
+            if self._output_type is not None:
+                output, output_text = self._parse_output(conv, response_text, steps, all_tool_calls, elapsed_ms, session)
+            else:
+                output = response_text
+                output_text = response_text
 
-        # Build result with run_usage
-        result = AgentResult(
-            output=output,
-            output_text=output_text,
-            messages=conv.messages,
-            usage=conv.usage,
-            steps=steps,
-            all_tool_calls=all_tool_calls,
-            state=AgentState.idle,
-            run_usage=session.summary(),
-        )
+            # Build result with run_usage
+            result = AgentResult(
+                output=output,
+                output_text=output_text,
+                messages=conv.messages,
+                usage=conv.usage,
+                steps=steps,
+                all_tool_calls=all_tool_calls,
+                state=AgentState.idle,
+                run_usage=session.summary(),
+            )
 
-        # 10. Run output guardrails
-        if self._output_guardrails:
-            result = self._run_output_guardrails(ctx, result, conv, session, steps, all_tool_calls)
+            # 10. Run output guardrails
+            if self._output_guardrails:
+                result = self._run_output_guardrails(ctx, result, conv, session, steps, all_tool_calls)
 
-        # 11. Fire callbacks
-        if self._agent_callbacks.on_step:
-            for step in steps:
-                self._agent_callbacks.on_step(step)
+            # 11. Fire callbacks
+            if self._agent_callbacks.on_step:
+                for step in steps:
+                    self._agent_callbacks.on_step(step)
 
-        if self._agent_callbacks.on_output:
-            self._agent_callbacks.on_output(result)
+            if self._agent_callbacks.on_output:
+                self._agent_callbacks.on_output(result)
 
-        if self._agent_callbacks.on_message:
-            self._agent_callbacks.on_message(result.output_text)
+            if self._agent_callbacks.on_message:
+                self._agent_callbacks.on_message(result.output_text)
 
-        return result
+            return result
 
     def _extract_steps(
         self,

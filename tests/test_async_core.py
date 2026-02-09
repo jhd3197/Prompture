@@ -39,7 +39,10 @@ def _make_driver_response(text: str, prompt_tokens: int = 10, completion_tokens:
 
 def _mock_async_driver(text: str = '{"name": "Alice", "age": 30}') -> AsyncDriver:
     driver = AsyncMock(spec=AsyncDriver)
-    driver.generate = AsyncMock(return_value=_make_driver_response(text))
+    _response = _make_driver_response(text)
+    driver.generate = AsyncMock(return_value=_response)
+    driver.generate_with_hooks = AsyncMock(return_value=_response)
+    driver.generate_messages_with_hooks = AsyncMock(return_value=_response)
     driver.model = "test-model"
     return driver
 
@@ -56,11 +59,12 @@ class TestAsyncCleanJsonTextWithAI:
         assert result == '{"key": "value"}'
         assert meta == {}
         driver.generate.assert_not_called()
+        driver.generate_with_hooks.assert_not_called()
 
     async def test_malformed_json_calls_driver(self):
         driver = _mock_async_driver(text='{"key": "fixed"}')
         result, meta = await clean_json_text_with_ai(driver, '{"key": broken}')
-        driver.generate.assert_called_once()
+        driver.generate_with_hooks.assert_called_once()
         assert json.loads(result) == {"key": "fixed"}
 
 
@@ -101,12 +105,13 @@ class TestAsyncAskForJson:
         driver = AsyncMock(spec=AsyncDriver)
         driver.model = "test"
         # First call returns malformed JSON, second call (cleanup) returns valid
-        driver.generate = AsyncMock(
-            side_effect=[
-                _make_driver_response("{name: Alice}"),
-                _make_driver_response('{"name": "Alice"}'),
-            ]
-        )
+        _side_effects = [
+            _make_driver_response("{name: Alice}"),
+            _make_driver_response('{"name": "Alice"}'),
+        ]
+        driver.generate = AsyncMock(side_effect=list(_side_effects))
+        driver.generate_with_hooks = AsyncMock(side_effect=list(_side_effects))
+        driver.generate_messages_with_hooks = AsyncMock(side_effect=list(_side_effects))
         schema = {"type": "object", "properties": {"name": {"type": "string"}}}
         result = await ask_for_json(driver, "Extract", schema, ai_cleanup=True)
         assert result["json_object"]["name"] == "Alice"
@@ -222,12 +227,13 @@ class TestAsyncStepwiseExtractWithModel:
 
         driver = AsyncMock(spec=AsyncDriver)
         driver.model = "test"
-        driver.generate = AsyncMock(
-            side_effect=[
-                _make_driver_response('{"value": "Alice"}'),
-                _make_driver_response('{"value": 30}'),
-            ]
-        )
+        _side_effects = [
+            _make_driver_response('{"value": "Alice"}'),
+            _make_driver_response('{"value": 30}'),
+        ]
+        driver.generate = AsyncMock(side_effect=list(_side_effects))
+        driver.generate_with_hooks = AsyncMock(side_effect=list(_side_effects))
+        driver.generate_messages_with_hooks = AsyncMock(side_effect=list(_side_effects))
         mock_get_driver.return_value = driver
 
         result = await stepwise_extract_with_model(

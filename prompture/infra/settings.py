@@ -83,6 +83,11 @@ class Settings(BaseSettings):
     # Model rates cache
     model_rates_ttl_days: int = 7  # How often to refresh models.dev cache
 
+    # Usage tracking
+    usage_tracking_enabled: bool = True
+    usage_db_path: Optional[str] = None  # default ~/.prompture/usage/usage.db
+    usage_flush_threshold: int = 10  # batch writes before flushing
+
     # Response cache
     cache_enabled: bool = False
     cache_backend: str = "memory"
