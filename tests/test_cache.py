@@ -305,7 +305,7 @@ def _make_mock_driver(response_text='{"name": "Alice"}'):
     """Create a mock driver that returns a fixed response."""
     driver = Mock()
     driver.model = "test-model"
-    driver.generate.return_value = {
+    _response = {
         "text": response_text,
         "meta": {
             "prompt_tokens": 10,
@@ -314,6 +314,9 @@ def _make_mock_driver(response_text='{"name": "Alice"}'):
             "cost": 0.001,
         },
     }
+    driver.generate.return_value = _response
+    driver.generate_with_hooks.return_value = _response
+    driver.generate_messages_with_hooks.return_value = _response
     return driver
 
 
@@ -329,7 +332,7 @@ class TestCachedAskForJson:
 
         result = ask_for_json(driver, "Tell me about Alice", schema)
 
-        driver.generate.assert_called_once()
+        driver.generate_with_hooks.assert_called_once()
         assert result["json_object"]["name"] == "Alice"
 
     def test_cache_hit_skips_driver(self):
@@ -344,7 +347,7 @@ class TestCachedAskForJson:
         # Second call — hit
         result = ask_for_json(driver, "Tell me about Alice", schema)
 
-        assert driver.generate.call_count == 1  # only the first call
+        assert driver.generate_with_hooks.call_count == 1  # only the first call
         assert result["usage"].get("cache_hit") is True
 
     def test_cache_hit_strips_raw_response(self):
@@ -369,7 +372,7 @@ class TestCachedAskForJson:
         ask_for_json(driver, "prompt", schema)
         ask_for_json(driver, "prompt", schema, cache=False)
 
-        assert driver.generate.call_count == 2  # both calls hit the driver
+        assert driver.generate_with_hooks.call_count == 2  # both calls hit the driver
 
     def test_cache_true_overrides_disabled(self):
         from prompture.extraction.core import ask_for_json
@@ -381,7 +384,7 @@ class TestCachedAskForJson:
         ask_for_json(driver, "prompt", schema, cache=True)
         result = ask_for_json(driver, "prompt", schema, cache=True)
 
-        assert driver.generate.call_count == 1
+        assert driver.generate_with_hooks.call_count == 1
         assert result["usage"].get("cache_hit") is True
 
 

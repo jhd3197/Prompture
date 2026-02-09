@@ -409,10 +409,13 @@ class TestIntegration:
         mock_toon.encode.return_value = "id name price\n1 Product_A 10.0\n2 Product_B 20.0"
 
         mock_driver = Mock()
-        mock_driver.generate.return_value = {
+        _response = {
             "text": '{"total": 2, "avg_price": 15.0}',
             "meta": {"total_tokens": 50, "prompt_tokens": 30, "completion_tokens": 20},
         }
+        mock_driver.generate.return_value = _response
+        mock_driver.generate_with_hooks.return_value = _response
+        mock_driver.generate_messages_with_hooks.return_value = _response
         mock_get_driver.return_value = mock_driver
 
         # Test data

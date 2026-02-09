@@ -187,16 +187,22 @@ class MoonshotDriver(CostMixin, Driver):
         if supports_temperature and "temperature" in opts:
             data["temperature"] = opts["temperature"]
 
-        # Native JSON mode support — skip for reasoning models where
-        # Moonshot's API does not reliably support response_format.
+        # Native JSON mode support — disable thinking for reasoning models
+        # so the response goes to content (not reasoning_content) and
+        # response_format works.  Users can override via options["thinking"].
         if options.get("json_mode"):
             from ..infra.model_rates import get_model_capabilities
 
             caps = get_model_capabilities("moonshot", model)
             is_reasoning = caps is not None and caps.is_reasoning is True
+
+            if is_reasoning:
+                data["thinking"] = options.get("thinking", {"type": "disabled"})
+
+            thinking_active = is_reasoning and data.get("thinking", {}).get("type") != "disabled"
             model_supports_structured = (
                 caps is None or caps.supports_structured_output is not False
-            ) and not is_reasoning
+            ) and not thinking_active
 
             if model_supports_structured:
                 json_schema = options.get("json_schema")
@@ -345,6 +351,15 @@ class MoonshotDriver(CostMixin, Driver):
 
         data = self._sanitize_tool_choice(data)
 
+        # Disable thinking for reasoning models during tool use so
+        # structured output lands in content, not reasoning_content.
+        from ..infra.model_rates import get_model_capabilities
+
+        caps = get_model_capabilities("moonshot", model)
+        is_reasoning = caps is not None and caps.is_reasoning is True
+        if is_reasoning:
+            data["thinking"] = options.get("thinking", {"type": "disabled"})
+
         try:
             response = requests.post(
                 f"{self.base_url}/chat/completions",
@@ -392,12 +407,14 @@ class MoonshotDriver(CostMixin, Driver):
                         "Tool arguments for %s were truncated due to max_tokens limit. "
                         "Increase max_tokens in options to allow longer tool outputs. "
                         "Truncated arguments: %r",
-                        tc["function"]["name"], raw[:200] if raw else raw,
+                        tc["function"]["name"],
+                        raw[:200] if raw else raw,
                     )
                 else:
                     logger.warning(
                         "Failed to parse tool arguments for %s: %r",
-                        tc["function"]["name"], raw,
+                        tc["function"]["name"],
+                        raw,
                     )
                 args = {}
             tool_calls_out.append(
@@ -454,6 +471,16 @@ class MoonshotDriver(CostMixin, Driver):
 
         if supports_temperature and "temperature" in opts:
             data["temperature"] = opts["temperature"]
+
+        # Disable thinking for reasoning models during streaming with
+        # json_mode so the response goes to content, not reasoning_content.
+        if options.get("json_mode"):
+            from ..infra.model_rates import get_model_capabilities
+
+            caps = get_model_capabilities("moonshot", model)
+            is_reasoning = caps is not None and caps.is_reasoning is True
+            if is_reasoning:
+                data["thinking"] = options.get("thinking", {"type": "disabled"})
 
         response = requests.post(
             f"{self.base_url}/chat/completions",

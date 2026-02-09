@@ -193,7 +193,48 @@ def record_model_usage(
     cost: float = 0.0,
     status: str = "success",
 ) -> None:
-    """Record a model usage event.  Never raises — all exceptions are swallowed."""
+    """Record a model usage event.  Never raises — all exceptions are swallowed.
+
+    .. deprecated::
+        Usage is now automatically recorded by the driver hooks via
+        :class:`~prompture.infra.tracker.UsageTracker`.  Direct calls to
+        this function are no longer necessary and will be removed in a
+        future release.
+    """
+    import warnings
+
+    warnings.warn(
+        "record_model_usage() is deprecated. Usage is now auto-recorded by "
+        "the driver hooks via UsageTracker.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    try:
+        # Delegate to the new tracker when available
+        from .tracker import UsageEvent, get_tracker
+
+        tracker = get_tracker()
+        if tracker._enabled:
+            # Parse provider/model
+            if "/" in model_name:
+                provider, _model = model_name.split("/", 1)
+            else:
+                provider = ""
+
+            event = UsageEvent(
+                model_name=model_name,
+                provider=provider,
+                api_key_hash=api_key_hash,
+                total_tokens=tokens,
+                cost=cost,
+                status=status,
+            )
+            tracker.record(event)
+            return
+    except Exception:
+        pass
+
+    # Fallback to legacy ledger
     try:
         _get_ledger().record_usage(
             model_name,
