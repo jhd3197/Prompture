@@ -89,7 +89,7 @@ def get_available_models(
                 if settings.openai_api_key or os.getenv("OPENAI_API_KEY"):
                     is_configured = True
             elif provider == "azure":
-                from .drivers.azure_config import has_azure_config_resolver, has_registered_configs
+                from ..drivers.azure_config import has_azure_config_resolver, has_registered_configs
 
                 if (
                     (
