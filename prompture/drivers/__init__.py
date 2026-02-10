@@ -30,19 +30,31 @@ from ..infra.settings import settings
 from .airllm_driver import AirLLMDriver
 from .async_airllm_driver import AsyncAirLLMDriver
 from .async_azure_driver import AsyncAzureDriver
+from .async_base import AsyncDriver
 from .async_claude_driver import AsyncClaudeDriver
+from .async_elevenlabs_stt_driver import AsyncElevenLabsSTTDriver
+from .async_elevenlabs_tts_driver import AsyncElevenLabsTTSDriver
 from .async_google_driver import AsyncGoogleDriver
+from .async_google_img_gen_driver import AsyncGoogleImageGenDriver
 from .async_grok_driver import AsyncGrokDriver
+from .async_grok_img_gen_driver import AsyncGrokImageGenDriver
 from .async_groq_driver import AsyncGroqDriver
 from .async_hugging_driver import AsyncHuggingFaceDriver
+from .async_img_gen_base import AsyncImageGenDriver
 from .async_lmstudio_driver import AsyncLMStudioDriver
 from .async_local_http_driver import AsyncLocalHTTPDriver
 from .async_modelscope_driver import AsyncModelScopeDriver
 from .async_moonshot_driver import AsyncMoonshotDriver
 from .async_ollama_driver import AsyncOllamaDriver
 from .async_openai_driver import AsyncOpenAIDriver
+from .async_openai_img_gen_driver import AsyncOpenAIImageGenDriver
+from .async_openai_stt_driver import AsyncOpenAISTTDriver
+from .async_openai_tts_driver import AsyncOpenAITTSDriver
 from .async_openrouter_driver import AsyncOpenRouterDriver
 from .async_registry import ASYNC_DRIVER_REGISTRY, get_async_driver, get_async_driver_for_model
+from .async_stability_img_gen_driver import AsyncStabilityImageGenDriver
+from .async_stt_base import AsyncSTTDriver
+from .async_tts_base import AsyncTTSDriver
 from .async_zai_driver import AsyncZaiDriver
 from .azure_config import (
     clear_azure_configs,
@@ -52,61 +64,69 @@ from .azure_config import (
 )
 from .azure_driver import AzureDriver
 from .claude_driver import ClaudeDriver
+from .elevenlabs_stt_driver import ElevenLabsSTTDriver
+from .elevenlabs_tts_driver import ElevenLabsTTSDriver
 from .google_driver import GoogleDriver
+from .google_img_gen_driver import GoogleImageGenDriver
 from .grok_driver import GrokDriver
+from .grok_img_gen_driver import GrokImageGenDriver
 from .groq_driver import GroqDriver
+from .img_gen_base import ImageGenDriver
 from .lmstudio_driver import LMStudioDriver
 from .local_http_driver import LocalHTTPDriver
 from .modelscope_driver import ModelScopeDriver
 from .moonshot_driver import MoonshotDriver
 from .ollama_driver import OllamaDriver
 from .openai_driver import OpenAIDriver
+from .openai_img_gen_driver import OpenAIImageGenDriver
+from .openai_stt_driver import OpenAISTTDriver
+from .openai_tts_driver import OpenAITTSDriver
 from .openrouter_driver import OpenRouterDriver
 from .registry import (
     _get_sync_registry,
     get_async_driver_factory,
+    get_async_img_gen_driver_factory,
     get_async_stt_driver_factory,
     get_async_tts_driver_factory,
     get_driver_factory,
+    get_img_gen_driver_factory,
     get_stt_driver_factory,
     get_tts_driver_factory,
     is_async_driver_registered,
+    is_async_img_gen_driver_registered,
     is_async_stt_driver_registered,
     is_async_tts_driver_registered,
     is_driver_registered,
+    is_img_gen_driver_registered,
     is_stt_driver_registered,
     is_tts_driver_registered,
     list_registered_async_drivers,
+    list_registered_async_img_gen_drivers,
     list_registered_async_stt_drivers,
     list_registered_async_tts_drivers,
     list_registered_drivers,
+    list_registered_img_gen_drivers,
     list_registered_stt_drivers,
     list_registered_tts_drivers,
     load_entry_point_drivers,
     register_async_driver,
+    register_async_img_gen_driver,
     register_async_stt_driver,
     register_async_tts_driver,
     register_driver,
+    register_img_gen_driver,
     register_stt_driver,
     register_tts_driver,
     unregister_async_driver,
+    unregister_async_img_gen_driver,
     unregister_async_stt_driver,
     unregister_async_tts_driver,
     unregister_driver,
+    unregister_img_gen_driver,
     unregister_stt_driver,
     unregister_tts_driver,
 )
-from .async_base import AsyncDriver
-from .async_elevenlabs_stt_driver import AsyncElevenLabsSTTDriver
-from .async_elevenlabs_tts_driver import AsyncElevenLabsTTSDriver
-from .async_openai_stt_driver import AsyncOpenAISTTDriver
-from .async_openai_tts_driver import AsyncOpenAITTSDriver
-from .async_stt_base import AsyncSTTDriver
-from .async_tts_base import AsyncTTSDriver
-from .elevenlabs_stt_driver import ElevenLabsSTTDriver
-from .elevenlabs_tts_driver import ElevenLabsTTSDriver
-from .openai_stt_driver import OpenAISTTDriver
-from .openai_tts_driver import OpenAITTSDriver
+from .stability_img_gen_driver import StabilityImageGenDriver
 from .stt_base import STTDriver
 from .tts_base import TTSDriver
 from .zai_driver import ZaiDriver
@@ -215,6 +235,12 @@ from .audio_registry import (  # noqa: E402
     get_tts_driver_for_model,
 )
 
+# Trigger image gen driver registration
+from .img_gen_registry import (  # noqa: E402
+    get_async_img_gen_driver_for_model,
+    get_img_gen_driver_for_model,
+)
+
 # Backwards compatibility: expose registry dict (read-only view recommended)
 DRIVER_REGISTRY = _get_sync_registry()
 
@@ -266,10 +292,6 @@ def get_driver_for_model(model_str: str):
 
 __all__ = [
     "ASYNC_DRIVER_REGISTRY",
-    # Async base classes
-    "AsyncDriver",
-    "AsyncSTTDriver",
-    "AsyncTTSDriver",
     # Legacy registry dicts (for backwards compatibility)
     "DRIVER_REGISTRY",
     # Sync LLM drivers
@@ -278,89 +300,121 @@ __all__ = [
     "AsyncAirLLMDriver",
     "AsyncAzureDriver",
     "AsyncClaudeDriver",
+    # Async base classes
+    "AsyncDriver",
+    # Async audio drivers
+    "AsyncElevenLabsSTTDriver",
+    "AsyncElevenLabsTTSDriver",
     "AsyncGoogleDriver",
+    # Async image gen drivers
+    "AsyncGoogleImageGenDriver",
     "AsyncGrokDriver",
+    "AsyncGrokImageGenDriver",
     "AsyncGroqDriver",
     "AsyncHuggingFaceDriver",
+    "AsyncImageGenDriver",
     "AsyncLMStudioDriver",
     "AsyncLocalHTTPDriver",
     "AsyncModelScopeDriver",
     "AsyncMoonshotDriver",
     "AsyncOllamaDriver",
     "AsyncOpenAIDriver",
-    "AsyncOpenRouterDriver",
-    "AsyncZaiDriver",
-    # Async audio drivers
-    "AsyncElevenLabsSTTDriver",
-    "AsyncElevenLabsTTSDriver",
+    "AsyncOpenAIImageGenDriver",
     "AsyncOpenAISTTDriver",
     "AsyncOpenAITTSDriver",
+    "AsyncOpenRouterDriver",
+    "AsyncSTTDriver",
+    "AsyncStabilityImageGenDriver",
+    "AsyncTTSDriver",
+    "AsyncZaiDriver",
     # Sync LLM drivers
     "AzureDriver",
     "ClaudeDriver",
+    # Sync audio drivers
+    "ElevenLabsSTTDriver",
+    "ElevenLabsTTSDriver",
     "GoogleDriver",
+    # Sync image gen drivers
+    "GoogleImageGenDriver",
     "GrokDriver",
+    "GrokImageGenDriver",
     "GroqDriver",
+    # Image gen base class
+    "ImageGenDriver",
     "LMStudioDriver",
     "LocalHTTPDriver",
     "ModelScopeDriver",
     "MoonshotDriver",
     "OllamaDriver",
     "OpenAIDriver",
-    "OpenRouterDriver",
-    "ZaiDriver",
-    # Sync audio drivers
-    "ElevenLabsSTTDriver",
-    "ElevenLabsTTSDriver",
+    "OpenAIImageGenDriver",
     "OpenAISTTDriver",
     "OpenAITTSDriver",
+    "OpenRouterDriver",
     # STT/TTS base classes
     "STTDriver",
+    "StabilityImageGenDriver",
     "TTSDriver",
+    "ZaiDriver",
     # Azure config API
     "clear_azure_configs",
     "get_async_driver",
     "get_async_driver_for_model",
+    # Image gen registry query functions
+    "get_async_img_gen_driver_factory",
+    # Image gen factory functions
+    "get_async_img_gen_driver_for_model",
+    # Audio registry query functions
+    "get_async_stt_driver_factory",
     # Audio factory functions
     "get_async_stt_driver_for_model",
+    "get_async_tts_driver_factory",
     "get_async_tts_driver_for_model",
-    "get_stt_driver_for_model",
-    "get_tts_driver_for_model",
     # LLM factory functions
     "get_driver",
     "get_driver_for_model",
-    # Audio registry query functions
-    "get_async_stt_driver_factory",
-    "get_async_tts_driver_factory",
+    "get_img_gen_driver_factory",
+    "get_img_gen_driver_for_model",
     "get_stt_driver_factory",
+    "get_stt_driver_for_model",
     "get_tts_driver_factory",
+    "get_tts_driver_for_model",
+    # Other registry query functions
     "is_async_driver_registered",
+    "is_async_img_gen_driver_registered",
     "is_async_stt_driver_registered",
     "is_async_tts_driver_registered",
     "is_driver_registered",
+    "is_img_gen_driver_registered",
     "is_stt_driver_registered",
     "is_tts_driver_registered",
     "list_registered_async_drivers",
+    "list_registered_async_img_gen_drivers",
     "list_registered_async_stt_drivers",
     "list_registered_async_tts_drivers",
     "list_registered_drivers",
+    "list_registered_img_gen_drivers",
     "list_registered_stt_drivers",
     "list_registered_tts_drivers",
     "load_entry_point_drivers",
     "register_async_driver",
+    "register_async_img_gen_driver",
     "register_async_stt_driver",
     "register_async_tts_driver",
     "register_azure_config",
     # Registry functions (public API)
     "register_driver",
+    "register_img_gen_driver",
     "register_stt_driver",
     "register_tts_driver",
     "set_azure_config_resolver",
     "unregister_async_driver",
+    "unregister_async_img_gen_driver",
     "unregister_async_stt_driver",
     "unregister_async_tts_driver",
     "unregister_azure_config",
     "unregister_driver",
+    "unregister_img_gen_driver",
     "unregister_stt_driver",
     "unregister_tts_driver",
 ]

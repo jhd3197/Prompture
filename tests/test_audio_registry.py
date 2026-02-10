@@ -5,7 +5,6 @@ from __future__ import annotations
 import pytest
 
 from prompture.drivers.registry import (
-    _reset_registries,
     get_async_stt_driver_factory,
     get_async_tts_driver_factory,
     get_stt_driver_factory,
@@ -40,11 +39,36 @@ class DummyTTS:
 
 
 @pytest.fixture(autouse=True)
-def _clean_registries():
-    """Reset all registries before each test, restore after."""
-    _reset_registries()
+def _clean_audio_registries():
+    """Reset only audio registries before each test, restore after."""
+    from prompture.drivers.registry import (
+        _ASYNC_STT_REGISTRY,
+        _ASYNC_TTS_REGISTRY,
+        _STT_REGISTRY,
+        _TTS_REGISTRY,
+    )
+
+    # Save and clear audio registries only
+    saved = (
+        dict(_STT_REGISTRY),
+        dict(_ASYNC_STT_REGISTRY),
+        dict(_TTS_REGISTRY),
+        dict(_ASYNC_TTS_REGISTRY),
+    )
+    _STT_REGISTRY.clear()
+    _ASYNC_STT_REGISTRY.clear()
+    _TTS_REGISTRY.clear()
+    _ASYNC_TTS_REGISTRY.clear()
     yield
-    _reset_registries()
+    # Restore audio registries
+    _STT_REGISTRY.clear()
+    _ASYNC_STT_REGISTRY.clear()
+    _TTS_REGISTRY.clear()
+    _ASYNC_TTS_REGISTRY.clear()
+    _STT_REGISTRY.update(saved[0])
+    _ASYNC_STT_REGISTRY.update(saved[1])
+    _TTS_REGISTRY.update(saved[2])
+    _ASYNC_TTS_REGISTRY.update(saved[3])
 
 
 # ── STT Registration ──────────────────────────────────────────────────────
