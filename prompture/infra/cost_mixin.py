@@ -152,3 +152,44 @@ class AudioCostMixin:
             cost += characters * pricing["per_character"]
 
         return round(cost, 6)
+
+
+class ImageCostMixin:
+    """Mixin that provides ``_calculate_image_cost`` to image generation drivers.
+
+    Image generation pricing is typically per-image, varying by size and quality.
+    """
+
+    # Subclasses should define IMAGE_PRICING as a class attribute.
+    # Format: {"model_id": {"size/quality": float_per_image, ...}}
+    # e.g. {"dall-e-3": {"1024x1024/standard": 0.04, "1024x1024/hd": 0.08}}
+    IMAGE_PRICING: dict[str, dict[str, float]] = {}
+
+    def _calculate_image_cost(
+        self,
+        provider: str,
+        model: str,
+        *,
+        size: str = "1024x1024",
+        quality: str = "standard",
+        n: int = 1,
+    ) -> float:
+        """Calculate USD cost for an image generation call.
+
+        Lookup order: ``"{size}/{quality}"`` → ``"{size}"`` → ``"default"`` → 0.
+
+        Args:
+            provider: Provider name (e.g. ``"openai"``, ``"stability"``).
+            model: Model identifier (e.g. ``"dall-e-3"``).
+            size: Image dimensions (e.g. ``"1024x1024"``).
+            quality: Quality tier (e.g. ``"standard"``, ``"hd"``).
+            n: Number of images generated.
+
+        Returns:
+            Estimated cost in USD, rounded to 6 decimal places.
+        """
+        pricing = self.IMAGE_PRICING.get(model, {})
+
+        per_image = pricing.get(f"{size}/{quality}") or pricing.get(size) or pricing.get("default", 0.0)
+
+        return round(per_image * n, 6)

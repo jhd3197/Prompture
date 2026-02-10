@@ -45,9 +45,14 @@ _ASYNC_STT_REGISTRY: dict[str, DriverFactory] = {}
 _TTS_REGISTRY: dict[str, DriverFactory] = {}
 _ASYNC_TTS_REGISTRY: dict[str, DriverFactory] = {}
 
+# Image generation driver registries
+_IMG_GEN_REGISTRY: dict[str, DriverFactory] = {}
+_ASYNC_IMG_GEN_REGISTRY: dict[str, DriverFactory] = {}
+
 # Track whether entry points have been loaded
 _entry_points_loaded = False
 _audio_entry_points_loaded = False
+_img_gen_entry_points_loaded = False
 
 
 def register_driver(name: str, factory: DriverFactory, *, overwrite: bool = False) -> None:
@@ -307,15 +312,18 @@ def _get_async_registry() -> dict[str, DriverFactory]:
 
 def _reset_registries() -> None:
     """Reset registries to empty state (for testing only)."""
-    global _entry_points_loaded, _audio_entry_points_loaded
+    global _entry_points_loaded, _audio_entry_points_loaded, _img_gen_entry_points_loaded
     _SYNC_REGISTRY.clear()
     _ASYNC_REGISTRY.clear()
     _STT_REGISTRY.clear()
     _ASYNC_STT_REGISTRY.clear()
     _TTS_REGISTRY.clear()
     _ASYNC_TTS_REGISTRY.clear()
+    _IMG_GEN_REGISTRY.clear()
+    _ASYNC_IMG_GEN_REGISTRY.clear()
     _entry_points_loaded = False
     _audio_entry_points_loaded = False
+    _img_gen_entry_points_loaded = False
 
 
 # ── STT Driver Registration ───────────────────────────────────────────────
@@ -340,9 +348,7 @@ def register_async_stt_driver(name: str, factory: DriverFactory, *, overwrite: b
     """Register an async STT driver factory for a provider name."""
     name = name.lower()
     if name in _ASYNC_STT_REGISTRY and not overwrite:
-        raise ValueError(
-            f"Async STT driver '{name}' is already registered. Use overwrite=True to replace it."
-        )
+        raise ValueError(f"Async STT driver '{name}' is already registered. Use overwrite=True to replace it.")
     _ASYNC_STT_REGISTRY[name] = factory
     logger.debug("Registered async STT driver: %s", name)
 
@@ -429,9 +435,7 @@ def register_async_tts_driver(name: str, factory: DriverFactory, *, overwrite: b
     """Register an async TTS driver factory for a provider name."""
     name = name.lower()
     if name in _ASYNC_TTS_REGISTRY and not overwrite:
-        raise ValueError(
-            f"Async TTS driver '{name}' is already registered. Use overwrite=True to replace it."
-        )
+        raise ValueError(f"Async TTS driver '{name}' is already registered. Use overwrite=True to replace it.")
     _ASYNC_TTS_REGISTRY[name] = factory
     logger.debug("Registered async TTS driver: %s", name)
 
@@ -580,3 +584,161 @@ def _ensure_audio_entry_points_loaded() -> None:
     global _audio_entry_points_loaded
     if not _audio_entry_points_loaded:
         load_audio_entry_point_drivers()
+
+
+# ── Image Gen Driver Registration ─────────────────────────────────────────
+
+
+def register_img_gen_driver(name: str, factory: DriverFactory, *, overwrite: bool = False) -> None:
+    """Register a sync image generation driver factory for a provider name.
+
+    Args:
+        name: Provider name (e.g., "openai"). Will be lowercased.
+        factory: Callable that takes an optional model name and returns an image gen driver.
+        overwrite: If True, allow overwriting an existing registration.
+    """
+    name = name.lower()
+    if name in _IMG_GEN_REGISTRY and not overwrite:
+        raise ValueError(f"Image gen driver '{name}' is already registered. Use overwrite=True to replace it.")
+    _IMG_GEN_REGISTRY[name] = factory
+    logger.debug("Registered sync image gen driver: %s", name)
+
+
+def register_async_img_gen_driver(name: str, factory: DriverFactory, *, overwrite: bool = False) -> None:
+    """Register an async image generation driver factory for a provider name."""
+    name = name.lower()
+    if name in _ASYNC_IMG_GEN_REGISTRY and not overwrite:
+        raise ValueError(f"Async image gen driver '{name}' is already registered. Use overwrite=True to replace it.")
+    _ASYNC_IMG_GEN_REGISTRY[name] = factory
+    logger.debug("Registered async image gen driver: %s", name)
+
+
+def unregister_img_gen_driver(name: str) -> bool:
+    """Unregister a sync image gen driver by name."""
+    name = name.lower()
+    if name in _IMG_GEN_REGISTRY:
+        del _IMG_GEN_REGISTRY[name]
+        return True
+    return False
+
+
+def unregister_async_img_gen_driver(name: str) -> bool:
+    """Unregister an async image gen driver by name."""
+    name = name.lower()
+    if name in _ASYNC_IMG_GEN_REGISTRY:
+        del _ASYNC_IMG_GEN_REGISTRY[name]
+        return True
+    return False
+
+
+def list_registered_img_gen_drivers() -> list[str]:
+    """Return a sorted list of registered sync image gen driver names."""
+    _ensure_img_gen_entry_points_loaded()
+    return sorted(_IMG_GEN_REGISTRY.keys())
+
+
+def list_registered_async_img_gen_drivers() -> list[str]:
+    """Return a sorted list of registered async image gen driver names."""
+    _ensure_img_gen_entry_points_loaded()
+    return sorted(_ASYNC_IMG_GEN_REGISTRY.keys())
+
+
+def is_img_gen_driver_registered(name: str) -> bool:
+    """Check if a sync image gen driver is registered."""
+    _ensure_img_gen_entry_points_loaded()
+    return name.lower() in _IMG_GEN_REGISTRY
+
+
+def is_async_img_gen_driver_registered(name: str) -> bool:
+    """Check if an async image gen driver is registered."""
+    _ensure_img_gen_entry_points_loaded()
+    return name.lower() in _ASYNC_IMG_GEN_REGISTRY
+
+
+def get_img_gen_driver_factory(name: str) -> DriverFactory:
+    """Get a registered sync image gen driver factory by name."""
+    _ensure_img_gen_entry_points_loaded()
+    name = name.lower()
+    if name not in _IMG_GEN_REGISTRY:
+        raise ValueError(f"Unsupported image gen provider '{name}'")
+    return _IMG_GEN_REGISTRY[name]
+
+
+def get_async_img_gen_driver_factory(name: str) -> DriverFactory:
+    """Get a registered async image gen driver factory by name."""
+    _ensure_img_gen_entry_points_loaded()
+    name = name.lower()
+    if name not in _ASYNC_IMG_GEN_REGISTRY:
+        raise ValueError(f"Unsupported async image gen provider '{name}'")
+    return _ASYNC_IMG_GEN_REGISTRY[name]
+
+
+# ── Image Gen Registry Internals ──────────────────────────────────────────
+
+
+def _get_img_gen_registry() -> dict[str, DriverFactory]:
+    """Get the internal sync image gen registry dict."""
+    _ensure_img_gen_entry_points_loaded()
+    return _IMG_GEN_REGISTRY
+
+
+def _get_async_img_gen_registry() -> dict[str, DriverFactory]:
+    """Get the internal async image gen registry dict."""
+    _ensure_img_gen_entry_points_loaded()
+    return _ASYNC_IMG_GEN_REGISTRY
+
+
+def load_img_gen_entry_point_drivers() -> tuple[int, int]:
+    """Load image gen drivers from installed packages via entry points.
+
+    Scans for ``prompture.img_gen_drivers`` and ``prompture.async_img_gen_drivers`` groups.
+
+    Returns:
+        A tuple of (sync_count, async_count) counts.
+    """
+    global _img_gen_entry_points_loaded
+
+    counts = [0, 0]
+    groups = [
+        ("prompture.img_gen_drivers", _IMG_GEN_REGISTRY, 0),
+        ("prompture.async_img_gen_drivers", _ASYNC_IMG_GEN_REGISTRY, 1),
+    ]
+
+    if sys.version_info >= (3, 10):
+        from importlib.metadata import entry_points as _ep_func
+
+        for group_name, registry, idx in groups:
+            for ep in _ep_func(group=group_name):
+                try:
+                    if ep.name.lower() in registry:
+                        continue
+                    factory = ep.load()
+                    registry[ep.name.lower()] = factory
+                    counts[idx] += 1
+                    logger.info("Loaded image gen driver from entry point: %s (%s)", ep.name, group_name)
+                except Exception:
+                    logger.exception("Failed to load image gen driver entry point: %s", ep.name)
+    else:
+        from importlib.metadata import entry_points as _ep_func
+
+        all_eps = _ep_func()
+        for group_name, registry, idx in groups:
+            for ep in all_eps.get(group_name, []):
+                try:
+                    if ep.name.lower() in registry:
+                        continue
+                    factory = ep.load()
+                    registry[ep.name.lower()] = factory
+                    counts[idx] += 1
+                except Exception:
+                    logger.exception("Failed to load image gen driver entry point: %s", ep.name)
+
+    _img_gen_entry_points_loaded = True
+    return (counts[0], counts[1])
+
+
+def _ensure_img_gen_entry_points_loaded() -> None:
+    """Ensure image gen entry points have been loaded (lazy initialization)."""
+    global _img_gen_entry_points_loaded
+    if not _img_gen_entry_points_loaded:
+        load_img_gen_entry_point_drivers()

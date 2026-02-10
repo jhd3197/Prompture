@@ -13,10 +13,11 @@ from ..drivers import (
     AirLLMDriver,
     AzureDriver,
     ClaudeDriver,
-    ElevenLabsSTTDriver,
     ElevenLabsTTSDriver,
     GoogleDriver,
+    GoogleImageGenDriver,
     GrokDriver,
+    GrokImageGenDriver,
     GroqDriver,
     LMStudioDriver,
     LocalHTTPDriver,
@@ -24,9 +25,11 @@ from ..drivers import (
     MoonshotDriver,
     OllamaDriver,
     OpenAIDriver,
+    OpenAIImageGenDriver,
     OpenAISTTDriver,
     OpenAITTSDriver,
     OpenRouterDriver,
+    StabilityImageGenDriver,
     ZaiDriver,
 )
 from .settings import settings
@@ -317,5 +320,39 @@ def get_available_audio_models(
         if modality is None or modality == "tts":
             for model_id in ElevenLabsTTSDriver.AUDIO_PRICING:
                 available.add(f"elevenlabs/{model_id}")
+
+    return sorted(available)
+
+
+def get_available_image_gen_models() -> list[str]:
+    """Auto-detect available image generation models based on configured API keys.
+
+    Checks which image gen providers are configured and returns their supported models.
+
+    Returns:
+        A sorted list of unique model strings (e.g. ``"openai/dall-e-3"``).
+    """
+    available: set[str] = set()
+
+    # OpenAI image gen models (requires openai_api_key)
+    if settings.openai_api_key or os.getenv("OPENAI_API_KEY"):
+        for model_id in OpenAIImageGenDriver.IMAGE_PRICING:
+            available.add(f"openai/{model_id}")
+
+    # Google image gen models (requires google_api_key)
+    if settings.google_api_key or os.getenv("GOOGLE_API_KEY"):
+        for model_id in GoogleImageGenDriver.IMAGE_PRICING:
+            available.add(f"google/{model_id}")
+
+    # Stability AI image gen models
+    stability_key = getattr(settings, "stability_api_key", None) or os.getenv("STABILITY_API_KEY")
+    if stability_key:
+        for model_id in StabilityImageGenDriver.IMAGE_PRICING:
+            available.add(f"stability/{model_id}")
+
+    # Grok/xAI image gen models (requires grok_api_key)
+    if settings.grok_api_key or os.getenv("GROK_API_KEY"):
+        for model_id in GrokImageGenDriver.IMAGE_PRICING:
+            available.add(f"grok/{model_id}")
 
     return sorted(available)

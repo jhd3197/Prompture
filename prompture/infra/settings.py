@@ -80,6 +80,10 @@ class Settings(BaseSettings):
     airllm_model: str = "meta-llama/Llama-2-7b-hf"
     airllm_compression: Optional[str] = None  # "4bit" or "8bit"
 
+    # Stability AI (image generation)
+    stability_api_key: Optional[str] = None
+    stability_endpoint: Optional[str] = None
+
     # ElevenLabs (audio)
     elevenlabs_api_key: Optional[str] = None
     elevenlabs_tts_model: str = "eleven_multilingual_v2"
@@ -87,6 +91,11 @@ class Settings(BaseSettings):
 
     # Model rates cache
     model_rates_ttl_days: int = 7  # How often to refresh models.dev cache
+
+    # Usage tracking
+    usage_tracking_enabled: bool = False
+    usage_db_path: Optional[str] = None  # default ~/.prompture/usage/usage.db
+    usage_flush_threshold: int = 10  # batch writes before flushing
 
     # Response cache
     cache_enabled: bool = False
