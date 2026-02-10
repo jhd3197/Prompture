@@ -39,8 +39,15 @@ DriverFactory = Callable[[str | None], object]
 _SYNC_REGISTRY: dict[str, DriverFactory] = {}
 _ASYNC_REGISTRY: dict[str, DriverFactory] = {}
 
+# Audio driver registries (STT and TTS)
+_STT_REGISTRY: dict[str, DriverFactory] = {}
+_ASYNC_STT_REGISTRY: dict[str, DriverFactory] = {}
+_TTS_REGISTRY: dict[str, DriverFactory] = {}
+_ASYNC_TTS_REGISTRY: dict[str, DriverFactory] = {}
+
 # Track whether entry points have been loaded
 _entry_points_loaded = False
+_audio_entry_points_loaded = False
 
 
 def register_driver(name: str, factory: DriverFactory, *, overwrite: bool = False) -> None:
@@ -300,7 +307,276 @@ def _get_async_registry() -> dict[str, DriverFactory]:
 
 def _reset_registries() -> None:
     """Reset registries to empty state (for testing only)."""
-    global _entry_points_loaded
+    global _entry_points_loaded, _audio_entry_points_loaded
     _SYNC_REGISTRY.clear()
     _ASYNC_REGISTRY.clear()
+    _STT_REGISTRY.clear()
+    _ASYNC_STT_REGISTRY.clear()
+    _TTS_REGISTRY.clear()
+    _ASYNC_TTS_REGISTRY.clear()
     _entry_points_loaded = False
+    _audio_entry_points_loaded = False
+
+
+# ── STT Driver Registration ───────────────────────────────────────────────
+
+
+def register_stt_driver(name: str, factory: DriverFactory, *, overwrite: bool = False) -> None:
+    """Register a sync STT driver factory for a provider name.
+
+    Args:
+        name: Provider name (e.g., "openai"). Will be lowercased.
+        factory: Callable that takes an optional model name and returns an STT driver.
+        overwrite: If True, allow overwriting an existing registration.
+    """
+    name = name.lower()
+    if name in _STT_REGISTRY and not overwrite:
+        raise ValueError(f"STT driver '{name}' is already registered. Use overwrite=True to replace it.")
+    _STT_REGISTRY[name] = factory
+    logger.debug("Registered sync STT driver: %s", name)
+
+
+def register_async_stt_driver(name: str, factory: DriverFactory, *, overwrite: bool = False) -> None:
+    """Register an async STT driver factory for a provider name."""
+    name = name.lower()
+    if name in _ASYNC_STT_REGISTRY and not overwrite:
+        raise ValueError(
+            f"Async STT driver '{name}' is already registered. Use overwrite=True to replace it."
+        )
+    _ASYNC_STT_REGISTRY[name] = factory
+    logger.debug("Registered async STT driver: %s", name)
+
+
+def unregister_stt_driver(name: str) -> bool:
+    """Unregister a sync STT driver by name."""
+    name = name.lower()
+    if name in _STT_REGISTRY:
+        del _STT_REGISTRY[name]
+        return True
+    return False
+
+
+def unregister_async_stt_driver(name: str) -> bool:
+    """Unregister an async STT driver by name."""
+    name = name.lower()
+    if name in _ASYNC_STT_REGISTRY:
+        del _ASYNC_STT_REGISTRY[name]
+        return True
+    return False
+
+
+def list_registered_stt_drivers() -> list[str]:
+    """Return a sorted list of registered sync STT driver names."""
+    _ensure_audio_entry_points_loaded()
+    return sorted(_STT_REGISTRY.keys())
+
+
+def list_registered_async_stt_drivers() -> list[str]:
+    """Return a sorted list of registered async STT driver names."""
+    _ensure_audio_entry_points_loaded()
+    return sorted(_ASYNC_STT_REGISTRY.keys())
+
+
+def is_stt_driver_registered(name: str) -> bool:
+    """Check if a sync STT driver is registered."""
+    _ensure_audio_entry_points_loaded()
+    return name.lower() in _STT_REGISTRY
+
+
+def is_async_stt_driver_registered(name: str) -> bool:
+    """Check if an async STT driver is registered."""
+    _ensure_audio_entry_points_loaded()
+    return name.lower() in _ASYNC_STT_REGISTRY
+
+
+def get_stt_driver_factory(name: str) -> DriverFactory:
+    """Get a registered sync STT driver factory by name."""
+    _ensure_audio_entry_points_loaded()
+    name = name.lower()
+    if name not in _STT_REGISTRY:
+        raise ValueError(f"Unsupported STT provider '{name}'")
+    return _STT_REGISTRY[name]
+
+
+def get_async_stt_driver_factory(name: str) -> DriverFactory:
+    """Get a registered async STT driver factory by name."""
+    _ensure_audio_entry_points_loaded()
+    name = name.lower()
+    if name not in _ASYNC_STT_REGISTRY:
+        raise ValueError(f"Unsupported async STT provider '{name}'")
+    return _ASYNC_STT_REGISTRY[name]
+
+
+# ── TTS Driver Registration ───────────────────────────────────────────────
+
+
+def register_tts_driver(name: str, factory: DriverFactory, *, overwrite: bool = False) -> None:
+    """Register a sync TTS driver factory for a provider name.
+
+    Args:
+        name: Provider name (e.g., "openai"). Will be lowercased.
+        factory: Callable that takes an optional model name and returns a TTS driver.
+        overwrite: If True, allow overwriting an existing registration.
+    """
+    name = name.lower()
+    if name in _TTS_REGISTRY and not overwrite:
+        raise ValueError(f"TTS driver '{name}' is already registered. Use overwrite=True to replace it.")
+    _TTS_REGISTRY[name] = factory
+    logger.debug("Registered sync TTS driver: %s", name)
+
+
+def register_async_tts_driver(name: str, factory: DriverFactory, *, overwrite: bool = False) -> None:
+    """Register an async TTS driver factory for a provider name."""
+    name = name.lower()
+    if name in _ASYNC_TTS_REGISTRY and not overwrite:
+        raise ValueError(
+            f"Async TTS driver '{name}' is already registered. Use overwrite=True to replace it."
+        )
+    _ASYNC_TTS_REGISTRY[name] = factory
+    logger.debug("Registered async TTS driver: %s", name)
+
+
+def unregister_tts_driver(name: str) -> bool:
+    """Unregister a sync TTS driver by name."""
+    name = name.lower()
+    if name in _TTS_REGISTRY:
+        del _TTS_REGISTRY[name]
+        return True
+    return False
+
+
+def unregister_async_tts_driver(name: str) -> bool:
+    """Unregister an async TTS driver by name."""
+    name = name.lower()
+    if name in _ASYNC_TTS_REGISTRY:
+        del _ASYNC_TTS_REGISTRY[name]
+        return True
+    return False
+
+
+def list_registered_tts_drivers() -> list[str]:
+    """Return a sorted list of registered sync TTS driver names."""
+    _ensure_audio_entry_points_loaded()
+    return sorted(_TTS_REGISTRY.keys())
+
+
+def list_registered_async_tts_drivers() -> list[str]:
+    """Return a sorted list of registered async TTS driver names."""
+    _ensure_audio_entry_points_loaded()
+    return sorted(_ASYNC_TTS_REGISTRY.keys())
+
+
+def is_tts_driver_registered(name: str) -> bool:
+    """Check if a sync TTS driver is registered."""
+    _ensure_audio_entry_points_loaded()
+    return name.lower() in _TTS_REGISTRY
+
+
+def is_async_tts_driver_registered(name: str) -> bool:
+    """Check if an async TTS driver is registered."""
+    _ensure_audio_entry_points_loaded()
+    return name.lower() in _ASYNC_TTS_REGISTRY
+
+
+def get_tts_driver_factory(name: str) -> DriverFactory:
+    """Get a registered sync TTS driver factory by name."""
+    _ensure_audio_entry_points_loaded()
+    name = name.lower()
+    if name not in _TTS_REGISTRY:
+        raise ValueError(f"Unsupported TTS provider '{name}'")
+    return _TTS_REGISTRY[name]
+
+
+def get_async_tts_driver_factory(name: str) -> DriverFactory:
+    """Get a registered async TTS driver factory by name."""
+    _ensure_audio_entry_points_loaded()
+    name = name.lower()
+    if name not in _ASYNC_TTS_REGISTRY:
+        raise ValueError(f"Unsupported async TTS provider '{name}'")
+    return _ASYNC_TTS_REGISTRY[name]
+
+
+# ── Audio Registry Internals ──────────────────────────────────────────────
+
+
+def _get_stt_registry() -> dict[str, DriverFactory]:
+    """Get the internal sync STT registry dict."""
+    _ensure_audio_entry_points_loaded()
+    return _STT_REGISTRY
+
+
+def _get_async_stt_registry() -> dict[str, DriverFactory]:
+    """Get the internal async STT registry dict."""
+    _ensure_audio_entry_points_loaded()
+    return _ASYNC_STT_REGISTRY
+
+
+def _get_tts_registry() -> dict[str, DriverFactory]:
+    """Get the internal sync TTS registry dict."""
+    _ensure_audio_entry_points_loaded()
+    return _TTS_REGISTRY
+
+
+def _get_async_tts_registry() -> dict[str, DriverFactory]:
+    """Get the internal async TTS registry dict."""
+    _ensure_audio_entry_points_loaded()
+    return _ASYNC_TTS_REGISTRY
+
+
+def load_audio_entry_point_drivers() -> tuple[int, int, int, int]:
+    """Load audio drivers from installed packages via entry points.
+
+    Scans for ``prompture.stt_drivers``, ``prompture.async_stt_drivers``,
+    ``prompture.tts_drivers``, and ``prompture.async_tts_drivers`` groups.
+
+    Returns:
+        A tuple of (stt_sync, stt_async, tts_sync, tts_async) counts.
+    """
+    global _audio_entry_points_loaded
+
+    counts = [0, 0, 0, 0]
+    groups = [
+        ("prompture.stt_drivers", _STT_REGISTRY, 0),
+        ("prompture.async_stt_drivers", _ASYNC_STT_REGISTRY, 1),
+        ("prompture.tts_drivers", _TTS_REGISTRY, 2),
+        ("prompture.async_tts_drivers", _ASYNC_TTS_REGISTRY, 3),
+    ]
+
+    if sys.version_info >= (3, 10):
+        from importlib.metadata import entry_points as _ep_func
+
+        for group_name, registry, idx in groups:
+            for ep in _ep_func(group=group_name):
+                try:
+                    if ep.name.lower() in registry:
+                        continue
+                    factory = ep.load()
+                    registry[ep.name.lower()] = factory
+                    counts[idx] += 1
+                    logger.info("Loaded audio driver from entry point: %s (%s)", ep.name, group_name)
+                except Exception:
+                    logger.exception("Failed to load audio driver entry point: %s", ep.name)
+    else:
+        from importlib.metadata import entry_points as _ep_func
+
+        all_eps = _ep_func()
+        for group_name, registry, idx in groups:
+            for ep in all_eps.get(group_name, []):
+                try:
+                    if ep.name.lower() in registry:
+                        continue
+                    factory = ep.load()
+                    registry[ep.name.lower()] = factory
+                    counts[idx] += 1
+                except Exception:
+                    logger.exception("Failed to load audio driver entry point: %s", ep.name)
+
+    _audio_entry_points_loaded = True
+    return (counts[0], counts[1], counts[2], counts[3])
+
+
+def _ensure_audio_entry_points_loaded() -> None:
+    """Ensure audio entry points have been loaded (lazy initialization)."""
+    global _audio_entry_points_loaded
+    if not _audio_entry_points_loaded:
+        load_audio_entry_point_drivers()

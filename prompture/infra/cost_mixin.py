@@ -6,29 +6,6 @@ import copy
 from typing import Any
 
 
-def calculate_cost(
-    model_name: str,
-    input_tokens: int,
-    output_tokens: int,
-) -> float:
-    """Calculate USD cost for a model call (public API).
-
-    This is the recommended way for external consumers to calculate
-    costs.  Delegates to :meth:`UsageTracker.calculate_cost`.
-
-    Args:
-        model_name: Full model identifier (e.g. ``"openai/gpt-4"``).
-        input_tokens: Number of prompt/input tokens.
-        output_tokens: Number of completion/output tokens.
-
-    Returns:
-        Estimated cost in USD (rounded to 6 decimal places).
-    """
-    from .tracker import UsageTracker
-
-    return UsageTracker.calculate_cost(model_name, input_tokens, output_tokens)
-
-
 def prepare_strict_schema(schema: dict[str, Any]) -> dict[str, Any]:
     """Prepare a JSON schema for OpenAI strict structured-output mode.
 
@@ -134,3 +111,44 @@ class CostMixin:
             "context_window": context_window,
             "max_output_tokens": max_output_tokens,
         }
+
+
+class AudioCostMixin:
+    """Mixin that provides ``_calculate_audio_cost`` to STT and TTS drivers.
+
+    Audio pricing differs from LLM pricing: STT is typically per-second of
+    audio, while TTS is per-character of input text.
+    """
+
+    # Subclasses should define AUDIO_PRICING as a class attribute.
+    # Format: {"model_id": {"per_second": float, "per_character": float}}
+    AUDIO_PRICING: dict[str, dict[str, float]] = {}
+
+    def _calculate_audio_cost(
+        self,
+        provider: str,
+        model: str,
+        *,
+        duration_seconds: float = 0,
+        characters: int = 0,
+    ) -> float:
+        """Calculate USD cost for an audio API call.
+
+        Args:
+            provider: Provider name (e.g. ``"openai"``, ``"elevenlabs"``).
+            model: Model identifier (e.g. ``"whisper-1"``, ``"tts-1"``).
+            duration_seconds: Audio duration in seconds (for STT).
+            characters: Number of text characters (for TTS).
+
+        Returns:
+            Estimated cost in USD, rounded to 6 decimal places.
+        """
+        pricing = self.AUDIO_PRICING.get(model, {})
+
+        cost = 0.0
+        if duration_seconds > 0 and "per_second" in pricing:
+            cost += duration_seconds * pricing["per_second"]
+        if characters > 0 and "per_character" in pricing:
+            cost += characters * pricing["per_character"]
+
+        return round(cost, 6)

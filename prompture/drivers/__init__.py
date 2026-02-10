@@ -65,18 +65,50 @@ from .openrouter_driver import OpenRouterDriver
 from .registry import (
     _get_sync_registry,
     get_async_driver_factory,
+    get_async_stt_driver_factory,
+    get_async_tts_driver_factory,
     get_driver_factory,
+    get_stt_driver_factory,
+    get_tts_driver_factory,
     is_async_driver_registered,
+    is_async_stt_driver_registered,
+    is_async_tts_driver_registered,
     is_driver_registered,
+    is_stt_driver_registered,
+    is_tts_driver_registered,
     list_registered_async_drivers,
+    list_registered_async_stt_drivers,
+    list_registered_async_tts_drivers,
     list_registered_drivers,
+    list_registered_stt_drivers,
+    list_registered_tts_drivers,
     load_entry_point_drivers,
     register_async_driver,
+    register_async_stt_driver,
+    register_async_tts_driver,
     register_driver,
+    register_stt_driver,
+    register_tts_driver,
     unregister_async_driver,
+    unregister_async_stt_driver,
+    unregister_async_tts_driver,
     unregister_driver,
+    unregister_stt_driver,
+    unregister_tts_driver,
 )
 from .async_base import AsyncDriver
+from .async_elevenlabs_stt_driver import AsyncElevenLabsSTTDriver
+from .async_elevenlabs_tts_driver import AsyncElevenLabsTTSDriver
+from .async_openai_stt_driver import AsyncOpenAISTTDriver
+from .async_openai_tts_driver import AsyncOpenAITTSDriver
+from .async_stt_base import AsyncSTTDriver
+from .async_tts_base import AsyncTTSDriver
+from .elevenlabs_stt_driver import ElevenLabsSTTDriver
+from .elevenlabs_tts_driver import ElevenLabsTTSDriver
+from .openai_stt_driver import OpenAISTTDriver
+from .openai_tts_driver import OpenAITTSDriver
+from .stt_base import STTDriver
+from .tts_base import TTSDriver
 from .zai_driver import ZaiDriver
 
 # Register built-in sync drivers
@@ -175,6 +207,14 @@ register_driver(
     overwrite=True,
 )
 
+# Trigger audio driver registration
+from .audio_registry import (  # noqa: E402
+    get_async_stt_driver_for_model,
+    get_async_tts_driver_for_model,
+    get_stt_driver_for_model,
+    get_tts_driver_for_model,
+)
+
 # Backwards compatibility: expose registry dict (read-only view recommended)
 DRIVER_REGISTRY = _get_sync_registry()
 
@@ -226,13 +266,15 @@ def get_driver_for_model(model_str: str):
 
 __all__ = [
     "ASYNC_DRIVER_REGISTRY",
-    # Async base class
+    # Async base classes
     "AsyncDriver",
+    "AsyncSTTDriver",
+    "AsyncTTSDriver",
     # Legacy registry dicts (for backwards compatibility)
     "DRIVER_REGISTRY",
-    # Sync drivers
+    # Sync LLM drivers
     "AirLLMDriver",
-    # Async drivers
+    # Async LLM drivers
     "AsyncAirLLMDriver",
     "AsyncAzureDriver",
     "AsyncClaudeDriver",
@@ -248,6 +290,12 @@ __all__ = [
     "AsyncOpenAIDriver",
     "AsyncOpenRouterDriver",
     "AsyncZaiDriver",
+    # Async audio drivers
+    "AsyncElevenLabsSTTDriver",
+    "AsyncElevenLabsTTSDriver",
+    "AsyncOpenAISTTDriver",
+    "AsyncOpenAITTSDriver",
+    # Sync LLM drivers
     "AzureDriver",
     "ClaudeDriver",
     "GoogleDriver",
@@ -261,24 +309,58 @@ __all__ = [
     "OpenAIDriver",
     "OpenRouterDriver",
     "ZaiDriver",
+    # Sync audio drivers
+    "ElevenLabsSTTDriver",
+    "ElevenLabsTTSDriver",
+    "OpenAISTTDriver",
+    "OpenAITTSDriver",
+    # STT/TTS base classes
+    "STTDriver",
+    "TTSDriver",
     # Azure config API
     "clear_azure_configs",
     "get_async_driver",
     "get_async_driver_for_model",
-    # Factory functions
+    # Audio factory functions
+    "get_async_stt_driver_for_model",
+    "get_async_tts_driver_for_model",
+    "get_stt_driver_for_model",
+    "get_tts_driver_for_model",
+    # LLM factory functions
     "get_driver",
     "get_driver_for_model",
+    # Audio registry query functions
+    "get_async_stt_driver_factory",
+    "get_async_tts_driver_factory",
+    "get_stt_driver_factory",
+    "get_tts_driver_factory",
     "is_async_driver_registered",
+    "is_async_stt_driver_registered",
+    "is_async_tts_driver_registered",
     "is_driver_registered",
+    "is_stt_driver_registered",
+    "is_tts_driver_registered",
     "list_registered_async_drivers",
+    "list_registered_async_stt_drivers",
+    "list_registered_async_tts_drivers",
     "list_registered_drivers",
+    "list_registered_stt_drivers",
+    "list_registered_tts_drivers",
     "load_entry_point_drivers",
     "register_async_driver",
+    "register_async_stt_driver",
+    "register_async_tts_driver",
     "register_azure_config",
     # Registry functions (public API)
     "register_driver",
+    "register_stt_driver",
+    "register_tts_driver",
     "set_azure_config_resolver",
     "unregister_async_driver",
+    "unregister_async_stt_driver",
+    "unregister_async_tts_driver",
     "unregister_azure_config",
     "unregister_driver",
+    "unregister_stt_driver",
+    "unregister_tts_driver",
 ]
