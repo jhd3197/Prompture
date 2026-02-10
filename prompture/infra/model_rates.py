@@ -27,6 +27,7 @@ PROVIDER_MAP: dict[str, str] = {
     "openrouter": "openrouter",
     "moonshot": "moonshotai",
     "zai": "zai",
+    "elevenlabs": "elevenlabs",
 }
 
 _API_URL = "https://models.dev/api.json"

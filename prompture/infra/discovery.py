@@ -13,6 +13,8 @@ from ..drivers import (
     AirLLMDriver,
     AzureDriver,
     ClaudeDriver,
+    ElevenLabsSTTDriver,
+    ElevenLabsTTSDriver,
     GoogleDriver,
     GrokDriver,
     GroqDriver,
@@ -22,6 +24,8 @@ from ..drivers import (
     MoonshotDriver,
     OllamaDriver,
     OpenAIDriver,
+    OpenAISTTDriver,
+    OpenAITTSDriver,
     OpenRouterDriver,
     ZaiDriver,
 )
@@ -277,3 +281,41 @@ def get_available_models(
         enriched.append(entry)
 
     return enriched
+
+
+def get_available_audio_models(
+    *,
+    modality: str | None = None,
+) -> list[str]:
+    """Auto-detect available audio models (STT and TTS) based on configured API keys.
+
+    Checks which audio providers are configured and returns their supported models.
+
+    Args:
+        modality: Filter by ``"stt"`` or ``"tts"``. Returns both when ``None``.
+
+    Returns:
+        A sorted list of unique model strings (e.g. ``"openai/whisper-1"``).
+    """
+    available: set[str] = set()
+
+    # OpenAI audio models (requires same openai_api_key as LLM)
+    if settings.openai_api_key or os.getenv("OPENAI_API_KEY"):
+        if modality is None or modality == "stt":
+            for model_id in OpenAISTTDriver.AUDIO_PRICING:
+                available.add(f"openai/{model_id}")
+        if modality is None or modality == "tts":
+            for model_id in OpenAITTSDriver.AUDIO_PRICING:
+                available.add(f"openai/{model_id}")
+
+    # ElevenLabs audio models
+    elevenlabs_key = getattr(settings, "elevenlabs_api_key", None) or os.getenv("ELEVENLABS_API_KEY")
+    if elevenlabs_key:
+        if modality is None or modality == "stt":
+            # ElevenLabs STT has no hardcoded pricing yet, add known model
+            available.add("elevenlabs/scribe_v1")
+        if modality is None or modality == "tts":
+            for model_id in ElevenLabsTTSDriver.AUDIO_PRICING:
+                available.add(f"elevenlabs/{model_id}")
+
+    return sorted(available)
