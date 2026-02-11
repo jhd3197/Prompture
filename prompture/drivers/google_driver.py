@@ -58,6 +58,25 @@ class GoogleDriver(CostMixin, Driver):
         "gemini-1.5-flash-8b": {"prompt": 0.00001, "completion": 0.00004},
     }
 
+    @classmethod
+    def list_models(cls, *, api_key: str | None = None, timeout: int = 10, **kw: object) -> list[str] | None:
+        """List models available via the Google Generative AI API."""
+        key = api_key or os.getenv("GOOGLE_API_KEY")
+        if not key:
+            return None
+        try:
+            client = genai.Client(api_key=key)
+            model_ids: list[str] = []
+            for m in client.models.list():
+                name = getattr(m, "name", None)
+                if name:
+                    # The API returns "models/gemini-1.5-pro" — strip the prefix
+                    model_ids.append(name.removeprefix("models/"))
+            return model_ids
+        except Exception:
+            logger.debug("GoogleDriver.list_models failed", exc_info=True)
+            return None
+
     def __init__(self, api_key: str | None = None, model: str = "gemini-1.5-pro"):
         """Initialize the Google Driver.
 

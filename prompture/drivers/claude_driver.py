@@ -3,9 +3,12 @@ Use with API key in CLAUDE_API_KEY env var or provide directly.
 """
 
 import json
+import logging
 import os
 from collections.abc import Iterator
 from typing import Any
+
+import requests
 
 try:
     import anthropic
@@ -14,6 +17,8 @@ except Exception:
 
 from ..infra.cost_mixin import CostMixin
 from .base import Driver
+
+logger = logging.getLogger(__name__)
 
 
 class ClaudeDriver(CostMixin, Driver):
@@ -55,6 +60,34 @@ class ClaudeDriver(CostMixin, Driver):
     def __init__(self, api_key: str | None = None, model: str = "claude-3-5-haiku-20241022"):
         self.api_key = api_key or os.getenv("CLAUDE_API_KEY")
         self.model = model or os.getenv("CLAUDE_MODEL_NAME", "claude-3-5-haiku-20241022")
+
+    @classmethod
+    def list_models(cls, *, api_key: str | None = None, timeout: int = 10, **kw: object) -> list[str] | None:
+        """List models available via the Anthropic API.
+
+        Anthropic uses ``x-api-key`` header (not Bearer token) and requires
+        an ``anthropic-version`` header.
+        """
+        key = api_key or os.getenv("CLAUDE_API_KEY")
+        if not key:
+            return None
+        try:
+            resp = requests.get(
+                "https://api.anthropic.com/v1/models",
+                headers={
+                    "x-api-key": key,
+                    "anthropic-version": "2023-06-01",
+                },
+                timeout=timeout,
+            )
+            if resp.status_code != 200:
+                logger.debug("ClaudeDriver.list_models returned %s", resp.status_code)
+                return None
+            data = resp.json()
+            return [m["id"] for m in data.get("data", []) if m.get("id")]
+        except Exception:
+            logger.debug("ClaudeDriver.list_models failed", exc_info=True)
+            return None
 
     supports_messages = True
 
@@ -176,9 +209,7 @@ class ClaudeDriver(CostMixin, Driver):
                     parts.append(thinking_text)
         return "\n".join(parts) if parts else None
 
-    def _extract_system_and_messages(
-        self, messages: list[dict[str, Any]]
-    ) -> tuple[str | None, list[dict[str, Any]]]:
+    def _extract_system_and_messages(self, messages: list[dict[str, Any]]) -> tuple[str | None, list[dict[str, Any]]]:
         """Separate system message from conversation messages for Anthropic API."""
         system_content = None
         api_messages: list[dict[str, Any]] = []
@@ -218,11 +249,13 @@ class ClaudeDriver(CostMixin, Driver):
             if "type" in t and t["type"] == "function":
                 # OpenAI format -> Anthropic format
                 fn = t["function"]
-                anthropic_tools.append({
-                    "name": fn["name"],
-                    "description": fn.get("description", ""),
-                    "input_schema": fn.get("parameters", {"type": "object", "properties": {}}),
-                })
+                anthropic_tools.append(
+                    {
+                        "name": fn["name"],
+                        "description": fn.get("description", ""),
+                        "input_schema": fn.get("parameters", {"type": "object", "properties": {}}),
+                    }
+                )
             elif "input_schema" in t:
                 # Already Anthropic format
                 anthropic_tools.append(t)
@@ -261,11 +294,13 @@ class ClaudeDriver(CostMixin, Driver):
             if block.type == "text":
                 text += block.text
             elif block.type == "tool_use":
-                tool_calls_out.append({
-                    "id": block.id,
-                    "name": block.name,
-                    "arguments": block.input,
-                })
+                tool_calls_out.append(
+                    {
+                        "id": block.id,
+                        "name": block.name,
+                        "arguments": block.input,
+                    }
+                )
 
         reasoning_content = self._extract_thinking(resp.content)
 

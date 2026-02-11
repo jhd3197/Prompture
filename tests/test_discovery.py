@@ -1,6 +1,7 @@
 import os
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
+from prompture.drivers.ollama_driver import OllamaDriver
 from prompture.infra.discovery import get_available_models
 
 
@@ -26,25 +27,17 @@ class TestDiscovery:
             # Should not contain openai models
             assert not any(m.startswith("openai/") for m in models)
 
-    @patch("requests.get")
-    def test_get_available_models_ollama(self, mock_get):
-        """Test Ollama dynamic discovery."""
-        # Mock successful Ollama response
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {"models": [{"name": "llama3:latest"}, {"name": "mistral:latest"}]}
-        mock_get.return_value = mock_response
-
+    @patch.object(OllamaDriver, "list_models", return_value=["llama3:latest", "mistral:latest"])
+    def test_get_available_models_ollama(self, mock_list):
+        """Test Ollama dynamic discovery via list_models()."""
         models = get_available_models()
 
         assert "ollama/llama3:latest" in models
         assert "ollama/mistral:latest" in models
 
-    @patch("requests.get")
-    def test_get_available_models_ollama_fail(self, mock_get):
+    @patch.object(OllamaDriver, "list_models", return_value=None)
+    def test_get_available_models_ollama_fail(self, mock_list):
         """Test Ollama discovery failure handling."""
-        mock_get.side_effect = Exception("Connection refused")
-
         models = get_available_models()
         # Should not crash, just not include ollama models (unless some other provider is active)
         assert not any(m.startswith("ollama/") for m in models)

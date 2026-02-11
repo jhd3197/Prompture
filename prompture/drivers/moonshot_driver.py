@@ -67,6 +67,24 @@ class MoonshotDriver(CostMixin, Driver):
             "Content-Type": "application/json",
         }
 
+    @classmethod
+    def list_models(
+        cls,
+        *,
+        api_key: str | None = None,
+        endpoint: str | None = None,
+        timeout: int = 10,
+        **kw: object,
+    ) -> list[str] | None:
+        """List models available via the Moonshot API (OpenAI-compatible)."""
+        from .base import _fetch_openai_compatible_models
+
+        key = api_key or os.getenv("MOONSHOT_API_KEY")
+        if not key:
+            return None
+        base = (endpoint or os.getenv("MOONSHOT_ENDPOINT", "https://api.moonshot.ai/v1")).rstrip("/")
+        return _fetch_openai_compatible_models(base, api_key=key, timeout=timeout)
+
     supports_messages = True
 
     @staticmethod

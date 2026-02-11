@@ -126,7 +126,7 @@ class AsyncLMStudioDriver(AsyncDriver):
 
     # -- Model management (LM Studio 0.4.0+) ----------------------------------
 
-    async def list_models(self) -> list[dict[str, Any]]:
+    async def get_loaded_models(self) -> list[dict[str, Any]]:
         """List currently loaded models via GET /v1/models (OpenAI-compatible)."""
         url = f"{self.base_url}/v1/models"
         async with httpx.AsyncClient() as client:

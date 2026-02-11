@@ -7,8 +7,6 @@ import logging
 import os
 from typing import Any, overload
 
-import requests
-
 from ..drivers import (
     AirLLMDriver,
     AzureDriver,
@@ -35,6 +33,32 @@ from ..drivers import (
 from .settings import settings
 
 logger = logging.getLogger(__name__)
+
+
+def _get_list_models_kwargs(provider: str) -> dict[str, Any]:
+    """Return keyword arguments for ``driver_cls.list_models()`` based on provider config."""
+    kw: dict[str, Any] = {}
+    if provider == "openai":
+        kw["api_key"] = settings.openai_api_key or os.getenv("OPENAI_API_KEY")
+    elif provider == "claude":
+        kw["api_key"] = settings.claude_api_key or os.getenv("CLAUDE_API_KEY")
+    elif provider == "google":
+        kw["api_key"] = settings.google_api_key or os.getenv("GOOGLE_API_KEY")
+    elif provider == "groq":
+        kw["api_key"] = settings.groq_api_key or os.getenv("GROQ_API_KEY")
+    elif provider == "grok":
+        kw["api_key"] = settings.grok_api_key or os.getenv("GROK_API_KEY")
+    elif provider == "openrouter":
+        kw["api_key"] = settings.openrouter_api_key or os.getenv("OPENROUTER_API_KEY")
+    elif provider == "moonshot":
+        kw["api_key"] = settings.moonshot_api_key or os.getenv("MOONSHOT_API_KEY")
+        kw["endpoint"] = settings.moonshot_endpoint or os.getenv("MOONSHOT_ENDPOINT")
+    elif provider == "ollama":
+        kw["endpoint"] = settings.ollama_endpoint or os.getenv("OLLAMA_ENDPOINT")
+    elif provider == "lmstudio":
+        kw["endpoint"] = settings.lmstudio_endpoint or os.getenv("LMSTUDIO_ENDPOINT")
+        kw["api_key"] = settings.lmstudio_api_key or os.getenv("LMSTUDIO_API_KEY")
+    return kw
 
 
 @overload
@@ -156,50 +180,15 @@ def get_available_models(
                         continue
                     available_models.add(f"{provider}/{model_id}")
 
-            # Dynamic Detection: Specific logic for Ollama
-            if provider == "ollama":
-                try:
-                    endpoint = settings.ollama_endpoint or os.getenv(
-                        "OLLAMA_ENDPOINT", "http://localhost:11434/api/generate"
-                    )
-                    base_url = endpoint.split("/api/")[0]
-                    tags_url = f"{base_url}/api/tags"
-
-                    resp = requests.get(tags_url, timeout=2)
-                    if resp.status_code == 200:
-                        data = resp.json()
-                        models = data.get("models", [])
-                        for model in models:
-                            name = model.get("name")
-                            if name:
-                                available_models.add(f"ollama/{name}")
-                except Exception as e:
-                    logger.debug(f"Failed to fetch Ollama models: {e}")
-
-            # Dynamic Detection: LM Studio loaded models
-            if provider == "lmstudio":
-                try:
-                    endpoint = settings.lmstudio_endpoint or os.getenv(
-                        "LMSTUDIO_ENDPOINT", "http://127.0.0.1:1234/v1/chat/completions"
-                    )
-                    base_url = endpoint.split("/v1/")[0]
-                    models_url = f"{base_url}/v1/models"
-
-                    headers: dict[str, str] = {}
-                    api_key = settings.lmstudio_api_key or os.getenv("LMSTUDIO_API_KEY")
-                    if api_key:
-                        headers["Authorization"] = f"Bearer {api_key}"
-
-                    resp = requests.get(models_url, headers=headers, timeout=2)
-                    if resp.status_code == 200:
-                        data = resp.json()
-                        models = data.get("data", [])
-                        for model in models:
-                            model_id = model.get("id")
-                            if model_id:
-                                available_models.add(f"lmstudio/{model_id}")
-                except Exception as e:
-                    logger.debug(f"Failed to fetch LM Studio models: {e}")
+            # API-based Detection: call driver's list_models() classmethod
+            api_kwargs = _get_list_models_kwargs(provider)
+            try:
+                api_models = driver_cls.list_models(**api_kwargs)
+                if api_models is not None:
+                    for model_id in api_models:
+                        available_models.add(f"{provider}/{model_id}")
+            except Exception as e:
+                logger.debug("list_models() failed for %s: %s", provider, e)
 
         except Exception as e:
             logger.warning(f"Error detecting models for provider {provider}: {e}")

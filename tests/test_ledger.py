@@ -187,7 +187,6 @@ class TestDiscoveryIntegration:
         with (
             patch("prompture.infra.ledger._get_ledger", return_value=mock_ledger),
             patch("prompture.infra.discovery.settings") as mock_settings,
-            patch("prompture.infra.discovery.requests"),
             patch("prompture.infra.model_rates.PROVIDER_MAP", {}),
         ):
             # Configure only ollama as available
@@ -235,7 +234,6 @@ class TestDiscoveryIntegration:
         with (
             patch("prompture.infra.ledger._get_ledger", return_value=mock_ledger),
             patch("prompture.infra.discovery.settings") as mock_settings,
-            patch("prompture.infra.discovery.requests"),
             patch("prompture.infra.model_rates.PROVIDER_MAP", {}),
         ):
             mock_settings.openai_api_key = None
