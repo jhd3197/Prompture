@@ -7,9 +7,57 @@ import time
 from collections.abc import Iterator
 from typing import Any
 
+import requests
+
 from ..infra.callbacks import DriverCallbacks
 
 logger = logging.getLogger("prompture.driver")
+
+
+# ------------------------------------------------------------------
+# Shared helper for OpenAI-compatible /v1/models endpoints
+# ------------------------------------------------------------------
+
+
+def _fetch_openai_compatible_models(
+    base_url: str,
+    *,
+    api_key: str | None = None,
+    headers: dict[str, str] | None = None,
+    timeout: int = 10,
+) -> list[str] | None:
+    """Fetch model IDs from an OpenAI-compatible ``/v1/models`` endpoint.
+
+    Args:
+        base_url: The base URL **without** a trailing ``/models`` path.
+                  E.g. ``"https://api.openai.com/v1"`` or
+                  ``"http://127.0.0.1:1234/v1"``.
+        api_key: Optional Bearer token.
+        headers: Optional extra headers (merged with auth header).
+        timeout: HTTP timeout in seconds.
+
+    Returns:
+        A list of model ID strings on success, or ``None`` on any failure.
+    """
+    try:
+        url = f"{base_url.rstrip('/')}/models"
+        hdrs: dict[str, str] = {}
+        if api_key:
+            hdrs["Authorization"] = f"Bearer {api_key}"
+        if headers:
+            hdrs.update(headers)
+
+        resp = requests.get(url, headers=hdrs, timeout=timeout)
+        if resp.status_code != 200:
+            logger.debug("_fetch_openai_compatible_models %s returned %s", url, resp.status_code)
+            return None
+
+        data = resp.json()
+        models = data.get("data", [])
+        return [m["id"] for m in models if m.get("id")]
+    except Exception:
+        logger.debug("_fetch_openai_compatible_models failed for %s", base_url, exc_info=True)
+        return None
 
 
 class Driver:
@@ -38,6 +86,20 @@ class Driver:
     supports_vision: bool = False
 
     callbacks: DriverCallbacks | None = None
+
+    # ------------------------------------------------------------------
+    # Model discovery
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def list_models(cls, **kwargs: Any) -> list[str] | None:
+        """Return model IDs available from this provider's API.
+
+        Subclasses should override this with a real implementation.
+        Returns ``None`` when the provider has no listing API or
+        credentials are missing.
+        """
+        return None
 
     def generate(self, prompt: str, options: dict[str, Any]) -> dict[str, Any]:
         raise NotImplementedError
@@ -294,6 +356,46 @@ class Driver:
             cb(payload)
         except Exception:
             logger.exception("Callback %s raised an exception", event)
+
+    def _should_use_json_schema(self, provider: str, model: str) -> bool:
+        """Check whether *model* supports structured output (``json_schema``).
+
+        Uses models.dev capability metadata.  Returns ``True`` (optimistic)
+        when the model is unknown so that we try the richer mode first.
+        """
+        from ..infra.model_rates import get_model_capabilities
+
+        caps = get_model_capabilities(provider, model)
+        if caps is None:
+            return True  # unknown model — optimistically try
+        if caps.supports_structured_output is False:
+            return False
+        return True
+
+    @staticmethod
+    def _inject_schema_into_messages(
+        messages: list[dict[str, Any]], json_schema: dict[str, Any]
+    ) -> list[dict[str, Any]]:
+        """Append schema instructions to the last user message.
+
+        Used when falling back from ``json_schema`` mode to plain
+        ``json_object`` mode so the model still knows the target structure.
+        """
+        import json as _json
+
+        messages = [dict(m) for m in messages]  # shallow copy
+        schema_str = _json.dumps(json_schema, indent=2)
+        note = (
+            "\n\nReturn a JSON object that validates against this schema:\n"
+            f"{schema_str}\n"
+            "If a value is unknown use null."
+        )
+        for msg in reversed(messages):
+            if msg["role"] == "user":
+                if isinstance(msg["content"], str):
+                    msg["content"] += note
+                break
+        return messages
 
     def _validate_model_capabilities(
         self,

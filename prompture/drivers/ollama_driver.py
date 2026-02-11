@@ -22,6 +22,31 @@ class OllamaDriver(Driver):
     # Ollama is free – costs are always zero.
     MODEL_PRICING = {"default": {"prompt": 0.0, "completion": 0.0}}
 
+    @classmethod
+    def list_models(
+        cls,
+        *,
+        endpoint: str | None = None,
+        timeout: int = 5,
+        **kw: object,
+    ) -> list[str] | None:
+        """List models available from the Ollama server via ``/api/tags``."""
+        try:
+            ep = endpoint or os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434/api/generate")
+            base_url = ep.split("/api/")[0]
+            tags_url = f"{base_url}/api/tags"
+
+            resp = requests.get(tags_url, timeout=timeout)
+            if resp.status_code != 200:
+                logger.debug("OllamaDriver.list_models returned %s", resp.status_code)
+                return None
+
+            data = resp.json()
+            return [m["name"] for m in data.get("models", []) if m.get("name")]
+        except Exception:
+            logger.debug("OllamaDriver.list_models failed", exc_info=True)
+            return None
+
     def __init__(self, endpoint: str | None = None, model: str = "llama3"):
         # Allow override via env var
         self.endpoint = endpoint or os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434/api/generate")
@@ -226,20 +251,24 @@ class OllamaDriver(Driver):
                             "Tool arguments for %s were truncated due to max_tokens limit. "
                             "Increase max_tokens in options to allow longer tool outputs. "
                             "Truncated arguments: %r",
-                            func.get("name", ""), args[:200] if args else args,
+                            func.get("name", ""),
+                            args[:200] if args else args,
                         )
                     else:
                         logger.warning(
                             "Failed to parse tool arguments for %s: %r",
-                            func.get("name", ""), args,
+                            func.get("name", ""),
+                            args,
                         )
                     args = {}
-            tool_calls_out.append({
-                # Ollama does not return tool_call IDs — generate one locally
-                "id": f"call_{uuid.uuid4().hex[:24]}",
-                "name": func.get("name", ""),
-                "arguments": args,
-            })
+            tool_calls_out.append(
+                {
+                    # Ollama does not return tool_call IDs — generate one locally
+                    "id": f"call_{uuid.uuid4().hex[:24]}",
+                    "name": func.get("name", ""),
+                    "arguments": args,
+                }
+            )
 
         result: dict[str, Any] = {
             "text": text,

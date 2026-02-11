@@ -151,9 +151,30 @@ class LMStudioDriver(Driver):
             result["reasoning_content"] = reasoning_content
         return result
 
+    # ------------------------------------------------------------------
+    # Model discovery
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def list_models(
+        cls,
+        *,
+        endpoint: str | None = None,
+        api_key: str | None = None,
+        timeout: int = 5,
+        **kw: object,
+    ) -> list[str] | None:
+        """List models available from the LM Studio server."""
+        from .base import _fetch_openai_compatible_models
+
+        ep = endpoint or os.getenv("LMSTUDIO_ENDPOINT", "http://127.0.0.1:1234/v1/chat/completions")
+        base = ep.split("/v1/")[0] + "/v1"
+        key = api_key or os.getenv("LMSTUDIO_API_KEY")
+        return _fetch_openai_compatible_models(base, api_key=key, timeout=timeout)
+
     # -- Model management (LM Studio 0.4.0+) ----------------------------------
 
-    def list_models(self) -> list[dict[str, Any]]:
+    def get_loaded_models(self) -> list[dict[str, Any]]:
         """List currently loaded models via GET /v1/models (OpenAI-compatible)."""
         url = f"{self.base_url}/v1/models"
         r = requests.get(url, headers=self._headers, timeout=10)

@@ -256,6 +256,46 @@ class AsyncDriver:
         except Exception:
             logger.exception("Callback %s raised an exception", event)
 
+    def _should_use_json_schema(self, provider: str, model: str) -> bool:
+        """Check whether *model* supports structured output (``json_schema``).
+
+        Uses models.dev capability metadata.  Returns ``True`` (optimistic)
+        when the model is unknown so that we try the richer mode first.
+        """
+        from ..infra.model_rates import get_model_capabilities
+
+        caps = get_model_capabilities(provider, model)
+        if caps is None:
+            return True  # unknown model — optimistically try
+        if caps.supports_structured_output is False:
+            return False
+        return True
+
+    @staticmethod
+    def _inject_schema_into_messages(
+        messages: list[dict[str, Any]], json_schema: dict[str, Any]
+    ) -> list[dict[str, Any]]:
+        """Append schema instructions to the last user message.
+
+        Used when falling back from ``json_schema`` mode to plain
+        ``json_object`` mode so the model still knows the target structure.
+        """
+        import json as _json
+
+        messages = [dict(m) for m in messages]  # shallow copy
+        schema_str = _json.dumps(json_schema, indent=2)
+        note = (
+            "\n\nReturn a JSON object that validates against this schema:\n"
+            f"{schema_str}\n"
+            "If a value is unknown use null."
+        )
+        for msg in reversed(messages):
+            if msg["role"] == "user":
+                if isinstance(msg["content"], str):
+                    msg["content"] += note
+                break
+        return messages
+
     def _validate_model_capabilities(
         self,
         provider: str,

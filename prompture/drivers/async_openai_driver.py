@@ -79,10 +79,10 @@ class AsyncOpenAIDriver(CostMixin, AsyncDriver):
         if supports_temperature and "temperature" in opts:
             kwargs["temperature"] = opts["temperature"]
 
-        # Native JSON mode support
+        # Native JSON mode support — with graceful fallback
         if options.get("json_mode"):
             json_schema = options.get("json_schema")
-            if json_schema:
+            if json_schema and self._should_use_json_schema("openai", model):
                 schema_copy = prepare_strict_schema(json_schema)
                 kwargs["response_format"] = {
                     "type": "json_schema",
@@ -94,6 +94,9 @@ class AsyncOpenAIDriver(CostMixin, AsyncDriver):
                 }
             else:
                 kwargs["response_format"] = {"type": "json_object"}
+                if json_schema:
+                    messages = self._inject_schema_into_messages(messages, json_schema)
+                    kwargs["messages"] = messages
 
         resp = await self.client.chat.completions.create(**kwargs)
 

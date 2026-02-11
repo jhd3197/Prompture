@@ -76,6 +76,16 @@ class OpenAIDriver(CostMixin, Driver):
         else:
             self.client = None
 
+    @classmethod
+    def list_models(cls, *, api_key: str | None = None, timeout: int = 10, **kw: object) -> list[str] | None:
+        """List models available via the OpenAI API."""
+        from .base import _fetch_openai_compatible_models
+
+        key = api_key or os.getenv("OPENAI_API_KEY")
+        if not key:
+            return None
+        return _fetch_openai_compatible_models("https://api.openai.com/v1", api_key=key, timeout=timeout)
+
     supports_messages = True
 
     def _prepare_messages(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -124,10 +134,10 @@ class OpenAIDriver(CostMixin, Driver):
         if supports_temperature and "temperature" in opts:
             kwargs["temperature"] = opts["temperature"]
 
-        # Native JSON mode support
+        # Native JSON mode support — with graceful fallback
         if options.get("json_mode"):
             json_schema = options.get("json_schema")
-            if json_schema:
+            if json_schema and self._should_use_json_schema("openai", model):
                 schema_copy = prepare_strict_schema(json_schema)
                 kwargs["response_format"] = {
                     "type": "json_schema",
@@ -139,6 +149,9 @@ class OpenAIDriver(CostMixin, Driver):
                 }
             else:
                 kwargs["response_format"] = {"type": "json_object"}
+                if json_schema:
+                    messages = self._inject_schema_into_messages(messages, json_schema)
+                    kwargs["messages"] = messages
 
         resp = self.client.chat.completions.create(**kwargs)
 
@@ -230,12 +243,14 @@ class OpenAIDriver(CostMixin, Driver):
                             "Tool arguments for %s were truncated due to max_tokens limit. "
                             "Increase max_tokens in options to allow longer tool outputs. "
                             "Truncated arguments: %r",
-                            tc.function.name, raw[:200] if raw else raw,
+                            tc.function.name,
+                            raw[:200] if raw else raw,
                         )
                     else:
                         logger.warning(
                             "Failed to parse tool arguments for %s: %r",
-                            tc.function.name, raw,
+                            tc.function.name,
+                            raw,
                         )
                     args = {}
                 tool_calls_out.append(

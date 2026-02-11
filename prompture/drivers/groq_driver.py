@@ -54,6 +54,16 @@ class GroqDriver(CostMixin, Driver):
         else:
             self.client = None
 
+    @classmethod
+    def list_models(cls, *, api_key: str | None = None, timeout: int = 10, **kw: object) -> list[str] | None:
+        """List models available via the Groq API."""
+        from .base import _fetch_openai_compatible_models
+
+        key = api_key or os.getenv("GROQ_API_KEY")
+        if not key:
+            return None
+        return _fetch_openai_compatible_models("https://api.groq.com/openai/v1", api_key=key, timeout=timeout)
+
     supports_messages = True
 
     def _prepare_messages(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -202,12 +212,14 @@ class GroqDriver(CostMixin, Driver):
                             "Tool arguments for %s were truncated due to max_tokens limit. "
                             "Increase max_tokens in options to allow longer tool outputs. "
                             "Truncated arguments: %r",
-                            tc.function.name, raw[:200] if raw else raw,
+                            tc.function.name,
+                            raw[:200] if raw else raw,
                         )
                     else:
                         logger.warning(
                             "Failed to parse tool arguments for %s: %r",
-                            tc.function.name, raw,
+                            tc.function.name,
+                            raw,
                         )
                     args = {}
                 tool_calls_out.append(

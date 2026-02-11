@@ -74,7 +74,7 @@ print("Extracting information with custom instruction...")
 custom_result = extract_and_jsonify(
     text=text,
     json_schema=json_schema,
-    model_name="openai/gpt-3.5-turbo",  # override with a different model
+    model_name="openai/gpt-4o",  # override with a different model
     instruction_template="Parse the biographical details from this text:",
 )
 
