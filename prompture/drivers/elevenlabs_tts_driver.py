@@ -32,6 +32,46 @@ class ElevenLabsTTSDriver(AudioCostMixin, TTSDriver):
         "eleven_flash_v2_5": {"per_character": 0.000015},
     }
 
+    @classmethod
+    def list_models(
+        cls,
+        *,
+        api_key: str | None = None,
+        endpoint: str = "https://api.elevenlabs.io/v1",
+        timeout: int = 10,
+        **kw: object,
+    ) -> list[str] | None:
+        """List TTS models available from the ElevenLabs API.
+
+        Calls ``GET /v1/models`` and returns model IDs where
+        ``can_do_text_to_speech`` is ``True``.
+        """
+        if httpx is None:
+            logger.debug("httpx not installed — cannot list ElevenLabs models")
+            return None
+
+        key = api_key or os.getenv("ELEVENLABS_API_KEY")
+        headers: dict[str, str] = {}
+        if key:
+            headers["xi-api-key"] = key
+
+        try:
+            url = f"{endpoint.rstrip('/')}/models"
+            resp = httpx.get(url, headers=headers, timeout=timeout)
+            if resp.status_code != 200:
+                logger.debug("ElevenLabs /models returned %s", resp.status_code)
+                return None
+
+            models = resp.json()
+            return [
+                m["model_id"]
+                for m in models
+                if isinstance(m, dict) and m.get("can_do_text_to_speech")
+            ]
+        except Exception:
+            logger.debug("ElevenLabs list_models failed", exc_info=True)
+            return None
+
     def __init__(
         self,
         api_key: str | None = None,

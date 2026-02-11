@@ -21,10 +21,16 @@ except ImportError:
 
 from pydantic import BaseModel
 
-from ..drivers.base import Driver
 from ..drivers import get_driver_for_model
-from .fields import get_registry_snapshot
+from ..drivers.base import Driver
 from ..media.image import ImageInput, make_image
+from .fields import get_registry_snapshot
+from .reasoning import (
+    ReasoningStrategyProtocol,
+    _strategy_name,
+    apply_reasoning_strategy,
+    auto_select_reasoning_strategy,
+)
 from .tools import (
     clean_json_text,
     convert_value,
@@ -398,12 +404,10 @@ def ask_for_json(
                 # Combine usage from original call and cleanup call
                 original_meta = resp.get("meta", {})
                 combined_usage = {
-                    "prompt_tokens": original_meta.get("prompt_tokens", 0)
-                    + cleanup_meta.get("prompt_tokens", 0),
+                    "prompt_tokens": original_meta.get("prompt_tokens", 0) + cleanup_meta.get("prompt_tokens", 0),
                     "completion_tokens": original_meta.get("completion_tokens", 0)
                     + cleanup_meta.get("completion_tokens", 0),
-                    "total_tokens": original_meta.get("total_tokens", 0)
-                    + cleanup_meta.get("total_tokens", 0),
+                    "total_tokens": original_meta.get("total_tokens", 0) + cleanup_meta.get("total_tokens", 0),
                     "cost": original_meta.get("cost", 0.0) + cleanup_meta.get("cost", 0.0),
                     "model_name": model_name or options.get("model", getattr(driver, "model", "")),
                     "raw_response": resp,
@@ -443,6 +447,7 @@ def extract_and_jsonify(
     json_mode: Literal["auto", "on", "off"] = "auto",
     system_prompt: str | None = None,
     images: list[ImageInput] | None = None,
+    reasoning_strategy: str | ReasoningStrategyProtocol | None = None,
 ) -> dict[str, Any]:
     """Extracts structured information using automatic driver selection based on model name.
 
@@ -454,6 +459,7 @@ def extract_and_jsonify(
         ai_cleanup: Whether to attempt AI-based cleanup if JSON parsing fails.
         output_format: Response serialization format ("json" or "toon").
         options: Additional options to pass to the driver.
+        reasoning_strategy: Optional reasoning strategy name or instance to augment the prompt.
 
     Returns:
         A dictionary containing:
@@ -517,9 +523,12 @@ def extract_and_jsonify(
     opts = {**options, "model": model_id}
 
     content_prompt = f"{actual_template} {actual_text}"
+    if reasoning_strategy == "auto":
+        reasoning_strategy = auto_select_reasoning_strategy(actual_text, actual_schema)
+    content_prompt = apply_reasoning_strategy(content_prompt, reasoning_strategy)
 
     try:
-        return ask_for_json(
+        result = ask_for_json(
             driver,
             content_prompt,
             actual_schema,
@@ -531,6 +540,8 @@ def extract_and_jsonify(
             system_prompt=system_prompt,
             images=images,
         )
+        result["usage"]["reasoning_strategy"] = _strategy_name(reasoning_strategy)
+        return result
     except (requests.exceptions.ConnectionError, requests.exceptions.HTTPError) as e:
         if "pytest" in sys.modules:
             import pytest
@@ -550,6 +561,7 @@ def manual_extract_and_jsonify(
     options: dict[str, Any] | None = None,
     json_mode: Literal["auto", "on", "off"] = "auto",
     system_prompt: str | None = None,
+    reasoning_strategy: str | ReasoningStrategyProtocol | None = None,
 ) -> dict[str, Any]:
     """Extracts structured information using an explicitly provided driver.
 
@@ -566,6 +578,7 @@ def manual_extract_and_jsonify(
         ai_cleanup: Whether to attempt AI-based cleanup if JSON parsing fails.
         output_format: Response serialization format ("json" or "toon").
         options: Additional options to pass to the driver.
+        reasoning_strategy: Optional reasoning strategy name or instance to augment the prompt.
 
     Returns:
         A dictionary containing:
@@ -598,6 +611,9 @@ def manual_extract_and_jsonify(
         opts["model"] = model_name
 
     content_prompt = f"{instruction_template} {text}"
+    if reasoning_strategy == "auto":
+        reasoning_strategy = auto_select_reasoning_strategy(text, json_schema)
+    content_prompt = apply_reasoning_strategy(content_prompt, reasoning_strategy)
 
     logger.debug("[manual] Generated prompt for extraction")
 
@@ -612,6 +628,7 @@ def manual_extract_and_jsonify(
         json_mode=json_mode,
         system_prompt=system_prompt,
     )
+    result["usage"]["reasoning_strategy"] = _strategy_name(reasoning_strategy)
     logger.debug("[manual] Manual extraction completed successfully")
 
     return result
@@ -632,6 +649,7 @@ def extract_with_model(
     routing: Union[str, RoutingConfig, None] = None,
     max_retries: int = 1,
     fallback: BaseModel | None = None,
+    reasoning_strategy: str | ReasoningStrategyProtocol | None = None,
 ) -> dict[str, Any]:
     """Extracts structured information into a Pydantic model instance.
 
@@ -659,6 +677,7 @@ def extract_with_model(
         fallback: Optional Pydantic model instance to return when all retries are
             exhausted. When provided, the result will include ``"fallback_used": True``
             in its usage metadata instead of raising an exception.
+        reasoning_strategy: Optional reasoning strategy name or instance to augment the prompt.
 
     Returns:
         A validated instance of the Pydantic model. When routing is used,
@@ -762,6 +781,7 @@ def extract_with_model(
                 json_mode=json_mode,
                 system_prompt=system_prompt,
                 images=images,
+                reasoning_strategy=reasoning_strategy,
             )
             logger.debug("[extract] Extraction completed successfully")
 
@@ -871,6 +891,7 @@ def stepwise_extract_with_model(
     json_mode: Literal["auto", "on", "off"] = "auto",
     system_prompt: str | None = None,
     share_context: bool = False,
+    reasoning_strategy: str | ReasoningStrategyProtocol | None = None,
 ) -> dict[str, Union[str, dict[str, Any]]]:
     """Extracts structured information into a Pydantic model by processing each field individually.
 
@@ -984,6 +1005,7 @@ def stepwise_extract_with_model(
                 options=options,
                 json_mode=json_mode,
                 system_prompt=system_prompt,
+                reasoning_strategy=reasoning_strategy,
             )
 
             logger.debug("[stepwise] Raw extraction result for %s", field_name)

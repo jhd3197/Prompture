@@ -15,19 +15,19 @@ from typing import Any, Callable, Literal, Union
 from pydantic import BaseModel
 
 from ..drivers.async_base import AsyncDriver
-from ..infra.callbacks import DriverCallbacks
 from ..drivers.async_registry import get_async_driver_for_model
 from ..extraction.fields import get_registry_snapshot
-from ..media.image import ImageInput, make_image
-from ..persistence.store import load_from_file, save_to_file
-from .persona import Persona, get_persona
-from ..persistence.serialization import export_conversation, import_conversation
-from ..infra.session import UsageSession
 from ..extraction.tools import (
     clean_json_text,
     convert_value,
     get_field_default,
 )
+from ..infra.callbacks import DriverCallbacks
+from ..infra.session import UsageSession
+from ..media.image import ImageInput, make_image
+from ..persistence.serialization import export_conversation, import_conversation
+from ..persistence.store import load_from_file, save_to_file
+from .persona import Persona, get_persona
 from .tools_schema import ToolRegistry
 
 logger = logging.getLogger("prompture.async_conversation")
@@ -818,12 +818,21 @@ class AsyncConversation:
         options: dict[str, Any] | None = None,
         json_mode: Literal["auto", "on", "off"] = "auto",
         images: list[ImageInput] | None = None,
+        reasoning_strategy: str | None = None,
     ) -> dict[str, Any]:
         """Extract structured information into a Pydantic model with conversation context (async)."""
         from ..extraction.core import normalize_field_value
+        from ..extraction.reasoning import (
+            _strategy_name,
+            apply_reasoning_strategy,
+            auto_select_reasoning_strategy,
+        )
 
         schema = model_cls.model_json_schema()
         content_prompt = f"{instruction_template} {text}"
+        if reasoning_strategy == "auto":
+            reasoning_strategy = auto_select_reasoning_strategy(text, schema)
+        content_prompt = apply_reasoning_strategy(content_prompt, reasoning_strategy)
 
         result = await self.ask_for_json(
             content=content_prompt,
@@ -834,6 +843,7 @@ class AsyncConversation:
             json_mode=json_mode,
             images=images,
         )
+        result["usage"]["reasoning_strategy"] = _strategy_name(reasoning_strategy)
 
         json_object = result["json_object"]
         schema_properties = schema.get("properties", {})

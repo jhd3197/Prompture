@@ -11,6 +11,7 @@ from ..drivers import (
     AirLLMDriver,
     AzureDriver,
     ClaudeDriver,
+    ElevenLabsSTTDriver,
     ElevenLabsTTSDriver,
     GoogleDriver,
     GoogleImageGenDriver,
@@ -302,13 +303,30 @@ def get_available_audio_models(
 
     # ElevenLabs audio models
     elevenlabs_key = getattr(settings, "elevenlabs_api_key", None) or os.getenv("ELEVENLABS_API_KEY")
+    elevenlabs_endpoint = (
+        getattr(settings, "elevenlabs_endpoint", None) or "https://api.elevenlabs.io/v1"
+    )
     if elevenlabs_key:
         if modality is None or modality == "stt":
-            # ElevenLabs STT has no hardcoded pricing yet, add known model
-            available.add("elevenlabs/scribe_v1")
+            # STT: static list (no API listing endpoint for STT models)
+            stt_models = ElevenLabsSTTDriver.list_models(
+                api_key=elevenlabs_key, endpoint=elevenlabs_endpoint
+            )
+            if stt_models:
+                for model_id in stt_models:
+                    available.add(f"elevenlabs/{model_id}")
+
         if modality is None or modality == "tts":
-            for model_id in ElevenLabsTTSDriver.AUDIO_PRICING:
-                available.add(f"elevenlabs/{model_id}")
+            # TTS: dynamic discovery via GET /v1/models, fallback to AUDIO_PRICING
+            tts_models = ElevenLabsTTSDriver.list_models(
+                api_key=elevenlabs_key, endpoint=elevenlabs_endpoint
+            )
+            if tts_models is not None:
+                for model_id in tts_models:
+                    available.add(f"elevenlabs/{model_id}")
+            else:
+                for model_id in ElevenLabsTTSDriver.AUDIO_PRICING:
+                    available.add(f"elevenlabs/{model_id}")
 
     return sorted(available)
 
