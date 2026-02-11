@@ -25,6 +25,29 @@ class ElevenLabsSTTDriver(AudioCostMixin, STTDriver):
 
     AUDIO_PRICING: dict[str, dict[str, float]] = {}  # ElevenLabs STT pricing TBD
 
+    # Known STT model IDs (no API listing endpoint exists for STT)
+    KNOWN_STT_MODELS = ["scribe_v1"]
+
+    @classmethod
+    def list_models(
+        cls,
+        *,
+        api_key: str | None = None,
+        endpoint: str = "https://api.elevenlabs.io/v1",
+        timeout: int = 10,
+        **kw: object,
+    ) -> list[str] | None:
+        """Return known ElevenLabs STT model IDs.
+
+        ElevenLabs does not expose an STT model listing endpoint, so this
+        returns a curated static list.  A key is required only to confirm the
+        provider is configured.
+        """
+        key = api_key or os.getenv("ELEVENLABS_API_KEY")
+        if not key:
+            return None
+        return list(cls.KNOWN_STT_MODELS)
+
     def __init__(
         self,
         api_key: str | None = None,

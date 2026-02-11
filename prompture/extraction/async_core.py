@@ -18,14 +18,20 @@ except ImportError:
 from pydantic import BaseModel
 
 from ..drivers.async_base import AsyncDriver
+from ..drivers.async_registry import get_async_driver_for_model
 from .core import (
     _calculate_token_savings,
     _dataframe_to_toon,
     _json_to_toon,
     normalize_field_value,
 )
-from ..drivers.async_registry import get_async_driver_for_model
 from .fields import get_registry_snapshot
+from .reasoning import (
+    ReasoningStrategyProtocol,
+    _strategy_name,
+    apply_reasoning_strategy,
+    auto_select_reasoning_strategy,
+)
 from .tools import (
     clean_json_text,
     convert_value,
@@ -256,12 +262,10 @@ async def ask_for_json(
                 # Combine usage from original call and cleanup call
                 original_meta = resp.get("meta", {})
                 combined_usage = {
-                    "prompt_tokens": original_meta.get("prompt_tokens", 0)
-                    + cleanup_meta.get("prompt_tokens", 0),
+                    "prompt_tokens": original_meta.get("prompt_tokens", 0) + cleanup_meta.get("prompt_tokens", 0),
                     "completion_tokens": original_meta.get("completion_tokens", 0)
                     + cleanup_meta.get("completion_tokens", 0),
-                    "total_tokens": original_meta.get("total_tokens", 0)
-                    + cleanup_meta.get("total_tokens", 0),
+                    "total_tokens": original_meta.get("total_tokens", 0) + cleanup_meta.get("total_tokens", 0),
                     "cost": original_meta.get("cost", 0.0) + cleanup_meta.get("cost", 0.0),
                     "model_name": model_name or options.get("model", getattr(driver, "model", "")),
                     "raw_response": resp,
@@ -300,6 +304,7 @@ async def extract_and_jsonify(
     options: dict[str, Any] | None = None,
     json_mode: Literal["auto", "on", "off"] = "auto",
     system_prompt: str | None = None,
+    reasoning_strategy: str | ReasoningStrategyProtocol | None = None,
 ) -> dict[str, Any]:
     """Extract structured information using automatic async driver selection (async version)."""
     if options is None:
@@ -333,9 +338,12 @@ async def extract_and_jsonify(
 
     opts = {**options, "model": model_id}
     content_prompt = f"{instruction_template} {text}"
+    if reasoning_strategy == "auto":
+        reasoning_strategy = auto_select_reasoning_strategy(text, json_schema)
+    content_prompt = apply_reasoning_strategy(content_prompt, reasoning_strategy)
 
     try:
-        return await ask_for_json(
+        result = await ask_for_json(
             driver,
             content_prompt,
             json_schema,
@@ -346,6 +354,8 @@ async def extract_and_jsonify(
             json_mode=json_mode,
             system_prompt=system_prompt,
         )
+        result["usage"]["reasoning_strategy"] = _strategy_name(reasoning_strategy)
+        return result
     except Exception as e:
         if "pytest" in sys.modules:
             import pytest
@@ -365,6 +375,7 @@ async def manual_extract_and_jsonify(
     options: dict[str, Any] | None = None,
     json_mode: Literal["auto", "on", "off"] = "auto",
     system_prompt: str | None = None,
+    reasoning_strategy: str | ReasoningStrategyProtocol | None = None,
 ) -> dict[str, Any]:
     """Extract structured information using an explicitly provided async driver."""
     if options is None:
@@ -381,6 +392,9 @@ async def manual_extract_and_jsonify(
         opts["model"] = model_name
 
     content_prompt = f"{instruction_template} {text}"
+    if reasoning_strategy == "auto":
+        reasoning_strategy = auto_select_reasoning_strategy(text, json_schema)
+    content_prompt = apply_reasoning_strategy(content_prompt, reasoning_strategy)
 
     result = await ask_for_json(
         driver,
@@ -393,6 +407,7 @@ async def manual_extract_and_jsonify(
         json_mode=json_mode,
         system_prompt=system_prompt,
     )
+    result["usage"]["reasoning_strategy"] = _strategy_name(reasoning_strategy)
     return result
 
 
@@ -407,6 +422,7 @@ async def extract_with_model(
     cache: bool | None = None,
     json_mode: Literal["auto", "on", "off"] = "auto",
     system_prompt: str | None = None,
+    reasoning_strategy: str | ReasoningStrategyProtocol | None = None,
 ) -> dict[str, Any]:
     """Extract structured information into a Pydantic model instance (async version)."""
     if options is None:
@@ -455,6 +471,7 @@ async def extract_with_model(
         options=options,
         json_mode=json_mode,
         system_prompt=system_prompt,
+        reasoning_strategy=reasoning_strategy,
     )
 
     json_object = result["json_object"]
@@ -511,6 +528,7 @@ async def stepwise_extract_with_model(
     json_mode: Literal["auto", "on", "off"] = "auto",
     system_prompt: str | None = None,
     share_context: bool = False,
+    reasoning_strategy: str | ReasoningStrategyProtocol | None = None,
 ) -> dict[str, Union[str, dict[str, Any]]]:
     """Extract information field-by-field using sequential async LLM calls."""
     if not text or not text.strip():
@@ -576,6 +594,7 @@ async def stepwise_extract_with_model(
                 options=options,
                 json_mode=json_mode,
                 system_prompt=system_prompt,
+                reasoning_strategy=reasoning_strategy,
             )
 
             field_usage = result.get("usage", {})
