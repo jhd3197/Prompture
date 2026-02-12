@@ -178,6 +178,7 @@ class AsyncAgent(Generic[DepsType]):
         security_context: Any | None = None,
         auto_approve_safe_only: bool = False,
         skill_config: dict[str, Any] | None = None,
+        max_tool_result_length: int | None = None,
     ) -> None:
         if not model and driver is None:
             raise ValueError("Either model or driver must be provided")
@@ -200,6 +201,7 @@ class AsyncAgent(Generic[DepsType]):
         self._security_context = security_context
         self._auto_approve_safe_only = auto_approve_safe_only
         self._skill_config = skill_config
+        self._max_tool_result_length = max_tool_result_length
         self._conversation: Any = None
 
         # Build internal tool registry
@@ -704,6 +706,8 @@ class AsyncAgent(Generic[DepsType]):
             "tools": effective_tools,
             "max_tool_rounds": self._max_iterations,
         }
+        if self._max_tool_result_length is not None:
+            kwargs["max_tool_result_length"] = self._max_tool_result_length
         if self._options:
             kwargs["options"] = self._options
         if driver_callbacks is not None:
