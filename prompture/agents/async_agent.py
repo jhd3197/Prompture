@@ -608,7 +608,10 @@ class AsyncAgent(Generic[DepsType]):
                     retry_text = await conv.ask(
                         f"Your response did not pass validation. Error: {exc.message}\n\nPlease try again."
                     )
-                    self._extract_steps(conv.messages[-2:], steps, all_tool_calls)
+                    self._extract_steps(
+                        conv.messages[-2:], steps, all_tool_calls,
+                        getattr(conv, "_full_tool_results", None),
+                    )
 
                     if self._output_type is not None:
                         try:
@@ -779,7 +782,8 @@ class AsyncAgent(Generic[DepsType]):
 
             # 9. Extract steps and tool calls
             all_tool_calls: list[dict[str, Any]] = []
-            self._extract_steps(conv.messages, steps, all_tool_calls)
+            full_results = getattr(conv, "_full_tool_results", None)
+            self._extract_steps(conv.messages, steps, all_tool_calls, full_results)
 
             # Handle output_type parsing
             if self._output_type is not None:
@@ -822,6 +826,7 @@ class AsyncAgent(Generic[DepsType]):
         messages: list[dict[str, Any]],
         steps: list[AgentStep],
         all_tool_calls: list[dict[str, Any]],
+        full_tool_results: dict[str, str] | None = None,
     ) -> None:
         """Scan conversation messages and populate steps and tool_calls."""
         now = time.time()
@@ -876,12 +881,19 @@ class AsyncAgent(Generic[DepsType]):
                     )
 
             elif role == "tool":
+                tool_call_id = msg.get("tool_call_id")
+                # Use the full (pre-truncation) result when available,
+                # falling back to the (possibly truncated) message content.
+                full_result = None
+                if full_tool_results and tool_call_id:
+                    full_result = full_tool_results.get(tool_call_id)
                 steps.append(
                     AgentStep(
                         step_type=StepType.tool_result,
                         timestamp=now,
                         content=msg.get("content", ""),
-                        tool_name=msg.get("tool_call_id"),
+                        tool_name=tool_call_id,
+                        tool_result=full_result,
                     )
                 )
 
@@ -917,7 +929,10 @@ class AsyncAgent(Generic[DepsType]):
                         f"Please try again and respond ONLY with valid JSON."
                     )
                     text = await conv.ask(retry_msg)
-                    self._extract_steps(conv.messages[-2:], steps, all_tool_calls)
+                    self._extract_steps(
+                        conv.messages[-2:], steps, all_tool_calls,
+                        getattr(conv, "_full_tool_results", None),
+                    )
 
         raise ValueError(
             f"Failed to parse output as {self._output_type.__name__} "
@@ -1006,7 +1021,8 @@ class AsyncAgent(Generic[DepsType]):
 
             # Extract steps
             all_tool_calls: list[dict[str, Any]] = []
-            self._extract_steps(conv.messages, steps, all_tool_calls)
+            full_results = getattr(conv, "_full_tool_results", None)
+            self._extract_steps(conv.messages, steps, all_tool_calls, full_results)
 
             # Parse output
             if self._output_type is not None:
