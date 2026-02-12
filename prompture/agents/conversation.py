@@ -115,6 +115,9 @@ class Conversation:
         self._max_tool_result_length = max_tool_result_length
         self._simulated_tools = simulated_tools
 
+        # Full (pre-truncation) tool results keyed by tool_call_id.
+        self._full_tool_results: dict[str, str] = {}
+
         # Reasoning content from last response
         self._last_reasoning: str | None = None
 
@@ -454,6 +457,9 @@ class Conversation:
                     result_str = json.dumps(result) if not isinstance(result, str) else result
                 except Exception as exc:
                     result_str = f"Error: {exc}"
+
+                # Preserve full result for step extraction before truncating
+                self._full_tool_results[tc["id"]] = result_str
 
                 tool_result_msg: dict[str, Any] = {
                     "role": "tool",
