@@ -57,6 +57,7 @@ class Conversation:
         callbacks: DriverCallbacks | None = None,
         tools: ToolRegistry | None = None,
         max_tool_rounds: int = 10,
+        max_tool_result_length: int | None = None,
         simulated_tools: bool | Literal["auto"] = "auto",
         conversation_id: str | None = None,
         auto_save: str | Path | None = None,
@@ -111,6 +112,7 @@ class Conversation:
         }
         self._tools = tools or ToolRegistry()
         self._max_tool_rounds = max_tool_rounds
+        self._max_tool_result_length = max_tool_result_length
         self._simulated_tools = simulated_tools
 
         # Reasoning content from last response
@@ -304,6 +306,27 @@ class Conversation:
             blocks.append({"type": "image", "source": ic})
         return blocks
 
+    def _truncate_tool_result(self, result_str: str) -> str:
+        """Truncate a tool result string if it exceeds the configured limit.
+
+        Returns the original string when no limit is set or the string is
+        within bounds.  Otherwise returns a truncated version with a note
+        indicating the original length.
+        """
+        if self._max_tool_result_length is None:
+            return result_str
+        if len(result_str) <= self._max_tool_result_length:
+            return result_str
+        logger.debug(
+            "Truncating tool result from %d to %d chars",
+            len(result_str),
+            self._max_tool_result_length,
+        )
+        return (
+            result_str[: self._max_tool_result_length]
+            + f"\n\n[... result truncated ({len(result_str):,} chars total)]"
+        )
+
     def _build_messages(self, user_content: str, images: list[ImageInput] | None = None) -> list[dict[str, Any]]:
         """Build the full messages array for an API call."""
         msgs: list[dict[str, Any]] = []
@@ -435,7 +458,7 @@ class Conversation:
                 tool_result_msg: dict[str, Any] = {
                     "role": "tool",
                     "tool_call_id": tc["id"],
-                    "content": result_str,
+                    "content": self._truncate_tool_result(result_str),
                 }
                 self._messages.append(tool_result_msg)
                 msgs.append(tool_result_msg)
@@ -527,6 +550,7 @@ class Conversation:
                 except Exception as exc:
                     result_str = f"Error: {exc}"
 
+                # Yield the FULL result for UI consumers
                 yield {
                     "type": "tool_result",
                     "name": tc["name"],
@@ -534,10 +558,11 @@ class Conversation:
                     "id": tc["id"],
                 }
 
+                # Truncate before adding to conversation to avoid token overflow
                 tool_result_msg: dict[str, Any] = {
                     "role": "tool",
                     "tool_call_id": tc["id"],
-                    "content": result_str,
+                    "content": self._truncate_tool_result(result_str),
                 }
                 self._messages.append(tool_result_msg)
                 msgs.append(tool_result_msg)
@@ -596,7 +621,7 @@ class Conversation:
 
             yield {"type": "tool_result", "name": tool_name, "result": result_msg, "id": ""}
 
-            self._messages.append({"role": "user", "content": result_msg})
+            self._messages.append({"role": "user", "content": self._truncate_tool_result(result_msg)})
 
         raise RuntimeError(f"Simulated tool execution loop exceeded {self._max_tool_rounds} rounds")
 
@@ -652,8 +677,8 @@ class Conversation:
             except Exception as exc:
                 result_msg = format_tool_result(tool_name, f"Error: {exc}")
 
-            # Record tool result as a user message (all drivers understand user/assistant)
-            self._messages.append({"role": "user", "content": result_msg})
+            # Record tool result as a user message (truncated for the LLM)
+            self._messages.append({"role": "user", "content": self._truncate_tool_result(result_msg)})
 
         raise RuntimeError(f"Simulated tool execution loop exceeded {self._max_tool_rounds} rounds")
 
