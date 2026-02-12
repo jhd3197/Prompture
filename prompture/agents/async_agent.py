@@ -317,39 +317,62 @@ class AsyncAgent(Generic[DepsType]):
             function=_call_agent,
         )
 
-    async def run(self, prompt: str, *, deps: Any = None) -> AgentResult:
+    async def run(
+        self,
+        prompt: str,
+        *,
+        deps: Any = None,
+        images: list[Any] | None = None,
+    ) -> AgentResult:
         """Execute the agent loop to completion (async).
 
         Creates a fresh conversation, sends the prompt, handles tool calls,
         and optionally parses the final response into ``output_type``.
+
+        Args:
+            prompt: The user prompt.
+            deps: Optional dependencies.
+            images: Optional list of :class:`ImageInput` for vision models.
         """
         self._lifecycle = AgentState.running
         self._stop_requested = False
         steps: list[AgentStep] = []
 
         try:
-            result = await self._execute(prompt, steps, deps)
+            result = await self._execute(prompt, steps, deps, images=images)
             self._lifecycle = AgentState.idle
             return result
         except Exception:
             self._lifecycle = AgentState.errored
             raise
 
-    def iter(self, prompt: str, *, deps: Any = None) -> AsyncAgentIterator:
+    def iter(
+        self,
+        prompt: str,
+        *,
+        deps: Any = None,
+        images: list[Any] | None = None,
+    ) -> AsyncAgentIterator:
         """Execute the agent loop and iterate over steps asynchronously.
 
         Returns an :class:`AsyncAgentIterator` yielding :class:`AgentStep` objects.
         After iteration, :attr:`AsyncAgentIterator.result` holds the final result.
         """
-        gen = self._execute_iter(prompt, deps)
+        gen = self._execute_iter(prompt, deps, images=images)
         return AsyncAgentIterator(gen)
 
-    def run_stream(self, prompt: str, *, deps: Any = None) -> AsyncStreamedAgentResult:
+    def run_stream(
+        self,
+        prompt: str,
+        *,
+        deps: Any = None,
+        images: list[Any] | None = None,
+    ) -> AsyncStreamedAgentResult:
         """Execute the agent loop with streaming output (async).
 
         Returns an :class:`AsyncStreamedAgentResult` yielding :class:`StreamEvent` objects.
         """
-        gen = self._execute_stream(prompt, deps)
+        gen = self._execute_stream(prompt, deps, images=images)
         return AsyncStreamedAgentResult(gen)
 
     # ------------------------------------------------------------------
@@ -726,7 +749,14 @@ class AsyncAgent(Generic[DepsType]):
             self._conversation = conv
         return conv
 
-    async def _execute(self, prompt: str, steps: list[AgentStep], deps: Any) -> AgentResult:
+    async def _execute(
+        self,
+        prompt: str,
+        steps: list[AgentStep],
+        deps: Any,
+        *,
+        images: list[Any] | None = None,
+    ) -> AgentResult:
         """Core async execution: run conversation, extract steps, parse output."""
         from ..infra.tracker import get_tracker
 
@@ -772,7 +802,7 @@ class AsyncAgent(Generic[DepsType]):
 
                 security_token = set_security_context(self._security_context)
             try:
-                response_text = await conv.ask(effective_prompt)
+                response_text = await conv.ask(effective_prompt, images=images)
             finally:
                 if security_token is not None:
                     from tukuy.safety import reset_security_context
@@ -943,14 +973,20 @@ class AsyncAgent(Generic[DepsType]):
     # iter() — async step-by-step
     # ------------------------------------------------------------------
 
-    async def _execute_iter(self, prompt: str, deps: Any) -> AsyncGenerator[AgentStep, None]:
+    async def _execute_iter(
+        self,
+        prompt: str,
+        deps: Any,
+        *,
+        images: list[Any] | None = None,
+    ) -> AsyncGenerator[AgentStep, None]:
         """Async generator that executes the agent loop and yields each step."""
         self._lifecycle = AgentState.running
         self._stop_requested = False
         steps: list[AgentStep] = []
 
         try:
-            result = await self._execute(prompt, steps, deps)
+            result = await self._execute(prompt, steps, deps, images=images)
             for step in result.steps:
                 yield step
             self._lifecycle = AgentState.idle
@@ -964,7 +1000,13 @@ class AsyncAgent(Generic[DepsType]):
     # run_stream() — async streaming
     # ------------------------------------------------------------------
 
-    async def _execute_stream(self, prompt: str, deps: Any) -> AsyncGenerator[StreamEvent, None]:
+    async def _execute_stream(
+        self,
+        prompt: str,
+        deps: Any,
+        *,
+        images: list[Any] | None = None,
+    ) -> AsyncGenerator[StreamEvent, None]:
         """Async generator that executes the agent loop and yields stream events."""
         self._lifecycle = AgentState.running
         self._stop_requested = False
@@ -1000,7 +1042,9 @@ class AsyncAgent(Generic[DepsType]):
             try:
                 if has_tools:
                     response_text = ""
-                    async for event in conv.ask_with_tool_events(effective_prompt):
+                    async for event in conv.ask_with_tool_events(
+                        effective_prompt, images=images
+                    ):
                         if event["type"] == "tool_call":
                             yield StreamEvent(event_type=StreamEventType.tool_call, data=event)
                         elif event["type"] == "tool_result":
@@ -1010,7 +1054,7 @@ class AsyncAgent(Generic[DepsType]):
                             yield StreamEvent(event_type=StreamEventType.text_delta, data=event["text"])
                 else:
                     response_text = ""
-                    async for chunk in conv.ask_stream(effective_prompt):
+                    async for chunk in conv.ask_stream(effective_prompt, images=images):
                         response_text += chunk
                         yield StreamEvent(event_type=StreamEventType.text_delta, data=chunk)
             finally:
