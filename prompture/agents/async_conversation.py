@@ -408,7 +408,7 @@ class AsyncConversation:
 
             for tc in tool_calls:
                 try:
-                    result = self._tools.execute(tc["name"], tc["arguments"])
+                    result = await self._tools.aexecute(tc["name"], tc["arguments"])
                     result_str = json.dumps(result) if not isinstance(result, str) else result
                 except Exception as exc:
                     result_str = f"Error: {exc}"
@@ -494,7 +494,7 @@ class AsyncConversation:
                     "id": tc["id"],
                 }
                 try:
-                    result = self._tools.execute(tc["name"], tc["arguments"])
+                    result = await self._tools.aexecute(tc["name"], tc["arguments"])
                     result_str = json.dumps(result) if not isinstance(result, str) else result
                 except Exception as exc:
                     result_str = f"Error: {exc}"
@@ -561,7 +561,7 @@ class AsyncConversation:
             yield {"type": "tool_call", "name": tool_name, "arguments": tool_args, "id": ""}
 
             try:
-                result = self._tools.execute(tool_name, tool_args)
+                result = await self._tools.aexecute(tool_name, tool_args)
                 result_msg = format_tool_result(tool_name, result)
             except Exception as exc:
                 result_msg = format_tool_result(tool_name, f"Error: {exc}")
@@ -619,7 +619,7 @@ class AsyncConversation:
             self._messages.append({"role": "assistant", "content": text})
 
             try:
-                result = self._tools.execute(tool_name, tool_args)
+                result = await self._tools.aexecute(tool_name, tool_args)
                 result_msg = format_tool_result(tool_name, result)
             except Exception as exc:
                 result_msg = format_tool_result(tool_name, f"Error: {exc}")
