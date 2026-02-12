@@ -11,7 +11,7 @@ from .cache import (
 )
 from .callbacks import DriverCallbacks
 from .cost_mixin import AudioCostMixin
-from .discovery import get_available_audio_models, get_available_models
+from .discovery import get_available_audio_models, get_available_image_gen_models, get_available_models
 from .ledger import ModelUsageLedger, get_recently_used_models
 from .logging import JSONFormatter, configure_logging
 from .model_rates import (
@@ -39,6 +39,7 @@ __all__ = [
     "configure_cache",
     "configure_logging",
     "get_available_audio_models",
+    "get_available_image_gen_models",
     "get_available_models",
     "get_cache",
     "get_model_capabilities",
