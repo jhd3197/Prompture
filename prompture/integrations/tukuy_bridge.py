@@ -9,6 +9,7 @@ All tukuy imports are lazy to avoid import-time errors if tukuy is not installed
 
 from __future__ import annotations
 
+import inspect
 import logging
 from typing import Any, Callable
 
@@ -61,6 +62,24 @@ def skill_to_tool_definition(skill_or_fn: Any, *, config: dict[str, Any] | None 
         if result.success:
             return result.value
         return f"Error: {result.error}"
+
+    # For async skill functions, attach a dedicated async wrapper that
+    # uses ainvoke() so tukuy's error handling and timing are correct.
+    if inspect.iscoroutinefunction(skill_obj.fn):
+
+        async def _async_wrapper(**kwargs: Any) -> Any:
+            invoke_kwargs = dict(kwargs)
+            if config is not None and "context" not in invoke_kwargs:
+                from tukuy import SkillContext
+
+                ctx = SkillContext(config=config)
+                invoke_kwargs["context"] = ctx
+            result = await skill_obj.ainvoke(**invoke_kwargs)
+            if result.success:
+                return result.value
+            return f"Error: {result.error}"
+
+        _wrapper._async_fn = _async_wrapper  # type: ignore[attr-defined]
 
     # Attach the original skill for reverse-bridge detection
     _wrapper.__skill__ = skill_obj  # type: ignore[attr-defined]

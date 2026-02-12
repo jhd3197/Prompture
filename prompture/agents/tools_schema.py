@@ -474,3 +474,27 @@ class ToolRegistry:
         if td is None:
             raise KeyError(f"Tool not registered: {name!r}")
         return td.function(**arguments)
+
+    async def aexecute(self, name: str, arguments: dict[str, Any]) -> Any:
+        """Execute a registered tool, awaiting async tool functions.
+
+        Like :meth:`execute` but properly handles coroutine functions
+        and awaitables.  Prefers a dedicated ``_async_fn`` attached by
+        the tukuy bridge (which uses ``Skill.ainvoke()`` for correct
+        timing and error handling).  Falls back to awaiting the raw
+        return value when it is an awaitable.
+
+        Raises:
+            KeyError: If no tool with *name* is registered.
+        """
+        td = self._tools.get(name)
+        if td is None:
+            raise KeyError(f"Tool not registered: {name!r}")
+        # Prefer dedicated async wrapper (set by tukuy bridge)
+        async_fn = getattr(td.function, "_async_fn", None)
+        if async_fn is not None:
+            return await async_fn(**arguments)
+        result = td.function(**arguments)
+        if inspect.isawaitable(result):
+            return await result
+        return result
