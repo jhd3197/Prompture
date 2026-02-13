@@ -1,8 +1,20 @@
 """Built-in API server wrapping AsyncConversation.
 
-Provides a FastAPI application with chat, extraction, and model
-listing endpoints.  ``fastapi``, ``uvicorn``, and ``sse-starlette``
-are lazy-imported so the module is importable without them installed.
+Provides a FastAPI application with chat, extraction, model listing,
+and an **OpenAI-compatible** ``/v1/chat/completions`` proxy endpoint.
+``fastapi``, ``uvicorn``, and ``sse-starlette`` are lazy-imported so
+the module is importable without them installed.
+
+The OpenAI-compatible endpoint lets any OpenAI SDK client (Python,
+Node, curl) talk to **any** Prompture-supported backend (Claude,
+Gemini, Groq, Ollama, etc.) through a single unified API::
+
+    from openai import OpenAI
+    client = OpenAI(base_url="http://localhost:9471/v1", api_key="unused")
+    resp = client.chat.completions.create(
+        model="claude/claude-sonnet-4-20250514",
+        messages=[{"role": "user", "content": "Hello!"}],
+    )
 
 Usage::
 
@@ -12,6 +24,7 @@ Usage::
 
 import json
 import logging
+import time
 import uuid
 from typing import Any, Optional
 
@@ -38,6 +51,7 @@ def create_app(
     try:
         from fastapi import FastAPI, HTTPException
         from fastapi.middleware.cors import CORSMiddleware
+        from fastapi.responses import JSONResponse
         from pydantic import BaseModel, Field
     except ImportError as exc:
         raise ImportError(
@@ -47,7 +61,7 @@ def create_app(
     from ..agents.async_conversation import AsyncConversation
     from ..agents.tools_schema import ToolRegistry
 
-    # ---- Pydantic request/response models ----
+    # ---- Pydantic request/response models (Prompture native) ----
 
     class ChatRequest(BaseModel):
         message: str
@@ -80,6 +94,21 @@ def create_app(
         messages: list[dict[str, Any]]
         usage: dict[str, Any]
 
+    # ---- OpenAI-compatible request/response models ----
+
+    class OAIMessage(BaseModel):
+        role: str
+        content: Optional[str] = None
+
+    class OAIChatRequest(BaseModel):
+        model: Optional[str] = None
+        messages: list[OAIMessage]
+        temperature: Optional[float] = None
+        top_p: Optional[float] = None
+        max_tokens: Optional[int] = None
+        stream: bool = False
+        n: int = 1
+
     # ---- App ----
 
     app = FastAPI(title="Prompture API", version="0.1.0")
@@ -110,7 +139,7 @@ def create_app(
         _conversations[new_id] = conv
         return new_id, conv
 
-    # ---- Endpoints ----
+    # ---- Prompture native endpoints ----
 
     @app.post("/v1/chat", response_model=ChatResponse)
     async def chat(chat_req: ChatRequest):
@@ -169,8 +198,146 @@ def create_app(
         del _conversations[conversation_id]
         return {"status": "deleted", "conversation_id": conversation_id}
 
-    @app.get("/v1/models", response_model=ModelInfo)
+    # ---- OpenAI-compatible proxy endpoints ----
+
+    @app.post("/v1/chat/completions")
+    async def openai_chat_completions(req: OAIChatRequest):
+        """OpenAI-compatible ``/v1/chat/completions`` proxy.
+
+        Accepts the standard OpenAI chat format and routes the request
+        through Prompture's driver system to **any** configured backend
+        (Claude, Gemini, Groq, Ollama, etc.).
+
+        The ``model`` field accepts Prompture model strings
+        (``"provider/model"``).  If omitted, the server's default model
+        is used.
+        """
+        resolved_model = req.model or model_name
+
+        # Separate system prompt from messages
+        sys_prompt: Optional[str] = system_prompt
+        user_messages: list[dict[str, Any]] = []
+        for msg in req.messages:
+            if msg.role == "system":
+                sys_prompt = msg.content
+            else:
+                user_messages.append({"role": msg.role, "content": msg.content or ""})
+
+        # Build driver options from OpenAI params
+        opts: dict[str, Any] = {}
+        if req.temperature is not None:
+            opts["temperature"] = req.temperature
+        if req.top_p is not None:
+            opts["top_p"] = req.top_p
+        if req.max_tokens is not None:
+            opts["max_tokens"] = req.max_tokens
+
+        # Find the last user message to pass to AsyncConversation.ask()
+        last_user_content = ""
+        for msg in reversed(user_messages):
+            if msg["role"] == "user":
+                last_user_content = msg["content"]
+                break
+
+        if not last_user_content:
+            raise HTTPException(status_code=400, detail="At least one user message is required")
+
+        # Create a one-shot conversation for this request
+        conv = AsyncConversation(
+            model_name=resolved_model,
+            system_prompt=sys_prompt,
+            options=opts,
+        )
+
+        # Seed prior turns (everything before the final user message)
+        if len(user_messages) > 1:
+            for msg in user_messages[:-1]:
+                conv._messages.append(msg)
+
+        completion_id = f"chatcmpl-{uuid.uuid4().hex[:24]}"
+        created = int(time.time())
+
+        if req.stream:
+            try:
+                from sse_starlette.sse import EventSourceResponse
+            except ImportError:
+                raise HTTPException(
+                    status_code=501,
+                    detail="Streaming requires sse-starlette: pip install prompture[serve]",
+                ) from None
+
+            async def oai_stream():
+                full_text = ""
+                async for chunk in conv.ask_stream(last_user_content, opts if opts else None):
+                    full_text += chunk
+                    data = {
+                        "id": completion_id,
+                        "object": "chat.completion.chunk",
+                        "created": created,
+                        "model": resolved_model,
+                        "choices": [{
+                            "index": 0,
+                            "delta": {"content": chunk},
+                            "finish_reason": None,
+                        }],
+                    }
+                    yield {"data": json.dumps(data)}
+
+                # Final chunk with finish_reason
+                usage = conv.usage
+                data = {
+                    "id": completion_id,
+                    "object": "chat.completion.chunk",
+                    "created": created,
+                    "model": resolved_model,
+                    "choices": [{
+                        "index": 0,
+                        "delta": {},
+                        "finish_reason": "stop",
+                    }],
+                    "usage": {
+                        "prompt_tokens": usage.get("prompt_tokens", 0),
+                        "completion_tokens": usage.get("completion_tokens", 0),
+                        "total_tokens": usage.get("total_tokens", 0),
+                    },
+                }
+                yield {"data": json.dumps(data)}
+                yield {"data": "[DONE]"}
+
+            return EventSourceResponse(oai_stream(), media_type="text/event-stream")
+
+        # Non-streaming
+        text = await conv.ask(last_user_content, opts if opts else None)
+        usage = conv.usage
+
+        return JSONResponse({
+            "id": completion_id,
+            "object": "chat.completion",
+            "created": created,
+            "model": resolved_model,
+            "choices": [{
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": text,
+                },
+                "finish_reason": "stop",
+            }],
+            "usage": {
+                "prompt_tokens": usage.get("prompt_tokens", 0),
+                "completion_tokens": usage.get("completion_tokens", 0),
+                "total_tokens": usage.get("total_tokens", 0),
+            },
+        })
+
+    @app.get("/v1/models")
     async def list_models():
+        """List available models in OpenAI-compatible format.
+
+        Returns a response compatible with both the OpenAI SDK
+        (``data`` array of model objects) and the legacy Prompture
+        format (``models`` string list).
+        """
         from ..infra.discovery import get_available_models
 
         try:
@@ -178,6 +345,21 @@ def create_app(
             model_names = [m["id"] if isinstance(m, dict) else str(m) for m in models]
         except Exception:
             model_names = [model_name]
-        return ModelInfo(models=model_names)
+
+        model_objects = []
+        for name in model_names:
+            model_objects.append({
+                "id": name,
+                "object": "model",
+                "created": 0,
+                "owned_by": name.split("/")[0] if "/" in name else "prompture",
+            })
+
+        return JSONResponse({
+            "object": "list",
+            "data": model_objects,
+            # Keep legacy field for backwards compatibility
+            "models": model_names,
+        })
 
     return app
