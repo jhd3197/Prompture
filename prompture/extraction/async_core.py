@@ -411,10 +411,105 @@ async def manual_extract_and_jsonify(
     return result
 
 
+async def _async_chunked_extract(
+    *,
+    chunks: list,
+    model_cls: type[BaseModel],
+    model_name: str | None,
+    instruction_template: str,
+    ai_cleanup: bool,
+    output_format: str,
+    options: dict[str, Any],
+    cache: bool | None,
+    json_mode: str,
+    system_prompt: str | None,
+    reasoning_strategy: Any,
+) -> dict[str, Any]:
+    """Async chunked extraction: extract per chunk and merge results."""
+    all_results: list[dict[str, Any]] = []
+    total_usage: dict[str, Any] = {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0,
+        "cost": 0.0,
+        "chunks_processed": 0,
+    }
+
+    for chunk in chunks:
+        chunk_prefix = f"[Chunk {chunk.chunk_index + 1}/{chunk.total_chunks}] "
+        chunk_instruction = chunk_prefix + instruction_template
+
+        result = await extract_with_model(
+            model_cls,
+            chunk.text,
+            model_name,
+            instruction_template=chunk_instruction,
+            ai_cleanup=ai_cleanup,
+            output_format=output_format,
+            options=options,
+            cache=cache,
+            json_mode=json_mode,
+            system_prompt=system_prompt,
+            reasoning_strategy=reasoning_strategy,
+        )
+        all_results.append(result)
+
+        usage = result.get("usage", {})
+        total_usage["prompt_tokens"] += usage.get("prompt_tokens", 0)
+        total_usage["completion_tokens"] += usage.get("completion_tokens", 0)
+        total_usage["total_tokens"] += usage.get("total_tokens", 0)
+        total_usage["cost"] += usage.get("cost", 0.0)
+        total_usage["chunks_processed"] += 1
+
+    if not all_results:
+        raise ValueError("No chunks to extract from")
+
+    merged_json: dict[str, Any] = {}
+    schema = model_cls.model_json_schema()
+    schema_properties = schema.get("properties", {})
+
+    for field_name in schema_properties:
+        field_schema = schema_properties[field_name]
+        field_type = field_schema.get("type", "")
+        is_array = field_type == "array"
+
+        if is_array:
+            merged_list: list = []
+            for r in all_results:
+                val = r.get("json_object", {}).get(field_name)
+                if isinstance(val, list):
+                    merged_list.extend(val)
+            merged_json[field_name] = merged_list
+        else:
+            for r in all_results:
+                val = r.get("json_object", {}).get(field_name)
+                if val is not None:
+                    merged_json[field_name] = val
+                    break
+            if field_name not in merged_json:
+                merged_json[field_name] = None
+
+    model_instance = model_cls(**merged_json)
+    merged_json_str = json.dumps(merged_json, default=str, ensure_ascii=False)
+
+    result_dict: dict[str, Any] = {
+        "json_string": merged_json_str,
+        "json_object": merged_json,
+        "usage": total_usage,
+        "model": model_instance,
+    }
+
+    return type(
+        "ExtractResult",
+        (dict,),
+        {"__getattr__": lambda self, key: self.get(key), "__call__": lambda self: self["model"]},
+    )(result_dict)
+
+
 async def extract_with_model(
     model_cls: type[BaseModel],
-    text: str,
-    model_name: str,
+    text: str | None = None,
+    model_name: str | None = None,
     instruction_template: str = "Extract information from the following text:",
     ai_cleanup: bool = True,
     output_format: Literal["json", "toon"] = "json",
@@ -423,10 +518,54 @@ async def extract_with_model(
     json_mode: Literal["auto", "on", "off"] = "auto",
     system_prompt: str | None = None,
     reasoning_strategy: str | ReasoningStrategyProtocol | None = None,
+    source: Any = None,
+    chunking: Any = None,
 ) -> dict[str, Any]:
-    """Extract structured information into a Pydantic model instance (async version)."""
+    """Extract structured information into a Pydantic model instance (async version).
+
+    Args:
+        source: Path to a document file (str, Path, or DocumentContent) to
+            ingest and extract from.  Mutually exclusive with *text*.
+        chunking: Chunking configuration for large documents.  Pass ``True``
+            for auto-chunking with defaults, a ``ChunkingConfig`` for full
+            control, or ``None``/``False`` to disable.
+    """
     if options is None:
         options = {}
+
+    # --- Document source ingestion (lazy import) ---
+    if source is not None:
+        if text is not None and isinstance(text, str) and text.strip():
+            raise ValueError("Cannot provide both 'text' and 'source'. Use one or the other.")
+
+        from ..ingestion import ChunkingConfig as _ChunkingConfig
+        from ..ingestion import async_ingest as _async_ingest
+        from ..ingestion import chunk_document as _chunk_document
+
+        doc = await _async_ingest(source)
+
+        # --- Chunked extraction ---
+        if chunking is True:
+            chunking = _ChunkingConfig()
+        if isinstance(chunking, _ChunkingConfig):
+            chunks = _chunk_document(doc, chunking)
+            if len(chunks) > 1:
+                return await _async_chunked_extract(
+                    chunks=chunks,
+                    model_cls=model_cls,
+                    model_name=model_name,
+                    instruction_template=instruction_template,
+                    ai_cleanup=ai_cleanup,
+                    output_format=output_format,
+                    options=options,
+                    cache=cache,
+                    json_mode=json_mode,
+                    system_prompt=system_prompt,
+                    reasoning_strategy=reasoning_strategy,
+                )
+
+        text = doc.text
+
     if not isinstance(text, str) or not text.strip():
         raise ValueError("Text input cannot be empty")
 

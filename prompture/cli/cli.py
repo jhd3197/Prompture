@@ -31,7 +31,7 @@ def run(specfile, outfile):
 @click.option("--model", default="openai/gpt-4o-mini", help="Model string (provider/model).")
 @click.option("--system-prompt", default=None, help="System prompt for conversations.")
 @click.option("--host", default="0.0.0.0", help="Bind host.")
-@click.option("--port", default=8000, type=int, help="Bind port.")
+@click.option("--port", default=9471, type=int, help="Bind port.")
 @click.option("--cors-origins", default=None, help="Comma-separated CORS origins (use * for all).")
 def serve(model, system_prompt, host, port, cors_origins):
     """Start an API server wrapping AsyncConversation.

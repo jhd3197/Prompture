@@ -8,6 +8,7 @@ from .drivers import *
 from .extraction import *
 from .groups import *
 from .infra import *
+from .ingestion import *
 from .integrations import *
 from .media import *
 from .persistence import *

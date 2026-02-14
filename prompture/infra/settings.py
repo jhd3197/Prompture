@@ -105,6 +105,12 @@ class Settings(BaseSettings):
     cache_sqlite_path: Optional[str] = None
     cache_redis_url: Optional[str] = None
 
+    # Document ingestion
+    ingest_max_file_size: int = 52428800  # 50 MB
+    ingest_pdf_backend: str = "pdfplumber"  # "pdfplumber" | "pypdf" | "pymupdf"
+    ingest_chunk_max_chars: int = 50000
+    ingest_chunk_overlap: int = 500
+
     model_config = SettingsConfigDict(
         env_file=".env",
         extra="ignore",
