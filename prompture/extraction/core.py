@@ -634,9 +634,120 @@ def manual_extract_and_jsonify(
     return result
 
 
+def _chunked_extract(
+    *,
+    chunks: list,
+    actual_cls: type[BaseModel],
+    actual_model: Any,
+    instruction_template: str,
+    ai_cleanup: bool,
+    output_format: str,
+    options: dict[str, Any],
+    cache: bool | None,
+    json_mode: str,
+    system_prompt: str | None,
+    images: list | None,
+    routing: Any,
+    max_retries: int,
+    fallback: BaseModel | None,
+    reasoning_strategy: Any,
+) -> dict[str, Any]:
+    """Extract from each chunk and merge results.
+
+    For list fields: concatenate.  For scalar fields: first non-null wins.
+    """
+    all_results: list[dict[str, Any]] = []
+    total_usage: dict[str, Any] = {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0,
+        "cost": 0.0,
+        "chunks_processed": 0,
+    }
+
+    for chunk in chunks:
+        chunk_prefix = f"[Chunk {chunk.chunk_index + 1}/{chunk.total_chunks}] "
+        chunk_instruction = chunk_prefix + instruction_template
+
+        result = extract_with_model(
+            actual_cls,
+            chunk.text,
+            actual_model,
+            instruction_template=chunk_instruction,
+            ai_cleanup=ai_cleanup,
+            output_format=output_format,
+            options=options,
+            cache=cache,
+            json_mode=json_mode,
+            system_prompt=system_prompt,
+            images=images,
+            routing=routing,
+            max_retries=max_retries,
+            fallback=fallback,
+            reasoning_strategy=reasoning_strategy,
+        )
+        all_results.append(result)
+
+        # Accumulate usage
+        usage = result.get("usage", {})
+        total_usage["prompt_tokens"] += usage.get("prompt_tokens", 0)
+        total_usage["completion_tokens"] += usage.get("completion_tokens", 0)
+        total_usage["total_tokens"] += usage.get("total_tokens", 0)
+        total_usage["cost"] += usage.get("cost", 0.0)
+        total_usage["chunks_processed"] += 1
+
+    # --- Merge JSON objects ---
+    if not all_results:
+        raise ValueError("No chunks to extract from")
+
+    merged_json: dict[str, Any] = {}
+    schema = actual_cls.model_json_schema()
+    schema_properties = schema.get("properties", {})
+
+    for field_name in schema_properties:
+        field_schema = schema_properties[field_name]
+        field_type = field_schema.get("type", "")
+        is_array = field_type == "array"
+
+        if is_array:
+            # Concatenate lists from all chunks
+            merged_list: list = []
+            for r in all_results:
+                val = r.get("json_object", {}).get(field_name)
+                if isinstance(val, list):
+                    merged_list.extend(val)
+            merged_json[field_name] = merged_list
+        else:
+            # First non-null wins
+            for r in all_results:
+                val = r.get("json_object", {}).get(field_name)
+                if val is not None:
+                    merged_json[field_name] = val
+                    break
+            if field_name not in merged_json:
+                merged_json[field_name] = None
+
+    # Validate merged result
+    model_instance = actual_cls(**merged_json)
+    merged_json_str = json.dumps(merged_json, default=str, ensure_ascii=False)
+
+    result_dict: dict[str, Any] = {
+        "json_string": merged_json_str,
+        "json_object": merged_json,
+        "usage": total_usage,
+        "model": model_instance,
+    }
+
+    return type(
+        "ExtractResult",
+        (dict,),
+        {"__getattr__": lambda self, key: self.get(key), "__call__": lambda self: self["model"]},
+    )(result_dict)
+
+
 def extract_with_model(
     model_cls: Union[type[BaseModel], str],  # Can be model class or model name string for legacy support
-    text: Union[str, dict[str, Any]],  # Can be text or schema for legacy support
+    text: Union[str, dict[str, Any], None] = None,  # Can be text or schema for legacy support
     model_name: Union[str, dict[str, Any], None] = None,  # Can be model name, text, or None for routing
     instruction_template: str = "Extract information from the following text:",
     ai_cleanup: bool = True,
@@ -650,6 +761,8 @@ def extract_with_model(
     max_retries: int = 1,
     fallback: BaseModel | None = None,
     reasoning_strategy: str | ReasoningStrategyProtocol | None = None,
+    source: Any = None,
+    chunking: Any = None,
 ) -> dict[str, Any]:
     """Extracts structured information into a Pydantic model instance.
 
@@ -678,13 +791,20 @@ def extract_with_model(
             exhausted. When provided, the result will include ``"fallback_used": True``
             in its usage metadata instead of raising an exception.
         reasoning_strategy: Optional reasoning strategy name or instance to augment the prompt.
+        source: Path to a document file (str, Path, or DocumentContent) to
+            ingest and extract from.  Mutually exclusive with *text*.
+            Requires ``pip install prompture[ingest]``.
+        chunking: Chunking configuration for large documents.  Pass ``True``
+            for auto-chunking with defaults, a ``ChunkingConfig`` instance
+            for full control, or ``None``/``False`` to disable.
 
     Returns:
         A validated instance of the Pydantic model. When routing is used,
         the result also includes a "routing" key with routing metadata.
 
     Raises:
-        ValueError: If text is empty or None, or if model_name format is invalid.
+        ValueError: If text is empty or None, or if model_name format is invalid,
+            or if both text and source are provided.
         ValidationError: If the extracted data doesn't match the model schema
             and no fallback is provided.
     """
@@ -703,6 +823,43 @@ def extract_with_model(
         actual_model = model_cls
         actual_cls = text
         actual_text = model_name
+
+    # --- Document source ingestion (lazy import) ---
+    if source is not None:
+        if actual_text is not None and isinstance(actual_text, str) and actual_text.strip():
+            raise ValueError("Cannot provide both 'text' and 'source'. Use one or the other.")
+
+        from ..ingestion import ChunkingConfig as _ChunkingConfig
+        from ..ingestion import chunk_document as _chunk_document
+        from ..ingestion import ingest as _ingest
+
+        doc = _ingest(source)
+
+        # --- Chunked extraction ---
+        if chunking is True:
+            chunking = _ChunkingConfig()
+        if isinstance(chunking, _ChunkingConfig):
+            chunks = _chunk_document(doc, chunking)
+            if len(chunks) > 1:
+                return _chunked_extract(
+                    chunks=chunks,
+                    actual_cls=actual_cls,
+                    actual_model=actual_model,
+                    instruction_template=instruction_template,
+                    ai_cleanup=ai_cleanup,
+                    output_format=output_format,
+                    options=options,
+                    cache=cache,
+                    json_mode=json_mode,
+                    system_prompt=system_prompt,
+                    images=images,
+                    routing=routing,
+                    max_retries=max_retries,
+                    fallback=fallback,
+                    reasoning_strategy=reasoning_strategy,
+                )
+
+        actual_text = doc.text
 
     if not isinstance(actual_text, str) or not actual_text.strip():
         raise ValueError("Text input cannot be empty")
