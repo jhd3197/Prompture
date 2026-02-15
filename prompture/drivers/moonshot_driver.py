@@ -242,7 +242,7 @@ class MoonshotDriver(CostMixin, Driver):
                 f"{self.base_url}/chat/completions",
                 headers=self.headers,
                 json=data,
-                timeout=opts.get("timeout", 300),
+                timeout=opts.get("timeout", 300),  # nosec B113
             )
             response.raise_for_status()
             resp = response.json()
@@ -293,7 +293,7 @@ class MoonshotDriver(CostMixin, Driver):
                     f"{self.base_url}/chat/completions",
                     headers=self.headers,
                     json=fallback_data,
-                    timeout=opts.get("timeout", 300),
+                    timeout=opts.get("timeout", 300),  # nosec B113
                 )
                 fb_response.raise_for_status()
                 fb_resp = fb_response.json()
@@ -383,7 +383,7 @@ class MoonshotDriver(CostMixin, Driver):
                 f"{self.base_url}/chat/completions",
                 headers=self.headers,
                 json=data,
-                timeout=opts.get("timeout", 300),
+                timeout=opts.get("timeout", 300),  # nosec B113
             )
             response.raise_for_status()
             resp = response.json()
@@ -505,7 +505,7 @@ class MoonshotDriver(CostMixin, Driver):
             headers=self.headers,
             json=data,
             stream=True,
-            timeout=opts.get("timeout", 300),
+            timeout=opts.get("timeout", 300),  # nosec B113
         )
         response.raise_for_status()
 

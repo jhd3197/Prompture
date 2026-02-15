@@ -486,7 +486,7 @@ class UsageTracker:
             params.append(status)
 
         where = " AND ".join(conditions) if conditions else "1=1"
-        sql = f"SELECT * FROM usage_events WHERE {where} ORDER BY timestamp DESC LIMIT ?"
+        sql = f"SELECT * FROM usage_events WHERE {where} ORDER BY timestamp DESC LIMIT ?"  # nosec B608
         params.append(limit)
 
         try:

@@ -15,6 +15,7 @@ Example::
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import inspect
 import json
 import logging
@@ -48,6 +49,11 @@ logger = logging.getLogger("prompture.async_agent")
 
 _OUTPUT_PARSE_MAX_RETRIES = 3
 _OUTPUT_GUARDRAIL_MAX_RETRIES = 3
+_DEFAULT_MAX_AGENT_DEPTH = 5
+
+# Share the same ContextVar with the sync Agent so depth tracking crosses
+# agent boundaries (e.g. a sync Agent calling an AsyncAgent as a tool).
+from .agent import _agent_depth
 
 
 # ------------------------------------------------------------------
@@ -179,12 +185,14 @@ class AsyncAgent(Generic[DepsType]):
         auto_approve_safe_only: bool = False,
         skill_config: dict[str, Any] | None = None,
         max_tool_result_length: int | None = None,
+        max_depth: int = _DEFAULT_MAX_AGENT_DEPTH,
     ) -> None:
         if not model and driver is None:
             raise ValueError("Either model or driver must be provided")
 
         self._model = model
         self._driver = driver
+        self._max_depth = max_depth
         self._system_prompt = system_prompt
         self._output_type = output_type
         self._max_iterations = max_iterations
@@ -333,7 +341,16 @@ class AsyncAgent(Generic[DepsType]):
             prompt: The user prompt.
             deps: Optional dependencies.
             images: Optional list of :class:`ImageInput` for vision models.
+
+        Raises:
+            RecursionError: If the agent nesting depth exceeds ``max_depth``.
         """
+        current_depth = _agent_depth.get()
+        if current_depth >= self._max_depth:
+            raise RecursionError(
+                f"Agent recursion depth exceeded: {current_depth} >= {self._max_depth}"
+            )
+        token = _agent_depth.set(current_depth + 1)
         self._lifecycle = AgentState.running
         self._stop_requested = False
         steps: list[AgentStep] = []
@@ -345,6 +362,8 @@ class AsyncAgent(Generic[DepsType]):
         except Exception:
             self._lifecycle = AgentState.errored
             raise
+        finally:
+            _agent_depth.reset(token)
 
     def iter(
         self,

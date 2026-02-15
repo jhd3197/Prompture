@@ -8,13 +8,37 @@ for file and database storage.
 from __future__ import annotations
 
 import copy
+import logging
 from datetime import datetime, timezone
 from typing import Any
 
 from ..media.image import ImageContent
 from ..infra.session import UsageSession
 
+logger = logging.getLogger(__name__)
+
 EXPORT_VERSION = 1
+
+_SENSITIVE_SUBSTRINGS = frozenset({
+    "api_key",
+    "secret",
+    "token",
+    "password",
+    "auth",
+    "credential",
+    "secret_key",
+    "access_key",
+    "private_key",
+})
+
+
+def _scrub_sensitive(options: dict[str, Any]) -> dict[str, Any]:
+    """Return a copy of *options* with keys containing sensitive substrings removed."""
+    return {
+        k: v
+        for k, v in options.items()
+        if not any(sub in k.lower() for sub in _SENSITIVE_SUBSTRINGS)
+    }
 
 
 # ------------------------------------------------------------------
@@ -178,7 +202,7 @@ def export_conversation(
         "conversation_id": conversation_id,
         "model_name": model_name,
         "system_prompt": system_prompt,
-        "options": dict(options),
+        "options": _scrub_sensitive(dict(options)),
         "messages": serialized_messages,
         "usage": dict(usage),
         "max_tool_rounds": max_tool_rounds,
@@ -209,8 +233,27 @@ def import_conversation(data: dict[str, Any]) -> dict[str, Any]:
 
     result = copy.deepcopy(data)
 
+    # Defense-in-depth: scrub sensitive keys from imported options
+    if isinstance(result.get("options"), dict):
+        result["options"] = _scrub_sensitive(result["options"])
+
+    # Validate and filter messages
+    _VALID_ROLES = {"user", "assistant", "system", "tool"}
+    valid_messages: list[dict[str, Any]] = []
+    for i, msg in enumerate(result.get("messages", [])):
+        role = msg.get("role")
+        content = msg.get("content")
+        if not isinstance(role, str) or role not in _VALID_ROLES:
+            logger.warning("import_conversation: dropping message %d with invalid role: %r", i, role)
+            continue
+        if not isinstance(content, (str, list)):
+            logger.warning("import_conversation: dropping message %d with invalid content type: %s", i, type(content).__name__)
+            continue
+        valid_messages.append(msg)
+    result["messages"] = valid_messages
+
     # Deserialize message content
-    for msg in result.get("messages", []):
+    for msg in result["messages"]:
         if "content" in msg:
             msg["content"] = _deserialize_message_content(msg["content"])
 

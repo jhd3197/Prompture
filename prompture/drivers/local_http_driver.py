@@ -17,7 +17,7 @@ class LocalHTTPDriver(Driver):
     def generate(self, prompt: str, options: dict[str, Any]) -> dict[str, Any]:
         payload = {"prompt": prompt, "options": options}
         try:
-            r = requests.post(self.endpoint, json=payload, timeout=options.get("timeout", 30))
+            r = requests.post(self.endpoint, json=payload, timeout=options.get("timeout", 30))  # nosec B113
             r.raise_for_status()
             response_data = r.json()
         except Exception as e:

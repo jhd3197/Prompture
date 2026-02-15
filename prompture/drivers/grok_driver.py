@@ -142,7 +142,7 @@ class GrokDriver(CostMixin, Driver):
         headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
 
         try:
-            response = requests.post(f"{self.api_base}/chat/completions", headers=headers, json=payload)
+            response = requests.post(f"{self.api_base}/chat/completions", headers=headers, json=payload, timeout=120)
             response.raise_for_status()
             resp = response.json()
         except requests.exceptions.RequestException as e:
@@ -218,7 +218,7 @@ class GrokDriver(CostMixin, Driver):
         headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
 
         try:
-            response = requests.post(f"{self.api_base}/chat/completions", headers=headers, json=payload)
+            response = requests.post(f"{self.api_base}/chat/completions", headers=headers, json=payload, timeout=120)
             response.raise_for_status()
             resp = response.json()
         except requests.exceptions.RequestException as e:

@@ -109,7 +109,7 @@ class OllamaDriver(Driver):
             logger.debug(f"Sending request to Ollama endpoint: {self.endpoint}")
             logger.debug(f"Request payload: {payload}")
 
-            r = requests.post(self.endpoint, json=payload, timeout=merged_options.get("timeout", 300))
+            r = requests.post(self.endpoint, json=payload, timeout=merged_options.get("timeout", 300))  # nosec B113
             logger.debug(f"Response status code: {r.status_code}")
 
             r.raise_for_status()
@@ -201,7 +201,7 @@ class OllamaDriver(Driver):
 
         try:
             logger.debug(f"Sending tool use request to Ollama endpoint: {chat_endpoint}")
-            r = requests.post(chat_endpoint, json=payload, timeout=merged_options.get("timeout", 300))
+            r = requests.post(chat_endpoint, json=payload, timeout=merged_options.get("timeout", 300))  # nosec B113
             r.raise_for_status()
             response_data = r.json()
 
@@ -317,7 +317,7 @@ class OllamaDriver(Driver):
         prompt_tokens = 0
         completion_tokens = 0
 
-        r = requests.post(chat_endpoint, json=payload, timeout=merged_options.get("timeout", 300), stream=True)
+        r = requests.post(chat_endpoint, json=payload, timeout=merged_options.get("timeout", 300), stream=True)  # nosec B113
         r.raise_for_status()
 
         for line in r.iter_lines():
@@ -384,7 +384,7 @@ class OllamaDriver(Driver):
 
         try:
             logger.debug(f"Sending chat request to Ollama endpoint: {chat_endpoint}")
-            r = requests.post(chat_endpoint, json=payload, timeout=merged_options.get("timeout", 300))
+            r = requests.post(chat_endpoint, json=payload, timeout=merged_options.get("timeout", 300))  # nosec B113
             r.raise_for_status()
             response_data = r.json()
 

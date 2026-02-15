@@ -6,6 +6,7 @@ that users can customize and deploy.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 try:
@@ -13,6 +14,8 @@ try:
 except ImportError:
     Environment = None  # type: ignore[assignment,misc]
     FileSystemLoader = None  # type: ignore[assignment,misc]
+
+_SAFE_PROJECT_NAME_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
 
 _TEMPLATES_DIR = Path(__file__).parent / "templates"
 
@@ -51,9 +54,16 @@ def scaffold_project(
     if Environment is None:
         raise ImportError("jinja2 is required for scaffolding: pip install prompture[scaffold]")
 
+    if not _SAFE_PROJECT_NAME_RE.match(project_name):
+        raise ValueError(
+            f"Invalid project_name {project_name!r}: "
+            "only alphanumeric characters, hyphens, and underscores are allowed"
+        )
+
     env = Environment(
         loader=FileSystemLoader(str(_TEMPLATES_DIR)),
         keep_trailing_newline=True,
+        autoescape=True,
     )
 
     context = {

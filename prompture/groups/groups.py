@@ -255,6 +255,9 @@ class SequentialGroup:
 # ------------------------------------------------------------------
 
 
+_LOOP_GROUP_MAX_ITERATIONS_CEILING = 10_000
+
+
 class LoopGroup:
     """Repeat a sequence of agents until an exit condition is met.
 
@@ -262,10 +265,12 @@ class LoopGroup:
         agents: List of agents or ``(agent, prompt_template)`` tuples.
         exit_condition: Callable ``(state, iteration) -> bool``.
             When it returns ``True`` the loop stops.
-        max_iterations: Hard cap on loop iterations.
+        max_iterations: Hard cap on loop iterations (capped at 10 000).
         state: Initial shared state dict.
         error_policy: How to handle agent failures.
         callbacks: Observability hooks.
+        max_total_cost: Budget cap in USD.  When cumulative cost exceeds
+            this value the loop stops.
     """
 
     def __init__(
@@ -277,13 +282,15 @@ class LoopGroup:
         state: dict[str, Any] | None = None,
         error_policy: ErrorPolicy = ErrorPolicy.fail_fast,
         callbacks: GroupCallbacks | None = None,
+        max_total_cost: float | None = None,
     ) -> None:
         self._agents = _normalise_agents(agents)
         self._exit_condition = exit_condition
-        self._max_iterations = max_iterations
+        self._max_iterations = min(max_iterations, _LOOP_GROUP_MAX_ITERATIONS_CEILING)
         self._state: dict[str, Any] = dict(state) if state else {}
         self._error_policy = error_policy
         self._callbacks = callbacks or GroupCallbacks()
+        self._max_total_cost = max_total_cost
         self._stop_requested = False
 
     def stop(self) -> None:
@@ -323,7 +330,12 @@ class LoopGroup:
         for iteration in range(self._max_iterations):
             if self._stop_requested:
                 break
-            if self._exit_condition(self._state, iteration):
+
+            try:
+                if self._exit_condition(self._state, iteration):
+                    break
+            except Exception:
+                logger.warning("Exit condition raised; stopping loop", exc_info=True)
                 break
 
             for idx, (agent, custom_prompt) in enumerate(self._agents):
@@ -400,6 +412,15 @@ class LoopGroup:
             # Check if error caused early exit
             if errors and self._error_policy == ErrorPolicy.fail_fast:
                 break
+
+            # Check budget after each iteration
+            if self._max_total_cost is not None:
+                cumulative_cost = sum(
+                    s.get("total_cost", s.get("cost", 0.0)) for s in usage_summaries
+                )
+                if cumulative_cost >= self._max_total_cost:
+                    logger.debug("Budget exceeded (%.4f >= %.4f), stopping loop", cumulative_cost, self._max_total_cost)
+                    break
 
         elapsed_ms = (time.perf_counter() - t0) * 1000
         return GroupResult(
