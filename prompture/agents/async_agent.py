@@ -1026,7 +1026,17 @@ class AsyncAgent(Generic[DepsType]):
         *,
         images: list[Any] | None = None,
     ) -> AsyncGenerator[StreamEvent, None]:
-        """Async generator that executes the agent loop and yields stream events."""
+        """Async generator that executes the agent loop and yields stream events.
+
+        Raises:
+            RecursionError: If the agent nesting depth exceeds ``max_depth``.
+        """
+        current_depth = _agent_depth.get()
+        if current_depth >= self._max_depth:
+            raise RecursionError(
+                f"Agent recursion depth exceeded: {current_depth} >= {self._max_depth}"
+            )
+        token = _agent_depth.set(current_depth + 1)
         self._lifecycle = AgentState.running
         self._stop_requested = False
         steps: list[AgentStep] = []
@@ -1124,6 +1134,8 @@ class AsyncAgent(Generic[DepsType]):
         except Exception:
             self._lifecycle = AgentState.errored
             raise
+        finally:
+            _agent_depth.reset(token)
 
 
 # ------------------------------------------------------------------
