@@ -103,4 +103,4 @@ asyncio_mode = "auto"
 
 [tool.bandit]
 exclude_dirs = ["tests", "examples"]
-skips = ["B101", "B104", "B110", "B112", "B113", "B608", "B615", "B701"]
+skips = ["B101", "B104", "B110", "B112", "B615"]

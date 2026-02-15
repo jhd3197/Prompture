@@ -31,6 +31,7 @@ _CACHE_RELEVANT_OPTIONS = frozenset(
         "stop",
         "seed",
         "json_mode",
+        "system_prompt",
     }
 )
 
@@ -42,6 +43,7 @@ def make_cache_key(
     options: dict[str, Any] | None = None,
     output_format: str = "json",
     pydantic_qualname: str | None = None,
+    system_prompt: str | None = None,
 ) -> str:
     """Return a deterministic SHA-256 hex key for the given call parameters.
 
@@ -61,6 +63,8 @@ def make_cache_key(
     }
     if pydantic_qualname is not None:
         parts["pydantic_qualname"] = pydantic_qualname
+    if system_prompt is not None:
+        parts["system_prompt"] = system_prompt
 
     blob = json.dumps(parts, sort_keys=True, default=str)
     return hashlib.sha256(blob.encode()).hexdigest()
@@ -179,16 +183,23 @@ class SQLiteCacheBackend(CacheBackend):
     db_path:
         Path to the SQLite file.  Defaults to
         ``~/.prompture/cache/response_cache.db``.
+    max_entries:
+        Maximum number of cache entries.  When exceeded, the oldest
+        entries (by ``created_at``) are evicted after each ``set()``.
+        Defaults to 10 000.
     """
 
-    def __init__(self, db_path: str | None = None) -> None:
+    def __init__(self, db_path: str | None = None, max_entries: int = 10_000) -> None:
         self._db_path = Path(db_path) if db_path else _DEFAULT_SQLITE_PATH
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
+        self._max_entries = max_entries
         self._lock = threading.Lock()
         self._init_db()
 
     def _connect(self) -> sqlite3.Connection:
-        return sqlite3.connect(str(self._db_path), timeout=5)
+        conn = sqlite3.connect(str(self._db_path), timeout=5)
+        conn.execute("PRAGMA journal_mode=WAL")
+        return conn
 
     def _init_db(self) -> None:
         with self._lock:
@@ -234,6 +245,16 @@ class SQLiteCacheBackend(CacheBackend):
                     "INSERT OR REPLACE INTO cache (key, value, created_at, ttl) VALUES (?, ?, ?, ?)",
                     (key, value_json, now, ttl),
                 )
+                # Evict oldest entries if over the limit
+                count = conn.execute("SELECT COUNT(*) FROM cache").fetchone()[0]
+                if count > self._max_entries:
+                    excess = count - self._max_entries
+                    conn.execute(
+                        "DELETE FROM cache WHERE key IN ("
+                        "  SELECT key FROM cache ORDER BY created_at ASC LIMIT ?"
+                        ")",
+                        (excess,),
+                    )
                 conn.commit()
             finally:
                 conn.close()
@@ -424,6 +445,7 @@ def configure_cache(
     maxsize: int = 256,
     db_path: str | None = None,
     redis_url: str | None = None,
+    max_entries: int = 10_000,
 ) -> ResponseCache:
     """Create (or replace) the module-level cache singleton.
 
@@ -441,6 +463,8 @@ def configure_cache(
         SQLite database path (only for ``"sqlite"`` backend).
     redis_url:
         Redis connection URL (only for ``"redis"`` backend).
+    max_entries:
+        Maximum entries for the SQLite backend (default 10 000).
 
     Returns
     -------
@@ -451,7 +475,7 @@ def configure_cache(
     if backend == "memory":
         be = MemoryCacheBackend(maxsize=maxsize)
     elif backend == "sqlite":
-        be = SQLiteCacheBackend(db_path=db_path)
+        be = SQLiteCacheBackend(db_path=db_path, max_entries=max_entries)
     elif backend == "redis":
         be = RedisCacheBackend(redis_url=redis_url or "redis://localhost:6379/0")
     else:

@@ -26,6 +26,7 @@ import json
 import logging
 import time
 import uuid
+from collections import OrderedDict
 from typing import Any, Optional
 
 logger = logging.getLogger("prompture.server")
@@ -36,6 +37,9 @@ def create_app(
     system_prompt: Optional[str] = None,
     tools: Any = None,
     cors_origins: Optional[list[str]] = None,
+    api_key: Optional[str] = None,
+    max_conversations: int = 1000,
+    allowed_models: Optional[list[str]] = None,
 ) -> Any:
     """Create and return a FastAPI application.
 
@@ -44,12 +48,18 @@ def create_app(
         system_prompt: Optional system prompt for new conversations.
         tools: Optional :class:`~prompture.tools_schema.ToolRegistry`.
         cors_origins: CORS allowed origins.  ``["*"]`` to allow all.
+        api_key: Optional Bearer token for API authentication.
+            If set, all requests must include ``Authorization: Bearer <key>``.
+        max_conversations: Maximum in-memory conversations before oldest
+            are evicted.  Defaults to 1000.
+        allowed_models: Optional allowlist of model strings.  When set,
+            the OpenAI-compatible endpoint rejects models not in the list.
 
     Returns:
         A ``fastapi.FastAPI`` instance.
     """
     try:
-        from fastapi import FastAPI, HTTPException
+        from fastapi import Depends, FastAPI, HTTPException, Request
         from fastapi.middleware.cors import CORSMiddleware
         from fastapi.responses import JSONResponse
         from pydantic import BaseModel, Field
@@ -61,11 +71,31 @@ def create_app(
     from ..agents.async_conversation import AsyncConversation
     from ..agents.tools_schema import ToolRegistry
 
+    # ---- Authentication dependency ----
+
+    async def _verify_api_key(request: Request) -> None:
+        if api_key is None:
+            return
+        auth = request.headers.get("Authorization", "")
+        if auth != f"Bearer {api_key}":
+            raise HTTPException(status_code=401, detail="Invalid or missing API key")
+
+    if api_key is None:
+        logger.warning("Server starting without API key authentication — all requests will be accepted")
+
+    # ---- CORS warning ----
+
+    if cors_origins and "*" in cors_origins:
+        logger.warning(
+            "CORS is configured to allow all origins ('*'). "
+            "This is insecure for production deployments."
+        )
+
     # ---- Pydantic request/response models (Prompture native) ----
 
     class ChatRequest(BaseModel):
-        message: str
-        conversation_id: Optional[str] = None
+        message: str = Field(..., max_length=500_000)
+        conversation_id: Optional[str] = Field(None, max_length=64, pattern=r"^[a-zA-Z0-9_-]+$")
         stream: bool = False
         options: Optional[dict[str, Any]] = None
 
@@ -75,9 +105,9 @@ def create_app(
         usage: dict[str, Any]
 
     class ExtractRequest(BaseModel):
-        text: str
+        text: str = Field(..., max_length=500_000)
         schema_def: dict[str, Any] = Field(..., alias="schema")
-        conversation_id: Optional[str] = None
+        conversation_id: Optional[str] = Field(None, max_length=64, pattern=r"^[a-zA-Z0-9_-]+$")
 
         model_config = {"populate_by_name": True}
 
@@ -102,7 +132,7 @@ def create_app(
 
     class OAIChatRequest(BaseModel):
         model: Optional[str] = None
-        messages: list[OAIMessage]
+        messages: list[OAIMessage] = Field(..., max_length=200)
         temperature: Optional[float] = None
         top_p: Optional[float] = None
         max_tokens: Optional[int] = None
@@ -111,7 +141,11 @@ def create_app(
 
     # ---- App ----
 
-    app = FastAPI(title="Prompture API", version="0.1.0")
+    app = FastAPI(
+        title="Prompture API",
+        version="0.1.0",
+        dependencies=[Depends(_verify_api_key)],
+    )
 
     if cors_origins:
         app.add_middleware(
@@ -122,13 +156,15 @@ def create_app(
             allow_headers=["*"],
         )
 
-    # In-memory conversation store
-    _conversations: dict[str, AsyncConversation] = {}
+    # In-memory conversation store (OrderedDict for eviction)
+    _conversations: OrderedDict[str, AsyncConversation] = OrderedDict()
 
     tool_registry: Optional[ToolRegistry] = tools
 
     def _get_or_create_conversation(conv_id: Optional[str]) -> tuple[str, AsyncConversation]:
         if conv_id and conv_id in _conversations:
+            # Move to end (most recently used)
+            _conversations.move_to_end(conv_id)
             return conv_id, _conversations[conv_id]
         new_id = conv_id or uuid.uuid4().hex[:12]
         conv = AsyncConversation(
@@ -137,7 +173,16 @@ def create_app(
             tools=tool_registry,
         )
         _conversations[new_id] = conv
+        # Evict oldest conversations if over the limit
+        while len(_conversations) > max_conversations:
+            _conversations.popitem(last=False)
         return new_id, conv
+
+    # ---- Health endpoint ----
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok"}
 
     # ---- Prompture native endpoints ----
 
@@ -213,6 +258,13 @@ def create_app(
         is used.
         """
         resolved_model = req.model or model_name
+
+        # Enforce model allowlist
+        if allowed_models is not None and resolved_model not in allowed_models:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Model '{resolved_model}' is not in the allowed models list",
+            )
 
         # Separate system prompt from messages
         sys_prompt: Optional[str] = system_prompt

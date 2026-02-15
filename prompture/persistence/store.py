@@ -30,15 +30,29 @@ def save_to_file(data: dict[str, Any], path: str | Path) -> None:
     p.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
-def load_from_file(path: str | Path) -> dict[str, Any]:
+def load_from_file(
+    path: str | Path,
+    max_file_size: int = 100 * 1024 * 1024,
+) -> dict[str, Any]:
     """Read a conversation export dict from a JSON file.
+
+    Args:
+        path: Path to the JSON file.
+        max_file_size: Maximum allowed file size in bytes (default 100 MB).
 
     Raises:
         FileNotFoundError: If *path* does not exist.
+        ValueError: If the file exceeds *max_file_size*.
     """
     p = Path(path)
     if not p.exists():
         raise FileNotFoundError(f"Conversation file not found: {p}")
+    file_size = p.stat().st_size
+    if file_size > max_file_size:
+        raise ValueError(
+            f"Conversation file too large: {file_size} bytes "
+            f"(limit {max_file_size} bytes)"
+        )
     return json.loads(p.read_text(encoding="utf-8"))
 
 
@@ -92,6 +106,7 @@ class ConversationStore:
         with self._lock:
             conn = sqlite3.connect(str(self._db_path))
             try:
+                conn.execute("PRAGMA journal_mode=WAL")
                 conn.executescript(_SCHEMA_SQL)
                 conn.commit()
             finally:
@@ -99,6 +114,7 @@ class ConversationStore:
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(str(self._db_path))
+        conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA foreign_keys = ON")
         conn.row_factory = sqlite3.Row
         return conn
