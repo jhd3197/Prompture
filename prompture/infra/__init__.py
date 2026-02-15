@@ -11,7 +11,12 @@ from .cache import (
 )
 from .callbacks import DriverCallbacks
 from .cost_mixin import AudioCostMixin
-from .discovery import get_available_audio_models, get_available_image_gen_models, get_available_models
+from .discovery import (
+    clear_discovery_cache,
+    get_available_audio_models,
+    get_available_image_gen_models,
+    get_available_models,
+)
 from .ledger import ModelUsageLedger, get_recently_used_models
 from .logging import JSONFormatter, configure_logging
 from .model_rates import (
@@ -23,6 +28,7 @@ from .model_rates import (
 )
 from .session import UsageSession
 from .settings import settings
+from .tracker import configure_tracker, get_tracker
 
 __all__ = [
     "AudioCostMixin",
@@ -36,8 +42,10 @@ __all__ = [
     "ResponseCache",
     "SQLiteCacheBackend",
     "UsageSession",
+    "clear_discovery_cache",
     "configure_cache",
     "configure_logging",
+    "configure_tracker",
     "get_available_audio_models",
     "get_available_image_gen_models",
     "get_available_models",
@@ -46,6 +54,7 @@ __all__ = [
     "get_model_info",
     "get_model_rates",
     "get_recently_used_models",
+    "get_tracker",
     "refresh_rates_cache",
     "settings",
 ]

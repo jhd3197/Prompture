@@ -31,9 +31,17 @@ from ..drivers import (
     StabilityImageGenDriver,
     ZaiDriver,
 )
+from .cache import MemoryCacheBackend
 from .settings import settings
 
 logger = logging.getLogger(__name__)
+
+# Default TTL for discovery cache (seconds)
+_DISCOVERY_CACHE_TTL = 300  # 5 minutes
+
+# Module-level cache for discovery results.  Thread-safe via MemoryCacheBackend's
+# internal lock.  Keyed by a string describing the call parameters.
+_discovery_cache = MemoryCacheBackend(maxsize=32)
 
 
 def _get_list_models_kwargs(provider: str) -> dict[str, Any]:
@@ -63,17 +71,31 @@ def _get_list_models_kwargs(provider: str) -> dict[str, Any]:
 
 
 @overload
-def get_available_models(*, include_capabilities: bool = False, verified_only: bool = False) -> list[str]: ...
+def get_available_models(
+    *,
+    include_capabilities: bool = False,
+    verified_only: bool = False,
+    force_refresh: bool = False,
+    cache_ttl: int | None = None,
+) -> list[str]: ...
 
 
 @overload
-def get_available_models(*, include_capabilities: bool = True, verified_only: bool = False) -> list[dict[str, Any]]: ...
+def get_available_models(
+    *,
+    include_capabilities: bool = True,
+    verified_only: bool = False,
+    force_refresh: bool = False,
+    cache_ttl: int | None = None,
+) -> list[dict[str, Any]]: ...
 
 
 def get_available_models(
     *,
     include_capabilities: bool = False,
     verified_only: bool = False,
+    force_refresh: bool = False,
+    cache_ttl: int | None = None,
 ) -> list[str] | list[dict[str, Any]]:
     """Auto-detect available models based on configured drivers and environment variables.
 
@@ -82,16 +104,33 @@ def get_available_models(
     ``MODEL_PRICING`` keys.  For dynamic drivers (like Ollama), attempts to
     fetch available models from the endpoint.
 
+    Results are cached in memory with a configurable TTL to avoid redundant
+    provider queries on repeated calls.
+
     Args:
         include_capabilities: When ``True``, return enriched dicts with
             ``model``, ``provider``, ``model_id``, and ``capabilities``
             fields instead of plain ``"provider/model_id"`` strings.
         verified_only: When ``True``, only return models that have been
             successfully used (as recorded by the usage ledger).
+        force_refresh: When ``True``, bypass the cache and re-query all
+            providers.
+        cache_ttl: Cache time-to-live in seconds.  Defaults to
+            ``_DISCOVERY_CACHE_TTL`` (300 s / 5 min).
 
     Returns:
         A sorted list of unique model strings (default) or enriched dicts.
     """
+    ttl = cache_ttl if cache_ttl is not None else _DISCOVERY_CACHE_TTL
+    cache_key = f"models:{include_capabilities}:{verified_only}"
+
+    if not force_refresh:
+        cached = _discovery_cache.get(cache_key)
+        if cached is not None:
+            logger.debug("Discovery cache hit for key=%s", cache_key)
+            return cached
+
+    logger.debug("Discovery cache miss for key=%s — querying providers", cache_key)
     available_models: set[str] = set()
     configured_providers: set[str] = set()
 
@@ -221,6 +260,7 @@ def get_available_models(
         sorted_models = [m for m in sorted_models if m in verified_set]
 
     if not include_capabilities:
+        _discovery_cache.set(cache_key, sorted_models, ttl=ttl)
         return sorted_models
 
     # Build enriched dicts with capabilities from models.dev
@@ -273,7 +313,13 @@ def get_available_models(
 
         enriched.append(entry)
 
+    _discovery_cache.set(cache_key, enriched, ttl=ttl)
     return enriched
+
+
+def clear_discovery_cache() -> None:
+    """Clear the in-memory discovery cache, forcing the next call to re-query providers."""
+    _discovery_cache.clear()
 
 
 def get_available_audio_models(

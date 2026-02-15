@@ -1292,27 +1292,10 @@ def stepwise_extract_with_model(
 
     try:
         # Create model instance with collected data
-        # Create model instance with collected data
         model_instance = model_cls(**data)
         model_dict = model_instance.model_dump()
 
         # Enhanced DateTimeEncoder to handle both datetime and date objects
-        class ExtendedJSONEncoder(json.JSONEncoder):
-            def default(self, obj):
-                if isinstance(obj, (datetime, date)):
-                    return obj.isoformat()
-                if isinstance(obj, Decimal):
-                    return str(obj)
-                return super().default(obj)
-
-        # Use enhanced encoder for JSON serialization
-        json_string = json.dumps(model_dict, cls=ExtendedJSONEncoder)
-
-        # Also modify return value to use ExtendedJSONEncoder
-        if "json_string" in result:
-            result["json_string"] = json.dumps(result["json_object"], cls=ExtendedJSONEncoder)
-
-        # Define ExtendedJSONEncoder for handling special types
         class ExtendedJSONEncoder(json.JSONEncoder):
             def default(self, obj):
                 if isinstance(obj, (datetime, date)):
