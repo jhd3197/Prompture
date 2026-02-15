@@ -28,7 +28,7 @@ class HuggingFaceDriver(Driver):
             "parameters": options,  # HF allows temperature, max_new_tokens, etc. here
         }
         try:
-            r = requests.post(self.endpoint, headers=self.headers, json=payload, timeout=options.get("timeout", 60))
+            r = requests.post(self.endpoint, headers=self.headers, json=payload, timeout=options.get("timeout", 60))  # nosec B113
             r.raise_for_status()
             response_data = r.json()
         except Exception as e:
