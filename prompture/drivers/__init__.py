@@ -71,6 +71,7 @@ from .google_img_gen_driver import GoogleImageGenDriver
 from .grok_driver import GrokDriver
 from .grok_img_gen_driver import GrokImageGenDriver
 from .groq_driver import GroqDriver
+from .hugging_driver import HuggingFaceDriver
 from .img_gen_base import ImageGenDriver
 from .lmstudio_driver import LMStudioDriver
 from .local_http_driver import LocalHTTPDriver
@@ -144,6 +145,12 @@ register_driver(
 )
 register_driver(
     "claude",
+    lambda model=None: ClaudeDriver(api_key=settings.claude_api_key, model=model or settings.claude_model),
+    overwrite=True,
+)
+# Alias: "anthropic" maps to the same Claude driver for compatibility
+register_driver(
+    "anthropic",
     lambda model=None: ClaudeDriver(api_key=settings.claude_api_key, model=model or settings.claude_model),
     overwrite=True,
 )
@@ -226,6 +233,69 @@ register_driver(
     ),
     overwrite=True,
 )
+register_driver(
+    "huggingface",
+    lambda model=None: HuggingFaceDriver(
+        endpoint=settings.hf_endpoint,
+        token=settings.hf_token,
+        model=model or "bert-base-uncased",
+    ),
+    overwrite=True,
+)
+
+# ── Aliases ────────────────────────────────────────────────────────────────
+# Common alternative names so users can write e.g. "gemini/..." or "chatgpt/..."
+register_driver(
+    "gemini",
+    lambda model=None: GoogleDriver(api_key=settings.google_api_key, model=model or settings.google_model),
+    overwrite=True,
+)
+register_driver(
+    "chatgpt",
+    lambda model=None: OpenAIDriver(api_key=settings.openai_api_key, model=model or settings.openai_model),
+    overwrite=True,
+)
+register_driver(
+    "xai",
+    lambda model=None: GrokDriver(api_key=settings.grok_api_key, model=model or settings.grok_model),
+    overwrite=True,
+)
+register_driver(
+    "lm_studio",
+    lambda model=None: LMStudioDriver(
+        endpoint=settings.lmstudio_endpoint,
+        model=model or settings.lmstudio_model,
+        api_key=settings.lmstudio_api_key,
+    ),
+    overwrite=True,
+)
+register_driver(
+    "lm-studio",
+    lambda model=None: LMStudioDriver(
+        endpoint=settings.lmstudio_endpoint,
+        model=model or settings.lmstudio_model,
+        api_key=settings.lmstudio_api_key,
+    ),
+    overwrite=True,
+)
+register_driver(
+    "zhipu",
+    lambda model=None: ZaiDriver(
+        api_key=settings.zhipu_api_key,
+        model=model or settings.zhipu_model,
+        endpoint=settings.zhipu_endpoint,
+    ),
+    overwrite=True,
+)
+register_driver(
+    "hf",
+    lambda model=None: HuggingFaceDriver(
+        endpoint=settings.hf_endpoint,
+        token=settings.hf_token,
+        model=model or "bert-base-uncased",
+    ),
+    overwrite=True,
+)
 
 # Trigger audio driver registration
 from .audio_registry import (  # noqa: E402
@@ -273,7 +343,7 @@ def get_driver_for_model(model_str: str):
         ValueError: If provider is invalid or format is incorrect.
     """
     if not isinstance(model_str, str):
-        raise ValueError("Model string must be a string, got {type(model_str)}")
+        raise ValueError(f"Model string must be a string, got {type(model_str)}")
 
     if not model_str:
         raise ValueError("Model string cannot be empty")
@@ -339,6 +409,7 @@ __all__ = [
     "GrokDriver",
     "GrokImageGenDriver",
     "GroqDriver",
+    "HuggingFaceDriver",
     # Image gen base class
     "ImageGenDriver",
     "LMStudioDriver",

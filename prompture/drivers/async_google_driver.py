@@ -8,8 +8,12 @@ import uuid
 from collections.abc import AsyncIterator
 from typing import Any
 
-from google import genai
-from google.genai import types
+try:
+    from google import genai
+    from google.genai import types
+except Exception:
+    genai = None
+    types = None
 
 from .async_base import AsyncDriver
 from ..infra.cost_mixin import CostMixin
@@ -31,6 +35,8 @@ class AsyncGoogleDriver(CostMixin, AsyncDriver):
     _PRICING_UNIT = 1_000_000
 
     def __init__(self, api_key: str | None = None, model: str = "gemini-1.5-pro"):
+        if genai is None:
+            raise RuntimeError("google-genai package is not installed. Install it with: pip install google-genai")
         self.api_key = api_key or os.getenv("GOOGLE_API_KEY")
         if not self.api_key:
             raise ValueError("Google API key not found. Set GOOGLE_API_KEY env var or pass api_key to constructor")

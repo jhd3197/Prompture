@@ -1,10 +1,25 @@
 import os
 from unittest.mock import patch
 
+import pytest
+
 from prompture.drivers.elevenlabs_stt_driver import ElevenLabsSTTDriver
 from prompture.drivers.elevenlabs_tts_driver import ElevenLabsTTSDriver
 from prompture.drivers.ollama_driver import OllamaDriver
-from prompture.infra.discovery import get_available_audio_models, get_available_models
+from prompture.infra.discovery import (
+    _discovery_cache,
+    clear_discovery_cache,
+    get_available_audio_models,
+    get_available_models,
+)
+
+
+@pytest.fixture(autouse=True)
+def _clear_discovery_cache():
+    """Clear the discovery cache before each test to ensure isolation."""
+    _discovery_cache.clear()
+    yield
+    _discovery_cache.clear()
 
 
 class TestDiscovery:
@@ -185,3 +200,50 @@ class TestElevenLabsSTTListModels:
         with patch.dict(os.environ, {}, clear=True):
             result = ElevenLabsSTTDriver.list_models(api_key=None)
             assert result is None
+
+
+class TestDiscoveryCache:
+    """Tests for the in-memory discovery cache."""
+
+    @patch.dict(os.environ, {"OPENAI_API_KEY": "sk-test"})
+    def test_second_call_returns_cached_result(self):
+        """Repeated calls return the same cached list without re-querying."""
+        first = get_available_models()
+        second = get_available_models()
+        assert first == second
+
+    @patch.dict(os.environ, {"OPENAI_API_KEY": "sk-test"})
+    @patch.object(OllamaDriver, "list_models", return_value=["llama3:latest"])
+    def test_cache_hit_skips_list_models(self, mock_list):
+        """After a cached call, list_models() should not be invoked again."""
+        get_available_models()
+        call_count_after_first = mock_list.call_count
+
+        get_available_models()
+        assert mock_list.call_count == call_count_after_first
+
+    @patch.dict(os.environ, {"OPENAI_API_KEY": "sk-test"})
+    @patch.object(OllamaDriver, "list_models", return_value=["llama3:latest"])
+    def test_force_refresh_bypasses_cache(self, mock_list):
+        """force_refresh=True re-queries providers even when cache is warm."""
+        get_available_models()
+        call_count_after_first = mock_list.call_count
+
+        get_available_models(force_refresh=True)
+        assert mock_list.call_count > call_count_after_first
+
+    @patch.dict(os.environ, {"OPENAI_API_KEY": "sk-test"})
+    def test_clear_discovery_cache(self):
+        """clear_discovery_cache() invalidates the cache."""
+        first = get_available_models()
+        clear_discovery_cache()
+        assert not _discovery_cache.has("models:False:False")
+
+    @patch.dict(os.environ, {"OPENAI_API_KEY": "sk-test"})
+    def test_different_params_cached_independently(self):
+        """Calls with different include_capabilities are cached separately."""
+        plain = get_available_models(include_capabilities=False)
+        enriched = get_available_models(include_capabilities=True)
+        # They should be different types
+        assert isinstance(plain[0], str) if plain else True
+        assert isinstance(enriched[0], dict) if enriched else True

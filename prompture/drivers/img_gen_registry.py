@@ -111,6 +111,56 @@ register_async_img_gen_driver(
     overwrite=True,
 )
 
+# ── Aliases ────────────────────────────────────────────────────────────────
+register_img_gen_driver(
+    "gemini",
+    lambda model=None: GoogleImageGenDriver(
+        api_key=settings.google_api_key,
+        model=model or "imagen-3.0-generate-002",
+    ),
+    overwrite=True,
+)
+register_async_img_gen_driver(
+    "gemini",
+    lambda model=None: AsyncGoogleImageGenDriver(
+        api_key=settings.google_api_key,
+        model=model or "imagen-3.0-generate-002",
+    ),
+    overwrite=True,
+)
+register_img_gen_driver(
+    "xai",
+    lambda model=None: GrokImageGenDriver(
+        api_key=settings.grok_api_key,
+        model=model or "grok-2-image",
+    ),
+    overwrite=True,
+)
+register_async_img_gen_driver(
+    "xai",
+    lambda model=None: AsyncGrokImageGenDriver(
+        api_key=settings.grok_api_key,
+        model=model or "grok-2-image",
+    ),
+    overwrite=True,
+)
+register_img_gen_driver(
+    "dalle",
+    lambda model=None: OpenAIImageGenDriver(
+        api_key=settings.openai_api_key,
+        model=model or "dall-e-3",
+    ),
+    overwrite=True,
+)
+register_async_img_gen_driver(
+    "dalle",
+    lambda model=None: AsyncOpenAIImageGenDriver(
+        api_key=settings.openai_api_key,
+        model=model or "dall-e-3",
+    ),
+    overwrite=True,
+)
+
 
 # ── Factory functions ─────────────────────────────────────────────────────
 

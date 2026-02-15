@@ -27,6 +27,7 @@ from .async_moonshot_driver import AsyncMoonshotDriver
 from .async_ollama_driver import AsyncOllamaDriver
 from .async_openai_driver import AsyncOpenAIDriver
 from .async_openrouter_driver import AsyncOpenRouterDriver
+from .async_hugging_driver import AsyncHuggingFaceDriver
 from .async_zai_driver import AsyncZaiDriver
 from .registry import (
     _get_async_registry,
@@ -47,6 +48,12 @@ register_async_driver(
 )
 register_async_driver(
     "claude",
+    lambda model=None: AsyncClaudeDriver(api_key=settings.claude_api_key, model=model or settings.claude_model),
+    overwrite=True,
+)
+# Alias: "anthropic" maps to the same Claude driver for compatibility
+register_async_driver(
+    "anthropic",
     lambda model=None: AsyncClaudeDriver(api_key=settings.claude_api_key, model=model or settings.claude_model),
     overwrite=True,
 )
@@ -131,6 +138,69 @@ register_async_driver(
     ),
     overwrite=True,
 )
+register_async_driver(
+    "huggingface",
+    lambda model=None: AsyncHuggingFaceDriver(
+        endpoint=settings.hf_endpoint,
+        token=settings.hf_token,
+        model=model or "bert-base-uncased",
+    ),
+    overwrite=True,
+)
+
+# ── Aliases ────────────────────────────────────────────────────────────────
+# Common alternative names so users can write e.g. "gemini/..." or "chatgpt/..."
+register_async_driver(
+    "gemini",
+    lambda model=None: AsyncGoogleDriver(api_key=settings.google_api_key, model=model or settings.google_model),
+    overwrite=True,
+)
+register_async_driver(
+    "chatgpt",
+    lambda model=None: AsyncOpenAIDriver(api_key=settings.openai_api_key, model=model or settings.openai_model),
+    overwrite=True,
+)
+register_async_driver(
+    "xai",
+    lambda model=None: AsyncGrokDriver(api_key=settings.grok_api_key, model=model or settings.grok_model),
+    overwrite=True,
+)
+register_async_driver(
+    "lm_studio",
+    lambda model=None: AsyncLMStudioDriver(
+        endpoint=settings.lmstudio_endpoint,
+        model=model or settings.lmstudio_model,
+        api_key=settings.lmstudio_api_key,
+    ),
+    overwrite=True,
+)
+register_async_driver(
+    "lm-studio",
+    lambda model=None: AsyncLMStudioDriver(
+        endpoint=settings.lmstudio_endpoint,
+        model=model or settings.lmstudio_model,
+        api_key=settings.lmstudio_api_key,
+    ),
+    overwrite=True,
+)
+register_async_driver(
+    "zhipu",
+    lambda model=None: AsyncZaiDriver(
+        api_key=settings.zhipu_api_key,
+        model=model or settings.zhipu_model,
+        endpoint=settings.zhipu_endpoint,
+    ),
+    overwrite=True,
+)
+register_async_driver(
+    "hf",
+    lambda model=None: AsyncHuggingFaceDriver(
+        endpoint=settings.hf_endpoint,
+        token=settings.hf_token,
+        model=model or "bert-base-uncased",
+    ),
+    overwrite=True,
+)
 
 # Backwards compatibility: expose registry dict
 ASYNC_DRIVER_REGISTRY = _get_async_registry()
@@ -153,7 +223,7 @@ def get_async_driver_for_model(model_str: str):
     Example: ``"openai/gpt-4-turbo-preview"``
     """
     if not isinstance(model_str, str):
-        raise ValueError("Model string must be a string, got {type(model_str)}")
+        raise ValueError(f"Model string must be a string, got {type(model_str)}")
 
     if not model_str:
         raise ValueError("Model string cannot be empty")

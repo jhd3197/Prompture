@@ -4,8 +4,12 @@ import uuid
 from collections.abc import Iterator
 from typing import Any, Optional
 
-from google import genai
-from google.genai import types
+try:
+    from google import genai
+    from google.genai import types
+except Exception:
+    genai = None
+    types = None
 
 from ..infra.cost_mixin import CostMixin
 from .base import Driver
@@ -84,6 +88,8 @@ class GoogleDriver(CostMixin, Driver):
             api_key: Google API key. If not provided, will look for GOOGLE_API_KEY env var
             model: Model to use. Defaults to "gemini-1.5-pro"
         """
+        if genai is None:
+            raise RuntimeError("google-genai package is not installed. Install it with: pip install google-genai")
         self.api_key = api_key or os.getenv("GOOGLE_API_KEY")
         if not self.api_key:
             raise ValueError("Google API key not found. Set GOOGLE_API_KEY env var or pass api_key to constructor")
