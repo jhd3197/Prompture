@@ -243,6 +243,8 @@ class TestAskForJson:
 
     def test_ai_cleanup_disabled_raises_error(self, sample_json_schema):
         """Test that invalid JSON raises exception when AI cleanup is disabled."""
+        from prompture.exceptions import ExtractionError
+
         mock_driver = Mock()
         _response = {
             "text": '{"name": "Test", "incomplete": true'  # Missing closing brace keeps JSON invalid
@@ -251,7 +253,7 @@ class TestAskForJson:
         mock_driver.generate_with_hooks.return_value = _response
 
         content_prompt = "Extract user info"
-        with pytest.raises(json.JSONDecodeError):
+        with pytest.raises(ExtractionError, match="Failed to parse LLM output as JSON"):
             ask_for_json(mock_driver, content_prompt, sample_json_schema, ai_cleanup=False)
 
 
