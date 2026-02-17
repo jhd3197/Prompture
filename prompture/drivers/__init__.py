@@ -26,8 +26,6 @@ Entry Point Discovery:
 
 from __future__ import annotations
 
-from typing import Optional
-
 from ..infra.provider_env import ProviderEnvironment
 from ..infra.settings import settings
 from .airllm_driver import AirLLMDriver
@@ -366,8 +364,8 @@ PROVIDER_DRIVER_MAP: dict[str, tuple] = {
         {"api_key": "azure_api_key", "endpoint": "azure_api_endpoint", "deployment_id": "azure_deployment_id"},
         "gpt-4o-mini",
     ),
-    "huggingface": (HuggingFaceDriver, {"endpoint": "hf_endpoint", "token": "hf_token"}, "bert-base-uncased"),
-    "hf": (HuggingFaceDriver, {"endpoint": "hf_endpoint", "token": "hf_token"}, "bert-base-uncased"),
+    "huggingface": (HuggingFaceDriver, {"endpoint": "hf_endpoint", "token": "hf_token"}, "bert-base-uncased"),  # nosec B105
+    "hf": (HuggingFaceDriver, {"endpoint": "hf_endpoint", "token": "hf_token"}, "bert-base-uncased"),  # nosec B105
 }
 
 
@@ -397,7 +395,7 @@ def _build_driver_with_env(
     return driver_cls(**kwargs)
 
 
-def get_driver(provider_name: Optional[str] = None, *, env: ProviderEnvironment | None = None):
+def get_driver(provider_name: str | None = None, *, env: ProviderEnvironment | None = None):
     """
     Factory to get a driver instance based on the provider name (legacy style).
     Uses default model from settings if not overridden.

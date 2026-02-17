@@ -151,7 +151,7 @@ def get_available_models(
     # Build cache key — include a hash of env-provided fields to avoid cross-bot pollution
     if env is not None:
         env_sig = tuple(sorted(k for k, v in vars(env).items() if v is not None))
-        env_hash = hashlib.md5(str(env_sig).encode()).hexdigest()[:8]  # noqa: S324
+        env_hash = hashlib.md5(str(env_sig).encode(), usedforsecurity=False).hexdigest()[:8]
         cache_key = f"models:{include_capabilities}:{verified_only}:env={env_hash}"
     else:
         cache_key = f"models:{include_capabilities}:{verified_only}"

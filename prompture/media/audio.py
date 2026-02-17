@@ -89,7 +89,9 @@ def _guess_media_type(path: str) -> str:
     if ext in _MIME_FROM_EXT:
         return _MIME_FROM_EXT[ext]
     guessed = mimetypes.guess_type(clean)[0]
-    return guessed or "audio/mpeg"
+    if guessed and guessed.startswith("audio/"):
+        return guessed
+    return "audio/mpeg"
 
 
 # ------------------------------------------------------------------

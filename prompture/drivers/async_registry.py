@@ -21,6 +21,7 @@ from .async_claude_driver import AsyncClaudeDriver
 from .async_google_driver import AsyncGoogleDriver
 from .async_grok_driver import AsyncGrokDriver
 from .async_groq_driver import AsyncGroqDriver
+from .async_hugging_driver import AsyncHuggingFaceDriver
 from .async_lmstudio_driver import AsyncLMStudioDriver
 from .async_local_http_driver import AsyncLocalHTTPDriver
 from .async_modelscope_driver import AsyncModelScopeDriver
@@ -28,7 +29,6 @@ from .async_moonshot_driver import AsyncMoonshotDriver
 from .async_ollama_driver import AsyncOllamaDriver
 from .async_openai_driver import AsyncOpenAIDriver
 from .async_openrouter_driver import AsyncOpenRouterDriver
-from .async_hugging_driver import AsyncHuggingFaceDriver
 from .async_zai_driver import AsyncZaiDriver
 from .registry import (
     _get_async_registry,
@@ -253,8 +253,8 @@ ASYNC_PROVIDER_DRIVER_MAP: dict[str, tuple] = {
         {"api_key": "azure_api_key", "endpoint": "azure_api_endpoint", "deployment_id": "azure_deployment_id"},
         "gpt-4o-mini",
     ),
-    "huggingface": (AsyncHuggingFaceDriver, {"endpoint": "hf_endpoint", "token": "hf_token"}, "bert-base-uncased"),
-    "hf": (AsyncHuggingFaceDriver, {"endpoint": "hf_endpoint", "token": "hf_token"}, "bert-base-uncased"),
+    "huggingface": (AsyncHuggingFaceDriver, {"endpoint": "hf_endpoint", "token": "hf_token"}, "bert-base-uncased"),  # nosec B105
+    "hf": (AsyncHuggingFaceDriver, {"endpoint": "hf_endpoint", "token": "hf_token"}, "bert-base-uncased"),  # nosec B105
 }
 
 
