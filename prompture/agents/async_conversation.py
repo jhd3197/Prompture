@@ -440,11 +440,16 @@ class AsyncConversation:
             msgs.append(assistant_msg)
 
             for tc in tool_calls:
+                from ..integrations.tukuy_bridge import current_tool_call_id as _ask_tc_id
+
+                _ask_token = _ask_tc_id.set(tc["id"])
                 try:
                     result = await self._tools.aexecute(tc["name"], tc["arguments"])
                     result_str = json.dumps(result) if not isinstance(result, str) else result
                 except Exception as exc:
                     result_str = f"Error: {exc}"
+                finally:
+                    _ask_tc_id.reset(_ask_token)
 
                 # Preserve full result for step extraction before truncating
                 self._full_tool_results[tc["id"]] = result_str
@@ -529,11 +534,19 @@ class AsyncConversation:
                     "arguments": tc["arguments"],
                     "id": tc["id"],
                 }
+                # Set the current tool_call_id so downstream code (e.g. the
+                # tukuy bridge instruction wrapper) can associate streaming
+                # deltas with the correct tool call.
+                from ..integrations.tukuy_bridge import current_tool_call_id
+
+                _tc_token = current_tool_call_id.set(tc["id"])
                 try:
                     result = await self._tools.aexecute(tc["name"], tc["arguments"])
                     result_str = json.dumps(result) if not isinstance(result, str) else result
                 except Exception as exc:
                     result_str = f"Error: {exc}"
+                finally:
+                    current_tool_call_id.reset(_tc_token)
 
                 # Preserve full result for step extraction before truncating
                 self._full_tool_results[tc["id"]] = result_str
@@ -601,11 +614,16 @@ class AsyncConversation:
 
             yield {"type": "tool_call", "name": tool_name, "arguments": tool_args, "id": ""}
 
+            from ..integrations.tukuy_bridge import current_tool_call_id as _sim_tc_id
+
+            _sim_token = _sim_tc_id.set("")
             try:
                 result = await self._tools.aexecute(tool_name, tool_args)
                 result_msg = format_tool_result(tool_name, result)
             except Exception as exc:
                 result_msg = format_tool_result(tool_name, f"Error: {exc}")
+            finally:
+                _sim_tc_id.reset(_sim_token)
 
             yield {"type": "tool_result", "name": tool_name, "result": result_msg, "id": ""}
 
