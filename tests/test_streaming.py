@@ -24,6 +24,9 @@ class MockStreamDriver(Driver):
     def __init__(self, chunks: list[dict[str, Any]]):
         self._chunks = chunks
 
+    def generate(self, prompt, options):
+        return self.generate_messages([], options)
+
     def generate_messages(self, messages, options):
         # Non-streaming fallback
         return {
@@ -39,6 +42,9 @@ class MockStreamDriver(Driver):
 class NonStreamDriver(Driver):
     supports_messages = True
     supports_streaming = False
+
+    def generate(self, prompt, options):
+        return self.generate_messages([], options)
 
     def generate_messages(self, messages, options):
         return {
@@ -135,7 +141,12 @@ class TestStreaming:
 
     def test_driver_base_streaming_not_implemented(self):
         """Base Driver raises NotImplementedError for streaming."""
-        driver = Driver()
+
+        class MinimalDriver(Driver):
+            def generate(self, prompt, options):
+                return {"text": "", "meta": {}}
+
+        driver = MinimalDriver()
         with pytest.raises(NotImplementedError):
             list(driver.generate_messages_stream([], {}))
 
@@ -153,6 +164,9 @@ class TestStreamingMultipleTurns:
         class HybridDriver(Driver):
             supports_messages = True
             supports_streaming = True
+
+            def generate(self, prompt, options):
+                return self.generate_messages([], options)
 
             def generate_messages(self, messages, options):
                 return {
@@ -242,6 +256,9 @@ class TestStreamingCallbacks:
         class FailStreamDriver(Driver):
             supports_messages = True
             supports_streaming = True
+
+            def generate(self, prompt, options):
+                return self.generate_messages([], options)
 
             def generate_messages(self, messages, options):
                 return {"text": "fallback", "meta": {}}

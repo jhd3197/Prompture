@@ -4,10 +4,14 @@ from __future__ import annotations
 
 import logging
 import time
+from abc import ABC, abstractmethod
 from collections.abc import Iterator
 from typing import Any
 
-import requests
+try:
+    import requests
+except ImportError:
+    requests = None  # type: ignore[assignment]
 
 from ..infra.callbacks import DriverCallbacks
 
@@ -47,6 +51,17 @@ def _fetch_openai_compatible_models(
         if headers:
             hdrs.update(headers)
 
+        if requests is None:
+            import httpx
+
+            resp = httpx.get(url, headers=hdrs, timeout=timeout)
+            if resp.status_code != 200:
+                logger.debug("_fetch_openai_compatible_models %s returned %s", url, resp.status_code)
+                return None
+            data = resp.json()
+            models = data.get("data", [])
+            return [m["id"] for m in models if m.get("id")]
+
         resp = requests.get(url, headers=hdrs, timeout=timeout)
         if resp.status_code != 200:
             logger.debug("_fetch_openai_compatible_models %s returned %s", url, resp.status_code)
@@ -60,8 +75,9 @@ def _fetch_openai_compatible_models(
         return None
 
 
-class Driver:
-    """Adapter base. Implementar generate(prompt, options) -> {"text": ... , "meta": {...}}
+class Driver(ABC):
+    """Adapter base. Implement ``generate(prompt, options)`` returning
+    ``{"text": ... , "meta": {...}}``.
 
     The 'meta' object in the response should have a standardized structure:
 
@@ -101,8 +117,8 @@ class Driver:
         """
         return None
 
-    def generate(self, prompt: str, options: dict[str, Any]) -> dict[str, Any]:
-        raise NotImplementedError
+    @abstractmethod
+    def generate(self, prompt: str, options: dict[str, Any]) -> dict[str, Any]: ...
 
     def generate_messages(self, messages: list[dict[str, Any]], options: dict[str, Any]) -> dict[str, Any]:
         """Generate a response from a list of conversation messages.

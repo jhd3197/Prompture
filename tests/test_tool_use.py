@@ -149,6 +149,9 @@ class MockToolDriver(Driver):
         self._responses = list(responses)
         self._call_idx = 0
 
+    def generate(self, prompt, options):
+        return self._get_next()
+
     def generate_messages(self, messages, options):
         return self._get_next()
 
@@ -208,6 +211,9 @@ class TestConversationToolUse:
         class SimpleDriver(Driver):
             supports_messages = True
 
+            def generate(self, prompt, options):
+                return self.generate_messages([], options)
+
             def generate_messages(self, messages, options):
                 return {
                     "text": "Hello!",
@@ -251,6 +257,9 @@ class TestConversationToolUse:
         class SimpleDriver(Driver):
             supports_messages = True
             supports_tool_use = True
+
+            def generate(self, prompt, options):
+                return self.generate_messages([], options)
 
             def generate_messages(self, messages, options):
                 return {"text": "ok", "meta": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "cost": 0.0}}

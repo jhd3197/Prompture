@@ -53,6 +53,9 @@ class MockDriver(Driver):
         self._call_count = 0
         self.callbacks = None
 
+    def generate(self, prompt: str, options: dict[str, Any]) -> dict[str, Any]:
+        return self.generate_messages([], options)
+
     def generate_messages(self, messages: list[dict[str, Any]], options: dict[str, Any]) -> dict[str, Any]:
         if self._call_count >= len(self._responses):
             raise RuntimeError("MockDriver ran out of responses")
@@ -74,6 +77,9 @@ class MockReasoningDriver(Driver):
         self._responses = list(responses)
         self._call_count = 0
         self.callbacks = None
+
+    def generate(self, prompt: str, options: dict[str, Any]) -> dict[str, Any]:
+        return self.generate_messages([], options)
 
     def generate_messages(self, messages: list[dict[str, Any]], options: dict[str, Any]) -> dict[str, Any]:
         if self._call_count >= len(self._responses):
@@ -97,6 +103,9 @@ class NativeToolDriver(Driver):
 
     def __init__(self):
         self.callbacks = None
+
+    def generate(self, prompt, options):
+        return self.generate_messages([], options)
 
     def generate_messages(self, messages, options):
         return {
@@ -122,6 +131,9 @@ class NativeToolReasoningDriver(Driver):
     def __init__(self):
         self.callbacks = None
         self._call_count = 0
+
+    def generate(self, prompt, options):
+        return self.generate_messages([], options)
 
     def generate_messages(self, messages, options):
         return {

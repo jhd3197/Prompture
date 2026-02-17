@@ -8,12 +8,14 @@ multiple async agents into deterministic workflows.
 from __future__ import annotations
 
 import asyncio
+import copy
 import logging
 import time
 from collections.abc import Callable
 from typing import Any
 
 from ..agents.types import AgentResult, AgentState
+from .groups import _agent_name, _inject_state, _normalise_agents
 from .types import (
     AgentError,
     ErrorPolicy,
@@ -22,7 +24,6 @@ from .types import (
     GroupStep,
     _aggregate_usage,
 )
-from .groups import _agent_name, _inject_state, _normalise_agents
 
 logger = logging.getLogger("prompture.async_groups")
 
@@ -96,8 +97,8 @@ class ParallelGroup:
         self._stop_requested = False
         t0 = time.perf_counter()
 
-        # Frozen state snapshot for all agents
-        frozen_state = dict(self._state)
+        # Frozen state snapshot for all agents (deep copy to isolate nested mutables)
+        frozen_state = copy.deepcopy(self._state)
 
         async def _run_one(
             idx: int, agent: Any, custom_prompt: str | None

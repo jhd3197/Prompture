@@ -15,10 +15,9 @@ from prompture.infra.cost_mixin import CostMixin
 
 
 class TestAsyncDriverBase:
-    async def test_generate_not_implemented(self):
-        driver = AsyncDriver()
-        with pytest.raises(NotImplementedError):
-            await driver.generate("test", {})
+    def test_generate_not_implemented(self):
+        with pytest.raises(TypeError, match="abstract"):
+            AsyncDriver()
 
 
 # ---------------------------------------------------------------------------

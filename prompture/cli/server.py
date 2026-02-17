@@ -40,6 +40,7 @@ def create_app(
     api_key: Optional[str] = None,
     max_conversations: int = 1000,
     allowed_models: Optional[list[str]] = None,
+    rate_limit: Optional[int] = None,
 ) -> Any:
     """Create and return a FastAPI application.
 
@@ -54,6 +55,8 @@ def create_app(
             are evicted.  Defaults to 1000.
         allowed_models: Optional allowlist of model strings.  When set,
             the OpenAI-compatible endpoint rejects models not in the list.
+        rate_limit: Maximum requests per minute per client IP.
+            ``None`` (default) disables rate limiting.
 
     Returns:
         A ``fastapi.FastAPI`` instance.
@@ -82,6 +85,24 @@ def create_app(
 
     if api_key is None:
         logger.warning("Server starting without API key authentication — all requests will be accepted")
+
+    # ---- Rate limiting dependency ----
+
+    _rate_buckets: dict[str, list[float]] = {}
+
+    async def _check_rate_limit(request: Request) -> None:
+        if rate_limit is None:
+            return
+        client_ip = request.client.host if request.client else "unknown"
+        now = time.monotonic()
+        window = 60.0  # 1 minute
+
+        bucket = _rate_buckets.setdefault(client_ip, [])
+        # Prune expired timestamps
+        _rate_buckets[client_ip] = bucket = [t for t in bucket if now - t < window]
+        if len(bucket) >= rate_limit:
+            raise HTTPException(status_code=429, detail="Rate limit exceeded")
+        bucket.append(now)
 
     # ---- CORS warning ----
 
@@ -144,7 +165,7 @@ def create_app(
     app = FastAPI(
         title="Prompture API",
         version="0.1.0",
-        dependencies=[Depends(_verify_api_key)],
+        dependencies=[Depends(_verify_api_key), Depends(_check_rate_limit)],
     )
 
     if cors_origins:

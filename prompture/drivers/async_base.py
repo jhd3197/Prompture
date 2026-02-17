@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
+from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -13,7 +14,7 @@ from .base import Driver
 logger = logging.getLogger("prompture.async_driver")
 
 
-class AsyncDriver:
+class AsyncDriver(ABC):
     """Async adapter base. Implement ``async generate(prompt, options)``
     returning ``{"text": ..., "meta": {...}}``.
 
@@ -39,8 +40,8 @@ class AsyncDriver:
 
     callbacks: DriverCallbacks | None = None
 
-    async def generate(self, prompt: str, options: dict[str, Any]) -> dict[str, Any]:
-        raise NotImplementedError
+    @abstractmethod
+    async def generate(self, prompt: str, options: dict[str, Any]) -> dict[str, Any]: ...
 
     async def generate_messages(self, messages: list[dict[str, Any]], options: dict[str, Any]) -> dict[str, Any]:
         """Generate a response from a list of conversation messages (async).
