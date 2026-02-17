@@ -24,8 +24,9 @@ Entry Point Discovery:
     my_provider = "my_package.drivers:my_driver_factory"
 """
 
-from typing import Optional
+from __future__ import annotations
 
+from ..infra.provider_env import ProviderEnvironment
 from ..infra.settings import settings
 from .airllm_driver import AirLLMDriver
 from .async_airllm_driver import AsyncAirLLMDriver
@@ -314,18 +315,104 @@ from .img_gen_registry import (  # noqa: E402
 # Backwards compatibility: expose registry dict (read-only view recommended)
 DRIVER_REGISTRY = _get_sync_registry()
 
+# ── Per-environment driver construction ────────────────────────────────────
+# Maps provider name → (DriverClass, {ctor_kwarg: env/settings_attr}, default_model_attr)
+# default_model_attr is either a settings attribute name (e.g. "openai_model") or a
+# literal string (e.g. "gpt-4o-mini").  getattr(settings, x, x) resolves both.
 
-def get_driver(provider_name: Optional[str] = None):
+PROVIDER_DRIVER_MAP: dict[str, tuple] = {
+    "openai": (OpenAIDriver, {"api_key": "openai_api_key"}, "openai_model"),
+    "chatgpt": (OpenAIDriver, {"api_key": "openai_api_key"}, "openai_model"),
+    "claude": (ClaudeDriver, {"api_key": "claude_api_key"}, "claude_model"),
+    "anthropic": (ClaudeDriver, {"api_key": "claude_api_key"}, "claude_model"),
+    "google": (GoogleDriver, {"api_key": "google_api_key"}, "google_model"),
+    "gemini": (GoogleDriver, {"api_key": "google_api_key"}, "google_model"),
+    "groq": (GroqDriver, {"api_key": "groq_api_key"}, "groq_model"),
+    "grok": (GrokDriver, {"api_key": "grok_api_key"}, "grok_model"),
+    "xai": (GrokDriver, {"api_key": "grok_api_key"}, "grok_model"),
+    "openrouter": (OpenRouterDriver, {"api_key": "openrouter_api_key"}, "openrouter_model"),
+    "moonshot": (
+        MoonshotDriver,
+        {"api_key": "moonshot_api_key", "endpoint": "moonshot_endpoint"},
+        "moonshot_model",
+    ),
+    "modelscope": (
+        ModelScopeDriver,
+        {"api_key": "modelscope_api_key", "endpoint": "modelscope_endpoint"},
+        "modelscope_model",
+    ),
+    "zai": (ZaiDriver, {"api_key": "zhipu_api_key", "endpoint": "zhipu_endpoint"}, "zhipu_model"),
+    "zhipu": (ZaiDriver, {"api_key": "zhipu_api_key", "endpoint": "zhipu_endpoint"}, "zhipu_model"),
+    "ollama": (OllamaDriver, {"endpoint": "ollama_endpoint"}, "ollama_model"),
+    "lmstudio": (
+        LMStudioDriver,
+        {"endpoint": "lmstudio_endpoint", "api_key": "lmstudio_api_key"},
+        "lmstudio_model",
+    ),
+    "lm_studio": (
+        LMStudioDriver,
+        {"endpoint": "lmstudio_endpoint", "api_key": "lmstudio_api_key"},
+        "lmstudio_model",
+    ),
+    "lm-studio": (
+        LMStudioDriver,
+        {"endpoint": "lmstudio_endpoint", "api_key": "lmstudio_api_key"},
+        "lmstudio_model",
+    ),
+    "azure": (
+        AzureDriver,
+        {"api_key": "azure_api_key", "endpoint": "azure_api_endpoint", "deployment_id": "azure_deployment_id"},
+        "gpt-4o-mini",
+    ),
+    "huggingface": (HuggingFaceDriver, {"endpoint": "hf_endpoint", "token": "hf_token"}, "bert-base-uncased"),  # nosec B105
+    "hf": (HuggingFaceDriver, {"endpoint": "hf_endpoint", "token": "hf_token"}, "bert-base-uncased"),  # nosec B105
+}
+
+
+def _build_driver_with_env(
+    provider: str,
+    model_id: str | None,
+    env: ProviderEnvironment,
+) -> object:
+    """Construct a sync driver using *env* for credential resolution."""
+    info = PROVIDER_DRIVER_MAP.get(provider)
+    if info is None:
+        # Provider not in the direct map — fall back to registry (global settings)
+        factory = get_driver_factory(provider)
+        return factory(model_id)
+
+    driver_cls, kwarg_map, default_model = info
+    kwargs: dict[str, object] = {}
+    for ctor_kwarg, attr_name in kwarg_map.items():
+        kwargs[ctor_kwarg] = env.resolve(attr_name)
+
+    if model_id:
+        kwargs["model"] = model_id
+    elif default_model:
+        # If default_model is a settings attr name, resolve it; otherwise use as literal
+        kwargs["model"] = getattr(settings, default_model, default_model)
+
+    return driver_cls(**kwargs)
+
+
+def get_driver(provider_name: str | None = None, *, env: ProviderEnvironment | None = None):
     """
     Factory to get a driver instance based on the provider name (legacy style).
     Uses default model from settings if not overridden.
+
+    Args:
+        provider_name: Provider name (e.g. "openai"). Defaults to ``settings.ai_provider``.
+        env: Optional per-consumer environment for isolated API keys.
+            When ``None``, uses the global settings singleton (current behavior).
     """
     provider = (provider_name or settings.ai_provider or "ollama").strip().lower()
+    if env is not None:
+        return _build_driver_with_env(provider, None, env)
     factory = get_driver_factory(provider)
     return factory()  # use default model from settings
 
 
-def get_driver_for_model(model_str: str):
+def get_driver_for_model(model_str: str, *, env: ProviderEnvironment | None = None):
     """
     Factory to get a driver instance based on a full model string.
     Format: provider/model_id
@@ -335,6 +422,8 @@ def get_driver_for_model(model_str: str):
         model_str: Model identifier string. Can be either:
                    - Full format: "provider/model" (e.g. "openai/gpt-4")
                    - Provider only: "provider" (e.g. "openai")
+        env: Optional per-consumer environment for isolated API keys.
+            When ``None``, uses the global settings singleton (current behavior).
 
     Returns:
         A configured driver instance for the specified provider/model.
@@ -352,6 +441,9 @@ def get_driver_for_model(model_str: str):
     parts = model_str.split("/", 1)
     provider = parts[0].lower()
     model_id = parts[1] if len(parts) > 1 else None
+
+    if env is not None:
+        return _build_driver_with_env(provider, model_id, env)
 
     # Get factory (validates provider exists)
     factory = get_driver_factory(provider)

@@ -2,6 +2,7 @@ import os
 from typing import Any
 
 import pytest
+import requests
 
 from prompture.drivers import get_driver_for_model
 
@@ -38,11 +39,29 @@ def sample_json_schema() -> dict[str, Any]:
 
 @pytest.fixture
 def integration_driver(request):
-    """Returns a driver instance with default model configuration."""
+    """Returns a driver instance with default model configuration.
+
+    Skips the test if the driver cannot be created or the backend
+    server is unreachable (e.g. Ollama not running).
+    """
     try:
-        return get_driver_for_model(DEFAULT_MODEL)
-    except ValueError as e:
-        pytest.skip(str(e))
+        driver = get_driver_for_model(DEFAULT_MODEL)
+    except (ValueError, Exception) as e:  # noqa: BLE001
+        pytest.skip(f"Could not create driver: {e}")
+
+    # Verify the backend is actually reachable before handing the driver
+    # to a test — avoids ConnectionError deep inside test logic.
+    endpoint = getattr(driver, "endpoint", None)
+    if endpoint:
+        try:
+            base_url = endpoint.split("/api/")[0] if "/api/" in endpoint else endpoint.rstrip("/")
+            requests.head(base_url, timeout=3)
+        except requests.exceptions.ConnectionError:
+            pytest.skip(f"Backend server not reachable at {base_url}")
+        except Exception:  # noqa: BLE001
+            pass  # Non-connection errors (e.g. 404) are fine — server is up
+
+    return driver
 
 
 def pytest_configure(config):

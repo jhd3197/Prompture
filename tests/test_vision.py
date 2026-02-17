@@ -9,6 +9,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from prompture.drivers.base import Driver
 from prompture.media.image import (
     ImageContent,
     image_from_base64,
@@ -338,25 +339,26 @@ class TestFlattenWithImages:
 # ---------------------------------------------------------------------------
 
 
+class _MinimalDriver(Driver):
+    """Concrete subclass of Driver for testing base class behavior."""
+
+    def generate(self, prompt, options):
+        return {"text": "", "meta": {}}
+
+
 class TestNonVisionDriverRaises:
     def test_check_raises_on_image_input(self):
-        from prompture.drivers.base import Driver
-
-        d = Driver()
+        d = _MinimalDriver()
         assert d.supports_vision is False
         with pytest.raises(NotImplementedError, match="does not support vision"):
             d._check_vision_support(_universal_msgs())
 
     def test_check_passes_for_text_only(self):
-        from prompture.drivers.base import Driver
-
-        d = Driver()
+        d = _MinimalDriver()
         d._check_vision_support([{"role": "user", "content": "hello"}])
 
     def test_prepare_messages_raises_on_non_vision_driver(self):
-        from prompture.drivers.base import Driver
-
-        d = Driver()
+        d = _MinimalDriver()
         with pytest.raises(NotImplementedError, match="does not support vision"):
             d._prepare_messages(_universal_msgs())
 

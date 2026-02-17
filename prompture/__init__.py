@@ -5,6 +5,14 @@ from dotenv import load_dotenv
 from .agents import *
 from .cli import *
 from .drivers import *
+from .exceptions import (
+    BudgetExceededError,
+    ConfigurationError,
+    DriverError,
+    ExtractionError,
+    PromptureError,
+    ValidationError,
+)
 from .extraction import *
 from .groups import *
 from .infra import *

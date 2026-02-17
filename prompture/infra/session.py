@@ -23,6 +23,7 @@ Usage::
 from __future__ import annotations
 
 import logging
+import threading
 import warnings
 from dataclasses import dataclass, field
 from typing import Any
@@ -43,6 +44,7 @@ class UsageSession:
     total_elapsed_ms: float = 0.0
     _elapsed_samples: list[float] = field(default_factory=list, repr=False)
     _per_model: dict[str, dict[str, Any]] = field(default_factory=dict, repr=False)
+    _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
     @property
     def total_cost(self) -> float:
@@ -84,49 +86,50 @@ class UsageSession:
         tt = meta.get("total_tokens", 0)
         cost = meta.get("cost", 0.0)
 
-        self.prompt_tokens += pt
-        self.completion_tokens += ct
-        self.total_tokens += tt
-        self.cost += cost
-        self.call_count += 1
+        with self._lock:
+            self.prompt_tokens += pt
+            self.completion_tokens += ct
+            self.total_tokens += tt
+            self.cost += cost
+            self.call_count += 1
 
-        model = response_info.get("driver", "unknown")
-        logger.debug(
-            "[session] record driver=%s delta_tokens=%d delta_cost=%.6f | session total_tokens=%d cost=%.6f calls=%d",
-            model,
-            tt,
-            cost,
-            self.total_tokens,
-            self.cost,
-            self.call_count,
-        )
+            model = response_info.get("driver", "unknown")
+            logger.debug(
+                "[session] record driver=%s delta_tokens=%d delta_cost=%.6f | session total_tokens=%d cost=%.6f calls=%d",
+                model,
+                tt,
+                cost,
+                self.total_tokens,
+                self.cost,
+                self.call_count,
+            )
 
-        # Capture timing
-        elapsed_ms = response_info.get("elapsed_ms", 0.0)
-        if elapsed_ms > 0:
-            self.total_elapsed_ms += elapsed_ms
-            self._elapsed_samples.append(elapsed_ms)
+            # Capture timing
+            elapsed_ms = response_info.get("elapsed_ms", 0.0)
+            if elapsed_ms > 0:
+                self.total_elapsed_ms += elapsed_ms
+                self._elapsed_samples.append(elapsed_ms)
 
-        bucket = self._per_model.setdefault(
-            model,
-            {
-                "prompt_tokens": 0,
-                "completion_tokens": 0,
-                "total_tokens": 0,
-                "cost": 0.0,
-                "calls": 0,
-                "elapsed_ms": 0.0,
-                "elapsed_samples": [],
-            },
-        )
-        bucket["prompt_tokens"] += pt
-        bucket["completion_tokens"] += ct
-        bucket["total_tokens"] += tt
-        bucket["cost"] += cost
-        bucket["calls"] += 1
-        if elapsed_ms > 0:
-            bucket["elapsed_ms"] += elapsed_ms
-            bucket["elapsed_samples"].append(elapsed_ms)
+            bucket = self._per_model.setdefault(
+                model,
+                {
+                    "prompt_tokens": 0,
+                    "completion_tokens": 0,
+                    "total_tokens": 0,
+                    "cost": 0.0,
+                    "calls": 0,
+                    "elapsed_ms": 0.0,
+                    "elapsed_samples": [],
+                },
+            )
+            bucket["prompt_tokens"] += pt
+            bucket["completion_tokens"] += ct
+            bucket["total_tokens"] += tt
+            bucket["cost"] += cost
+            bucket["calls"] += 1
+            if elapsed_ms > 0:
+                bucket["elapsed_ms"] += elapsed_ms
+                bucket["elapsed_samples"].append(elapsed_ms)
 
     def record_error(self, error_info: dict[str, Any]) -> None:
         """Record a driver error.
@@ -134,7 +137,8 @@ class UsageSession:
         Compatible as an ``on_error`` callback for
         :class:`~prompture.callbacks.DriverCallbacks`.
         """
-        self.errors += 1
+        with self._lock:
+            self.errors += 1
 
     # ------------------------------------------------------------------ #
     # Computed timing properties
@@ -196,12 +200,13 @@ class UsageSession:
 
     def reset(self) -> None:
         """Clear all accumulated counters."""
-        self.prompt_tokens = 0
-        self.completion_tokens = 0
-        self.total_tokens = 0
-        self.cost = 0.0
-        self.call_count = 0
-        self.errors = 0
-        self.total_elapsed_ms = 0.0
-        self._elapsed_samples.clear()
-        self._per_model.clear()
+        with self._lock:
+            self.prompt_tokens = 0
+            self.completion_tokens = 0
+            self.total_tokens = 0
+            self.cost = 0.0
+            self.call_count = 0
+            self.errors = 0
+            self.total_elapsed_ms = 0.0
+            self._elapsed_samples.clear()
+            self._per_model.clear()

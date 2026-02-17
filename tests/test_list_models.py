@@ -447,9 +447,10 @@ class TestDiscoveryUsesListModels:
         return_value=["gpt-4o", "gpt-4o-mini", "o1-preview"],
     )
     def test_api_models_included(self, mock_list):
-        from prompture.infra.discovery import get_available_models
+        from prompture.infra.discovery import clear_discovery_cache, get_available_models
 
-        models = get_available_models()
+        clear_discovery_cache()
+        models = get_available_models(force_refresh=True)
         # API-discovered models should be present
         assert "openai/o1-preview" in models
 

@@ -76,6 +76,9 @@ class MockToolDriver(Driver):
         self._responses = list(responses)
         self._call_idx = 0
 
+    def generate(self, prompt, options):
+        return self._get_next()
+
     def generate_messages(self, messages, options):
         return self._get_next()
 
@@ -405,6 +408,9 @@ class TestAgentState:
 
         class FailDriver(Driver):
             supports_messages = True
+
+            def generate(self, prompt, options):
+                raise RuntimeError("boom")
 
             def generate_messages(self, messages, options):
                 raise RuntimeError("boom")
@@ -1124,6 +1130,9 @@ class MockAsyncToolDriver(AsyncDriver):
     def __init__(self, responses: list[dict[str, Any]]):
         self._responses = list(responses)
         self._call_idx = 0
+
+    async def generate(self, prompt, options):
+        return self._get_next()
 
     async def generate_messages(self, messages, options):
         return self._get_next()
@@ -2082,6 +2091,9 @@ class MockStreamDriver(Driver):
     def __init__(self):
         self.model = "mock-stream-model"
 
+    def generate(self, prompt, options):
+        return self.generate_messages([], options)
+
     def generate_messages(self, messages, options):
         return {
             "text": "fallback response",
@@ -2106,6 +2118,9 @@ class MockAsyncStreamDriver(AsyncDriver):
 
     def __init__(self):
         self.model = "mock-async-stream-model"
+
+    async def generate(self, prompt, options):
+        return await self.generate_messages([], options)
 
     async def generate_messages(self, messages, options):
         return {

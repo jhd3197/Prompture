@@ -12,7 +12,10 @@ from typing import TYPE_CHECKING, Any, Literal, Union
 if TYPE_CHECKING:
     from ..pipeline.routing import RoutingConfig
 
-import requests
+try:
+    import requests
+except ImportError:
+    requests = None  # type: ignore[assignment]
 
 try:
     import toon
@@ -430,9 +433,13 @@ def ask_for_json(
 
                 return result
             except json.JSONDecodeError:
-                raise e from None
+                from ..exceptions import ExtractionError
+
+                raise ExtractionError(f"Failed to parse LLM output as JSON: {e}") from e
         else:
-            raise e
+            from ..exceptions import ExtractionError
+
+            raise ExtractionError(f"Failed to parse LLM output as JSON: {e}") from e
 
 
 def extract_and_jsonify(
@@ -924,14 +931,24 @@ def extract_with_model(
     logger.debug("[extract] Generated JSON schema")
 
     last_error: Exception | None = None
+    validation_feedback: str | None = None
 
     for attempt in range(max(1, max_retries)):
         try:
+            # Build instruction template with validation feedback from prior attempt
+            effective_instruction = instruction_template
+            if validation_feedback is not None and max_retries >= 2:
+                effective_instruction = (
+                    f"{instruction_template}\n\n"
+                    f"Previous attempt failed validation: {validation_feedback}. "
+                    "Please fix these issues."
+                )
+
             result = extract_and_jsonify(
                 text=actual_text,
                 json_schema=schema,
                 model_name=actual_model,
-                instruction_template=instruction_template,
+                instruction_template=effective_instruction,
                 ai_cleanup=ai_cleanup,
                 output_format=output_format,
                 options=options,
@@ -1002,6 +1019,9 @@ def extract_with_model(
 
         except Exception as exc:
             last_error = exc
+            # Capture Pydantic validation errors to feed back on next attempt
+            if hasattr(exc, "errors") and callable(getattr(exc, "errors", None)):
+                validation_feedback = str(exc)
             if attempt < max(1, max_retries) - 1:
                 logger.debug("[extract] Attempt %d failed: %s, retrying...", attempt + 1, exc)
                 continue

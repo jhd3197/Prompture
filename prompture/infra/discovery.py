@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import hashlib
 import logging
 import os
 from typing import Any, overload
@@ -32,6 +33,7 @@ from ..drivers import (
     ZaiDriver,
 )
 from .cache import MemoryCacheBackend
+from .provider_env import ProviderEnvironment
 from .settings import settings
 
 logger = logging.getLogger(__name__)
@@ -44,35 +46,54 @@ _DISCOVERY_CACHE_TTL = 300  # 5 minutes
 _discovery_cache = MemoryCacheBackend(maxsize=32)
 
 
-def _get_list_models_kwargs(provider: str) -> dict[str, Any]:
+def _cfg_value(
+    env: ProviderEnvironment | None,
+    attr: str,
+    env_var: str | None = None,
+) -> str | None:
+    """Resolve a config value: env → settings → os.getenv.
+
+    When *env* is provided, checks ``env.<attr>`` first, then ``settings.<attr>``.
+    When *env* is ``None``, checks ``settings.<attr>`` then ``os.getenv(env_var)``.
+    """
+    if env is not None:
+        return env.resolve(attr)
+    return getattr(settings, attr, None) or (os.getenv(env_var) if env_var else None)
+
+
+def _get_list_models_kwargs(
+    provider: str,
+    env: ProviderEnvironment | None = None,
+) -> dict[str, Any]:
     """Return keyword arguments for ``driver_cls.list_models()`` based on provider config."""
     kw: dict[str, Any] = {}
     if provider == "openai":
-        kw["api_key"] = settings.openai_api_key or os.getenv("OPENAI_API_KEY")
+        kw["api_key"] = _cfg_value(env, "openai_api_key", "OPENAI_API_KEY")
     elif provider == "claude":
-        kw["api_key"] = settings.claude_api_key or os.getenv("CLAUDE_API_KEY")
+        kw["api_key"] = _cfg_value(env, "claude_api_key", "CLAUDE_API_KEY")
     elif provider == "google":
-        kw["api_key"] = settings.google_api_key or os.getenv("GOOGLE_API_KEY")
+        kw["api_key"] = _cfg_value(env, "google_api_key", "GOOGLE_API_KEY")
     elif provider == "groq":
-        kw["api_key"] = settings.groq_api_key or os.getenv("GROQ_API_KEY")
+        kw["api_key"] = _cfg_value(env, "groq_api_key", "GROQ_API_KEY")
     elif provider == "grok":
-        kw["api_key"] = settings.grok_api_key or os.getenv("GROK_API_KEY")
+        kw["api_key"] = _cfg_value(env, "grok_api_key", "GROK_API_KEY")
     elif provider == "openrouter":
-        kw["api_key"] = settings.openrouter_api_key or os.getenv("OPENROUTER_API_KEY")
+        kw["api_key"] = _cfg_value(env, "openrouter_api_key", "OPENROUTER_API_KEY")
     elif provider == "moonshot":
-        kw["api_key"] = settings.moonshot_api_key or os.getenv("MOONSHOT_API_KEY")
-        kw["endpoint"] = settings.moonshot_endpoint or os.getenv("MOONSHOT_ENDPOINT")
+        kw["api_key"] = _cfg_value(env, "moonshot_api_key", "MOONSHOT_API_KEY")
+        kw["endpoint"] = _cfg_value(env, "moonshot_endpoint", "MOONSHOT_ENDPOINT")
     elif provider == "ollama":
-        kw["endpoint"] = settings.ollama_endpoint or os.getenv("OLLAMA_ENDPOINT")
+        kw["endpoint"] = _cfg_value(env, "ollama_endpoint", "OLLAMA_ENDPOINT")
     elif provider == "lmstudio":
-        kw["endpoint"] = settings.lmstudio_endpoint or os.getenv("LMSTUDIO_ENDPOINT")
-        kw["api_key"] = settings.lmstudio_api_key or os.getenv("LMSTUDIO_API_KEY")
+        kw["endpoint"] = _cfg_value(env, "lmstudio_endpoint", "LMSTUDIO_ENDPOINT")
+        kw["api_key"] = _cfg_value(env, "lmstudio_api_key", "LMSTUDIO_API_KEY")
     return kw
 
 
 @overload
 def get_available_models(
     *,
+    env: ProviderEnvironment | None = None,
     include_capabilities: bool = False,
     verified_only: bool = False,
     force_refresh: bool = False,
@@ -83,6 +104,7 @@ def get_available_models(
 @overload
 def get_available_models(
     *,
+    env: ProviderEnvironment | None = None,
     include_capabilities: bool = True,
     verified_only: bool = False,
     force_refresh: bool = False,
@@ -92,6 +114,7 @@ def get_available_models(
 
 def get_available_models(
     *,
+    env: ProviderEnvironment | None = None,
     include_capabilities: bool = False,
     verified_only: bool = False,
     force_refresh: bool = False,
@@ -108,6 +131,8 @@ def get_available_models(
     provider queries on repeated calls.
 
     Args:
+        env: Optional per-consumer environment for isolated API keys.
+            When ``None``, uses the global settings singleton (current behavior).
         include_capabilities: When ``True``, return enriched dicts with
             ``model``, ``provider``, ``model_id``, and ``capabilities``
             fields instead of plain ``"provider/model_id"`` strings.
@@ -122,7 +147,14 @@ def get_available_models(
         A sorted list of unique model strings (default) or enriched dicts.
     """
     ttl = cache_ttl if cache_ttl is not None else _DISCOVERY_CACHE_TTL
-    cache_key = f"models:{include_capabilities}:{verified_only}"
+
+    # Build cache key — include a hash of env-provided fields to avoid cross-bot pollution
+    if env is not None:
+        env_sig = tuple(sorted(k for k, v in vars(env).items() if v is not None))
+        env_hash = hashlib.md5(str(env_sig).encode(), usedforsecurity=False).hexdigest()[:8]
+        cache_key = f"models:{include_capabilities}:{verified_only}:env={env_hash}"
+    else:
+        cache_key = f"models:{include_capabilities}:{verified_only}"
 
     if not force_refresh:
         cached = _discovery_cache.get(cache_key)
@@ -157,15 +189,15 @@ def get_available_models(
             is_configured = False
 
             if provider == "openai":
-                if settings.openai_api_key or os.getenv("OPENAI_API_KEY"):
+                if _cfg_value(env, "openai_api_key", "OPENAI_API_KEY"):
                     is_configured = True
             elif provider == "azure":
                 from ..drivers.azure_config import has_azure_config_resolver, has_registered_configs
 
                 if (
                     (
-                        (settings.azure_api_key or os.getenv("AZURE_API_KEY"))
-                        and (settings.azure_api_endpoint or os.getenv("AZURE_API_ENDPOINT"))
+                        _cfg_value(env, "azure_api_key", "AZURE_API_KEY")
+                        and _cfg_value(env, "azure_api_endpoint", "AZURE_API_ENDPOINT")
                     )
                     or (settings.azure_claude_api_key or os.getenv("AZURE_CLAUDE_API_KEY"))
                     or (settings.azure_mistral_api_key or os.getenv("AZURE_MISTRAL_API_KEY"))
@@ -174,28 +206,28 @@ def get_available_models(
                 ):
                     is_configured = True
             elif provider == "claude":
-                if settings.claude_api_key or os.getenv("CLAUDE_API_KEY"):
+                if _cfg_value(env, "claude_api_key", "CLAUDE_API_KEY"):
                     is_configured = True
             elif provider == "google":
-                if settings.google_api_key or os.getenv("GOOGLE_API_KEY"):
+                if _cfg_value(env, "google_api_key", "GOOGLE_API_KEY"):
                     is_configured = True
             elif provider == "groq":
-                if settings.groq_api_key or os.getenv("GROQ_API_KEY"):
+                if _cfg_value(env, "groq_api_key", "GROQ_API_KEY"):
                     is_configured = True
             elif provider == "openrouter":
-                if settings.openrouter_api_key or os.getenv("OPENROUTER_API_KEY"):
+                if _cfg_value(env, "openrouter_api_key", "OPENROUTER_API_KEY"):
                     is_configured = True
             elif provider == "grok":
-                if settings.grok_api_key or os.getenv("GROK_API_KEY"):
+                if _cfg_value(env, "grok_api_key", "GROK_API_KEY"):
                     is_configured = True
             elif provider == "moonshot":
-                if settings.moonshot_api_key or os.getenv("MOONSHOT_API_KEY"):
+                if _cfg_value(env, "moonshot_api_key", "MOONSHOT_API_KEY"):
                     is_configured = True
             elif provider == "zai":
-                if settings.zhipu_api_key or os.getenv("ZHIPU_API_KEY"):
+                if _cfg_value(env, "zhipu_api_key", "ZHIPU_API_KEY"):
                     is_configured = True
             elif provider == "modelscope":
-                if settings.modelscope_api_key or os.getenv("MODELSCOPE_API_KEY"):
+                if _cfg_value(env, "modelscope_api_key", "MODELSCOPE_API_KEY"):
                     is_configured = True
             elif provider == "airllm":
                 # AirLLM runs locally, always considered configured
@@ -221,7 +253,7 @@ def get_available_models(
                     available_models.add(f"{provider}/{model_id}")
 
             # API-based Detection: call driver's list_models() classmethod
-            api_kwargs = _get_list_models_kwargs(provider)
+            api_kwargs = _get_list_models_kwargs(provider, env=env)
             try:
                 api_models = driver_cls.list_models(**api_kwargs)
                 if api_models is not None:
@@ -324,6 +356,7 @@ def clear_discovery_cache() -> None:
 
 def get_available_audio_models(
     *,
+    env: ProviderEnvironment | None = None,
     modality: str | None = None,
 ) -> list[str]:
     """Auto-detect available audio models (STT and TTS) based on configured API keys.
@@ -331,6 +364,8 @@ def get_available_audio_models(
     Checks which audio providers are configured and returns their supported models.
 
     Args:
+        env: Optional per-consumer environment for isolated API keys.
+            When ``None``, uses the global settings singleton (current behavior).
         modality: Filter by ``"stt"`` or ``"tts"``. Returns both when ``None``.
 
     Returns:
@@ -339,7 +374,7 @@ def get_available_audio_models(
     available: set[str] = set()
 
     # OpenAI audio models (requires same openai_api_key as LLM)
-    if settings.openai_api_key or os.getenv("OPENAI_API_KEY"):
+    if _cfg_value(env, "openai_api_key", "OPENAI_API_KEY"):
         if modality is None or modality == "stt":
             for model_id in OpenAISTTDriver.AUDIO_PRICING:
                 available.add(f"openai/{model_id}")
@@ -348,7 +383,7 @@ def get_available_audio_models(
                 available.add(f"openai/{model_id}")
 
     # ElevenLabs audio models
-    elevenlabs_key = getattr(settings, "elevenlabs_api_key", None) or os.getenv("ELEVENLABS_API_KEY")
+    elevenlabs_key = _cfg_value(env, "elevenlabs_api_key", "ELEVENLABS_API_KEY")
     elevenlabs_endpoint = (
         getattr(settings, "elevenlabs_endpoint", None) or "https://api.elevenlabs.io/v1"
     )
@@ -377,10 +412,17 @@ def get_available_audio_models(
     return sorted(available)
 
 
-def get_available_image_gen_models() -> list[str]:
+def get_available_image_gen_models(
+    *,
+    env: ProviderEnvironment | None = None,
+) -> list[str]:
     """Auto-detect available image generation models based on configured API keys.
 
     Checks which image gen providers are configured and returns their supported models.
+
+    Args:
+        env: Optional per-consumer environment for isolated API keys.
+            When ``None``, uses the global settings singleton (current behavior).
 
     Returns:
         A sorted list of unique model strings (e.g. ``"openai/dall-e-3"``).
@@ -388,23 +430,23 @@ def get_available_image_gen_models() -> list[str]:
     available: set[str] = set()
 
     # OpenAI image gen models (requires openai_api_key)
-    if settings.openai_api_key or os.getenv("OPENAI_API_KEY"):
+    if _cfg_value(env, "openai_api_key", "OPENAI_API_KEY"):
         for model_id in OpenAIImageGenDriver.IMAGE_PRICING:
             available.add(f"openai/{model_id}")
 
     # Google image gen models (requires google_api_key)
-    if settings.google_api_key or os.getenv("GOOGLE_API_KEY"):
+    if _cfg_value(env, "google_api_key", "GOOGLE_API_KEY"):
         for model_id in GoogleImageGenDriver.IMAGE_PRICING:
             available.add(f"google/{model_id}")
 
     # Stability AI image gen models
-    stability_key = getattr(settings, "stability_api_key", None) or os.getenv("STABILITY_API_KEY")
+    stability_key = _cfg_value(env, "stability_api_key", "STABILITY_API_KEY")
     if stability_key:
         for model_id in StabilityImageGenDriver.IMAGE_PRICING:
             available.add(f"stability/{model_id}")
 
     # Grok/xAI image gen models (requires grok_api_key)
-    if settings.grok_api_key or os.getenv("GROK_API_KEY"):
+    if _cfg_value(env, "grok_api_key", "GROK_API_KEY"):
         for model_id in GrokImageGenDriver.IMAGE_PRICING:
             available.add(f"grok/{model_id}")
 

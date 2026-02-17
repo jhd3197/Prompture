@@ -26,6 +26,7 @@ from .model_rates import (
     get_model_rates,
     refresh_rates_cache,
 )
+from .provider_env import ProviderEnvironment
 from .session import UsageSession
 from .settings import settings
 from .tracker import configure_tracker, get_tracker
@@ -38,6 +39,7 @@ __all__ = [
     "MemoryCacheBackend",
     "ModelCapabilities",
     "ModelUsageLedger",
+    "ProviderEnvironment",
     "RedisCacheBackend",
     "ResponseCache",
     "SQLiteCacheBackend",

@@ -13,6 +13,7 @@ Entry Point Discovery:
 
 from __future__ import annotations
 
+from ..infra.provider_env import ProviderEnvironment
 from ..infra.settings import settings
 from .async_airllm_driver import AsyncAirLLMDriver
 from .async_azure_driver import AsyncAzureDriver
@@ -20,6 +21,7 @@ from .async_claude_driver import AsyncClaudeDriver
 from .async_google_driver import AsyncGoogleDriver
 from .async_grok_driver import AsyncGrokDriver
 from .async_groq_driver import AsyncGroqDriver
+from .async_hugging_driver import AsyncHuggingFaceDriver
 from .async_lmstudio_driver import AsyncLMStudioDriver
 from .async_local_http_driver import AsyncLocalHTTPDriver
 from .async_modelscope_driver import AsyncModelScopeDriver
@@ -27,7 +29,6 @@ from .async_moonshot_driver import AsyncMoonshotDriver
 from .async_ollama_driver import AsyncOllamaDriver
 from .async_openai_driver import AsyncOpenAIDriver
 from .async_openrouter_driver import AsyncOpenRouterDriver
-from .async_hugging_driver import AsyncHuggingFaceDriver
 from .async_zai_driver import AsyncZaiDriver
 from .registry import (
     _get_async_registry,
@@ -205,22 +206,110 @@ register_async_driver(
 # Backwards compatibility: expose registry dict
 ASYNC_DRIVER_REGISTRY = _get_async_registry()
 
+# ── Per-environment async driver construction ──────────────────────────────
+# Maps provider name → (AsyncDriverClass, {ctor_kwarg: env/settings_attr}, default_model_attr)
 
-def get_async_driver(provider_name: str | None = None):
+ASYNC_PROVIDER_DRIVER_MAP: dict[str, tuple] = {
+    "openai": (AsyncOpenAIDriver, {"api_key": "openai_api_key"}, "openai_model"),
+    "chatgpt": (AsyncOpenAIDriver, {"api_key": "openai_api_key"}, "openai_model"),
+    "claude": (AsyncClaudeDriver, {"api_key": "claude_api_key"}, "claude_model"),
+    "anthropic": (AsyncClaudeDriver, {"api_key": "claude_api_key"}, "claude_model"),
+    "google": (AsyncGoogleDriver, {"api_key": "google_api_key"}, "google_model"),
+    "gemini": (AsyncGoogleDriver, {"api_key": "google_api_key"}, "google_model"),
+    "groq": (AsyncGroqDriver, {"api_key": "groq_api_key"}, "groq_model"),
+    "grok": (AsyncGrokDriver, {"api_key": "grok_api_key"}, "grok_model"),
+    "xai": (AsyncGrokDriver, {"api_key": "grok_api_key"}, "grok_model"),
+    "openrouter": (AsyncOpenRouterDriver, {"api_key": "openrouter_api_key"}, "openrouter_model"),
+    "moonshot": (
+        AsyncMoonshotDriver,
+        {"api_key": "moonshot_api_key", "endpoint": "moonshot_endpoint"},
+        "moonshot_model",
+    ),
+    "modelscope": (
+        AsyncModelScopeDriver,
+        {"api_key": "modelscope_api_key", "endpoint": "modelscope_endpoint"},
+        "modelscope_model",
+    ),
+    "zai": (AsyncZaiDriver, {"api_key": "zhipu_api_key", "endpoint": "zhipu_endpoint"}, "zhipu_model"),
+    "zhipu": (AsyncZaiDriver, {"api_key": "zhipu_api_key", "endpoint": "zhipu_endpoint"}, "zhipu_model"),
+    "ollama": (AsyncOllamaDriver, {"endpoint": "ollama_endpoint"}, "ollama_model"),
+    "lmstudio": (
+        AsyncLMStudioDriver,
+        {"endpoint": "lmstudio_endpoint", "api_key": "lmstudio_api_key"},
+        "lmstudio_model",
+    ),
+    "lm_studio": (
+        AsyncLMStudioDriver,
+        {"endpoint": "lmstudio_endpoint", "api_key": "lmstudio_api_key"},
+        "lmstudio_model",
+    ),
+    "lm-studio": (
+        AsyncLMStudioDriver,
+        {"endpoint": "lmstudio_endpoint", "api_key": "lmstudio_api_key"},
+        "lmstudio_model",
+    ),
+    "azure": (
+        AsyncAzureDriver,
+        {"api_key": "azure_api_key", "endpoint": "azure_api_endpoint", "deployment_id": "azure_deployment_id"},
+        "gpt-4o-mini",
+    ),
+    "huggingface": (AsyncHuggingFaceDriver, {"endpoint": "hf_endpoint", "token": "hf_token"}, "bert-base-uncased"),  # nosec B105
+    "hf": (AsyncHuggingFaceDriver, {"endpoint": "hf_endpoint", "token": "hf_token"}, "bert-base-uncased"),  # nosec B105
+}
+
+
+def _build_async_driver_with_env(
+    provider: str,
+    model_id: str | None,
+    env: ProviderEnvironment,
+) -> object:
+    """Construct an async driver using *env* for credential resolution."""
+    info = ASYNC_PROVIDER_DRIVER_MAP.get(provider)
+    if info is None:
+        # Provider not in the direct map — fall back to registry (global settings)
+        factory = get_async_driver_factory(provider)
+        return factory(model_id)
+
+    driver_cls, kwarg_map, default_model = info
+    kwargs: dict[str, object] = {}
+    for ctor_kwarg, attr_name in kwarg_map.items():
+        kwargs[ctor_kwarg] = env.resolve(attr_name)
+
+    if model_id:
+        kwargs["model"] = model_id
+    elif default_model:
+        kwargs["model"] = getattr(settings, default_model, default_model)
+
+    return driver_cls(**kwargs)
+
+
+def get_async_driver(provider_name: str | None = None, *, env: ProviderEnvironment | None = None):
     """Factory to get an async driver instance based on the provider name.
 
     Uses default model from settings if not overridden.
+
+    Args:
+        provider_name: Provider name (e.g. "openai"). Defaults to ``settings.ai_provider``.
+        env: Optional per-consumer environment for isolated API keys.
+            When ``None``, uses the global settings singleton (current behavior).
     """
     provider = (provider_name or settings.ai_provider or "ollama").strip().lower()
+    if env is not None:
+        return _build_async_driver_with_env(provider, None, env)
     factory = get_async_driver_factory(provider)
     return factory()
 
 
-def get_async_driver_for_model(model_str: str):
+def get_async_driver_for_model(model_str: str, *, env: ProviderEnvironment | None = None):
     """Factory to get an async driver instance based on a full model string.
 
     Format: ``provider/model_id``
     Example: ``"openai/gpt-4-turbo-preview"``
+
+    Args:
+        model_str: Model identifier string.
+        env: Optional per-consumer environment for isolated API keys.
+            When ``None``, uses the global settings singleton (current behavior).
     """
     if not isinstance(model_str, str):
         raise ValueError(f"Model string must be a string, got {type(model_str)}")
@@ -231,6 +320,9 @@ def get_async_driver_for_model(model_str: str):
     parts = model_str.split("/", 1)
     provider = parts[0].lower()
     model_id = parts[1] if len(parts) > 1 else None
+
+    if env is not None:
+        return _build_async_driver_with_env(provider, model_id, env)
 
     factory = get_async_driver_factory(provider)
     return factory(model_id)

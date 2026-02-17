@@ -62,6 +62,7 @@ class Conversation:
         conversation_id: str | None = None,
         auto_save: str | Path | None = None,
         tags: list[str] | None = None,
+        max_history_messages: int | None = None,
     ) -> None:
         if system_prompt is not None and persona is not None:
             raise ValueError("Cannot provide both 'system_prompt' and 'persona'. Use one or the other.")
@@ -114,6 +115,7 @@ class Conversation:
         self._max_tool_rounds = max_tool_rounds
         self._max_tool_result_length = max_tool_result_length
         self._simulated_tools = simulated_tools
+        self._max_history_messages = max_history_messages
 
         # Full (pre-truncation) tool results keyed by tool_call_id.
         self._full_tool_results: dict[str, str] = {}
@@ -356,6 +358,9 @@ class Conversation:
             self._usage["cost"],
             self._usage["turns"],
         )
+        # Trim history to sliding window (system prompt lives outside _messages)
+        if self._max_history_messages is not None and len(self._messages) > self._max_history_messages:
+            self._messages = self._messages[-self._max_history_messages :]
         self._maybe_auto_save()
 
     def ask(
