@@ -99,6 +99,7 @@ indent-style = "space"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 markers = ["integration: marks tests that use real LLM APIs"]
 addopts = "-v"
 asyncio_mode = "auto"
