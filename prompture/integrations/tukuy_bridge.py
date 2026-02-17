@@ -9,6 +9,7 @@ All tukuy imports are lazy to avoid import-time errors if tukuy is not installed
 
 from __future__ import annotations
 
+import contextvars
 import inspect
 import logging
 from typing import Any, Callable
@@ -16,6 +17,14 @@ from typing import Any, Callable
 from ..agents.tools_schema import ToolDefinition, ToolRegistry
 
 logger = logging.getLogger("prompture.tukuy_bridge")
+
+# ContextVar that holds the tool_call_id for the currently executing tool.
+# Set by AsyncConversation.ask_with_tool_events() before each tool execution
+# so that the tukuy bridge can associate streaming deltas with the correct
+# tool call.
+current_tool_call_id: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "current_tool_call_id", default=None
+)
 
 
 # ------------------------------------------------------------------
@@ -63,9 +72,17 @@ def skill_to_tool_definition(skill_or_fn: Any, *, config: dict[str, Any] | None 
             return result.value
         return f"Error: {result.error}"
 
-    # For async skill functions, attach a dedicated async wrapper that
-    # uses ainvoke() so tukuy's error handling and timing are correct.
-    if inspect.iscoroutinefunction(skill_obj.fn):
+    # For async skill functions (or Instructions, which are always async),
+    # attach a dedicated async wrapper that uses ainvoke().
+    from tukuy.instruction import Instruction as _TukuyInstruction
+
+    _needs_async = (
+        isinstance(skill_obj, _TukuyInstruction)
+        or getattr(desc, "is_async", False)
+        or inspect.iscoroutinefunction(getattr(skill_obj, "fn", None))
+    )
+    if _needs_async:
+        _is_instruction = isinstance(skill_obj, _TukuyInstruction)
 
         async def _async_wrapper(**kwargs: Any) -> Any:
             invoke_kwargs = dict(kwargs)
@@ -74,6 +91,20 @@ def skill_to_tool_definition(skill_or_fn: Any, *, config: dict[str, Any] | None 
 
                 ctx = SkillContext(config=config)
                 invoke_kwargs["context"] = ctx
+
+            # For instructions: wire up on_delta streaming if a sender is
+            # available in the config and ainvoke() accepts the parameter.
+            if _is_instruction and config is not None:
+                delta_sender = config.get("on_instruction_delta")
+                if delta_sender is not None:
+                    tool_id = current_tool_call_id.get()
+                    if tool_id is not None:
+
+                        async def _on_delta(text: str) -> None:
+                            await delta_sender(tool_id, text)
+
+                        invoke_kwargs["on_delta"] = _on_delta
+
             result = await skill_obj.ainvoke(**invoke_kwargs)
             if result.success:
                 return result.value

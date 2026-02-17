@@ -3,6 +3,7 @@
 from dotenv import load_dotenv
 
 from .agents import *
+from .bridges import TukuyLLMBackend, create_tukuy_backend
 from .cli import *
 from .drivers import *
 from .exceptions import (

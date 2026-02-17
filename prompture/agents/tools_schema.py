@@ -414,6 +414,7 @@ class ToolRegistry:
         *,
         name: str | None = None,
         description: str | None = None,
+        config: dict[str, Any] | None = None,
     ) -> ToolDefinition:
         """Register a tukuy ``Skill`` or ``@skill``-decorated function as a tool.
 
@@ -421,13 +422,16 @@ class ToolRegistry:
             skill_or_fn: A tukuy ``Skill`` instance or ``@skill``-decorated function.
             name: Override the tool name.
             description: Override the tool description.
+            config: Optional config dict injected as a ``SkillContext`` into
+                ``invoke()`` / ``ainvoke()`` calls.  Used to provide
+                ``llm_backend`` for instructions.
 
         Returns:
             The registered :class:`ToolDefinition`.
         """
         from ..integrations.tukuy_bridge import skill_to_tool_definition
 
-        td = skill_to_tool_definition(skill_or_fn)
+        td = skill_to_tool_definition(skill_or_fn, config=config)
         if name:
             td = ToolDefinition(name=name, description=td.description, parameters=td.parameters, function=td.function)
         if description:
@@ -435,16 +439,22 @@ class ToolRegistry:
         self._tools[td.name] = td
         return td
 
-    def add_tukuy_skills(self, skills: list[Any]) -> list[ToolDefinition]:
+    def add_tukuy_skills(
+        self,
+        skills: list[Any],
+        *,
+        config: dict[str, Any] | None = None,
+    ) -> list[ToolDefinition]:
         """Register multiple tukuy skills at once.
 
         Args:
             skills: List of tukuy ``Skill`` instances or ``@skill``-decorated functions.
+            config: Optional config dict passed to each skill.
 
         Returns:
             List of registered :class:`ToolDefinition` instances.
         """
-        return [self.add_tukuy_skill(s) for s in skills]
+        return [self.add_tukuy_skill(s, config=config) for s in skills]
 
     # ------------------------------------------------------------------
     # Serialisation
