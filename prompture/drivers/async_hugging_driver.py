@@ -14,7 +14,7 @@ class AsyncHuggingFaceDriver(AsyncDriver):
     MODEL_PRICING = {"default": {"prompt": 0.0, "completion": 0.0}}
 
     def __init__(self, endpoint: str | None = None, token: str | None = None, model: str = "bert-base-uncased"):
-        self.endpoint = endpoint or os.getenv("HF_ENDPOINT")
+        self.endpoint: str = endpoint or os.getenv("HF_ENDPOINT") or ""
         self.token = token or os.getenv("HF_TOKEN")
         self.model = model
 

@@ -14,7 +14,7 @@ class AsyncLocalHTTPDriver(AsyncDriver):
     MODEL_PRICING = {"default": {"prompt": 0.0, "completion": 0.0}}
 
     def __init__(self, endpoint: str | None = None, model: str = "local-model"):
-        self.endpoint = endpoint or os.getenv("LOCAL_HTTP_ENDPOINT", "http://localhost:8000/generate")
+        self.endpoint: str = endpoint or os.getenv("LOCAL_HTTP_ENDPOINT", "http://localhost:8000/generate")  # type: ignore[assignment]
         self.model = model
 
     async def generate(self, prompt: str, options: dict[str, Any]) -> dict[str, Any]:
@@ -29,7 +29,7 @@ class AsyncLocalHTTPDriver(AsyncDriver):
                 raise RuntimeError(f"AsyncLocalHTTPDriver request failed: {e}") from e
 
         if "text" in response_data and "meta" in response_data:
-            return response_data
+            return response_data  # type: ignore[no-any-return]
 
         meta = {
             "prompt_tokens": response_data.get("prompt_tokens", 0),

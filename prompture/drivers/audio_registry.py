@@ -34,7 +34,7 @@ from .registry import (
 
 register_stt_driver(
     "openai",
-    lambda model=None: OpenAISTTDriver(
+    lambda model=None: OpenAISTTDriver(  # type: ignore[misc]
         api_key=settings.openai_api_key,
         model=model or "whisper-1",
     ),
@@ -43,7 +43,7 @@ register_stt_driver(
 
 register_async_stt_driver(
     "openai",
-    lambda model=None: AsyncOpenAISTTDriver(
+    lambda model=None: AsyncOpenAISTTDriver(  # type: ignore[misc]
         api_key=settings.openai_api_key,
         model=model or "whisper-1",
     ),
@@ -52,7 +52,7 @@ register_async_stt_driver(
 
 register_tts_driver(
     "openai",
-    lambda model=None: OpenAITTSDriver(
+    lambda model=None: OpenAITTSDriver(  # type: ignore[misc]
         api_key=settings.openai_api_key,
         model=model or "tts-1",
     ),
@@ -61,7 +61,7 @@ register_tts_driver(
 
 register_async_tts_driver(
     "openai",
-    lambda model=None: AsyncOpenAITTSDriver(
+    lambda model=None: AsyncOpenAITTSDriver(  # type: ignore[misc]
         api_key=settings.openai_api_key,
         model=model or "tts-1",
     ),
@@ -76,7 +76,7 @@ _elevenlabs_tts_model = getattr(settings, "elevenlabs_tts_model", "eleven_multil
 
 register_stt_driver(
     "elevenlabs",
-    lambda model=None: ElevenLabsSTTDriver(
+    lambda model=None: ElevenLabsSTTDriver(  # type: ignore[misc]
         api_key=_elevenlabs_api_key,
         model=model or "scribe_v1",
         endpoint=_elevenlabs_endpoint,
@@ -86,7 +86,7 @@ register_stt_driver(
 
 register_async_stt_driver(
     "elevenlabs",
-    lambda model=None: AsyncElevenLabsSTTDriver(
+    lambda model=None: AsyncElevenLabsSTTDriver(  # type: ignore[misc]
         api_key=_elevenlabs_api_key,
         model=model or "scribe_v1",
         endpoint=_elevenlabs_endpoint,
@@ -96,7 +96,7 @@ register_async_stt_driver(
 
 register_tts_driver(
     "elevenlabs",
-    lambda model=None: ElevenLabsTTSDriver(
+    lambda model=None: ElevenLabsTTSDriver(  # type: ignore[misc]
         api_key=_elevenlabs_api_key,
         model=model or _elevenlabs_tts_model,
         endpoint=_elevenlabs_endpoint,
@@ -106,7 +106,7 @@ register_tts_driver(
 
 register_async_tts_driver(
     "elevenlabs",
-    lambda model=None: AsyncElevenLabsTTSDriver(
+    lambda model=None: AsyncElevenLabsTTSDriver(  # type: ignore[misc]
         api_key=_elevenlabs_api_key,
         model=model or _elevenlabs_tts_model,
         endpoint=_elevenlabs_endpoint,
@@ -118,7 +118,7 @@ register_async_tts_driver(
 # ── Factory functions ─────────────────────────────────────────────────────
 
 
-def get_stt_driver_for_model(model_str: str):
+def get_stt_driver_for_model(model_str: str) -> object:
     """Instantiate a sync STT driver from a ``"provider/model"`` string.
 
     Args:
@@ -134,7 +134,7 @@ def get_stt_driver_for_model(model_str: str):
     return factory(model_id)
 
 
-def get_async_stt_driver_for_model(model_str: str):
+def get_async_stt_driver_for_model(model_str: str) -> object:
     """Instantiate an async STT driver from a ``"provider/model"`` string."""
     parts = model_str.split("/", 1)
     provider = parts[0].lower()
@@ -143,7 +143,7 @@ def get_async_stt_driver_for_model(model_str: str):
     return factory(model_id)
 
 
-def get_tts_driver_for_model(model_str: str):
+def get_tts_driver_for_model(model_str: str) -> object:
     """Instantiate a sync TTS driver from a ``"provider/model"`` string.
 
     Args:
@@ -159,7 +159,7 @@ def get_tts_driver_for_model(model_str: str):
     return factory(model_id)
 
 
-def get_async_tts_driver_for_model(model_str: str):
+def get_async_tts_driver_for_model(model_str: str) -> object:
     """Instantiate an async TTS driver from a ``"provider/model"`` string."""
     parts = model_str.split("/", 1)
     provider = parts[0].lower()

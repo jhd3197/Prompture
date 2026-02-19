@@ -11,7 +11,7 @@ from typing import Any
 try:
     import requests
 except ImportError:
-    requests = None  # type: ignore[assignment]
+    requests = None
 
 from ..infra.callbacks import DriverCallbacks
 
@@ -384,9 +384,7 @@ class Driver(ABC):
         caps = get_model_capabilities(provider, model)
         if caps is None:
             return True  # unknown model — optimistically try
-        if caps.supports_structured_output is False:
-            return False
-        return True
+        return caps.supports_structured_output is not False
 
     @staticmethod
     def _inject_schema_into_messages(

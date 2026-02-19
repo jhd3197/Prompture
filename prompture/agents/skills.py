@@ -21,6 +21,7 @@ import dataclasses
 import logging
 import re
 import threading
+from collections.abc import Iterator
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -73,6 +74,7 @@ class SkillParseError(Exception):
             parts.append(f"Suggestion: {suggestion}")
 
         super().__init__("\n".join(parts))
+
 
 # Regex pattern for YAML frontmatter (--- delimited block at start of file)
 _FRONTMATTER_PATTERN = re.compile(
@@ -428,7 +430,7 @@ def get_skill_registry_snapshot() -> dict[str, SkillInfo]:
 # ------------------------------------------------------------------
 
 
-class _SkillRegistryProxy(dict, collections.abc.MutableMapping):
+class _SkillRegistryProxy(dict[str, SkillInfo], collections.abc.MutableMapping[str, SkillInfo]):
     """Dict-like proxy for the global skill registry.
 
     Allows ``SKILLS["add-persona"]`` style access.
@@ -456,17 +458,17 @@ class _SkillRegistryProxy(dict, collections.abc.MutableMapping):
     def __contains__(self, key: object) -> bool:
         return key in get_skill_names()
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[str]:
         return iter(get_skill_names())
 
-    def keys(self):
+    def keys(self) -> list[str]:  # type: ignore[override]
         return get_skill_names()
 
-    def values(self):
+    def values(self) -> list[SkillInfo]:  # type: ignore[override]
         with _skill_registry_lock:
             return list(_skill_global_registry.values())
 
-    def items(self):
+    def items(self) -> list[tuple[str, SkillInfo]]:  # type: ignore[override]
         with _skill_registry_lock:
             return list(_skill_global_registry.items())
 
@@ -608,21 +610,13 @@ def discover_skills(
     cwd_skills = Path.cwd() / ".claude" / "skills"
     if cwd_skills.exists() and cwd_skills.resolve() not in excluded:
         scanned_dirs.add(cwd_skills)
-        all_skills.extend(
-            load_skills_from_directory(cwd_skills, register=register, source="project")
-        )
+        all_skills.extend(load_skills_from_directory(cwd_skills, register=register, source="project"))
 
     # User-global skills
     home_skills = Path.home() / ".claude" / "skills"
-    if (
-        home_skills.exists()
-        and home_skills.resolve() not in excluded
-        and home_skills not in scanned_dirs
-    ):
+    if home_skills.exists() and home_skills.resolve() not in excluded and home_skills not in scanned_dirs:
         scanned_dirs.add(home_skills)
-        all_skills.extend(
-            load_skills_from_directory(home_skills, register=register, source="user")
-        )
+        all_skills.extend(load_skills_from_directory(home_skills, register=register, source="user"))
 
     # Additional paths
     if additional_paths:
@@ -633,24 +627,14 @@ def discover_skills(
             if path in scanned_dirs:
                 continue
             scanned_dirs.add(path)
-            all_skills.extend(
-                load_skills_from_directory(path, register=register, source="additional")
-            )
+            all_skills.extend(load_skills_from_directory(path, register=register, source="additional"))
 
     # Optional: node_modules
     if scan_node_modules:
         node_skills = Path.cwd() / "node_modules" / ".claude" / "skills"
-        if (
-            node_skills.exists()
-            and node_skills.resolve() not in excluded
-            and node_skills not in scanned_dirs
-        ):
+        if node_skills.exists() and node_skills.resolve() not in excluded and node_skills not in scanned_dirs:
             scanned_dirs.add(node_skills)
-            all_skills.extend(
-                load_skills_from_directory(
-                    node_skills, register=register, source="node_modules"
-                )
-            )
+            all_skills.extend(load_skills_from_directory(node_skills, register=register, source="node_modules"))
 
     logger.info(f"Discovered {len(all_skills)} skills from {len(scanned_dirs)} directories")
     return all_skills

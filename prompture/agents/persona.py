@@ -35,6 +35,7 @@ import json
 import logging
 import threading
 import warnings
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -156,7 +157,9 @@ class Persona:
         return Persona(
             name=f"{self.name}+{other.name}",
             system_prompt=self.system_prompt + "\n\n" + other.system_prompt,
-            description=f"{self.description}; {other.description}" if self.description and other.description else self.description or other.description,
+            description=f"{self.description}; {other.description}"
+            if self.description and other.description
+            else self.description or other.description,
             traits=merged_traits,
             variables=merged_vars,
             constraints=[*self.constraints, *other.constraints],
@@ -335,7 +338,7 @@ def reset_persona_registry() -> None:
 # ------------------------------------------------------------------
 
 
-class _PersonaRegistryProxy(dict, collections.abc.MutableMapping):
+class _PersonaRegistryProxy(dict[str, Persona], collections.abc.MutableMapping[str, Persona]):
     """Dict-like proxy for the global persona registry.
 
     Allows ``PERSONAS["json_extractor"]`` style access.
@@ -363,17 +366,17 @@ class _PersonaRegistryProxy(dict, collections.abc.MutableMapping):
     def __contains__(self, key: object) -> bool:
         return key in get_persona_names()
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[str]:
         return iter(get_persona_names())
 
-    def keys(self):
+    def keys(self) -> list[str]:  # type: ignore[override]
         return get_persona_names()
 
-    def values(self):
+    def values(self) -> list[Persona]:  # type: ignore[override]
         with _persona_registry_lock:
             return list(_persona_global_registry.values())
 
-    def items(self):
+    def items(self) -> list[tuple[str, Persona]]:  # type: ignore[override]
         with _persona_registry_lock:
             return list(_persona_global_registry.items())
 

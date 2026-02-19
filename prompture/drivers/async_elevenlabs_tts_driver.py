@@ -10,7 +10,7 @@ from typing import Any
 try:
     import httpx
 except Exception:
-    httpx = None
+    httpx = None  # type: ignore[assignment]
 
 from ..infra.cost_mixin import AudioCostMixin
 from .async_tts_base import AsyncTTSDriver
@@ -99,9 +99,7 @@ class AsyncElevenLabsTTSDriver(AudioCostMixin, AsyncTTSDriver):
             },
         }
 
-    async def synthesize_stream(
-        self, text: str, options: dict[str, Any]
-    ) -> AsyncIterator[dict[str, Any]]:
+    async def synthesize_stream(self, text: str, options: dict[str, Any]) -> AsyncIterator[dict[str, Any]]:
         """Stream audio chunks from ElevenLabs API (async)."""
         if httpx is None:
             raise RuntimeError("httpx package is not installed")
@@ -137,14 +135,14 @@ class AsyncElevenLabsTTSDriver(AudioCostMixin, AsyncTTSDriver):
             media_type = "audio/wav"
 
         full_audio = b""
-        async with httpx.AsyncClient() as client:
-            async with client.stream(
-                "POST", url, json=body, headers=headers, params=params, timeout=60
-            ) as resp:
-                resp.raise_for_status()
-                async for chunk in resp.aiter_bytes(chunk_size=4096):
-                    full_audio += chunk
-                    yield {"type": "delta", "audio": chunk, "media_type": media_type}
+        async with (
+            httpx.AsyncClient() as client,
+            client.stream("POST", url, json=body, headers=headers, params=params, timeout=60) as resp,
+        ):
+            resp.raise_for_status()
+            async for chunk in resp.aiter_bytes(chunk_size=4096):
+                full_audio += chunk
+                yield {"type": "delta", "audio": chunk, "media_type": media_type}
 
         characters = len(text)
         cost = self._calculate_audio_cost("elevenlabs", model_id, characters=characters)

@@ -10,7 +10,7 @@ from typing import Any
 try:
     from openai import AsyncOpenAI
 except Exception:
-    AsyncOpenAI = None
+    AsyncOpenAI = None  # type: ignore[misc, assignment]
 
 from ..infra.cost_mixin import AudioCostMixin
 from .async_stt_base import AsyncSTTDriver
@@ -30,7 +30,7 @@ class AsyncOpenAISTTDriver(AudioCostMixin, AsyncSTTDriver):
     def __init__(self, api_key: str | None = None, model: str = "whisper-1"):
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
         self.model = model
-        if AsyncOpenAI:
+        if AsyncOpenAI is not None:
             self.client = AsyncOpenAI(api_key=self.api_key)
         else:
             self.client = None
@@ -97,9 +97,7 @@ class AsyncOpenAISTTDriver(AudioCostMixin, AsyncSTTDriver):
         else:
             text = str(resp)
 
-        cost = self._calculate_audio_cost(
-            "openai", model, duration_seconds=duration_seconds
-        )
+        cost = self._calculate_audio_cost("openai", model, duration_seconds=duration_seconds)
 
         return {
             "text": text,

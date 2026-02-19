@@ -13,7 +13,7 @@ import requests
 try:
     import anthropic
 except Exception:
-    anthropic = None
+    anthropic = None  # type: ignore[assignment]
 
 from ..infra.cost_mixin import CostMixin
 from .base import Driver
@@ -147,7 +147,7 @@ class ClaudeDriver(CostMixin, Driver):
                     "description": "Extract structured data matching the schema",
                     "input_schema": json_schema,
                 }
-                resp = client.messages.create(
+                resp = client.messages.create(  # type: ignore[call-overload]
                     **common_kwargs,
                     tools=[tool_def],
                     tool_choice={"type": "tool", "name": "extract_json"},

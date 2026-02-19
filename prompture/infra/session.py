@@ -175,9 +175,7 @@ class UsageSession:
         stats = self.latency_stats
         tps = self.tokens_per_second
 
-        formatted = (
-            f"Session: {self.total_tokens:,} tokens across {self.call_count} call(s) costing ${self.cost:.4f}"
-        )
+        formatted = f"Session: {self.total_tokens:,} tokens across {self.call_count} call(s) costing ${self.cost:.4f}"
         if self.total_elapsed_ms > 0:
             formatted += f" | {tps:.1f} tok/s avg, {stats['avg_ms']:.0f}ms avg latency"
         if self.errors:

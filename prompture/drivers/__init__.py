@@ -136,28 +136,28 @@ from .zai_driver import ZaiDriver
 # Register built-in sync drivers
 register_driver(
     "openai",
-    lambda model=None: OpenAIDriver(api_key=settings.openai_api_key, model=model or settings.openai_model),
+    lambda model=None: OpenAIDriver(api_key=settings.openai_api_key, model=model or settings.openai_model),  # type: ignore[misc]
     overwrite=True,
 )
 register_driver(
     "ollama",
-    lambda model=None: OllamaDriver(endpoint=settings.ollama_endpoint, model=model or settings.ollama_model),
+    lambda model=None: OllamaDriver(endpoint=settings.ollama_endpoint, model=model or settings.ollama_model),  # type: ignore[misc]
     overwrite=True,
 )
 register_driver(
     "claude",
-    lambda model=None: ClaudeDriver(api_key=settings.claude_api_key, model=model or settings.claude_model),
+    lambda model=None: ClaudeDriver(api_key=settings.claude_api_key, model=model or settings.claude_model),  # type: ignore[misc]
     overwrite=True,
 )
 # Alias: "anthropic" maps to the same Claude driver for compatibility
 register_driver(
     "anthropic",
-    lambda model=None: ClaudeDriver(api_key=settings.claude_api_key, model=model or settings.claude_model),
+    lambda model=None: ClaudeDriver(api_key=settings.claude_api_key, model=model or settings.claude_model),  # type: ignore[misc]
     overwrite=True,
 )
 register_driver(
     "lmstudio",
-    lambda model=None: LMStudioDriver(
+    lambda model=None: LMStudioDriver(  # type: ignore[misc]
         endpoint=settings.lmstudio_endpoint,
         model=model or settings.lmstudio_model,
         api_key=settings.lmstudio_api_key,
@@ -166,7 +166,7 @@ register_driver(
 )
 register_driver(
     "azure",
-    lambda model=None: AzureDriver(
+    lambda model=None: AzureDriver(  # type: ignore[misc]
         api_key=settings.azure_api_key,
         endpoint=settings.azure_api_endpoint,
         deployment_id=settings.azure_deployment_id,
@@ -176,32 +176,32 @@ register_driver(
 )
 register_driver(
     "local_http",
-    lambda model=None: LocalHTTPDriver(endpoint=settings.local_http_endpoint, model=model),
+    lambda model=None: LocalHTTPDriver(endpoint=getattr(settings, "local_http_endpoint", None), model=model),  # type: ignore[misc]
     overwrite=True,
 )
 register_driver(
     "google",
-    lambda model=None: GoogleDriver(api_key=settings.google_api_key, model=model or settings.google_model),
+    lambda model=None: GoogleDriver(api_key=settings.google_api_key, model=model or settings.google_model),  # type: ignore[misc]
     overwrite=True,
 )
 register_driver(
     "groq",
-    lambda model=None: GroqDriver(api_key=settings.groq_api_key, model=model or settings.groq_model),
+    lambda model=None: GroqDriver(api_key=settings.groq_api_key, model=model or settings.groq_model),  # type: ignore[misc]
     overwrite=True,
 )
 register_driver(
     "openrouter",
-    lambda model=None: OpenRouterDriver(api_key=settings.openrouter_api_key, model=model or settings.openrouter_model),
+    lambda model=None: OpenRouterDriver(api_key=settings.openrouter_api_key, model=model or settings.openrouter_model),  # type: ignore[misc]
     overwrite=True,
 )
 register_driver(
     "grok",
-    lambda model=None: GrokDriver(api_key=settings.grok_api_key, model=model or settings.grok_model),
+    lambda model=None: GrokDriver(api_key=settings.grok_api_key, model=model or settings.grok_model),  # type: ignore[misc]
     overwrite=True,
 )
 register_driver(
     "moonshot",
-    lambda model=None: MoonshotDriver(
+    lambda model=None: MoonshotDriver(  # type: ignore[misc]
         api_key=settings.moonshot_api_key,
         model=model or settings.moonshot_model,
         endpoint=settings.moonshot_endpoint,
@@ -210,7 +210,7 @@ register_driver(
 )
 register_driver(
     "modelscope",
-    lambda model=None: ModelScopeDriver(
+    lambda model=None: ModelScopeDriver(  # type: ignore[misc]
         api_key=settings.modelscope_api_key,
         model=model or settings.modelscope_model,
         endpoint=settings.modelscope_endpoint,
@@ -219,7 +219,7 @@ register_driver(
 )
 register_driver(
     "zai",
-    lambda model=None: ZaiDriver(
+    lambda model=None: ZaiDriver(  # type: ignore[misc]
         api_key=settings.zhipu_api_key,
         model=model or settings.zhipu_model,
         endpoint=settings.zhipu_endpoint,
@@ -228,7 +228,7 @@ register_driver(
 )
 register_driver(
     "airllm",
-    lambda model=None: AirLLMDriver(
+    lambda model=None: AirLLMDriver(  # type: ignore[misc]
         model=model or settings.airllm_model,
         compression=settings.airllm_compression,
     ),
@@ -236,7 +236,7 @@ register_driver(
 )
 register_driver(
     "huggingface",
-    lambda model=None: HuggingFaceDriver(
+    lambda model=None: HuggingFaceDriver(  # type: ignore[misc]
         endpoint=settings.hf_endpoint,
         token=settings.hf_token,
         model=model or "bert-base-uncased",
@@ -248,22 +248,22 @@ register_driver(
 # Common alternative names so users can write e.g. "gemini/..." or "chatgpt/..."
 register_driver(
     "gemini",
-    lambda model=None: GoogleDriver(api_key=settings.google_api_key, model=model or settings.google_model),
+    lambda model=None: GoogleDriver(api_key=settings.google_api_key, model=model or settings.google_model),  # type: ignore[misc]
     overwrite=True,
 )
 register_driver(
     "chatgpt",
-    lambda model=None: OpenAIDriver(api_key=settings.openai_api_key, model=model or settings.openai_model),
+    lambda model=None: OpenAIDriver(api_key=settings.openai_api_key, model=model or settings.openai_model),  # type: ignore[misc]
     overwrite=True,
 )
 register_driver(
     "xai",
-    lambda model=None: GrokDriver(api_key=settings.grok_api_key, model=model or settings.grok_model),
+    lambda model=None: GrokDriver(api_key=settings.grok_api_key, model=model or settings.grok_model),  # type: ignore[misc]
     overwrite=True,
 )
 register_driver(
     "lm_studio",
-    lambda model=None: LMStudioDriver(
+    lambda model=None: LMStudioDriver(  # type: ignore[misc]
         endpoint=settings.lmstudio_endpoint,
         model=model or settings.lmstudio_model,
         api_key=settings.lmstudio_api_key,
@@ -272,7 +272,7 @@ register_driver(
 )
 register_driver(
     "lm-studio",
-    lambda model=None: LMStudioDriver(
+    lambda model=None: LMStudioDriver(  # type: ignore[misc]
         endpoint=settings.lmstudio_endpoint,
         model=model or settings.lmstudio_model,
         api_key=settings.lmstudio_api_key,
@@ -281,7 +281,7 @@ register_driver(
 )
 register_driver(
     "zhipu",
-    lambda model=None: ZaiDriver(
+    lambda model=None: ZaiDriver(  # type: ignore[misc]
         api_key=settings.zhipu_api_key,
         model=model or settings.zhipu_model,
         endpoint=settings.zhipu_endpoint,
@@ -290,7 +290,7 @@ register_driver(
 )
 register_driver(
     "hf",
-    lambda model=None: HuggingFaceDriver(
+    lambda model=None: HuggingFaceDriver(  # type: ignore[misc]
         endpoint=settings.hf_endpoint,
         token=settings.hf_token,
         model=model or "bert-base-uncased",
@@ -299,7 +299,7 @@ register_driver(
 )
 
 # Trigger audio driver registration
-from .audio_registry import (  # noqa: E402
+from .audio_registry import (
     get_async_stt_driver_for_model,
     get_async_tts_driver_for_model,
     get_stt_driver_for_model,
@@ -307,7 +307,7 @@ from .audio_registry import (  # noqa: E402
 )
 
 # Trigger image gen driver registration
-from .img_gen_registry import (  # noqa: E402
+from .img_gen_registry import (
     get_async_img_gen_driver_for_model,
     get_img_gen_driver_for_model,
 )
@@ -320,7 +320,7 @@ DRIVER_REGISTRY = _get_sync_registry()
 # default_model_attr is either a settings attribute name (e.g. "openai_model") or a
 # literal string (e.g. "gpt-4o-mini").  getattr(settings, x, x) resolves both.
 
-PROVIDER_DRIVER_MAP: dict[str, tuple] = {
+PROVIDER_DRIVER_MAP: dict[str, tuple[type, dict[str, str], str]] = {
     "openai": (OpenAIDriver, {"api_key": "openai_api_key"}, "openai_model"),
     "chatgpt": (OpenAIDriver, {"api_key": "openai_api_key"}, "openai_model"),
     "claude": (ClaudeDriver, {"api_key": "claude_api_key"}, "claude_model"),
@@ -395,7 +395,7 @@ def _build_driver_with_env(
     return driver_cls(**kwargs)
 
 
-def get_driver(provider_name: str | None = None, *, env: ProviderEnvironment | None = None):
+def get_driver(provider_name: str | None = None, *, env: ProviderEnvironment | None = None) -> object:
     """
     Factory to get a driver instance based on the provider name (legacy style).
     Uses default model from settings if not overridden.
@@ -409,10 +409,10 @@ def get_driver(provider_name: str | None = None, *, env: ProviderEnvironment | N
     if env is not None:
         return _build_driver_with_env(provider, None, env)
     factory = get_driver_factory(provider)
-    return factory()  # use default model from settings
+    return factory(None)  # use default model from settings
 
 
-def get_driver_for_model(model_str: str, *, env: ProviderEnvironment | None = None):
+def get_driver_for_model(model_str: str, *, env: ProviderEnvironment | None = None) -> object:
     """
     Factory to get a driver instance based on a full model string.
     Format: provider/model_id

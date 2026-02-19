@@ -11,7 +11,7 @@ from typing import Any
 try:
     from openai import OpenAI
 except Exception:
-    OpenAI = None
+    OpenAI = None  # type: ignore[misc, assignment]
 
 from ..infra.cost_mixin import CostMixin, prepare_strict_schema
 from .base import Driver
@@ -71,7 +71,7 @@ class OpenAIDriver(CostMixin, Driver):
     def __init__(self, api_key: str | None = None, model: str = "gpt-4o-mini"):
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
         self.model = model
-        if OpenAI:
+        if OpenAI is not None:
             self.client = OpenAI(api_key=self.api_key)
         else:
             self.client = None

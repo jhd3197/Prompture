@@ -8,8 +8,8 @@ try:
     from google import genai
     from google.genai import types
 except Exception:
-    genai = None
-    types = None
+    genai = None  # type: ignore[assignment]
+    types = None  # type: ignore[assignment]
 
 from ..infra.cost_mixin import CostMixin
 from .base import Driver
@@ -106,7 +106,7 @@ class GoogleDriver(CostMixin, Driver):
         # Validate connection and model availability
         self._validate_connection()
 
-    def _validate_connection(self):
+    def _validate_connection(self) -> None:
         """Validate connection to Google's API and model availability."""
         try:
             # List models to validate API key and connectivity
@@ -232,6 +232,7 @@ class GoogleDriver(CostMixin, Driver):
                     contents.append({"role": gemini_role, "parts": [content]})
 
         # For a single message, unwrap only if it has exactly one string part
+        gen_input: str | list[dict[str, Any]]
         if len(contents) == 1:
             parts = contents[0]["parts"]
             if len(parts) == 1 and isinstance(parts[0], str):
@@ -359,11 +360,13 @@ class GoogleDriver(CostMixin, Driver):
             tool_calls_out: list[dict[str, Any]] = []
             stop_reason = "stop"
 
-            for candidate in response.candidates:
+            for candidate in response.candidates or []:
+                if candidate.content is None or candidate.content.parts is None:
+                    continue
                 for part in candidate.content.parts:
                     if hasattr(part, "text") and part.text:
                         text += part.text
-                    if hasattr(part, "function_call") and part.function_call.name:
+                    if hasattr(part, "function_call") and part.function_call is not None and part.function_call.name:
                         fc = part.function_call
                         tool_calls_out.append(
                             {

@@ -29,7 +29,7 @@ from __future__ import annotations
 import logging
 import threading
 from dataclasses import dataclass
-from typing import Protocol, Union, runtime_checkable
+from typing import Any, Protocol, Union, runtime_checkable
 
 logger = logging.getLogger("prompture.extraction.reasoning")
 
@@ -206,7 +206,7 @@ def reset_reasoning_strategy_registry() -> None:
 
 def auto_select_reasoning_strategy(
     text: str,
-    schema: dict,
+    schema: dict[str, Any],
 ) -> str | None:
     """Pick the best reasoning strategy (or *None*) based on heuristics.
 
@@ -310,7 +310,7 @@ def _register_builtins() -> None:
     for s in (PLAN_AND_SOLVE, SELF_DISCOVER):
         register_reasoning_strategy(s.name, s, overwrite=True)
     # Register the auto sentinel so list/get work
-    register_reasoning_strategy(AUTO_REASONING.name, AUTO_REASONING, overwrite=True)
+    register_reasoning_strategy(AUTO_REASONING.name, AUTO_REASONING, overwrite=True)  # type: ignore[arg-type]
 
 
 _register_builtins()

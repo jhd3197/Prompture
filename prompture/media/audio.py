@@ -53,12 +53,12 @@ _MIME_FROM_EXT: dict[str, str] = {
 }
 
 _MAGIC_BYTES: list[tuple[bytes, str]] = [
-    (b"\xff\xfb", "audio/mpeg"),        # MP3 frame sync (MPEG1 Layer3)
-    (b"\xff\xf3", "audio/mpeg"),        # MP3 frame sync (MPEG2 Layer3)
-    (b"\xff\xf2", "audio/mpeg"),        # MP3 frame sync (MPEG2.5 Layer3)
-    (b"ID3", "audio/mpeg"),             # MP3 with ID3v2 tag
-    (b"OggS", "audio/ogg"),             # OGG container
-    (b"fLaC", "audio/flac"),            # FLAC
+    (b"\xff\xfb", "audio/mpeg"),  # MP3 frame sync (MPEG1 Layer3)
+    (b"\xff\xf3", "audio/mpeg"),  # MP3 frame sync (MPEG2 Layer3)
+    (b"\xff\xf2", "audio/mpeg"),  # MP3 frame sync (MPEG2.5 Layer3)
+    (b"ID3", "audio/mpeg"),  # MP3 with ID3v2 tag
+    (b"OggS", "audio/ogg"),  # OGG container
+    (b"fLaC", "audio/flac"),  # FLAC
 ]
 
 # WAV and M4A need special handling (multi-offset magic)

@@ -10,10 +10,10 @@ from typing import Any
 try:
     import anthropic
 except Exception:
-    anthropic = None
+    anthropic = None  # type: ignore[assignment]
 
-from .async_base import AsyncDriver
 from ..infra.cost_mixin import CostMixin
+from .async_base import AsyncDriver
 from .claude_driver import ClaudeDriver
 
 
@@ -82,7 +82,7 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
                     "description": "Extract structured data matching the schema",
                     "input_schema": json_schema,
                 }
-                resp = await client.messages.create(
+                resp = await client.messages.create(  # type: ignore[call-overload]
                     **common_kwargs,
                     tools=[tool_def],
                     tool_choice={"type": "tool", "name": "extract_json"},
@@ -130,9 +130,7 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
     # Helpers
     # ------------------------------------------------------------------
 
-    def _extract_system_and_messages(
-        self, messages: list[dict[str, Any]]
-    ) -> tuple[str | None, list[dict[str, Any]]]:
+    def _extract_system_and_messages(self, messages: list[dict[str, Any]]) -> tuple[str | None, list[dict[str, Any]]]:
         """Separate system message from conversation messages for Anthropic API."""
         system_content = None
         api_messages: list[dict[str, Any]] = []
@@ -172,11 +170,13 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
             if "type" in t and t["type"] == "function":
                 # OpenAI format -> Anthropic format
                 fn = t["function"]
-                anthropic_tools.append({
-                    "name": fn["name"],
-                    "description": fn.get("description", ""),
-                    "input_schema": fn.get("parameters", {"type": "object", "properties": {}}),
-                })
+                anthropic_tools.append(
+                    {
+                        "name": fn["name"],
+                        "description": fn.get("description", ""),
+                        "input_schema": fn.get("parameters", {"type": "object", "properties": {}}),
+                    }
+                )
             elif "input_schema" in t:
                 # Already Anthropic format
                 anthropic_tools.append(t)
@@ -215,11 +215,13 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
             if block.type == "text":
                 text += block.text
             elif block.type == "tool_use":
-                tool_calls_out.append({
-                    "id": block.id,
-                    "name": block.name,
-                    "arguments": block.input,
-                })
+                tool_calls_out.append(
+                    {
+                        "id": block.id,
+                        "name": block.name,
+                        "arguments": block.input,
+                    }
+                )
 
         reasoning_content = ClaudeDriver._extract_thinking(resp.content)
 

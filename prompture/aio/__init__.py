@@ -9,19 +9,6 @@ but are ``async def`` and must be ``await``-ed.
 """
 
 from ..agents.async_conversation import AsyncConversation
-from ..extraction.async_core import (
-    ask_for_json,
-    clean_json_text_with_ai,
-    extract_and_jsonify,
-    extract_from_data,
-    extract_from_pandas,
-    extract_with_model,
-    gather_extract,
-    manual_extract_and_jsonify,
-    render_output,
-    stepwise_extract_with_model,
-)
-from ..drivers.async_base import AsyncDriver
 from ..drivers import (
     AsyncAirLLMDriver,
     AsyncAzureDriver,
@@ -37,6 +24,19 @@ from ..drivers import (
     AsyncOpenRouterDriver,
     get_async_driver,
     get_async_driver_for_model,
+)
+from ..drivers.async_base import AsyncDriver
+from ..extraction.async_core import (
+    ask_for_json,
+    clean_json_text_with_ai,
+    extract_and_jsonify,
+    extract_from_data,
+    extract_from_pandas,
+    extract_with_model,
+    gather_extract,
+    manual_extract_and_jsonify,
+    render_output,
+    stepwise_extract_with_model,
 )
 
 __all__ = [

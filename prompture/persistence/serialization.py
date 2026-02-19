@@ -12,33 +12,31 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
-from ..media.image import ImageContent
 from ..infra.session import UsageSession
+from ..media.image import ImageContent
 
 logger = logging.getLogger(__name__)
 
 EXPORT_VERSION = 1
 
-_SENSITIVE_SUBSTRINGS = frozenset({
-    "api_key",
-    "secret",
-    "token",
-    "password",
-    "auth",
-    "credential",
-    "secret_key",
-    "access_key",
-    "private_key",
-})
+_SENSITIVE_SUBSTRINGS = frozenset(
+    {
+        "api_key",
+        "secret",
+        "token",
+        "password",
+        "auth",
+        "credential",
+        "secret_key",
+        "access_key",
+        "private_key",
+    }
+)
 
 
 def _scrub_sensitive(options: dict[str, Any]) -> dict[str, Any]:
     """Return a copy of *options* with keys containing sensitive substrings removed."""
-    return {
-        k: v
-        for k, v in options.items()
-        if not any(sub in k.lower() for sub in _SENSITIVE_SUBSTRINGS)
-    }
+    return {k: v for k, v in options.items() if not any(sub in k.lower() for sub in _SENSITIVE_SUBSTRINGS)}
 
 
 # ------------------------------------------------------------------
@@ -247,7 +245,9 @@ def import_conversation(data: dict[str, Any]) -> dict[str, Any]:
             logger.warning("import_conversation: dropping message %d with invalid role: %r", i, role)
             continue
         if not isinstance(content, (str, list)):
-            logger.warning("import_conversation: dropping message %d with invalid content type: %s", i, type(content).__name__)
+            logger.warning(
+                "import_conversation: dropping message %d with invalid content type: %s", i, type(content).__name__
+            )
             continue
         valid_messages.append(msg)
     result["messages"] = valid_messages

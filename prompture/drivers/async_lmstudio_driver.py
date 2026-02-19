@@ -26,7 +26,7 @@ class AsyncLMStudioDriver(AsyncDriver):
         model: str = "deepseek/deepseek-r1-0528-qwen3-8b",
         api_key: str | None = None,
     ):
-        self.endpoint = endpoint or os.getenv("LMSTUDIO_ENDPOINT", "http://127.0.0.1:1234/v1/chat/completions")
+        self.endpoint: str = endpoint or os.getenv("LMSTUDIO_ENDPOINT", "http://127.0.0.1:1234/v1/chat/completions")  # type: ignore[assignment]
         self.model = model
         self.options: dict[str, Any] = {}
 
@@ -133,7 +133,7 @@ class AsyncLMStudioDriver(AsyncDriver):
             r = await client.get(url, headers=self._headers, timeout=10)
             r.raise_for_status()
             data = r.json()
-        return data.get("data", [])
+        return data.get("data", [])  # type: ignore[no-any-return]
 
     async def load_model(self, model: str, context_length: int | None = None) -> dict[str, Any]:
         """Load a model into LM Studio via POST /api/v1/models/load."""
@@ -144,7 +144,7 @@ class AsyncLMStudioDriver(AsyncDriver):
         async with httpx.AsyncClient() as client:
             r = await client.post(url, json=payload, headers=self._headers, timeout=120)
             r.raise_for_status()
-        return r.json()
+        return r.json()  # type: ignore[no-any-return]
 
     async def unload_model(self, model: str) -> dict[str, Any]:
         """Unload a model from LM Studio via POST /api/v1/models/unload."""
@@ -153,4 +153,4 @@ class AsyncLMStudioDriver(AsyncDriver):
         async with httpx.AsyncClient() as client:
             r = await client.post(url, json=payload, headers=self._headers, timeout=30)
             r.raise_for_status()
-        return r.json()
+        return r.json()  # type: ignore[no-any-return]

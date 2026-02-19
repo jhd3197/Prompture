@@ -9,7 +9,7 @@ from typing import Any
 try:
     from openai import AsyncOpenAI
 except Exception:
-    AsyncOpenAI = None
+    AsyncOpenAI = None  # type: ignore[misc, assignment]
 
 from ..infra.cost_mixin import ImageCostMixin
 from ..media.image import image_from_base64
@@ -32,7 +32,7 @@ class AsyncOpenAIImageGenDriver(ImageCostMixin, AsyncImageGenDriver):
     def __init__(self, api_key: str | None = None, model: str = "dall-e-3"):
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
         self.model = model
-        if AsyncOpenAI:
+        if AsyncOpenAI is not None:
             self.client = AsyncOpenAI(api_key=self.api_key)
         else:
             self.client = None

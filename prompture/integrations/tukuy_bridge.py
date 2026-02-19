@@ -22,9 +22,7 @@ logger = logging.getLogger("prompture.tukuy_bridge")
 # Set by AsyncConversation.ask_with_tool_events() before each tool execution
 # so that the tukuy bridge can associate streaming deltas with the correct
 # tool call.
-current_tool_call_id: contextvars.ContextVar[str | None] = contextvars.ContextVar(
-    "current_tool_call_id", default=None
-)
+current_tool_call_id: contextvars.ContextVar[str | None] = contextvars.ContextVar("current_tool_call_id", default=None)
 
 
 # ------------------------------------------------------------------
@@ -395,7 +393,7 @@ def filter_available_skills(
     # Build a virtual plugin wrapping the registry's tukuy skills
     skill_dict = {s.descriptor.name: s for _, s in tukuy_tools}
 
-    class _VirtualPlugin(TransformerPlugin):
+    class _VirtualPlugin(TransformerPlugin):  # type: ignore[misc]
         @property
         def skills(self) -> dict[str, Any]:
             return skill_dict

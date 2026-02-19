@@ -6,7 +6,7 @@ import dataclasses
 import hashlib
 import logging
 import os
-from typing import Any, overload
+from typing import Any, Literal, overload
 
 from ..drivers import (
     AirLLMDriver,
@@ -94,7 +94,7 @@ def _get_list_models_kwargs(
 def get_available_models(
     *,
     env: ProviderEnvironment | None = None,
-    include_capabilities: bool = False,
+    include_capabilities: Literal[False] = False,
     verified_only: bool = False,
     force_refresh: bool = False,
     cache_ttl: int | None = None,
@@ -105,7 +105,7 @@ def get_available_models(
 def get_available_models(
     *,
     env: ProviderEnvironment | None = None,
-    include_capabilities: bool = True,
+    include_capabilities: Literal[True],
     verified_only: bool = False,
     force_refresh: bool = False,
     cache_ttl: int | None = None,
@@ -160,7 +160,7 @@ def get_available_models(
         cached = _discovery_cache.get(cache_key)
         if cached is not None:
             logger.debug("Discovery cache hit for key=%s", cache_key)
-            return cached
+            return cached  # type: ignore[no-any-return]
 
     logger.debug("Discovery cache miss for key=%s — querying providers", cache_key)
     available_models: set[str] = set()
@@ -255,7 +255,7 @@ def get_available_models(
             # API-based Detection: call driver's list_models() classmethod
             api_kwargs = _get_list_models_kwargs(provider, env=env)
             try:
-                api_models = driver_cls.list_models(**api_kwargs)
+                api_models = driver_cls.list_models(**api_kwargs)  # type: ignore[attr-defined]
                 if api_models is not None:
                     for model_id in api_models:
                         available_models.add(f"{provider}/{model_id}")
@@ -384,24 +384,18 @@ def get_available_audio_models(
 
     # ElevenLabs audio models
     elevenlabs_key = _cfg_value(env, "elevenlabs_api_key", "ELEVENLABS_API_KEY")
-    elevenlabs_endpoint = (
-        getattr(settings, "elevenlabs_endpoint", None) or "https://api.elevenlabs.io/v1"
-    )
+    elevenlabs_endpoint = getattr(settings, "elevenlabs_endpoint", None) or "https://api.elevenlabs.io/v1"
     if elevenlabs_key:
         if modality is None or modality == "stt":
             # STT: static list (no API listing endpoint for STT models)
-            stt_models = ElevenLabsSTTDriver.list_models(
-                api_key=elevenlabs_key, endpoint=elevenlabs_endpoint
-            )
+            stt_models = ElevenLabsSTTDriver.list_models(api_key=elevenlabs_key, endpoint=elevenlabs_endpoint)
             if stt_models:
                 for model_id in stt_models:
                     available.add(f"elevenlabs/{model_id}")
 
         if modality is None or modality == "tts":
             # TTS: dynamic discovery via GET /v1/models, fallback to AUDIO_PRICING
-            tts_models = ElevenLabsTTSDriver.list_models(
-                api_key=elevenlabs_key, endpoint=elevenlabs_endpoint
-            )
+            tts_models = ElevenLabsTTSDriver.list_models(api_key=elevenlabs_key, endpoint=elevenlabs_endpoint)
             if tts_models is not None:
                 for model_id in tts_models:
                     available.add(f"elevenlabs/{model_id}")

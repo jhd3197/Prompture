@@ -7,7 +7,7 @@ from .runner import run_suite_from_spec
 
 
 @click.group()
-def cli():
+def cli() -> None:
     """Prompture CLI -- structured LLM output toolkit."""
     pass
 
@@ -15,13 +15,13 @@ def cli():
 @cli.command()
 @click.argument("specfile", type=click.Path(exists=True))
 @click.argument("outfile", type=click.Path())
-def run(specfile, outfile):
+def run(specfile: str, outfile: str) -> None:
     """Run a spec JSON and save report."""
     with open(specfile, encoding="utf-8") as fh:
         spec = json.load(fh)
     # Use Ollama as default driver since it can run locally
     drivers = {"ollama": OllamaDriver(endpoint="http://localhost:11434", model="gemma:latest")}
-    report = run_suite_from_spec(spec, drivers)
+    report = run_suite_from_spec(spec, drivers)  # type: ignore[arg-type]
     with open(outfile, "w", encoding="utf-8") as fh:
         json.dump(report, fh, indent=2, ensure_ascii=False)
     click.echo(f"Report saved to {outfile}")
@@ -33,7 +33,7 @@ def run(specfile, outfile):
 @click.option("--host", default="0.0.0.0", help="Bind host.")
 @click.option("--port", default=9471, type=int, help="Bind port.")
 @click.option("--cors-origins", default=None, help="Comma-separated CORS origins (use * for all).")
-def serve(model, system_prompt, host, port, cors_origins):
+def serve(model: str, system_prompt: str, host: str, port: int, cors_origins: str) -> None:
     """Start an API server wrapping AsyncConversation.
 
     Requires the 'serve' extra: pip install prompture[serve]
@@ -62,13 +62,13 @@ def serve(model, system_prompt, host, port, cors_origins):
 @click.option("--name", default="my_app", help="Project name.")
 @click.option("--model", default="openai/gpt-4o-mini", help="Default model string.")
 @click.option("--docker/--no-docker", default=True, help="Include Dockerfile.")
-def scaffold(output_dir, name, model, docker):
+def scaffold(output_dir: str, name: str, model: str, docker: bool) -> None:
     """Generate a standalone FastAPI project using Prompture.
 
     Requires the 'scaffold' extra: pip install prompture[scaffold]
     """
     try:
-        from .scaffold.generator import scaffold_project
+        from ..scaffold.generator import scaffold_project
     except ImportError:
         click.echo("Error: jinja2 not installed. Run: pip install prompture[scaffold]", err=True)
         raise SystemExit(1) from None

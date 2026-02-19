@@ -24,7 +24,7 @@ class AsyncOllamaDriver(AsyncDriver):
     MODEL_PRICING = {"default": {"prompt": 0.0, "completion": 0.0}}
 
     def __init__(self, endpoint: str | None = None, model: str = "llama3"):
-        self.endpoint = endpoint or os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434/api/generate")
+        self.endpoint: str = endpoint or os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434/api/generate")  # type: ignore[assignment]
         self.model = model
         self.options: dict[str, Any] = {}
 
@@ -168,20 +168,24 @@ class AsyncOllamaDriver(AsyncDriver):
                             "Tool arguments for %s were truncated due to max_tokens limit. "
                             "Increase max_tokens in options to allow longer tool outputs. "
                             "Truncated arguments: %r",
-                            func.get("name", ""), args[:200] if args else args,
+                            func.get("name", ""),
+                            args[:200] if args else args,
                         )
                     else:
                         logger.warning(
                             "Failed to parse tool arguments for %s: %r",
-                            func.get("name", ""), args,
+                            func.get("name", ""),
+                            args,
                         )
                     args = {}
-            tool_calls_out.append({
-                # Ollama does not return tool_call IDs — generate one locally
-                "id": f"call_{uuid.uuid4().hex[:24]}",
-                "name": func.get("name", ""),
-                "arguments": args,
-            })
+            tool_calls_out.append(
+                {
+                    # Ollama does not return tool_call IDs — generate one locally
+                    "id": f"call_{uuid.uuid4().hex[:24]}",
+                    "name": func.get("name", ""),
+                    "arguments": args,
+                }
+            )
 
         result: dict[str, Any] = {
             "text": text,

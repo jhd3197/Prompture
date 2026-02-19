@@ -10,7 +10,7 @@ from typing import Any
 try:
     from openai import OpenAI
 except Exception:
-    OpenAI = None
+    OpenAI = None  # type: ignore[misc, assignment]
 
 from ..infra.cost_mixin import AudioCostMixin
 from .tts_base import TTSDriver
@@ -44,7 +44,7 @@ class OpenAITTSDriver(AudioCostMixin, TTSDriver):
     def __init__(self, api_key: str | None = None, model: str = "tts-1"):
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
         self.model = model
-        if OpenAI:
+        if OpenAI is not None:
             self.client = OpenAI(api_key=self.api_key)
         else:
             self.client = None

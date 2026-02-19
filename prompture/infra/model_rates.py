@@ -59,7 +59,7 @@ def _cache_is_valid() -> bool:
         fetched_at = datetime.fromisoformat(meta["fetched_at"])
         ttl_days = meta.get("ttl_days", _get_ttl_days())
         age = datetime.now(timezone.utc) - fetched_at
-        return age.total_seconds() < ttl_days * 86400
+        return bool(age.total_seconds() < ttl_days * 86400)
     except Exception:
         return False
 
@@ -81,7 +81,7 @@ def _write_cache(data: dict[str, Any]) -> None:
 def _read_cache() -> Optional[dict[str, Any]]:
     """Read cached API data from disk."""
     try:
-        return json.loads(_CACHE_FILE.read_text(encoding="utf-8"))
+        return json.loads(_CACHE_FILE.read_text(encoding="utf-8"))  # type: ignore[no-any-return]
     except Exception:
         return None
 
@@ -93,7 +93,7 @@ def _fetch_from_api() -> Optional[dict[str, Any]]:
 
         resp = requests.get(_API_URL, timeout=15)
         resp.raise_for_status()
-        return resp.json()
+        return resp.json()  # type: ignore[no-any-return]
     except Exception as exc:
         logger.debug("Failed to fetch model rates from %s: %s", _API_URL, exc)
         return None

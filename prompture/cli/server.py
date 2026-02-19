@@ -67,9 +67,7 @@ def create_app(
         from fastapi.responses import JSONResponse
         from pydantic import BaseModel, Field
     except ImportError as exc:
-        raise ImportError(
-            "The 'serve' extra is required: pip install prompture[serve]"
-        ) from exc
+        raise ImportError("The 'serve' extra is required: pip install prompture[serve]") from exc
 
     from ..agents.async_conversation import AsyncConversation
     from ..agents.tools_schema import ToolRegistry
@@ -107,10 +105,7 @@ def create_app(
     # ---- CORS warning ----
 
     if cors_origins and "*" in cors_origins:
-        logger.warning(
-            "CORS is configured to allow all origins ('*'). "
-            "This is insecure for production deployments."
-        )
+        logger.warning("CORS is configured to allow all origins ('*'). This is insecure for production deployments.")
 
     # ---- Pydantic request/response models (Prompture native) ----
 
@@ -202,13 +197,13 @@ def create_app(
     # ---- Health endpoint ----
 
     @app.get("/health")
-    async def health():
+    async def health() -> dict[str, str]:
         return {"status": "ok"}
 
     # ---- Prompture native endpoints ----
 
     @app.post("/v1/chat", response_model=ChatResponse)
-    async def chat(chat_req: ChatRequest):
+    async def chat(chat_req: ChatRequest) -> Any:
         conv_id, conv = _get_or_create_conversation(chat_req.conversation_id)
 
         if chat_req.stream:
@@ -221,7 +216,7 @@ def create_app(
                     detail="Streaming requires sse-starlette: pip install prompture[serve]",
                 ) from None
 
-            async def event_generator():
+            async def event_generator() -> Any:
                 full_text = ""
                 async for chunk in conv.ask_stream(chat_req.message, chat_req.options):
                     full_text += chunk
@@ -234,7 +229,7 @@ def create_app(
         return ChatResponse(message=text, conversation_id=conv_id, usage=conv.usage)
 
     @app.post("/v1/extract", response_model=ExtractResponse)
-    async def extract(extract_req: ExtractRequest):
+    async def extract(extract_req: ExtractRequest) -> ExtractResponse:
         conv_id, conv = _get_or_create_conversation(extract_req.conversation_id)
         result = await conv.ask_for_json(
             content=extract_req.text,
@@ -247,7 +242,7 @@ def create_app(
         )
 
     @app.get("/v1/conversations/{conversation_id}", response_model=ConversationHistory)
-    async def get_conversation(conversation_id: str):
+    async def get_conversation(conversation_id: str) -> ConversationHistory:
         if conversation_id not in _conversations:
             raise HTTPException(status_code=404, detail="Conversation not found")
         conv = _conversations[conversation_id]
@@ -258,7 +253,7 @@ def create_app(
         )
 
     @app.delete("/v1/conversations/{conversation_id}")
-    async def delete_conversation(conversation_id: str):
+    async def delete_conversation(conversation_id: str) -> dict[str, str]:
         if conversation_id not in _conversations:
             raise HTTPException(status_code=404, detail="Conversation not found")
         del _conversations[conversation_id]
@@ -267,7 +262,7 @@ def create_app(
     # ---- OpenAI-compatible proxy endpoints ----
 
     @app.post("/v1/chat/completions")
-    async def openai_chat_completions(req: OAIChatRequest):
+    async def openai_chat_completions(req: OAIChatRequest) -> Any:
         """OpenAI-compatible ``/v1/chat/completions`` proxy.
 
         Accepts the standard OpenAI chat format and routes the request
@@ -307,9 +302,9 @@ def create_app(
 
         # Find the last user message to pass to AsyncConversation.ask()
         last_user_content = ""
-        for msg in reversed(user_messages):
-            if msg["role"] == "user":
-                last_user_content = msg["content"]
+        for um in reversed(user_messages):
+            if um["role"] == "user":
+                last_user_content = um["content"]
                 break
 
         if not last_user_content:
@@ -324,8 +319,8 @@ def create_app(
 
         # Seed prior turns (everything before the final user message)
         if len(user_messages) > 1:
-            for msg in user_messages[:-1]:
-                conv._messages.append(msg)
+            for prior_msg in user_messages[:-1]:
+                conv._messages.append(prior_msg)
 
         completion_id = f"chatcmpl-{uuid.uuid4().hex[:24]}"
         created = int(time.time())
@@ -339,7 +334,7 @@ def create_app(
                     detail="Streaming requires sse-starlette: pip install prompture[serve]",
                 ) from None
 
-            async def oai_stream():
+            async def oai_stream() -> Any:
                 full_text = ""
                 async for chunk in conv.ask_stream(last_user_content, opts if opts else None):
                     full_text += chunk
@@ -348,11 +343,13 @@ def create_app(
                         "object": "chat.completion.chunk",
                         "created": created,
                         "model": resolved_model,
-                        "choices": [{
-                            "index": 0,
-                            "delta": {"content": chunk},
-                            "finish_reason": None,
-                        }],
+                        "choices": [
+                            {
+                                "index": 0,
+                                "delta": {"content": chunk},
+                                "finish_reason": None,
+                            }
+                        ],
                     }
                     yield {"data": json.dumps(data)}
 
@@ -363,11 +360,13 @@ def create_app(
                     "object": "chat.completion.chunk",
                     "created": created,
                     "model": resolved_model,
-                    "choices": [{
-                        "index": 0,
-                        "delta": {},
-                        "finish_reason": "stop",
-                    }],
+                    "choices": [
+                        {
+                            "index": 0,
+                            "delta": {},
+                            "finish_reason": "stop",
+                        }
+                    ],
                     "usage": {
                         "prompt_tokens": usage.get("prompt_tokens", 0),
                         "completion_tokens": usage.get("completion_tokens", 0),
@@ -383,28 +382,32 @@ def create_app(
         text = await conv.ask(last_user_content, opts if opts else None)
         usage = conv.usage
 
-        return JSONResponse({
-            "id": completion_id,
-            "object": "chat.completion",
-            "created": created,
-            "model": resolved_model,
-            "choices": [{
-                "index": 0,
-                "message": {
-                    "role": "assistant",
-                    "content": text,
+        return JSONResponse(
+            {
+                "id": completion_id,
+                "object": "chat.completion",
+                "created": created,
+                "model": resolved_model,
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": {
+                            "role": "assistant",
+                            "content": text,
+                        },
+                        "finish_reason": "stop",
+                    }
+                ],
+                "usage": {
+                    "prompt_tokens": usage.get("prompt_tokens", 0),
+                    "completion_tokens": usage.get("completion_tokens", 0),
+                    "total_tokens": usage.get("total_tokens", 0),
                 },
-                "finish_reason": "stop",
-            }],
-            "usage": {
-                "prompt_tokens": usage.get("prompt_tokens", 0),
-                "completion_tokens": usage.get("completion_tokens", 0),
-                "total_tokens": usage.get("total_tokens", 0),
-            },
-        })
+            }
+        )
 
     @app.get("/v1/models")
-    async def list_models():
+    async def list_models() -> Any:
         """List available models in OpenAI-compatible format.
 
         Returns a response compatible with both the OpenAI SDK
@@ -421,18 +424,22 @@ def create_app(
 
         model_objects = []
         for name in model_names:
-            model_objects.append({
-                "id": name,
-                "object": "model",
-                "created": 0,
-                "owned_by": name.split("/")[0] if "/" in name else "prompture",
-            })
+            model_objects.append(
+                {
+                    "id": name,
+                    "object": "model",
+                    "created": 0,
+                    "owned_by": name.split("/")[0] if "/" in name else "prompture",
+                }
+            )
 
-        return JSONResponse({
-            "object": "list",
-            "data": model_objects,
-            # Keep legacy field for backwards compatibility
-            "models": model_names,
-        })
+        return JSONResponse(
+            {
+                "object": "list",
+                "data": model_objects,
+                # Keep legacy field for backwards compatibility
+                "models": model_names,
+            }
+        )
 
     return app

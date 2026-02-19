@@ -10,7 +10,7 @@ from typing import Any
 try:
     import httpx
 except Exception:
-    httpx = None
+    httpx = None  # type: ignore[assignment]
 
 from ..infra.cost_mixin import AudioCostMixin
 from .tts_base import TTSDriver
@@ -63,11 +63,7 @@ class ElevenLabsTTSDriver(AudioCostMixin, TTSDriver):
                 return None
 
             models = resp.json()
-            return [
-                m["model_id"]
-                for m in models
-                if isinstance(m, dict) and m.get("can_do_text_to_speech")
-            ]
+            return [m["model_id"] for m in models if isinstance(m, dict) and m.get("can_do_text_to_speech")]
         except Exception:
             logger.debug("ElevenLabs list_models failed", exc_info=True)
             return None

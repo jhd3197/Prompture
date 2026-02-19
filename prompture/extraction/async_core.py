@@ -168,7 +168,7 @@ async def ask_for_json(
         cached = _cache.get(cache_key, force=_force)
         if cached is not None:
             cached["usage"]["cache_hit"] = True
-            return cached
+            return cached  # type: ignore[no-any-return]
 
     schema_string = json.dumps(json_schema, indent=2)
     if output_format == "toon" and toon is None:
@@ -413,15 +413,15 @@ async def manual_extract_and_jsonify(
 
 async def _async_chunked_extract(
     *,
-    chunks: list,
+    chunks: list[Any],
     model_cls: type[BaseModel],
     model_name: str | None,
     instruction_template: str,
     ai_cleanup: bool,
-    output_format: str,
+    output_format: Literal["json", "toon"],
     options: dict[str, Any],
     cache: bool | None,
-    json_mode: str,
+    json_mode: Literal["auto", "on", "off"],
     system_prompt: str | None,
     reasoning_strategy: Any,
 ) -> dict[str, Any]:
@@ -474,7 +474,7 @@ async def _async_chunked_extract(
         is_array = field_type == "array"
 
         if is_array:
-            merged_list: list = []
+            merged_list: list[Any] = []
             for r in all_results:
                 val = r.get("json_object", {}).get(field_name)
                 if isinstance(val, list):
@@ -499,7 +499,7 @@ async def _async_chunked_extract(
         "model": model_instance,
     }
 
-    return type(
+    return type(  # type: ignore[no-any-return]
         "ExtractResult",
         (dict,),
         {"__getattr__": lambda self, key: self.get(key), "__call__": lambda self: self["model"]},
@@ -580,7 +580,7 @@ async def extract_with_model(
         schema_for_key = model_cls.model_json_schema()
         cache_key = make_cache_key(
             prompt=f"{instruction_template} {text}",
-            model_name=model_name,
+            model_name=model_name or "",
             schema=schema_for_key,
             options=options,
             output_format=output_format,
@@ -590,7 +590,7 @@ async def extract_with_model(
         if cached is not None:
             cached["usage"]["cache_hit"] = True
             cached["model"] = model_cls(**cached["json_object"])
-            return type(
+            return type(  # type: ignore[no-any-return]
                 "ExtractResult",
                 (dict,),
                 {"__getattr__": lambda self, key: self.get(key), "__call__": lambda self: self["model"]},
@@ -603,7 +603,7 @@ async def extract_with_model(
     result = await extract_and_jsonify(
         text=text,
         json_schema=schema,
-        model_name=model_name,
+        model_name=model_name or "",
         instruction_template=instruction_template,
         ai_cleanup=ai_cleanup,
         output_format=output_format,
@@ -630,7 +630,9 @@ async def extract_with_model(
                 if hasattr(field_info, "default") and field_info.default is not ...
                 else None,
             }
-            json_object[field_name] = normalize_field_value(json_object[field_name], field_info.annotation, field_def)
+            json_object[field_name] = normalize_field_value(
+                json_object[field_name], field_info.annotation or type(json_object[field_name]), field_def
+            )
 
     model_instance = model_cls(**json_object)
 
@@ -647,7 +649,7 @@ async def extract_with_model(
 
     result_dict["model"] = model_instance
 
-    return type(
+    return type(  # type: ignore[no-any-return]
         "ExtractResult",
         (dict,),
         {"__getattr__": lambda self, key: self.get(key), "__call__": lambda self: self["model"]},
@@ -696,7 +698,7 @@ async def stepwise_extract_with_model(
     field_results = {}
     options = options or {}
 
-    accumulated_usage = {
+    accumulated_usage: dict[str, Any] = {
         "prompt_tokens": 0,
         "completion_tokens": 0,
         "total_tokens": 0,
@@ -750,7 +752,7 @@ async def stepwise_extract_with_model(
             else:
                 raw_value = extracted_value
 
-            field_def = {}
+            field_def: dict[str, Any] = {}
             if field_definitions and field_name in field_definitions:
                 field_def = field_definitions[field_name] if isinstance(field_definitions[field_name], dict) else {}
 
@@ -765,10 +767,12 @@ async def stepwise_extract_with_model(
                 default_value = field_info.default
 
             normalize_def = {"nullable": nullable, "default": default_value}
-            raw_value = normalize_field_value(raw_value, field_info.annotation, normalize_def)
+            raw_value = normalize_field_value(raw_value, field_info.annotation or type(raw_value), normalize_def)
 
             try:
-                converted_value = convert_value(raw_value, field_info.annotation, allow_shorthand=True)
+                converted_value = convert_value(
+                    raw_value, field_info.annotation or type(raw_value), allow_shorthand=True
+                )
                 data[field_name] = converted_value
                 field_results[field_name] = {"status": "success", "used_default": False}
             except ValueError as e:
@@ -802,7 +806,7 @@ async def stepwise_extract_with_model(
         model_dict = model_instance.model_dump()
 
         class ExtendedJSONEncoder(json.JSONEncoder):
-            def default(self, obj):
+            def default(self, obj: Any) -> Any:
                 if isinstance(obj, (datetime, date)):
                     return obj.isoformat()
                 if isinstance(obj, Decimal):
@@ -818,7 +822,7 @@ async def stepwise_extract_with_model(
             "field_results": field_results,
         }
         result["model"] = model_instance
-        return type(
+        return type(  # type: ignore[no-any-return]
             "ExtractResult",
             (dict,),
             {"__getattr__": lambda self, key: self.get(key), "__call__": lambda self: self["model"]},
@@ -836,7 +840,7 @@ async def stepwise_extract_with_model(
             "field_results": field_results,
             "error": error_msg,
         }
-        return type(
+        return type(  # type: ignore[no-any-return]
             "ExtractResult",
             (dict,),
             {"__getattr__": lambda self, key: self.get(key), "__call__": lambda self: None},
@@ -865,7 +869,7 @@ async def extract_from_data(
 
     toon_data = _json_to_toon(data, data_key)
 
-    json_data = json.dumps(data if isinstance(data, list) else data.get(data_key, data), indent=2)
+    json_data = json.dumps(data if isinstance(data, list) else data.get(data_key or "", data), indent=2)
     token_savings = _calculate_token_savings(json_data, toon_data)
 
     content_prompt = instruction_template.format(question=question)
@@ -873,7 +877,7 @@ async def extract_from_data(
 
     driver = get_async_driver_for_model(model_name)
     result = await ask_for_json(
-        driver=driver,
+        driver=driver,  # type: ignore[arg-type]
         content_prompt=full_prompt,
         json_schema=json_schema,
         ai_cleanup=ai_cleanup,
@@ -889,7 +893,7 @@ async def extract_from_data(
 
 
 async def extract_from_pandas(
-    df,
+    df: Any,
     question: str,
     json_schema: dict[str, Any],
     *,
@@ -923,7 +927,7 @@ async def extract_from_pandas(
 
     driver = get_async_driver_for_model(model_name)
     result = await ask_for_json(
-        driver=driver,
+        driver=driver,  # type: ignore[arg-type]
         content_prompt=full_prompt,
         json_schema=json_schema,
         ai_cleanup=ai_cleanup,
