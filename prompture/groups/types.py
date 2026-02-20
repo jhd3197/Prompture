@@ -115,12 +115,28 @@ class GroupResult:
 
 @dataclass
 class GroupCallbacks:
-    """Observability callbacks for group execution."""
+    """Observability callbacks for group execution.
+
+    Attributes:
+        on_agent_start: Called when an agent begins execution ``(name, prompt)``.
+        on_agent_complete: Called when an agent finishes ``(name, result)``.
+        on_agent_error: Called when an agent raises ``(name, exception)``.
+        on_state_update: Called when shared state is updated ``(key, value)``.
+        on_round_start: Called at the start of a debate/loop round ``(round_number,)``.
+        on_round_complete: Called at the end of a debate/loop round ``(round_number,)``.
+        on_step_skipped: Called when a waterfall step is skipped ``(agent_name, reason)``.
+        on_route_decision: Called when a router selects an agent
+            ``(agent_name, reason, confidence)``.
+    """
 
     on_agent_start: Callable[[str, str], None] | None = None
     on_agent_complete: Callable[[str, Any], None] | None = None
     on_agent_error: Callable[[str, Exception], None] | None = None
     on_state_update: Callable[[str, Any], None] | None = None
+    on_round_start: Callable[[int], None] | None = None
+    on_round_complete: Callable[[int], None] | None = None
+    on_step_skipped: Callable[[str, str], None] | None = None
+    on_route_decision: Callable[[str, str, float], None] | None = None
 
 
 def _aggregate_usage(*sessions: dict[str, Any]) -> dict[str, Any]:

@@ -90,6 +90,11 @@ class SequentialGroup:
         max_total_turns: Limit on total agent runs across the sequence.
         callbacks: Observability hooks.
         max_total_cost: Budget cap in USD.
+        step_conditions: Per-step continue conditions for waterfall mode.
+            A list of callables ``(output_text, shared_state) -> bool``,
+            one per agent (missing entries default to always-continue).
+            After each agent runs, its condition is checked. If it returns
+            ``False``, the group stops and returns results so far.
     """
 
     def __init__(
@@ -101,6 +106,7 @@ class SequentialGroup:
         max_total_turns: int | None = None,
         callbacks: GroupCallbacks | None = None,
         max_total_cost: float | None = None,
+        step_conditions: list[Callable[[str, dict[str, Any]], bool]] | None = None,
     ) -> None:
         self._agents = _normalise_agents(agents)
         self._state: dict[str, Any] = dict(state) if state else {}
@@ -108,6 +114,7 @@ class SequentialGroup:
         self._max_total_turns = max_total_turns
         self._callbacks = callbacks or GroupCallbacks()
         self._max_total_cost = max_total_cost
+        self._step_conditions = step_conditions
         self._stop_requested = False
 
     def stop(self) -> None:
@@ -209,6 +216,22 @@ class SequentialGroup:
 
                 if self._callbacks.on_agent_complete:
                     self._callbacks.on_agent_complete(name, result)
+
+                # Step condition check (waterfall mode)
+                if self._step_conditions is not None and idx < len(self._step_conditions):
+                    condition = self._step_conditions[idx]
+                    should_continue = condition(result.output_text, self._state)
+                    if not should_continue:
+                        self._state["_escalation_stopped_at"] = name
+                        # Fire on_step_skipped for remaining agents
+                        if self._callbacks.on_step_skipped:
+                            for skip_idx in range(idx + 1, len(self._agents)):
+                                skip_agent, _ = self._agents[skip_idx]
+                                skip_name = _agent_name(skip_agent, skip_idx)
+                                self._callbacks.on_step_skipped(
+                                    skip_name, f"step condition false after {name}"
+                                )
+                        break
 
             except Exception as exc:
                 duration_ms = (time.perf_counter() - step_t0) * 1000
@@ -338,6 +361,9 @@ class LoopGroup:
                 logger.warning("Exit condition raised; stopping loop", exc_info=True)
                 break
 
+            if self._callbacks.on_round_start:
+                self._callbacks.on_round_start(iteration)
+
             for idx, (agent, custom_prompt) in enumerate(self._agents):
                 if self._stop_requested:
                     break
@@ -409,6 +435,9 @@ class LoopGroup:
                     if self._error_policy == ErrorPolicy.fail_fast:
                         break
 
+            if self._callbacks.on_round_complete:
+                self._callbacks.on_round_complete(iteration)
+
             # Check if error caused early exit
             if errors and self._error_policy == ErrorPolicy.fail_fast:
                 break
@@ -444,15 +473,32 @@ Which should handle this? Reply with ONLY the name.
 Request: {prompt}"""
 
 
+class RoutingStrategy:
+    """Routing strategy constants for :class:`RouterAgent`."""
+
+    llm = "llm"
+    keyword = "keyword"
+    round_robin = "round_robin"
+
+
 class RouterAgent:
-    """LLM-driven router that delegates to the best-matching agent.
+    """Router that delegates to the best-matching agent.
+
+    Supports multiple routing strategies:
+
+    - **llm** (default): LLM classifies which agent should handle the request.
+    - **keyword**: Match keywords in the message to agent keyword lists.
+    - **round_robin**: Rotate through agents in order.
 
     Args:
         model: Model string for the routing LLM call.
         agents: List of agents to route between.
+        strategy: Routing strategy (``"llm"``, ``"keyword"``, ``"round_robin"``).
         routing_prompt: Custom prompt template (must include ``{agent_list}``
             and ``{prompt}`` placeholders).
-        fallback: Agent to use when routing fails.
+        fallback: Agent to use when routing is ambiguous.
+        keywords: Agent name to keyword list mapping for keyword strategy.
+        callbacks: Observability hooks (fires ``on_route_decision``).
         driver: Pre-built driver instance for the routing call.
     """
 
@@ -461,8 +507,11 @@ class RouterAgent:
         model: str = "",
         *,
         agents: list[Any],
+        strategy: str = RoutingStrategy.llm,
         routing_prompt: str | None = None,
         fallback: Any | None = None,
+        keywords: dict[str, list[str]] | None = None,
+        callbacks: GroupCallbacks | None = None,
         driver: Any | None = None,
         name: str = "",
         description: str = "",
@@ -471,26 +520,42 @@ class RouterAgent:
         self._model = model
         self._driver = driver
         self._agents = {_agent_name(a, i): a for i, a in enumerate(agents)}
+        self._strategy = strategy
         self._routing_prompt = routing_prompt or _DEFAULT_ROUTING_PROMPT
         self._fallback = fallback
+        self._keywords = keywords or {}
+        self._callbacks = callbacks or GroupCallbacks()
         self.name = name
         self.description = description
         self.output_key = output_key
+        self._rr_index = 0
 
-    def run(self, prompt: str, *, deps: Any = None) -> AgentResult:
-        """Route the prompt to the best agent and return its result."""
+    def _classify(self, prompt: str) -> tuple[str | None, str, float]:
+        """Classify which agent should handle the prompt.
+
+        Returns:
+            Tuple of ``(agent_name, reason, confidence)``.
+            ``agent_name`` is ``None`` when no agent matched.
+        """
+        if self._strategy == RoutingStrategy.keyword:
+            return self._classify_keyword(prompt)
+        elif self._strategy == RoutingStrategy.round_robin:
+            return self._classify_round_robin()
+        else:
+            return self._classify_llm(prompt)
+
+    def _classify_llm(self, prompt: str) -> tuple[str | None, str, float]:
+        """LLM-based routing (original behavior)."""
         from ..agents.conversation import Conversation
 
-        # Build agent list for routing prompt
         agent_lines = []
-        for name, agent in self._agents.items():
+        for aname, agent in self._agents.items():
             desc = getattr(agent, "description", "") or ""
-            agent_lines.append(f"- {name}: {desc}" if desc else f"- {name}")
+            agent_lines.append(f"- {aname}: {desc}" if desc else f"- {aname}")
         agent_list = "\n".join(agent_lines)
 
         routing_text = self._routing_prompt.replace("{agent_list}", agent_list).replace("{prompt}", prompt)
 
-        # Single LLM call for routing
         kwargs: dict[str, Any] = {}
         if self._driver is not None:
             kwargs["driver"] = self._driver
@@ -499,46 +564,94 @@ class RouterAgent:
 
         conv = Conversation(**kwargs)
         route_response = conv.ask(routing_text)
+        self._last_conv = conv
 
-        # Fuzzy match against known agent names
-        selected = self._fuzzy_match(route_response.strip())
+        matched_name = self._fuzzy_match_name(route_response.strip())
+        self._last_llm_response = route_response.strip()
+        if matched_name:
+            return matched_name, f"LLM selected: {route_response.strip()}", 0.8
+        return None, f"LLM response did not match: {route_response.strip()}", 0.0
 
-        if selected is not None:
+    def _classify_keyword(self, prompt: str) -> tuple[str | None, str, float]:
+        """Keyword-based routing: match message tokens against keyword lists."""
+        prompt_lower = prompt.lower()
+        best_name: str | None = None
+        best_count = 0
+
+        for aname in self._agents:
+            kw_list = self._keywords.get(aname, [])
+            count = sum(1 for kw in kw_list if kw.lower() in prompt_lower)
+            if count > best_count:
+                best_count = count
+                best_name = aname
+
+        if best_name and best_count > 0:
+            confidence = min(best_count / max(len(self._keywords.get(best_name, [])), 1), 1.0)
+            return best_name, f"Matched {best_count} keyword(s)", confidence
+        return None, "No keywords matched", 0.0
+
+    def _classify_round_robin(self) -> tuple[str | None, str, float]:
+        """Round-robin routing: rotate through agents in order."""
+        agent_names = list(self._agents.keys())
+        if not agent_names:
+            return None, "No agents available", 0.0
+        selected = agent_names[self._rr_index % len(agent_names)]
+        self._rr_index += 1
+        return selected, f"Round-robin index {self._rr_index - 1}", 1.0
+
+    def run(self, prompt: str, *, deps: Any = None) -> AgentResult:
+        """Route the prompt to the best agent and return its result."""
+        self._last_conv = None
+        self._last_llm_response = None
+        agent_name, reason, confidence = self._classify(prompt)
+
+        # Fire routing decision callback
+        if self._callbacks.on_route_decision:
+            self._callbacks.on_route_decision(agent_name or "(none)", reason, confidence)
+
+        if agent_name and agent_name in self._agents:
+            selected = self._agents[agent_name]
             return selected.run(prompt, deps=deps) if deps is not None else selected.run(prompt)  # type: ignore[no-any-return]
         elif self._fallback is not None:
+            if self._callbacks.on_route_decision and agent_name is None:
+                self._callbacks.on_route_decision("(fallback)", "No match, using fallback", 0.0)
             return self._fallback.run(prompt, deps=deps) if deps is not None else self._fallback.run(prompt)  # type: ignore[no-any-return]
         else:
-            # Return routing response as fallback
+            # Return the raw LLM response (if LLM strategy) or reason string
+            text = self._last_llm_response if self._last_llm_response is not None else reason
+            conv = getattr(self, "_last_conv", None)
             return AgentResult(
-                output=route_response,
-                output_text=route_response,
-                messages=conv.messages,
-                usage=conv.usage,
+                output=text,
+                output_text=text,
+                messages=conv.messages if conv else [],
+                usage=conv.usage if conv else {},
                 state=AgentState.idle,
             )
 
-    def _fuzzy_match(self, response: str) -> Any | None:
-        """Find the best matching agent name in the LLM response."""
+    def _fuzzy_match_name(self, response: str) -> str | None:
+        """Find the best matching agent name in the LLM response. Returns the name string."""
         response_lower = response.lower().strip()
 
-        # Exact match
-        for name, agent in self._agents.items():
-            if name.lower() == response_lower:
-                return agent
+        for aname in self._agents:
+            if aname.lower() == response_lower:
+                return aname
 
-        # Substring match
-        for name, agent in self._agents.items():
-            if name.lower() in response_lower:
-                return agent
+        for aname in self._agents:
+            if aname.lower() in response_lower:
+                return aname
 
-        # Word-level match
         response_words = set(response_lower.split())
-        for name, agent in self._agents.items():
-            name_words = set(name.lower().replace("_", " ").split())
+        for aname in self._agents:
+            name_words = set(aname.lower().replace("_", " ").split())
             if name_words & response_words:
-                return agent
+                return aname
 
         return None
+
+    def _fuzzy_match(self, response: str) -> Any | None:
+        """Find the best matching agent in the LLM response (legacy)."""
+        matched = self._fuzzy_match_name(response)
+        return self._agents[matched] if matched else None
 
 
 # ------------------------------------------------------------------
