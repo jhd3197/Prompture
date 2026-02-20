@@ -8,30 +8,28 @@ import logging
 import os
 from typing import Any, Literal, overload
 
-from ..drivers import (
-    AirLLMDriver,
-    AzureDriver,
-    ClaudeDriver,
-    ElevenLabsSTTDriver,
-    ElevenLabsTTSDriver,
-    GoogleDriver,
-    GoogleImageGenDriver,
-    GrokDriver,
-    GrokImageGenDriver,
-    GroqDriver,
-    LMStudioDriver,
-    LocalHTTPDriver,
-    ModelScopeDriver,
-    MoonshotDriver,
-    OllamaDriver,
-    OpenAIDriver,
-    OpenAIImageGenDriver,
-    OpenAISTTDriver,
-    OpenAITTSDriver,
-    OpenRouterDriver,
-    StabilityImageGenDriver,
-    ZaiDriver,
-)
+from ..drivers.airllm_driver import AirLLMDriver
+from ..drivers.azure_driver import AzureDriver
+from ..drivers.claude_driver import ClaudeDriver
+from ..drivers.elevenlabs_stt_driver import ElevenLabsSTTDriver
+from ..drivers.elevenlabs_tts_driver import ElevenLabsTTSDriver
+from ..drivers.google_driver import GoogleDriver
+from ..drivers.google_img_gen_driver import GoogleImageGenDriver
+from ..drivers.grok_driver import GrokDriver
+from ..drivers.grok_img_gen_driver import GrokImageGenDriver
+from ..drivers.groq_driver import GroqDriver
+from ..drivers.lmstudio_driver import LMStudioDriver
+from ..drivers.local_http_driver import LocalHTTPDriver
+from ..drivers.modelscope_driver import ModelScopeDriver
+from ..drivers.moonshot_driver import MoonshotDriver
+from ..drivers.ollama_driver import OllamaDriver
+from ..drivers.openai_driver import OpenAIDriver
+from ..drivers.openai_img_gen_driver import OpenAIImageGenDriver
+from ..drivers.openai_stt_driver import OpenAISTTDriver
+from ..drivers.openai_tts_driver import OpenAITTSDriver
+from ..drivers.openrouter_driver import OpenRouterDriver
+from ..drivers.stability_img_gen_driver import StabilityImageGenDriver
+from ..drivers.zai_driver import ZaiDriver
 from .cache import MemoryCacheBackend
 from .provider_env import ProviderEnvironment
 from .settings import settings
@@ -403,6 +401,19 @@ def get_available_audio_models(
                 for model_id in ElevenLabsTTSDriver.AUDIO_PRICING:
                     available.add(f"elevenlabs/{model_id}")
 
+    # Dynamic discovery: check modalities_output from models.dev capabilities
+    # for any models that the pricing dicts don't know about yet.
+    from .model_rates import get_model_capabilities
+
+    for model_str in get_available_models(env=env):
+        parts = model_str.split("/", 1)
+        if len(parts) != 2:
+            continue
+        provider, model_id = parts
+        caps = get_model_capabilities(provider, model_id)
+        if caps and "audio" in caps.modalities_output and (modality is None or modality == "tts"):
+            available.add(model_str)
+
     return sorted(available)
 
 
@@ -443,5 +454,18 @@ def get_available_image_gen_models(
     if _cfg_value(env, "grok_api_key", "GROK_API_KEY"):
         for model_id in GrokImageGenDriver.IMAGE_PRICING:
             available.add(f"grok/{model_id}")
+
+    # Dynamic discovery: check modalities_output from models.dev capabilities
+    # for any models that the pricing dicts don't know about yet.
+    from .model_rates import get_model_capabilities
+
+    for model_str in get_available_models(env=env):
+        parts = model_str.split("/", 1)
+        if len(parts) != 2:
+            continue
+        provider, model_id = parts
+        caps = get_model_capabilities(provider, model_id)
+        if caps and "image" in caps.modalities_output:
+            available.add(model_str)
 
     return sorted(available)
