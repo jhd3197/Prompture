@@ -118,9 +118,7 @@ class TukuyLLMBackend:
                 full_prompt = f"{system}\n\n{prompt}" if system else prompt
                 result = await self._driver.generate(full_prompt, options)
         except Exception as exc:
-            raise DriverError(
-                f"LLM completion failed: {exc}"
-            ) from exc
+            raise DriverError(f"LLM completion failed: {exc}") from exc
 
         # Normalize response to Tukuy protocol
         meta = result.get("meta", {})
@@ -253,7 +251,7 @@ class TukuyLLMBackend:
 
         new_driver = get_async_driver_for_model(model_hint)
         return TukuyLLMBackend(
-            new_driver,
+            new_driver,  # type: ignore[arg-type]
             default_model=model_hint,
             default_temperature=self._default_temperature,
             default_max_tokens=self._default_max_tokens,
@@ -296,7 +294,7 @@ def create_tukuy_backend(
 
     driver = get_async_driver_for_model(model, env=env)
     return TukuyLLMBackend(
-        driver,
+        driver,  # type: ignore[arg-type]
         default_model=model,
         default_temperature=default_temperature,
         default_max_tokens=default_max_tokens,

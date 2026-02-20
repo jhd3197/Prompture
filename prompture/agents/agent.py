@@ -37,6 +37,13 @@ from typing import Any, Generic
 
 from pydantic import BaseModel
 
+from ..drivers.base import Driver
+from ..extraction.tools import clean_json_text
+from ..infra.callbacks import DriverCallbacks
+from ..infra.session import UsageSession
+from .conversation import Conversation
+from .persona import Persona
+from .tools_schema import ToolDefinition, ToolRegistry
 from .types import (
     AgentCallbacks,
     AgentResult,
@@ -50,13 +57,6 @@ from .types import (
     StreamEvent,
     StreamEventType,
 )
-from ..infra.callbacks import DriverCallbacks
-from .conversation import Conversation
-from ..drivers.base import Driver
-from .persona import Persona
-from ..infra.session import UsageSession
-from ..extraction.tools import clean_json_text
-from .tools_schema import ToolDefinition, ToolRegistry
 
 logger = logging.getLogger("prompture.agent")
 
@@ -312,13 +312,13 @@ class Agent(Generic[DepsType]):
         def _call_agent(prompt: str) -> str:
             """Run the wrapped agent with the given prompt."""
             result = agent.run(prompt)
-            _call_agent._last_agent_result = result
+            _call_agent._last_agent_result = result  # type: ignore[attr-defined]
             if extractor is not None:
                 return extractor(result)
             return result.output_text
 
-        _call_agent._source_agent = agent
-        _call_agent._last_agent_result = None
+        _call_agent._source_agent = agent  # type: ignore[attr-defined]
+        _call_agent._last_agent_result = None  # type: ignore[attr-defined]
 
         return ToolDefinition(
             name=tool_name,
@@ -349,9 +349,7 @@ class Agent(Generic[DepsType]):
         """
         current_depth = _agent_depth.get()
         if current_depth >= self._max_depth:
-            raise RecursionError(
-                f"Agent recursion depth exceeded: {current_depth} >= {self._max_depth}"
-            )
+            raise RecursionError(f"Agent recursion depth exceeded: {current_depth} >= {self._max_depth}")
         token = _agent_depth.set(current_depth + 1)
         self._lifecycle = AgentState.running
         self._stop_requested = False
@@ -586,11 +584,14 @@ class Agent(Generic[DepsType]):
                         f"Your response did not pass validation. Error: {exc.message}\n\nPlease try again."
                     )
                     self._extract_steps(
-                        conv.messages[-2:], steps, all_tool_calls,
+                        conv.messages[-2:],
+                        steps,
+                        all_tool_calls,
                         getattr(conv, "_full_tool_results", None),
                     )
 
                     # Re-parse if output_type is set
+                    output: Any
                     if self._output_type is not None:
                         try:
                             cleaned = clean_json_text(retry_text)
@@ -644,7 +645,7 @@ class Agent(Generic[DepsType]):
                     parts.append(self._system_prompt(ctx))
                 else:
                     # Fallback: call without context (shouldn't happen in normal flow)
-                    parts.append(self._system_prompt(None))  # type: ignore[arg-type]
+                    parts.append(self._system_prompt(None))
             else:
                 parts.append(str(self._system_prompt))
 
@@ -764,13 +765,17 @@ class Agent(Generic[DepsType]):
             # 9. Extract steps and tool calls from conversation messages
             all_tool_calls: list[dict[str, Any]] = []
             self._extract_steps(
-                conv.messages, steps, all_tool_calls,
+                conv.messages,
+                steps,
+                all_tool_calls,
                 getattr(conv, "_full_tool_results", None),
             )
 
             # Handle output_type parsing
             if self._output_type is not None:
-                output, output_text = self._parse_output(conv, response_text, steps, all_tool_calls, elapsed_ms, session)
+                output, output_text = self._parse_output(
+                    conv, response_text, steps, all_tool_calls, elapsed_ms, session
+                )
             else:
                 output = response_text
                 output_text = response_text
@@ -957,7 +962,9 @@ class Agent(Generic[DepsType]):
 
                     # Record the retry step
                     self._extract_steps(
-                        conv.messages[-2:], steps, all_tool_calls,
+                        conv.messages[-2:],
+                        steps,
+                        all_tool_calls,
                         getattr(conv, "_full_tool_results", None),
                     )
 
@@ -1102,7 +1109,9 @@ class Agent(Generic[DepsType]):
             # 8. Extract steps
             all_tool_calls: list[dict[str, Any]] = []
             self._extract_steps(
-                conv.messages, steps, all_tool_calls,
+                conv.messages,
+                steps,
+                all_tool_calls,
                 getattr(conv, "_full_tool_results", None),
             )
 

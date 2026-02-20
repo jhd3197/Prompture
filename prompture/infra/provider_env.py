@@ -51,5 +51,5 @@ class ProviderEnvironment:
 
         val = getattr(self, env_attr, None)
         if val is not None:
-            return val
+            return val  # type: ignore[no-any-return]
         return getattr(settings, settings_attr or env_attr, None)

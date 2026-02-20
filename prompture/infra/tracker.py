@@ -22,6 +22,7 @@ import logging
 import sqlite3
 import threading
 import uuid
+from collections.abc import Generator
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -33,21 +34,11 @@ logger = logging.getLogger("prompture.tracker")
 # Context variables for scope propagation
 # ---------------------------------------------------------------------------
 
-_ctx_session_id: contextvars.ContextVar[str | None] = contextvars.ContextVar(
-    "usage_session_id", default=None
-)
-_ctx_conversation_id: contextvars.ContextVar[str | None] = contextvars.ContextVar(
-    "usage_conversation_id", default=None
-)
-_ctx_agent_id: contextvars.ContextVar[str | None] = contextvars.ContextVar(
-    "usage_agent_id", default=None
-)
-_ctx_tool_name: contextvars.ContextVar[str | None] = contextvars.ContextVar(
-    "usage_tool_name", default=None
-)
-_ctx_operation: contextvars.ContextVar[str | None] = contextvars.ContextVar(
-    "usage_operation", default=None
-)
+_ctx_session_id: contextvars.ContextVar[str | None] = contextvars.ContextVar("usage_session_id", default=None)
+_ctx_conversation_id: contextvars.ContextVar[str | None] = contextvars.ContextVar("usage_conversation_id", default=None)
+_ctx_agent_id: contextvars.ContextVar[str | None] = contextvars.ContextVar("usage_agent_id", default=None)
+_ctx_tool_name: contextvars.ContextVar[str | None] = contextvars.ContextVar("usage_tool_name", default=None)
+_ctx_operation: contextvars.ContextVar[str | None] = contextvars.ContextVar("usage_operation", default=None)
 
 # ---------------------------------------------------------------------------
 # Data classes
@@ -120,8 +111,7 @@ class BudgetExceededError(Exception):
     def __init__(self, status: BudgetStatus) -> None:
         self.status = status
         super().__init__(
-            f"Budget exceeded for scope '{status.scope}': "
-            f"cost ${status.current_cost:.4f} / ${status.limit_cost:.4f}"
+            f"Budget exceeded for scope '{status.scope}': cost ${status.current_cost:.4f} / ${status.limit_cost:.4f}"
             if status.limit_cost is not None
             else f"Budget exceeded for scope '{status.scope}': "
             f"tokens {status.current_tokens:,} / {status.limit_tokens:,}"
@@ -393,7 +383,7 @@ class UsageTracker:
     # ------------------------------------------------------------------ #
 
     @contextlib.contextmanager
-    def session(self, session_id: str | None = None):
+    def session(self, session_id: str | None = None) -> Generator[str, None, None]:
         """Set the session scope for nested calls."""
         sid = session_id or str(uuid.uuid4())
         token = _ctx_session_id.set(sid)
@@ -403,7 +393,7 @@ class UsageTracker:
             _ctx_session_id.reset(token)
 
     @contextlib.contextmanager
-    def conversation(self, conversation_id: str):
+    def conversation(self, conversation_id: str) -> Generator[str, None, None]:
         """Set the conversation scope for nested calls."""
         token = _ctx_conversation_id.set(conversation_id)
         try:
@@ -412,7 +402,7 @@ class UsageTracker:
             _ctx_conversation_id.reset(token)
 
     @contextlib.contextmanager
-    def agent(self, agent_id: str):
+    def agent(self, agent_id: str) -> Generator[str, None, None]:
         """Set the agent scope for nested calls."""
         token = _ctx_agent_id.set(agent_id)
         try:
@@ -421,7 +411,7 @@ class UsageTracker:
             _ctx_agent_id.reset(token)
 
     @contextlib.contextmanager
-    def tool(self, tool_name: str):
+    def tool(self, tool_name: str) -> Generator[str, None, None]:
         """Set the tool scope for nested calls."""
         token = _ctx_tool_name.set(tool_name)
         try:
@@ -430,7 +420,7 @@ class UsageTracker:
             _ctx_tool_name.reset(token)
 
     @contextlib.contextmanager
-    def operation(self, operation_name: str):
+    def operation(self, operation_name: str) -> Generator[str, None, None]:
         """Set the operation scope for nested calls."""
         token = _ctx_operation.set(operation_name)
         try:
@@ -623,9 +613,7 @@ class UsageTracker:
             conn = self._connect()
             try:
                 # Get budget
-                budget_row = conn.execute(
-                    "SELECT * FROM usage_budgets WHERE scope = ?", (scope,)
-                ).fetchone()
+                budget_row = conn.execute("SELECT * FROM usage_budgets WHERE scope = ?", (scope,)).fetchone()
                 if budget_row is None:
                     return status
 
@@ -714,7 +702,7 @@ class UsageTracker:
     # DriverCallbacks integration
     # ------------------------------------------------------------------ #
 
-    def as_callbacks(self, **context: Any):
+    def as_callbacks(self, **context: Any) -> Any:
         """Return a :class:`DriverCallbacks` wired to this tracker.
 
         Extra keyword arguments are stored as default context on

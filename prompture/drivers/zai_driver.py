@@ -226,12 +226,14 @@ class ZaiDriver(CostMixin, Driver):
                         "Tool arguments for %s were truncated due to max_tokens limit. "
                         "Increase max_tokens in options to allow longer tool outputs. "
                         "Truncated arguments: %r",
-                        tc["function"]["name"], raw[:200] if raw else raw,
+                        tc["function"]["name"],
+                        raw[:200] if raw else raw,
                     )
                 else:
                     logger.warning(
                         "Failed to parse tool arguments for %s: %r",
-                        tc["function"]["name"], raw,
+                        tc["function"]["name"],
+                        raw,
                     )
                 args = {}
             tool_calls_out.append(

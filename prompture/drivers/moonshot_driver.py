@@ -82,7 +82,7 @@ class MoonshotDriver(CostMixin, Driver):
         key = api_key or os.getenv("MOONSHOT_API_KEY")
         if not key:
             return None
-        base = (endpoint or os.getenv("MOONSHOT_ENDPOINT", "https://api.moonshot.ai/v1")).rstrip("/")
+        base = (endpoint or os.getenv("MOONSHOT_ENDPOINT") or "https://api.moonshot.ai/v1").rstrip("/")
         return _fetch_openai_compatible_models(base, api_key=key, timeout=timeout)
 
     supports_messages = True

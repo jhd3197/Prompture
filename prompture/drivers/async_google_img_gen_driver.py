@@ -27,9 +27,9 @@ class AsyncGoogleImageGenDriver(ImageCostMixin, AsyncImageGenDriver):
     def __init__(self, api_key: str | None = None, model: str = "imagen-3.0-generate-002"):
         self.api_key = api_key or os.getenv("GOOGLE_API_KEY")
         self.model = model
-        self._client = None
+        self._client: Any = None
 
-    def _get_client(self):
+    def _get_client(self) -> Any:
         if self._client is None:
             try:
                 from google import genai

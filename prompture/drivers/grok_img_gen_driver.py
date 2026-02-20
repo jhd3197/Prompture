@@ -9,7 +9,7 @@ from typing import Any
 try:
     from openai import OpenAI
 except Exception:
-    OpenAI = None
+    OpenAI = None  # type: ignore[misc, assignment]
 
 from ..infra.cost_mixin import ImageCostMixin
 from ..media.image import image_from_base64
@@ -35,7 +35,7 @@ class GrokImageGenDriver(ImageCostMixin, ImageGenDriver):
     def __init__(self, api_key: str | None = None, model: str = "grok-2-image"):
         self.api_key = api_key or os.getenv("GROK_API_KEY")
         self.model = model
-        if OpenAI:
+        if OpenAI is not None:
             self.client = OpenAI(api_key=self.api_key, base_url=_XAI_BASE_URL)
         else:
             self.client = None

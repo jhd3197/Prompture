@@ -32,7 +32,7 @@ class OllamaDriver(Driver):
     ) -> list[str] | None:
         """List models available from the Ollama server via ``/api/tags``."""
         try:
-            ep = endpoint or os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434/api/generate")
+            ep: str = endpoint or os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434/api/generate")  # type: ignore[assignment]
             base_url = ep.split("/api/")[0]
             tags_url = f"{base_url}/api/tags"
 
@@ -49,14 +49,14 @@ class OllamaDriver(Driver):
 
     def __init__(self, endpoint: str | None = None, model: str = "llama3"):
         # Allow override via env var
-        self.endpoint = endpoint or os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434/api/generate")
+        self.endpoint: str = endpoint or os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434/api/generate")  # type: ignore[assignment]
         self.model = model
-        self.options = {}  # Initialize empty options dict
+        self.options: dict[str, Any] = {}  # Initialize empty options dict
 
         # Validate connection to Ollama server
         self._validate_connection()
 
-    def _validate_connection(self):
+    def _validate_connection(self) -> None:
         """Validate connection to the Ollama server."""
         try:
             # Send a simple HEAD request to check if server is accessible

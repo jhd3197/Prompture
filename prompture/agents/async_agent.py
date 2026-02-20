@@ -15,7 +15,6 @@ Example::
 from __future__ import annotations
 
 import asyncio
-import contextvars
 import inspect
 import json
 import logging
@@ -26,6 +25,11 @@ from typing import Any, Generic
 
 from pydantic import BaseModel
 
+from ..extraction.tools import clean_json_text
+from ..infra.callbacks import DriverCallbacks
+from ..infra.session import UsageSession
+from .persona import Persona
+from .tools_schema import ToolDefinition, ToolRegistry
 from .types import (
     AgentCallbacks,
     AgentResult,
@@ -39,11 +43,6 @@ from .types import (
     StreamEvent,
     StreamEventType,
 )
-from ..infra.callbacks import DriverCallbacks
-from .persona import Persona
-from ..infra.session import UsageSession
-from ..extraction.tools import clean_json_text
-from .tools_schema import ToolDefinition, ToolRegistry
 
 logger = logging.getLogger("prompture.async_agent")
 
@@ -54,7 +53,6 @@ _DEFAULT_MAX_AGENT_DEPTH = 5
 # Share the same ContextVar with the sync Agent so depth tracking crosses
 # agent boundaries (e.g. a sync Agent calling an AsyncAgent as a tool).
 from .agent import _agent_depth
-
 
 # ------------------------------------------------------------------
 # Helpers
@@ -258,7 +256,7 @@ class AsyncAgent(Generic[DepsType]):
     def messages(self) -> list[dict[str, Any]]:
         """Message history from the persistent conversation, or ``[]``."""
         if self._conversation is not None:
-            return self._conversation.messages
+            return self._conversation.messages  # type: ignore[no-any-return]
         return []
 
     def clear_history(self) -> None:
@@ -304,13 +302,13 @@ class AsyncAgent(Generic[DepsType]):
             else:
                 result = asyncio.run(agent.run(prompt))
 
-            _call_agent._last_agent_result = result
+            _call_agent._last_agent_result = result  # type: ignore[attr-defined]
             if extractor is not None:
                 return extractor(result)
             return result.output_text
 
-        _call_agent._source_agent = agent
-        _call_agent._last_agent_result = None
+        _call_agent._source_agent = agent  # type: ignore[attr-defined]
+        _call_agent._last_agent_result = None  # type: ignore[attr-defined]
 
         return ToolDefinition(
             name=tool_name,
@@ -347,9 +345,7 @@ class AsyncAgent(Generic[DepsType]):
         """
         current_depth = _agent_depth.get()
         if current_depth >= self._max_depth:
-            raise RecursionError(
-                f"Agent recursion depth exceeded: {current_depth} >= {self._max_depth}"
-            )
+            raise RecursionError(f"Agent recursion depth exceeded: {current_depth} >= {self._max_depth}")
         token = _agent_depth.set(current_depth + 1)
         self._lifecycle = AgentState.running
         self._stop_requested = False
@@ -505,7 +501,7 @@ class AsyncAgent(Generic[DepsType]):
                                     )
 
                         if _wants:
-                            call_args = (ctx,)
+                            call_args: tuple[Any, ...] = (ctx,)
                         else:
                             call_args = ()
 
@@ -651,7 +647,9 @@ class AsyncAgent(Generic[DepsType]):
                         f"Your response did not pass validation. Error: {exc.message}\n\nPlease try again."
                     )
                     self._extract_steps(
-                        conv.messages[-2:], steps, all_tool_calls,
+                        conv.messages[-2:],
+                        steps,
+                        all_tool_calls,
                         getattr(conv, "_full_tool_results", None),
                     )
 
@@ -704,7 +702,7 @@ class AsyncAgent(Generic[DepsType]):
                 if ctx is not None:
                     parts.append(self._system_prompt(ctx))
                 else:
-                    parts.append(self._system_prompt(None))  # type: ignore[arg-type]
+                    parts.append(self._system_prompt(None))
             else:
                 parts.append(str(self._system_prompt))
 
@@ -979,7 +977,9 @@ class AsyncAgent(Generic[DepsType]):
                     )
                     text = await conv.ask(retry_msg)
                     self._extract_steps(
-                        conv.messages[-2:], steps, all_tool_calls,
+                        conv.messages[-2:],
+                        steps,
+                        all_tool_calls,
                         getattr(conv, "_full_tool_results", None),
                     )
 
@@ -1033,9 +1033,7 @@ class AsyncAgent(Generic[DepsType]):
         """
         current_depth = _agent_depth.get()
         if current_depth >= self._max_depth:
-            raise RecursionError(
-                f"Agent recursion depth exceeded: {current_depth} >= {self._max_depth}"
-            )
+            raise RecursionError(f"Agent recursion depth exceeded: {current_depth} >= {self._max_depth}")
         token = _agent_depth.set(current_depth + 1)
         self._lifecycle = AgentState.running
         self._stop_requested = False
@@ -1071,9 +1069,7 @@ class AsyncAgent(Generic[DepsType]):
             try:
                 if has_tools:
                     response_text = ""
-                    async for event in conv.ask_with_tool_events(
-                        effective_prompt, images=images
-                    ):
+                    async for event in conv.ask_with_tool_events(effective_prompt, images=images):
                         if event["type"] == "tool_call":
                             yield StreamEvent(event_type=StreamEventType.tool_call, data=event)
                         elif event["type"] == "tool_result":
@@ -1162,7 +1158,8 @@ class AsyncAgentIterator:
             return await self._gen.__anext__()
         except StopAsyncIteration:
             # Try to capture the result from the agent
-            agent = self._gen.ag_frame and self._gen.ag_frame.f_locals.get("self")
+            ag_frame = getattr(self._gen, "ag_frame", None)
+            agent = ag_frame and ag_frame.f_locals.get("self") if ag_frame else None
             if agent and hasattr(agent, "_last_iter_result"):
                 self._result = agent._last_iter_result
             raise

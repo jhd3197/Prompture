@@ -91,7 +91,7 @@ class PdfParser(BaseParser):
             try:
                 from pypdf import PdfReader
             except ImportError:
-                from PyPDF2 import PdfReader  # type: ignore[no-redef]
+                from PyPDF2 import PdfReader
 
             reader = PdfReader(path)
             total_pages = len(reader.pages)

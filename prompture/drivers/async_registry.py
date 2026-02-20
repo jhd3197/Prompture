@@ -39,28 +39,28 @@ from .registry import (
 # Register built-in async drivers
 register_async_driver(
     "openai",
-    lambda model=None: AsyncOpenAIDriver(api_key=settings.openai_api_key, model=model or settings.openai_model),
+    lambda model=None: AsyncOpenAIDriver(api_key=settings.openai_api_key, model=model or settings.openai_model),  # type: ignore[misc]
     overwrite=True,
 )
 register_async_driver(
     "ollama",
-    lambda model=None: AsyncOllamaDriver(endpoint=settings.ollama_endpoint, model=model or settings.ollama_model),
+    lambda model=None: AsyncOllamaDriver(endpoint=settings.ollama_endpoint, model=model or settings.ollama_model),  # type: ignore[misc]
     overwrite=True,
 )
 register_async_driver(
     "claude",
-    lambda model=None: AsyncClaudeDriver(api_key=settings.claude_api_key, model=model or settings.claude_model),
+    lambda model=None: AsyncClaudeDriver(api_key=settings.claude_api_key, model=model or settings.claude_model),  # type: ignore[misc]
     overwrite=True,
 )
 # Alias: "anthropic" maps to the same Claude driver for compatibility
 register_async_driver(
     "anthropic",
-    lambda model=None: AsyncClaudeDriver(api_key=settings.claude_api_key, model=model or settings.claude_model),
+    lambda model=None: AsyncClaudeDriver(api_key=settings.claude_api_key, model=model or settings.claude_model),  # type: ignore[misc]
     overwrite=True,
 )
 register_async_driver(
     "lmstudio",
-    lambda model=None: AsyncLMStudioDriver(
+    lambda model=None: AsyncLMStudioDriver(  # type: ignore[misc]
         endpoint=settings.lmstudio_endpoint,
         model=model or settings.lmstudio_model,
         api_key=settings.lmstudio_api_key,
@@ -69,7 +69,7 @@ register_async_driver(
 )
 register_async_driver(
     "azure",
-    lambda model=None: AsyncAzureDriver(
+    lambda model=None: AsyncAzureDriver(  # type: ignore[misc]
         api_key=settings.azure_api_key,
         endpoint=settings.azure_api_endpoint,
         deployment_id=settings.azure_deployment_id,
@@ -79,34 +79,34 @@ register_async_driver(
 )
 register_async_driver(
     "local_http",
-    lambda model=None: AsyncLocalHTTPDriver(endpoint=settings.local_http_endpoint, model=model),
+    lambda model=None: AsyncLocalHTTPDriver(endpoint=getattr(settings, "local_http_endpoint", None), model=model),  # type: ignore[misc]
     overwrite=True,
 )
 register_async_driver(
     "google",
-    lambda model=None: AsyncGoogleDriver(api_key=settings.google_api_key, model=model or settings.google_model),
+    lambda model=None: AsyncGoogleDriver(api_key=settings.google_api_key, model=model or settings.google_model),  # type: ignore[misc]
     overwrite=True,
 )
 register_async_driver(
     "groq",
-    lambda model=None: AsyncGroqDriver(api_key=settings.groq_api_key, model=model or settings.groq_model),
+    lambda model=None: AsyncGroqDriver(api_key=settings.groq_api_key, model=model or settings.groq_model),  # type: ignore[misc]
     overwrite=True,
 )
 register_async_driver(
     "openrouter",
-    lambda model=None: AsyncOpenRouterDriver(
+    lambda model=None: AsyncOpenRouterDriver(  # type: ignore[misc]
         api_key=settings.openrouter_api_key, model=model or settings.openrouter_model
     ),
     overwrite=True,
 )
 register_async_driver(
     "grok",
-    lambda model=None: AsyncGrokDriver(api_key=settings.grok_api_key, model=model or settings.grok_model),
+    lambda model=None: AsyncGrokDriver(api_key=settings.grok_api_key, model=model or settings.grok_model),  # type: ignore[misc]
     overwrite=True,
 )
 register_async_driver(
     "moonshot",
-    lambda model=None: AsyncMoonshotDriver(
+    lambda model=None: AsyncMoonshotDriver(  # type: ignore[misc]
         api_key=settings.moonshot_api_key,
         model=model or settings.moonshot_model,
         endpoint=settings.moonshot_endpoint,
@@ -115,7 +115,7 @@ register_async_driver(
 )
 register_async_driver(
     "modelscope",
-    lambda model=None: AsyncModelScopeDriver(
+    lambda model=None: AsyncModelScopeDriver(  # type: ignore[misc]
         api_key=settings.modelscope_api_key,
         model=model or settings.modelscope_model,
         endpoint=settings.modelscope_endpoint,
@@ -124,7 +124,7 @@ register_async_driver(
 )
 register_async_driver(
     "zai",
-    lambda model=None: AsyncZaiDriver(
+    lambda model=None: AsyncZaiDriver(  # type: ignore[misc]
         api_key=settings.zhipu_api_key,
         model=model or settings.zhipu_model,
         endpoint=settings.zhipu_endpoint,
@@ -133,7 +133,7 @@ register_async_driver(
 )
 register_async_driver(
     "airllm",
-    lambda model=None: AsyncAirLLMDriver(
+    lambda model=None: AsyncAirLLMDriver(  # type: ignore[misc]
         model=model or settings.airllm_model,
         compression=settings.airllm_compression,
     ),
@@ -141,7 +141,7 @@ register_async_driver(
 )
 register_async_driver(
     "huggingface",
-    lambda model=None: AsyncHuggingFaceDriver(
+    lambda model=None: AsyncHuggingFaceDriver(  # type: ignore[misc]
         endpoint=settings.hf_endpoint,
         token=settings.hf_token,
         model=model or "bert-base-uncased",
@@ -153,22 +153,22 @@ register_async_driver(
 # Common alternative names so users can write e.g. "gemini/..." or "chatgpt/..."
 register_async_driver(
     "gemini",
-    lambda model=None: AsyncGoogleDriver(api_key=settings.google_api_key, model=model or settings.google_model),
+    lambda model=None: AsyncGoogleDriver(api_key=settings.google_api_key, model=model or settings.google_model),  # type: ignore[misc]
     overwrite=True,
 )
 register_async_driver(
     "chatgpt",
-    lambda model=None: AsyncOpenAIDriver(api_key=settings.openai_api_key, model=model or settings.openai_model),
+    lambda model=None: AsyncOpenAIDriver(api_key=settings.openai_api_key, model=model or settings.openai_model),  # type: ignore[misc]
     overwrite=True,
 )
 register_async_driver(
     "xai",
-    lambda model=None: AsyncGrokDriver(api_key=settings.grok_api_key, model=model or settings.grok_model),
+    lambda model=None: AsyncGrokDriver(api_key=settings.grok_api_key, model=model or settings.grok_model),  # type: ignore[misc]
     overwrite=True,
 )
 register_async_driver(
     "lm_studio",
-    lambda model=None: AsyncLMStudioDriver(
+    lambda model=None: AsyncLMStudioDriver(  # type: ignore[misc]
         endpoint=settings.lmstudio_endpoint,
         model=model or settings.lmstudio_model,
         api_key=settings.lmstudio_api_key,
@@ -177,7 +177,7 @@ register_async_driver(
 )
 register_async_driver(
     "lm-studio",
-    lambda model=None: AsyncLMStudioDriver(
+    lambda model=None: AsyncLMStudioDriver(  # type: ignore[misc]
         endpoint=settings.lmstudio_endpoint,
         model=model or settings.lmstudio_model,
         api_key=settings.lmstudio_api_key,
@@ -186,7 +186,7 @@ register_async_driver(
 )
 register_async_driver(
     "zhipu",
-    lambda model=None: AsyncZaiDriver(
+    lambda model=None: AsyncZaiDriver(  # type: ignore[misc]
         api_key=settings.zhipu_api_key,
         model=model or settings.zhipu_model,
         endpoint=settings.zhipu_endpoint,
@@ -195,7 +195,7 @@ register_async_driver(
 )
 register_async_driver(
     "hf",
-    lambda model=None: AsyncHuggingFaceDriver(
+    lambda model=None: AsyncHuggingFaceDriver(  # type: ignore[misc]
         endpoint=settings.hf_endpoint,
         token=settings.hf_token,
         model=model or "bert-base-uncased",
@@ -209,7 +209,7 @@ ASYNC_DRIVER_REGISTRY = _get_async_registry()
 # ── Per-environment async driver construction ──────────────────────────────
 # Maps provider name → (AsyncDriverClass, {ctor_kwarg: env/settings_attr}, default_model_attr)
 
-ASYNC_PROVIDER_DRIVER_MAP: dict[str, tuple] = {
+ASYNC_PROVIDER_DRIVER_MAP: dict[str, tuple[type, dict[str, str], str]] = {
     "openai": (AsyncOpenAIDriver, {"api_key": "openai_api_key"}, "openai_model"),
     "chatgpt": (AsyncOpenAIDriver, {"api_key": "openai_api_key"}, "openai_model"),
     "claude": (AsyncClaudeDriver, {"api_key": "claude_api_key"}, "claude_model"),
@@ -283,7 +283,7 @@ def _build_async_driver_with_env(
     return driver_cls(**kwargs)
 
 
-def get_async_driver(provider_name: str | None = None, *, env: ProviderEnvironment | None = None):
+def get_async_driver(provider_name: str | None = None, *, env: ProviderEnvironment | None = None) -> object:
     """Factory to get an async driver instance based on the provider name.
 
     Uses default model from settings if not overridden.
@@ -297,10 +297,10 @@ def get_async_driver(provider_name: str | None = None, *, env: ProviderEnvironme
     if env is not None:
         return _build_async_driver_with_env(provider, None, env)
     factory = get_async_driver_factory(provider)
-    return factory()
+    return factory(None)
 
 
-def get_async_driver_for_model(model_str: str, *, env: ProviderEnvironment | None = None):
+def get_async_driver_for_model(model_str: str, *, env: ProviderEnvironment | None = None) -> object:
     """Factory to get an async driver instance based on a full model string.
 
     Format: ``provider/model_id``

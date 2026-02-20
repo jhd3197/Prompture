@@ -25,7 +25,7 @@ class LMStudioDriver(Driver):
         api_key: str | None = None,
     ):
         # Allow override via env var
-        self.endpoint = endpoint or os.getenv("LMSTUDIO_ENDPOINT", "http://127.0.0.1:1234/v1/chat/completions")
+        self.endpoint: str = endpoint or os.getenv("LMSTUDIO_ENDPOINT", "http://127.0.0.1:1234/v1/chat/completions")  # type: ignore[assignment]
         self.model = model
         self.options: dict[str, Any] = {}
 
@@ -46,7 +46,7 @@ class LMStudioDriver(Driver):
             headers["Authorization"] = f"Bearer {self.api_key}"
         return headers
 
-    def _validate_connection(self):
+    def _validate_connection(self) -> None:
         """Validate connection to the LM Studio server."""
         try:
             health_url = f"{self.base_url}/v1/models"
@@ -167,7 +167,7 @@ class LMStudioDriver(Driver):
         """List models available from the LM Studio server."""
         from .base import _fetch_openai_compatible_models
 
-        ep = endpoint or os.getenv("LMSTUDIO_ENDPOINT", "http://127.0.0.1:1234/v1/chat/completions")
+        ep: str = endpoint or os.getenv("LMSTUDIO_ENDPOINT", "http://127.0.0.1:1234/v1/chat/completions")  # type: ignore[assignment]
         base = ep.split("/v1/")[0] + "/v1"
         key = api_key or os.getenv("LMSTUDIO_API_KEY")
         return _fetch_openai_compatible_models(base, api_key=key, timeout=timeout)
@@ -180,7 +180,7 @@ class LMStudioDriver(Driver):
         r = requests.get(url, headers=self._headers, timeout=10)
         r.raise_for_status()
         data = r.json()
-        return data.get("data", [])
+        return data.get("data", [])  # type: ignore[no-any-return]
 
     def load_model(self, model: str, context_length: int | None = None) -> dict[str, Any]:
         """Load a model into LM Studio via POST /api/v1/models/load."""
@@ -190,7 +190,7 @@ class LMStudioDriver(Driver):
             payload["context_length"] = context_length
         r = requests.post(url, json=payload, headers=self._headers, timeout=120)
         r.raise_for_status()
-        return r.json()
+        return r.json()  # type: ignore[no-any-return]
 
     def unload_model(self, model: str) -> dict[str, Any]:
         """Unload a model from LM Studio via POST /api/v1/models/unload."""
@@ -198,4 +198,4 @@ class LMStudioDriver(Driver):
         payload = {"instance_id": model}
         r = requests.post(url, json=payload, headers=self._headers, timeout=30)
         r.raise_for_status()
-        return r.json()
+        return r.json()  # type: ignore[no-any-return]

@@ -250,9 +250,7 @@ class SQLiteCacheBackend(CacheBackend):
                 if count > self._max_entries:
                     excess = count - self._max_entries
                     conn.execute(
-                        "DELETE FROM cache WHERE key IN ("
-                        "  SELECT key FROM cache ORDER BY created_at ASC LIMIT ?"
-                        ")",
+                        "DELETE FROM cache WHERE key IN (  SELECT key FROM cache ORDER BY created_at ASC LIMIT ?)",
                         (excess,),
                     )
                 conn.commit()
@@ -309,7 +307,7 @@ class RedisCacheBackend(CacheBackend):
                 "Install it with: pip install redis  (or: pip install prompture[redis])"
             ) from None
 
-        self._client = _redis.from_url(redis_url, decode_responses=True)
+        self._client = _redis.from_url(redis_url, decode_responses=True)  # type: ignore[no-untyped-call]
         self._prefix = prefix
 
     def _prefixed(self, key: str) -> str:
@@ -472,6 +470,7 @@ def configure_cache(
     """
     global _cache_instance
 
+    be: CacheBackend
     if backend == "memory":
         be = MemoryCacheBackend(maxsize=maxsize)
     elif backend == "sqlite":

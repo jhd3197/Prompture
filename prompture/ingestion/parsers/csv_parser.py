@@ -45,7 +45,7 @@ class CsvParser(BaseParser):
 
         raw = p.read_text(encoding="utf-8", errors="replace")
         reader = csv.DictReader(io.StringIO(raw), delimiter=delimiter)
-        headers = reader.fieldnames or []
+        headers: list[str] = list(reader.fieldnames or [])
 
         rows: list[dict[str, str]] = []
         for i, row in enumerate(reader):
@@ -90,7 +90,7 @@ class CsvParser(BaseParser):
         try:
             import toon
 
-            return toon.dumps(rows)
+            return toon.dumps(rows)  # type: ignore[no-any-return]
         except ImportError:
             logger.debug("python-toon not available, falling back to JSON for CSV output")
             return json.dumps(rows, ensure_ascii=False, default=str)

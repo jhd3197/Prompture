@@ -30,7 +30,7 @@ from .stability_img_gen_driver import StabilityImageGenDriver
 
 register_img_gen_driver(
     "openai",
-    lambda model=None: OpenAIImageGenDriver(
+    lambda model=None: OpenAIImageGenDriver(  # type: ignore[misc]
         api_key=settings.openai_api_key,
         model=model or "dall-e-3",
     ),
@@ -39,7 +39,7 @@ register_img_gen_driver(
 
 register_async_img_gen_driver(
     "openai",
-    lambda model=None: AsyncOpenAIImageGenDriver(
+    lambda model=None: AsyncOpenAIImageGenDriver(  # type: ignore[misc]
         api_key=settings.openai_api_key,
         model=model or "dall-e-3",
     ),
@@ -50,7 +50,7 @@ register_async_img_gen_driver(
 
 register_img_gen_driver(
     "google",
-    lambda model=None: GoogleImageGenDriver(
+    lambda model=None: GoogleImageGenDriver(  # type: ignore[misc]
         api_key=settings.google_api_key,
         model=model or "imagen-3.0-generate-002",
     ),
@@ -59,7 +59,7 @@ register_img_gen_driver(
 
 register_async_img_gen_driver(
     "google",
-    lambda model=None: AsyncGoogleImageGenDriver(
+    lambda model=None: AsyncGoogleImageGenDriver(  # type: ignore[misc]
         api_key=settings.google_api_key,
         model=model or "imagen-3.0-generate-002",
     ),
@@ -73,7 +73,7 @@ _stability_endpoint = getattr(settings, "stability_endpoint", None)
 
 register_img_gen_driver(
     "stability",
-    lambda model=None: StabilityImageGenDriver(
+    lambda model=None: StabilityImageGenDriver(  # type: ignore[misc]
         api_key=_stability_api_key,
         model=model or "stable-image-core",
         endpoint=_stability_endpoint,
@@ -83,7 +83,7 @@ register_img_gen_driver(
 
 register_async_img_gen_driver(
     "stability",
-    lambda model=None: AsyncStabilityImageGenDriver(
+    lambda model=None: AsyncStabilityImageGenDriver(  # type: ignore[misc]
         api_key=_stability_api_key,
         model=model or "stable-image-core",
         endpoint=_stability_endpoint,
@@ -95,7 +95,7 @@ register_async_img_gen_driver(
 
 register_img_gen_driver(
     "grok",
-    lambda model=None: GrokImageGenDriver(
+    lambda model=None: GrokImageGenDriver(  # type: ignore[misc]
         api_key=settings.grok_api_key,
         model=model or "grok-2-image",
     ),
@@ -104,7 +104,7 @@ register_img_gen_driver(
 
 register_async_img_gen_driver(
     "grok",
-    lambda model=None: AsyncGrokImageGenDriver(
+    lambda model=None: AsyncGrokImageGenDriver(  # type: ignore[misc]
         api_key=settings.grok_api_key,
         model=model or "grok-2-image",
     ),
@@ -114,7 +114,7 @@ register_async_img_gen_driver(
 # ── Aliases ────────────────────────────────────────────────────────────────
 register_img_gen_driver(
     "gemini",
-    lambda model=None: GoogleImageGenDriver(
+    lambda model=None: GoogleImageGenDriver(  # type: ignore[misc]
         api_key=settings.google_api_key,
         model=model or "imagen-3.0-generate-002",
     ),
@@ -122,7 +122,7 @@ register_img_gen_driver(
 )
 register_async_img_gen_driver(
     "gemini",
-    lambda model=None: AsyncGoogleImageGenDriver(
+    lambda model=None: AsyncGoogleImageGenDriver(  # type: ignore[misc]
         api_key=settings.google_api_key,
         model=model or "imagen-3.0-generate-002",
     ),
@@ -130,7 +130,7 @@ register_async_img_gen_driver(
 )
 register_img_gen_driver(
     "xai",
-    lambda model=None: GrokImageGenDriver(
+    lambda model=None: GrokImageGenDriver(  # type: ignore[misc]
         api_key=settings.grok_api_key,
         model=model or "grok-2-image",
     ),
@@ -138,7 +138,7 @@ register_img_gen_driver(
 )
 register_async_img_gen_driver(
     "xai",
-    lambda model=None: AsyncGrokImageGenDriver(
+    lambda model=None: AsyncGrokImageGenDriver(  # type: ignore[misc]
         api_key=settings.grok_api_key,
         model=model or "grok-2-image",
     ),
@@ -146,7 +146,7 @@ register_async_img_gen_driver(
 )
 register_img_gen_driver(
     "dalle",
-    lambda model=None: OpenAIImageGenDriver(
+    lambda model=None: OpenAIImageGenDriver(  # type: ignore[misc]
         api_key=settings.openai_api_key,
         model=model or "dall-e-3",
     ),
@@ -154,7 +154,7 @@ register_img_gen_driver(
 )
 register_async_img_gen_driver(
     "dalle",
-    lambda model=None: AsyncOpenAIImageGenDriver(
+    lambda model=None: AsyncOpenAIImageGenDriver(  # type: ignore[misc]
         api_key=settings.openai_api_key,
         model=model or "dall-e-3",
     ),
@@ -165,7 +165,7 @@ register_async_img_gen_driver(
 # ── Factory functions ─────────────────────────────────────────────────────
 
 
-def get_img_gen_driver_for_model(model_str: str):
+def get_img_gen_driver_for_model(model_str: str) -> object:
     """Instantiate a sync image gen driver from a ``"provider/model"`` string.
 
     Args:
@@ -181,7 +181,7 @@ def get_img_gen_driver_for_model(model_str: str):
     return factory(model_id)
 
 
-def get_async_img_gen_driver_for_model(model_str: str):
+def get_async_img_gen_driver_for_model(model_str: str) -> object:
     """Instantiate an async image gen driver from a ``"provider/model"`` string."""
     parts = model_str.split("/", 1)
     provider = parts[0].lower()

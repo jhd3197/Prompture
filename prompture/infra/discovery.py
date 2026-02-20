@@ -6,32 +6,30 @@ import dataclasses
 import hashlib
 import logging
 import os
-from typing import Any, overload
+from typing import Any, Literal, overload
 
-from ..drivers import (
-    AirLLMDriver,
-    AzureDriver,
-    ClaudeDriver,
-    ElevenLabsSTTDriver,
-    ElevenLabsTTSDriver,
-    GoogleDriver,
-    GoogleImageGenDriver,
-    GrokDriver,
-    GrokImageGenDriver,
-    GroqDriver,
-    LMStudioDriver,
-    LocalHTTPDriver,
-    ModelScopeDriver,
-    MoonshotDriver,
-    OllamaDriver,
-    OpenAIDriver,
-    OpenAIImageGenDriver,
-    OpenAISTTDriver,
-    OpenAITTSDriver,
-    OpenRouterDriver,
-    StabilityImageGenDriver,
-    ZaiDriver,
-)
+from ..drivers.airllm_driver import AirLLMDriver
+from ..drivers.azure_driver import AzureDriver
+from ..drivers.claude_driver import ClaudeDriver
+from ..drivers.elevenlabs_stt_driver import ElevenLabsSTTDriver
+from ..drivers.elevenlabs_tts_driver import ElevenLabsTTSDriver
+from ..drivers.google_driver import GoogleDriver
+from ..drivers.google_img_gen_driver import GoogleImageGenDriver
+from ..drivers.grok_driver import GrokDriver
+from ..drivers.grok_img_gen_driver import GrokImageGenDriver
+from ..drivers.groq_driver import GroqDriver
+from ..drivers.lmstudio_driver import LMStudioDriver
+from ..drivers.local_http_driver import LocalHTTPDriver
+from ..drivers.modelscope_driver import ModelScopeDriver
+from ..drivers.moonshot_driver import MoonshotDriver
+from ..drivers.ollama_driver import OllamaDriver
+from ..drivers.openai_driver import OpenAIDriver
+from ..drivers.openai_img_gen_driver import OpenAIImageGenDriver
+from ..drivers.openai_stt_driver import OpenAISTTDriver
+from ..drivers.openai_tts_driver import OpenAITTSDriver
+from ..drivers.openrouter_driver import OpenRouterDriver
+from ..drivers.stability_img_gen_driver import StabilityImageGenDriver
+from ..drivers.zai_driver import ZaiDriver
 from .cache import MemoryCacheBackend
 from .provider_env import ProviderEnvironment
 from .settings import settings
@@ -94,7 +92,7 @@ def _get_list_models_kwargs(
 def get_available_models(
     *,
     env: ProviderEnvironment | None = None,
-    include_capabilities: bool = False,
+    include_capabilities: Literal[False] = False,
     verified_only: bool = False,
     force_refresh: bool = False,
     cache_ttl: int | None = None,
@@ -105,7 +103,7 @@ def get_available_models(
 def get_available_models(
     *,
     env: ProviderEnvironment | None = None,
-    include_capabilities: bool = True,
+    include_capabilities: Literal[True],
     verified_only: bool = False,
     force_refresh: bool = False,
     cache_ttl: int | None = None,
@@ -160,7 +158,7 @@ def get_available_models(
         cached = _discovery_cache.get(cache_key)
         if cached is not None:
             logger.debug("Discovery cache hit for key=%s", cache_key)
-            return cached
+            return cached  # type: ignore[no-any-return]
 
     logger.debug("Discovery cache miss for key=%s — querying providers", cache_key)
     available_models: set[str] = set()
@@ -255,7 +253,7 @@ def get_available_models(
             # API-based Detection: call driver's list_models() classmethod
             api_kwargs = _get_list_models_kwargs(provider, env=env)
             try:
-                api_models = driver_cls.list_models(**api_kwargs)
+                api_models = driver_cls.list_models(**api_kwargs)  # type: ignore[attr-defined]
                 if api_models is not None:
                     for model_id in api_models:
                         available_models.add(f"{provider}/{model_id}")
@@ -384,30 +382,37 @@ def get_available_audio_models(
 
     # ElevenLabs audio models
     elevenlabs_key = _cfg_value(env, "elevenlabs_api_key", "ELEVENLABS_API_KEY")
-    elevenlabs_endpoint = (
-        getattr(settings, "elevenlabs_endpoint", None) or "https://api.elevenlabs.io/v1"
-    )
+    elevenlabs_endpoint = getattr(settings, "elevenlabs_endpoint", None) or "https://api.elevenlabs.io/v1"
     if elevenlabs_key:
         if modality is None or modality == "stt":
             # STT: static list (no API listing endpoint for STT models)
-            stt_models = ElevenLabsSTTDriver.list_models(
-                api_key=elevenlabs_key, endpoint=elevenlabs_endpoint
-            )
+            stt_models = ElevenLabsSTTDriver.list_models(api_key=elevenlabs_key, endpoint=elevenlabs_endpoint)
             if stt_models:
                 for model_id in stt_models:
                     available.add(f"elevenlabs/{model_id}")
 
         if modality is None or modality == "tts":
             # TTS: dynamic discovery via GET /v1/models, fallback to AUDIO_PRICING
-            tts_models = ElevenLabsTTSDriver.list_models(
-                api_key=elevenlabs_key, endpoint=elevenlabs_endpoint
-            )
+            tts_models = ElevenLabsTTSDriver.list_models(api_key=elevenlabs_key, endpoint=elevenlabs_endpoint)
             if tts_models is not None:
                 for model_id in tts_models:
                     available.add(f"elevenlabs/{model_id}")
             else:
                 for model_id in ElevenLabsTTSDriver.AUDIO_PRICING:
                     available.add(f"elevenlabs/{model_id}")
+
+    # Dynamic discovery: check modalities_output from models.dev capabilities
+    # for any models that the pricing dicts don't know about yet.
+    from .model_rates import get_model_capabilities
+
+    for model_str in get_available_models(env=env):
+        parts = model_str.split("/", 1)
+        if len(parts) != 2:
+            continue
+        provider, model_id = parts
+        caps = get_model_capabilities(provider, model_id)
+        if caps and "audio" in caps.modalities_output and (modality is None or modality == "tts"):
+            available.add(model_str)
 
     return sorted(available)
 
@@ -449,5 +454,18 @@ def get_available_image_gen_models(
     if _cfg_value(env, "grok_api_key", "GROK_API_KEY"):
         for model_id in GrokImageGenDriver.IMAGE_PRICING:
             available.add(f"grok/{model_id}")
+
+    # Dynamic discovery: check modalities_output from models.dev capabilities
+    # for any models that the pricing dicts don't know about yet.
+    from .model_rates import get_model_capabilities
+
+    for model_str in get_available_models(env=env):
+        parts = model_str.split("/", 1)
+        if len(parts) != 2:
+            continue
+        provider, model_id = parts
+        caps = get_model_capabilities(provider, model_id)
+        if caps and "image" in caps.modalities_output:
+            available.add(model_str)
 
     return sorted(available)

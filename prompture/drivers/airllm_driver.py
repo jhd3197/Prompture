@@ -25,13 +25,13 @@ class AirLLMDriver(Driver):
         self.model = model
         self.compression = compression
         self.options: dict[str, Any] = {}
-        self._llm = None
-        self._tokenizer = None
+        self._llm: Any = None
+        self._tokenizer: Any = None
 
     # ------------------------------------------------------------------
     # Lazy model loading
     # ------------------------------------------------------------------
-    def _ensure_loaded(self):
+    def _ensure_loaded(self) -> None:
         """Load the AirLLM model and tokenizer on first use."""
         if self._llm is not None:
             return

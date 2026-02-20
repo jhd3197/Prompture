@@ -13,15 +13,15 @@ from typing import Any
 try:
     from openai import AsyncAzureOpenAI
 except Exception:
-    AsyncAzureOpenAI = None
+    AsyncAzureOpenAI = None  # type: ignore[misc, assignment]
 
 try:
     import anthropic
 except Exception:
-    anthropic = None
+    anthropic = None  # type: ignore[assignment]
 
-from .async_base import AsyncDriver
 from ..infra.cost_mixin import CostMixin, prepare_strict_schema
+from .async_base import AsyncDriver
 from .azure_config import classify_backend, resolve_config
 from .azure_driver import AzureDriver
 
@@ -148,7 +148,7 @@ class AsyncAzureDriver(CostMixin, AsyncDriver):
             else:
                 kwargs["response_format"] = {"type": "json_object"}
 
-        resp = await client.chat.completions.create(**kwargs)
+        resp = await client.chat.completions.create(**kwargs)  # type: ignore[arg-type]
 
         usage = getattr(resp, "usage", None)
         prompt_tokens = getattr(usage, "prompt_tokens", 0)
@@ -326,12 +326,14 @@ class AsyncAzureDriver(CostMixin, AsyncDriver):
                             "Tool arguments for %s were truncated due to max_tokens limit. "
                             "Increase max_tokens in options to allow longer tool outputs. "
                             "Truncated arguments: %r",
-                            tc.function.name, raw[:200] if raw else raw,
+                            tc.function.name,
+                            raw[:200] if raw else raw,
                         )
                     else:
                         logger.warning(
                             "Failed to parse tool arguments for %s: %r",
-                            tc.function.name, raw,
+                            tc.function.name,
+                            raw,
                         )
                     args = {}
                 tool_calls_out.append(

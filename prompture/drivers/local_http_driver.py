@@ -25,7 +25,7 @@ class LocalHTTPDriver(Driver):
 
         # If the local API already provides {"text": "...", "meta": {...}}, just return it
         if "text" in response_data and "meta" in response_data:
-            return response_data
+            return response_data  # type: ignore[no-any-return]
 
         # Otherwise, normalize the response
         meta = {

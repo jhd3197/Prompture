@@ -159,4 +159,4 @@ def _lazy_import(module_path: str, class_name: str) -> BaseParser:
 
     mod = importlib.import_module(module_path)
     cls = getattr(mod, class_name)
-    return cls()
+    return cls()  # type: ignore[no-any-return]

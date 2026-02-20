@@ -36,9 +36,7 @@ class AsyncTTSDriver:
         """
         raise NotImplementedError
 
-    async def synthesize_stream(
-        self, text: str, options: dict[str, Any]
-    ) -> AsyncIterator[dict[str, Any]]:
+    async def synthesize_stream(self, text: str, options: dict[str, Any]) -> AsyncIterator[dict[str, Any]]:
         """Yield audio chunks incrementally (async).
 
         Each chunk is a dict:

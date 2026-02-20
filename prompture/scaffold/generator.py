@@ -56,8 +56,7 @@ def scaffold_project(
 
     if not _SAFE_PROJECT_NAME_RE.match(project_name):
         raise ValueError(
-            f"Invalid project_name {project_name!r}: "
-            "only alphanumeric characters, hyphens, and underscores are allowed"
+            f"Invalid project_name {project_name!r}: only alphanumeric characters, hyphens, and underscores are allowed"
         )
 
     env = Environment(

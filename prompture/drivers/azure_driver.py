@@ -17,16 +17,16 @@ from typing import Any
 try:
     from openai import AzureOpenAI
 except Exception:
-    AzureOpenAI = None
+    AzureOpenAI = None  # type: ignore[misc, assignment]
 
 try:
     import anthropic
 except Exception:
-    anthropic = None
+    anthropic = None  # type: ignore[assignment]
 
 from ..infra.cost_mixin import CostMixin, prepare_strict_schema
-from .base import Driver
 from .azure_config import classify_backend, resolve_config
+from .base import Driver
 
 logger = logging.getLogger(__name__)
 
@@ -219,7 +219,7 @@ class AzureDriver(CostMixin, Driver):
             else:
                 kwargs["response_format"] = {"type": "json_object"}
 
-        resp = client.chat.completions.create(**kwargs)
+        resp = client.chat.completions.create(**kwargs)  # type: ignore[arg-type]
 
         # Extract usage
         usage = getattr(resp, "usage", None)
@@ -401,12 +401,14 @@ class AzureDriver(CostMixin, Driver):
                             "Tool arguments for %s were truncated due to max_tokens limit. "
                             "Increase max_tokens in options to allow longer tool outputs. "
                             "Truncated arguments: %r",
-                            tc.function.name, raw[:200] if raw else raw,
+                            tc.function.name,
+                            raw[:200] if raw else raw,
                         )
                     else:
                         logger.warning(
                             "Failed to parse tool arguments for %s: %r",
-                            tc.function.name, raw,
+                            tc.function.name,
+                            raw,
                         )
                     args = {}
                 tool_calls_out.append(

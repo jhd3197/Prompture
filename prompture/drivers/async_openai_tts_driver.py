@@ -10,11 +10,11 @@ from typing import Any
 try:
     from openai import AsyncOpenAI
 except Exception:
-    AsyncOpenAI = None
+    AsyncOpenAI = None  # type: ignore[misc, assignment]
 
 from ..infra.cost_mixin import AudioCostMixin
 from .async_tts_base import AsyncTTSDriver
-from .openai_tts_driver import OpenAITTSDriver, _FORMAT_MIME
+from .openai_tts_driver import _FORMAT_MIME, OpenAITTSDriver
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ class AsyncOpenAITTSDriver(AudioCostMixin, AsyncTTSDriver):
     def __init__(self, api_key: str | None = None, model: str = "tts-1"):
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
         self.model = model
-        if AsyncOpenAI:
+        if AsyncOpenAI is not None:
             self.client = AsyncOpenAI(api_key=self.api_key)
         else:
             self.client = None
@@ -80,9 +80,7 @@ class AsyncOpenAITTSDriver(AudioCostMixin, AsyncTTSDriver):
             },
         }
 
-    async def synthesize_stream(
-        self, text: str, options: dict[str, Any]
-    ) -> AsyncIterator[dict[str, Any]]:
+    async def synthesize_stream(self, text: str, options: dict[str, Any]) -> AsyncIterator[dict[str, Any]]:
         """Stream audio chunks from OpenAI TTS API (async)."""
         if self.client is None:
             raise RuntimeError("openai package (>=1.0.0) is not installed")

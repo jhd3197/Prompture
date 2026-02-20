@@ -5,8 +5,8 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from .async_base import AsyncDriver
 from .airllm_driver import AirLLMDriver
+from .async_base import AsyncDriver
 
 
 class AsyncAirLLMDriver(AsyncDriver):

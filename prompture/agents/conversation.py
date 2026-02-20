@@ -87,14 +87,15 @@ class Conversation:
         if driver is not None:
             self._driver = driver
         else:
-            self._driver = get_driver_for_model(model_name)
+            self._driver = get_driver_for_model(model_name)  # type: ignore[arg-type, assignment]
 
         if callbacks is not None:
             self._driver.callbacks = callbacks
 
-        self._model_name = model_name or ""
+        self._model_name: str = model_name if model_name is not None else ""
 
         # Apply persona: render system_prompt and merge settings
+        self._system_prompt: str | None
         if resolved_persona is not None:
             self._system_prompt = resolved_persona.render()
             # Persona settings as defaults, explicit options override
@@ -188,7 +189,7 @@ class Conversation:
     @property
     def tags(self) -> list[str]:
         """Tags attached to this conversation."""
-        return self._metadata.get("tags", [])
+        return list(self._metadata.get("tags", []))
 
     @tags.setter
     def tags(self, value: list[str]) -> None:
@@ -328,8 +329,7 @@ class Conversation:
             self._max_tool_result_length,
         )
         return (
-            result_str[: self._max_tool_result_length]
-            + f"\n\n[... result truncated ({len(result_str):,} chars total)]"
+            result_str[: self._max_tool_result_length] + f"\n\n[... result truncated ({len(result_str):,} chars total)]"
         )
 
     def _build_messages(self, user_content: str, images: list[ImageInput] | None = None) -> list[dict[str, Any]]:
@@ -388,14 +388,14 @@ class Conversation:
             use_native = getattr(self._driver, "supports_tool_use", False)
             if self._simulated_tools is True or (self._simulated_tools == "auto" and not use_native):
                 return self._ask_with_simulated_tools(content, options, images=images)
-            elif use_native and self._simulated_tools is not True:
+            elif use_native and self._simulated_tools is not True:  # type: ignore[comparison-overlap]
                 return self._ask_with_tools(content, options, images=images)
 
         merged = {**self._options, **(options or {})}
         messages = self._build_messages(content, images=images)
         resp = self._driver.generate_messages_with_hooks(messages, merged)
 
-        text = resp.get("text", "")
+        text: str = resp.get("text", "")
         meta = resp.get("meta", {})
         self._last_reasoning = resp.get("reasoning_content")
 
@@ -429,7 +429,7 @@ class Conversation:
             self._accumulate_usage(meta)
 
             tool_calls = resp.get("tool_calls", [])
-            text = resp.get("text", "")
+            text: str = resp.get("text", "")
 
             if not tool_calls:
                 # No tool calls -> final response
@@ -671,7 +671,7 @@ class Conversation:
             parsed = parse_simulated_response(text, self._tools)
 
             if parsed["type"] == "final_answer":
-                answer = parsed["content"]
+                answer: str = parsed["content"]
                 self._messages.append({"role": "assistant", "content": answer})
                 return answer
 
@@ -944,7 +944,9 @@ class Conversation:
                     else None,
                 }
                 json_object[field_name] = normalize_field_value(
-                    json_object[field_name], field_info.annotation, field_def
+                    json_object[field_name],
+                    field_info.annotation,  # type: ignore[arg-type]
+                    field_def,
                 )
 
         model_instance = model_cls(**json_object)
@@ -956,7 +958,7 @@ class Conversation:
         }
         result_dict["model"] = model_instance
 
-        return type(
+        return type(  # type: ignore[no-any-return]
             "ExtractResult",
             (dict,),
             {
@@ -1035,7 +1037,7 @@ class Conversation:
                 accumulated_usage["completion_tokens"] += field_usage.get("completion_tokens", 0)
                 accumulated_usage["total_tokens"] += field_usage.get("total_tokens", 0)
                 accumulated_usage["cost"] += field_usage.get("cost", 0.0)
-                accumulated_usage["field_usages"][field_name] = field_usage
+                accumulated_usage["field_usages"][field_name] = field_usage  # type: ignore[index]
 
                 extracted_value = result["json_object"]["value"]
                 if isinstance(extracted_value, dict) and "value" in extracted_value:
@@ -1046,7 +1048,7 @@ class Conversation:
                 # Normalize
                 from ..extraction.core import normalize_field_value
 
-                field_def = {}
+                field_def: dict[str, Any] = {}
                 if field_definitions and field_name in field_definitions:
                     field_def = field_definitions[field_name] if isinstance(field_definitions[field_name], dict) else {}
 
@@ -1061,10 +1063,10 @@ class Conversation:
                     default_value = field_info.default
 
                 normalize_def = {"nullable": nullable, "default": default_value}
-                raw_value = normalize_field_value(raw_value, field_info.annotation, normalize_def)
+                raw_value = normalize_field_value(raw_value, field_info.annotation, normalize_def)  # type: ignore[arg-type]
 
                 try:
-                    converted_value = convert_value(raw_value, field_info.annotation, allow_shorthand=True)
+                    converted_value = convert_value(raw_value, field_info.annotation, allow_shorthand=True)  # type: ignore[arg-type]
                     data[field_name] = converted_value
                     field_results[field_name] = {"status": "success", "used_default": False}
                 except ValueError as e:
@@ -1088,7 +1090,7 @@ class Conversation:
                 default_value = get_field_default(field_name, field_info, field_definitions)
                 data[field_name] = default_value
                 field_results[field_name] = {"status": "extraction_failed", "error": error_msg, "used_default": True}
-                accumulated_usage["field_usages"][field_name] = {
+                accumulated_usage["field_usages"][field_name] = {  # type: ignore[index]
                     "error": str(e),
                     "status": "failed",
                     "used_default": True,
@@ -1103,7 +1105,7 @@ class Conversation:
             model_dict = model_instance.model_dump()
 
             class ExtendedJSONEncoder(json.JSONEncoder):
-                def default(self, obj):
+                def default(self, obj: Any) -> Any:
                     if isinstance(obj, (datetime, date)):
                         return obj.isoformat()
                     if isinstance(obj, Decimal):
@@ -1119,7 +1121,7 @@ class Conversation:
                 "field_results": field_results,
             }
             result["model"] = model_instance
-            return type(
+            return type(  # type: ignore[no-any-return]
                 "ExtractResult",
                 (dict,),
                 {"__getattr__": lambda self, key: self.get(key), "__call__": lambda self: self["model"]},
@@ -1128,7 +1130,7 @@ class Conversation:
             error_msg = f"Model validation error: {e!s}"
             if "validation_errors" not in accumulated_usage:
                 accumulated_usage["validation_errors"] = []
-            accumulated_usage["validation_errors"].append(error_msg)
+            accumulated_usage["validation_errors"].append(error_msg)  # type: ignore[attr-defined]
 
             error_result = {
                 "json_string": "{}",
@@ -1137,7 +1139,7 @@ class Conversation:
                 "field_results": field_results,
                 "error": error_msg,
             }
-            return type(
+            return type(  # type: ignore[no-any-return]
                 "ExtractResult",
                 (dict,),
                 {"__getattr__": lambda self, key: self.get(key), "__call__": lambda self: None},

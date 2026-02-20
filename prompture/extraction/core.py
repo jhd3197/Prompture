@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 try:
     import requests
 except ImportError:
-    requests = None  # type: ignore[assignment]
+    requests = None
 
 try:
     import toon
@@ -25,7 +25,7 @@ except ImportError:
 from pydantic import BaseModel
 
 from ..drivers import get_driver_for_model
-from ..drivers.base import Driver
+from ..drivers.base import Driver as Driver
 from ..media.image import ImageInput, make_image
 from .fields import get_registry_snapshot
 from .reasoning import (
@@ -101,7 +101,7 @@ def normalize_field_value(value: Any, field_type: type, field_def: dict[str, Any
     # For non-nullable fields with invalid values, use the default
     if not nullable:
         # Check for invalid values that should be replaced
-        invalid_values = (None, "", [], {})
+        invalid_values: tuple[None, str, list[Any], dict[str, Any]] = (None, "", [], {})
 
         if value in invalid_values or (isinstance(value, str) and not value.strip()):
             # Use the default value if provided, otherwise use type-appropriate default
@@ -313,7 +313,7 @@ def ask_for_json(
         cached = _cache.get(cache_key, force=_force)
         if cached is not None:
             cached["usage"]["cache_hit"] = True
-            return cached
+            return cached  # type: ignore[no-any-return]
 
     schema_string = json.dumps(json_schema, indent=2)
     if output_format == "toon" and toon is None:
@@ -485,6 +485,9 @@ def extract_and_jsonify(
     actual_output_format = output_format
     # Handle legacy format where first argument is driver
     # Validate text input first
+    actual_text: Any
+    actual_schema: Any
+    actual_model: Any
     if isinstance(text, Driver):
         driver = text
         actual_text = json_schema
@@ -643,17 +646,17 @@ def manual_extract_and_jsonify(
 
 def _chunked_extract(
     *,
-    chunks: list,
+    chunks: list[Any],
     actual_cls: type[BaseModel],
     actual_model: Any,
     instruction_template: str,
     ai_cleanup: bool,
-    output_format: str,
+    output_format: Literal["json", "toon"],
     options: dict[str, Any],
     cache: bool | None,
-    json_mode: str,
+    json_mode: Literal["auto", "on", "off"],
     system_prompt: str | None,
-    images: list | None,
+    images: list[Any] | None,
     routing: Any,
     max_retries: int,
     fallback: BaseModel | None,
@@ -718,7 +721,7 @@ def _chunked_extract(
 
         if is_array:
             # Concatenate lists from all chunks
-            merged_list: list = []
+            merged_list: list[Any] = []
             for r in all_results:
                 val = r.get("json_object", {}).get(field_name)
                 if isinstance(val, list):
@@ -745,7 +748,7 @@ def _chunked_extract(
         "model": model_instance,
     }
 
-    return type(
+    return type(  # type: ignore[no-any-return]
         "ExtractResult",
         (dict,),
         {"__getattr__": lambda self, key: self.get(key), "__call__": lambda self: self["model"]},
@@ -821,6 +824,9 @@ def extract_with_model(
     # Handle legacy format where first arg is model class
     if options is None:
         options = {}
+    actual_cls: Any
+    actual_text: Any
+    actual_model: Any
     if isinstance(model_cls, type) and issubclass(model_cls, BaseModel):
         actual_cls = model_cls
         actual_text = text
@@ -876,7 +882,7 @@ def extract_with_model(
     if routing is not None:
         # Build routing config
         if isinstance(routing, str):
-            routing_config = RoutingConfig(strategy=routing)
+            routing_config = RoutingConfig(strategy=routing)  # type: ignore[arg-type]
         else:
             routing_config = routing
 
@@ -913,7 +919,7 @@ def extract_with_model(
             cached["usage"]["cache_hit"] = True
             # Reconstruct Pydantic model instance from cached JSON
             cached["model"] = actual_cls(**cached["json_object"])
-            return type(
+            return type(  # type: ignore[no-any-return]
                 "ExtractResult",
                 (dict,),
                 {"__getattr__": lambda self, key: self.get(key), "__call__": lambda self: self["model"]},
@@ -981,7 +987,7 @@ def extract_with_model(
 
                     # Normalize the value
                     json_object[field_name] = normalize_field_value(
-                        json_object[field_name], field_info.annotation, field_def
+                        json_object[field_name], field_info.annotation or type(json_object[field_name]), field_def
                     )
 
             # Create model instance for validation
@@ -1011,7 +1017,7 @@ def extract_with_model(
             result_dict["model"] = model_instance
 
             # Return value can be used both as a dict and accessed as model directly
-            return type(
+            return type(  # type: ignore[no-any-return]
                 "ExtractResult",
                 (dict,),
                 {"__getattr__": lambda self, key: self.get(key), "__call__": lambda self: self["model"]},
@@ -1046,7 +1052,7 @@ def extract_with_model(
         }
         if routing_result is not None:
             fallback_result["routing"] = routing_result.to_dict()
-        return type(
+        return type(  # type: ignore[no-any-return]
             "ExtractResult",
             (dict,),
             {"__getattr__": lambda self, key: self.get(key), "__call__": lambda self: self["model"]},
@@ -1140,7 +1146,7 @@ def stepwise_extract_with_model(
     options = options or {}
 
     # Initialize usage accumulator
-    accumulated_usage = {
+    accumulated_usage: dict[str, Any] = {
         "prompt_tokens": 0,
         "completion_tokens": 0,
         "total_tokens": 0,
@@ -1159,7 +1165,7 @@ def stepwise_extract_with_model(
             raise KeyError(f"Fields not found in model: {', '.join(invalid_fields)}")
         field_items = [(name, model_cls.model_fields[name]) for name in fields]
     else:
-        field_items = model_cls.model_fields.items()
+        field_items = list(model_cls.model_fields.items())
 
     for field_name, field_info in field_items:
         logger.debug("[stepwise] Extracting field: %s", field_name)
@@ -1207,7 +1213,7 @@ def stepwise_extract_with_model(
                 logger.debug("[stepwise] Using direct value for %s", field_name)
 
             # Post-process the raw value to normalize invalid values for non-nullable fields
-            field_def = {}
+            field_def: dict[str, Any] = {}
             if field_definitions and field_name in field_definitions:
                 field_def = field_definitions[field_name] if isinstance(field_definitions[field_name], dict) else {}
 
@@ -1226,12 +1232,14 @@ def stepwise_extract_with_model(
             normalize_def = {"nullable": nullable, "default": default_value}
 
             # Normalize the raw value before conversion
-            raw_value = normalize_field_value(raw_value, field_info.annotation, normalize_def)
+            raw_value = normalize_field_value(raw_value, field_info.annotation or type(raw_value), normalize_def)
             logger.debug("[stepwise] Normalized value for %s: %s", field_name, raw_value)
 
             # Convert value using tools.convert_value with logging
             try:
-                converted_value = convert_value(raw_value, field_info.annotation, allow_shorthand=True)
+                converted_value = convert_value(
+                    raw_value, field_info.annotation or type(raw_value), allow_shorthand=True
+                )
                 data[field_name] = converted_value
                 field_results[field_name] = {"status": "success", "used_default": False}
 
@@ -1317,7 +1325,7 @@ def stepwise_extract_with_model(
 
         # Enhanced DateTimeEncoder to handle both datetime and date objects
         class ExtendedJSONEncoder(json.JSONEncoder):
-            def default(self, obj):
+            def default(self, obj: Any) -> Any:
                 if isinstance(obj, (datetime, date)):
                     return obj.isoformat()
                 if isinstance(obj, Decimal):
@@ -1337,7 +1345,7 @@ def stepwise_extract_with_model(
 
         # Add model instance as property and make callable
         result["model"] = model_instance
-        return type(
+        return type(  # type: ignore[no-any-return]
             "ExtractResult",
             (dict,),
             {"__getattr__": lambda self, key: self.get(key), "__call__": lambda self: self["model"]},
@@ -1359,7 +1367,7 @@ def stepwise_extract_with_model(
             "field_results": field_results,
             "error": error_msg,
         }
-        return type(
+        return type(  # type: ignore[no-any-return]
             "ExtractResult",
             (dict,),
             {
@@ -1419,12 +1427,12 @@ def _json_to_toon(data: Union[list[dict[str, Any]], dict[str, Any]], data_key: s
         raise ValueError("All items in array must be dictionaries for TOON conversion")
 
     try:
-        return toon.encode(array_data)
+        return toon.encode(array_data)  # type: ignore[no-any-return]
     except Exception as e:
         raise ValueError(f"Failed to convert data to TOON format: {e}") from e
 
 
-def _dataframe_to_toon(df) -> str:
+def _dataframe_to_toon(df: Any) -> str:
     """Convert Pandas DataFrame to TOON format.
 
     Args:
@@ -1465,7 +1473,7 @@ def _dataframe_to_toon(df) -> str:
     try:
         # Convert DataFrame to list of dicts
         data = df.to_dict("records")
-        return toon.encode(data)
+        return toon.encode(data)  # type: ignore[no-any-return]
     except Exception as e:
         raise ValueError(f"Failed to convert DataFrame to TOON format: {e}") from e
 
@@ -1579,7 +1587,7 @@ def extract_from_data(
     toon_data = _json_to_toon(data, data_key)
 
     # Calculate token savings (for comparison with JSON)
-    json_data = json.dumps(data if isinstance(data, list) else data.get(data_key, data), indent=2)
+    json_data = json.dumps(data if isinstance(data, list) else data.get(data_key or "", data), indent=2)
     token_savings = _calculate_token_savings(json_data, toon_data)
 
     # Build the prompt with TOON data
@@ -1588,7 +1596,7 @@ def extract_from_data(
 
     # Call the LLM
     result = ask_for_json(
-        driver=get_driver_for_model(model_name),
+        driver=get_driver_for_model(model_name),  # type: ignore[arg-type]
         content_prompt=full_prompt,
         json_schema=json_schema,
         ai_cleanup=ai_cleanup,
@@ -1606,7 +1614,7 @@ def extract_from_data(
 
 
 def extract_from_pandas(
-    df,  # pandas.DataFrame - optional import
+    df: Any,  # pandas.DataFrame - optional import
     question: str,
     json_schema: dict[str, Any],
     *,
@@ -1694,7 +1702,7 @@ def extract_from_pandas(
 
     # Call the LLM
     result = ask_for_json(
-        driver=get_driver_for_model(model_name),
+        driver=get_driver_for_model(model_name),  # type: ignore[arg-type]
         content_prompt=full_prompt,
         json_schema=json_schema,
         ai_cleanup=ai_cleanup,

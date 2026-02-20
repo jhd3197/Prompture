@@ -10,7 +10,7 @@ from typing import Any
 try:
     import groq
 except Exception:
-    groq = None
+    groq = None  # type: ignore[assignment]
 
 from ..infra.cost_mixin import CostMixin
 from .base import Driver
@@ -49,8 +49,8 @@ class GroqDriver(CostMixin, Driver):
         """
         self.api_key = api_key or os.getenv("GROQ_API_KEY")
         self.model = model
-        if groq:
-            self.client = groq.Client(api_key=self.api_key)
+        if groq is not None:
+            self.client: Any = groq.Client(api_key=self.api_key)
         else:
             self.client = None
 

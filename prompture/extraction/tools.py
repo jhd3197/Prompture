@@ -96,7 +96,7 @@ def parse_boolean(value: Any) -> bool:
 
     # Use Tukuy for more complex cases
     try:
-        return TUKUY.transform(s, ["bool"])
+        return TUKUY.transform(s, ["bool"])  # type: ignore[no-any-return]
     except Exception:
         # Fallback for unrecognized values - try to be reasonable
         # If it looks like a number, convert to bool
@@ -226,7 +226,7 @@ def parse_shorthand_number(
         else:  # Decimal
             num = num * Decimal(str(percent_base)) / Decimal("100")
 
-    return num
+    return num  # type: ignore[no-any-return]
 
 
 # ---------------------------------------------------------------------------
@@ -704,7 +704,7 @@ def convert_value(
 
     # Fallback: direct cast if possible
     try:
-        return target_type(value)  # type: ignore[call-arg]
+        return target_type(value)
     except Exception as e:
         error_msg = f"Cannot convert '{value}' to {getattr(target_type, '__name__', target_type)}: {e}"
         logger.warning("%s", error_msg)
@@ -780,7 +780,7 @@ def extract_fields(
         try:
             converted = convert_value(
                 raw,
-                finfo.annotation,
+                finfo.annotation or type(raw),
                 allow_shorthand=True,
                 field_name=fname,
                 field_definitions=field_definitions,
@@ -838,9 +838,9 @@ def load_field_definitions(path: str) -> dict[str, Any]:
 
     try:
         if suffix == ".json":
-            return json.loads(content)
+            return json.loads(content)  # type: ignore[no-any-return]
         elif suffix in (".yaml", ".yml"):
-            return yaml.safe_load(content)
+            return yaml.safe_load(content)  # type: ignore[no-any-return]
         else:
             raise ValueError(f"Unsupported file format: {suffix}")
     except Exception as e:

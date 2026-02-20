@@ -131,12 +131,16 @@ class AgentCallbacks:
     """
 
     on_step: Union[Callable[[AgentStep], None], Callable[[AgentStep], Awaitable[None]], None] = None
-    on_tool_start: Union[Callable[[str, dict[str, Any]], None], Callable[[str, dict[str, Any]], Awaitable[None]], None] = None
+    on_tool_start: Union[
+        Callable[[str, dict[str, Any]], None], Callable[[str, dict[str, Any]], Awaitable[None]], None
+    ] = None
     on_tool_end: Union[Callable[[str, Any], None], Callable[[str, Any], Awaitable[None]], None] = None
     on_iteration: Union[Callable[[int], None], Callable[[int], Awaitable[None]], None] = None
     on_output: Union[Callable[[AgentResult], None], Callable[[AgentResult], Awaitable[None]], None] = None
     on_thinking: Union[Callable[[str], None], Callable[[str], Awaitable[None]], None] = None
-    on_approval_needed: Union[Callable[[str, str, dict[str, Any]], bool], Callable[[str, str, dict[str, Any]], Awaitable[bool]], None] = None
+    on_approval_needed: Union[
+        Callable[[str, str, dict[str, Any]], bool], Callable[[str, str, dict[str, Any]], Awaitable[bool]], None
+    ] = None
     on_message: Union[Callable[[str], None], Callable[[str], Awaitable[None]], None] = None
 
 

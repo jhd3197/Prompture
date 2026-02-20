@@ -49,11 +49,8 @@ def load_from_file(
         raise FileNotFoundError(f"Conversation file not found: {p}")
     file_size = p.stat().st_size
     if file_size > max_file_size:
-        raise ValueError(
-            f"Conversation file too large: {file_size} bytes "
-            f"(limit {max_file_size} bytes)"
-        )
-    return json.loads(p.read_text(encoding="utf-8"))
+        raise ValueError(f"Conversation file too large: {file_size} bytes (limit {max_file_size} bytes)")
+    return json.loads(p.read_text(encoding="utf-8"))  # type: ignore[no-any-return]
 
 
 # ------------------------------------------------------------------
@@ -174,7 +171,7 @@ class ConversationStore:
                 ).fetchone()
                 if row is None:
                     return None
-                return json.loads(row["data"])
+                return json.loads(row["data"])  # type: ignore[no-any-return]
             finally:
                 conn.close()
 

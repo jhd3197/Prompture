@@ -12,11 +12,11 @@ try:
     from google import genai
     from google.genai import types
 except Exception:
-    genai = None
-    types = None
+    genai = None  # type: ignore[assignment]
+    types = None  # type: ignore[assignment]
 
-from .async_base import AsyncDriver
 from ..infra.cost_mixin import CostMixin
+from .async_base import AsyncDriver
 from .google_driver import GoogleDriver
 
 logger = logging.getLogger(__name__)
@@ -152,6 +152,7 @@ class AsyncGoogleDriver(CostMixin, AsyncDriver):
                     contents.append({"role": gemini_role, "parts": [content]})
 
         # For a single message, unwrap only if it has exactly one string part
+        gen_input: str | list[dict[str, Any]]
         if len(contents) == 1:
             parts = contents[0]["parts"]
             if len(parts) == 1 and isinstance(parts[0], str):
@@ -279,11 +280,13 @@ class AsyncGoogleDriver(CostMixin, AsyncDriver):
             tool_calls_out: list[dict[str, Any]] = []
             stop_reason = "stop"
 
-            for candidate in response.candidates:
+            for candidate in response.candidates or []:
+                if candidate.content is None or candidate.content.parts is None:
+                    continue
                 for part in candidate.content.parts:
                     if hasattr(part, "text") and part.text:
                         text += part.text
-                    if hasattr(part, "function_call") and part.function_call.name:
+                    if hasattr(part, "function_call") and part.function_call is not None and part.function_call.name:
                         fc = part.function_call
                         tool_calls_out.append(
                             {
@@ -326,7 +329,7 @@ class AsyncGoogleDriver(CostMixin, AsyncDriver):
 
         try:
             config = types.GenerateContentConfig(**config_dict)
-            response = self._client.aio.models.generate_content_stream(
+            response = await self._client.aio.models.generate_content_stream(
                 model=self.model,
                 contents=gen_input,
                 config=config,

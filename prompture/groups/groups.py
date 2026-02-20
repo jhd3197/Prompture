@@ -415,9 +415,7 @@ class LoopGroup:
 
             # Check budget after each iteration
             if self._max_total_cost is not None:
-                cumulative_cost = sum(
-                    s.get("total_cost", s.get("cost", 0.0)) for s in usage_summaries
-                )
+                cumulative_cost = sum(s.get("total_cost", s.get("cost", 0.0)) for s in usage_summaries)
                 if cumulative_cost >= self._max_total_cost:
                     logger.debug("Budget exceeded (%.4f >= %.4f), stopping loop", cumulative_cost, self._max_total_cost)
                     break
@@ -506,9 +504,9 @@ class RouterAgent:
         selected = self._fuzzy_match(route_response.strip())
 
         if selected is not None:
-            return selected.run(prompt, deps=deps) if deps is not None else selected.run(prompt)
+            return selected.run(prompt, deps=deps) if deps is not None else selected.run(prompt)  # type: ignore[no-any-return]
         elif self._fallback is not None:
-            return self._fallback.run(prompt, deps=deps) if deps is not None else self._fallback.run(prompt)
+            return self._fallback.run(prompt, deps=deps) if deps is not None else self._fallback.run(prompt)  # type: ignore[no-any-return]
         else:
             # Return routing response as fallback
             return AgentResult(

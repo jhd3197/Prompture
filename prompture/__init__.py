@@ -26,19 +26,43 @@ from .pipeline import *
 # Tukuy type re-exports (aliased to avoid collision with Prompture names)
 try:
     from tukuy import (
+        AvailabilityReason as TukuyAvailabilityReason,
+    )
+    from tukuy import (
         Branch as TukuyBranch,
     )
     from tukuy import (
         Chain as TukuyChain,
     )
     from tukuy import (
+        ConfigParam as TukuyConfigParam,
+    )
+    from tukuy import (
+        ConfigScope as TukuyConfigScope,
+    )
+    from tukuy import (
         Parallel as TukuyParallel,
+    )
+    from tukuy import (
+        PluginDiscoveryResult as TukuyPluginDiscoveryResult,
+    )
+    from tukuy import (
+        PluginManifest as TukuyPluginManifest,
+    )
+    from tukuy import (
+        PluginRequirements as TukuyPluginRequirements,
+    )
+    from tukuy import (
+        RiskLevel as TukuyRiskLevel,
     )
     from tukuy import (
         SafetyPolicy as TukuySafetyPolicy,
     )
     from tukuy import (
         Skill as TukuySkill,
+    )
+    from tukuy import (
+        SkillAvailability as TukuySkillAvailability,
     )
     from tukuy import (
         SkillContext as TukuySkillContext,
@@ -50,6 +74,12 @@ try:
         branch as tukuy_branch,
     )
     from tukuy import (
+        discover_plugins as tukuy_discover_plugins,
+    )
+    from tukuy import (
+        get_available_skills as tukuy_get_available_skills,
+    )
+    from tukuy import (
         parallel as tukuy_parallel,
     )
     from tukuy import (
@@ -57,36 +87,6 @@ try:
     )
     from tukuy.safety import (
         SecurityContext as TukuySecurityContext,
-    )
-    from tukuy import (
-        RiskLevel as TukuyRiskLevel,
-    )
-    from tukuy import (
-        ConfigScope as TukuyConfigScope,
-    )
-    from tukuy import (
-        ConfigParam as TukuyConfigParam,
-    )
-    from tukuy import (
-        PluginManifest as TukuyPluginManifest,
-    )
-    from tukuy import (
-        PluginRequirements as TukuyPluginRequirements,
-    )
-    from tukuy import (
-        AvailabilityReason as TukuyAvailabilityReason,
-    )
-    from tukuy import (
-        SkillAvailability as TukuySkillAvailability,
-    )
-    from tukuy import (
-        PluginDiscoveryResult as TukuyPluginDiscoveryResult,
-    )
-    from tukuy import (
-        get_available_skills as tukuy_get_available_skills,
-    )
-    from tukuy import (
-        discover_plugins as tukuy_discover_plugins,
     )
 except ImportError:
     pass
@@ -121,7 +121,7 @@ try:
     from importlib.metadata import version as _get_version
 except Exception:
     # older python using importlib-metadata backport (if you include it)
-    from importlib_metadata import version as _get_version
+    from importlib_metadata import version as _get_version  # type: ignore[no-redef]
 
 try:
     __version__ = _get_version("prompture")

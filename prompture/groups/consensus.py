@@ -116,7 +116,7 @@ def _values_equal(a: Any, b: Any, tolerance: float = 0.01) -> bool:
         # Try type coercion for common cases
         try:
             if isinstance(a, (int, float)) and isinstance(b, (int, float)):
-                return abs(float(a) - float(b)) <= tolerance * max(abs(float(a)), abs(float(b)), 1.0)
+                return bool(abs(float(a) - float(b)) <= tolerance * max(abs(float(a)), abs(float(b)), 1.0))
         except (TypeError, ValueError):
             pass
         return False
@@ -124,7 +124,7 @@ def _values_equal(a: Any, b: Any, tolerance: float = 0.01) -> bool:
     if isinstance(a, float):
         if a == 0 and b == 0:
             return True
-        return abs(a - b) <= tolerance * max(abs(a), abs(b), 1.0)
+        return bool(abs(a - b) <= tolerance * max(abs(a), abs(b), 1.0))
 
     if isinstance(a, dict):
         if set(a.keys()) != set(b.keys()):
@@ -136,7 +136,7 @@ def _values_equal(a: Any, b: Any, tolerance: float = 0.01) -> bool:
             return False
         return all(_values_equal(ai, bi, tolerance) for ai, bi in zip(a, b))
 
-    return a == b
+    return bool(a == b)
 
 
 def _find_majority_value(values: list[Any]) -> tuple[Any, int]:
@@ -194,7 +194,7 @@ def _compute_majority_consensus(
 
     consensus: dict[str, Any] = {}
     disagreements: dict[str, list[Any]] = {}
-    total_agreement = 0
+    total_agreement: float = 0
     field_count = 0
 
     for field_name in all_fields:
@@ -212,7 +212,7 @@ def _compute_majority_consensus(
         consensus[field_name] = majority_value
 
         # Check for disagreements
-        unique_values = []
+        unique_values: list[Any] = []
         for v in field_values:
             if not any(_values_equal(v, uv) for uv in unique_values):
                 unique_values.append(v)
@@ -354,7 +354,7 @@ def _compute_weighted_average_consensus(
             consensus[field_name] = majority_value
 
         # Track disagreements
-        unique_values = []
+        unique_values: list[Any] = []
         for v in field_values:
             if not any(_values_equal(v, uv) for uv in unique_values):
                 unique_values.append(v)

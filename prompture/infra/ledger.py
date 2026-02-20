@@ -204,8 +204,7 @@ def record_model_usage(
     import warnings
 
     warnings.warn(
-        "record_model_usage() is deprecated. Usage is now auto-recorded by "
-        "the driver hooks via UsageTracker.",
+        "record_model_usage() is deprecated. Usage is now auto-recorded by the driver hooks via UsageTracker.",
         DeprecationWarning,
         stacklevel=2,
     )

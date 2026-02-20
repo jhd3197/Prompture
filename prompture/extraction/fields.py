@@ -17,6 +17,7 @@ from datetime import date, datetime
 from typing import Any, Optional, Union
 
 from pydantic import Field
+from pydantic.fields import FieldInfo
 
 
 # Template variable providers
@@ -443,7 +444,7 @@ def add_field_definitions(field_definitions: dict[str, FieldDefinition]) -> None
 
 def field_from_registry(
     field_name: str, apply_templates: bool = True, custom_template_vars: Optional[dict[str, Any]] = None
-) -> Field:
+) -> FieldInfo:
     """
     Create a Pydantic Field from a field definition in the global registry.
 
@@ -464,39 +465,39 @@ def field_from_registry(
         raise KeyError(f"Field '{field_name}' not found in registry. Available fields: {', '.join(get_field_names())}")
 
     # Extract Pydantic Field parameters
-    default_value = field_def.get("default")
-    description = field_def.get("description", f"Extract the {field_name} from the text.")
-    instructions = field_def.get("instructions", "")
+    default_value: Any = field_def.get("default")
+    description: str = str(field_def.get("description", f"Extract the {field_name} from the text."))
+    instructions: str = str(field_def.get("instructions", ""))
 
     # Handle enum fields
     enum_values = field_def.get("enum")
-    if enum_values:
+    if enum_values and isinstance(enum_values, (list, tuple)):
         # Enhance description with enum constraint information
         enum_str = "', '".join(str(v) for v in enum_values)
         enhanced_instructions = f"{instructions}. Must be one of: '{enum_str}'"
         enhanced_description = f"{description}. Allowed values: {enum_str}"
 
         # Create json_schema_extra with enum constraint
-        json_schema_extra = {"enum": enum_values, "instructions": enhanced_instructions}
+        json_schema_extra: dict[str, Any] = {"enum": enum_values, "instructions": enhanced_instructions}
 
         # Handle nullable/required logic with enum
         if field_def.get("nullable", True) and default_value is not None:
-            return Field(default=default_value, description=enhanced_description, json_schema_extra=json_schema_extra)
+            return Field(default=default_value, description=enhanced_description, json_schema_extra=json_schema_extra)  # type: ignore[no-any-return]
         elif field_def.get("nullable", True):
-            return Field(default=None, description=enhanced_description, json_schema_extra=json_schema_extra)
+            return Field(default=None, description=enhanced_description, json_schema_extra=json_schema_extra)  # type: ignore[return-value]
         else:
-            return Field(description=enhanced_description, json_schema_extra=json_schema_extra)
+            return Field(description=enhanced_description, json_schema_extra=json_schema_extra)  # type: ignore[no-any-return]
 
     # Handle non-enum fields (original logic)
     if field_def.get("nullable", True) and default_value is not None:
         # Optional field with default
-        return Field(default=default_value, description=description)
+        return Field(default=default_value, description=description)  # type: ignore[no-any-return]
     elif field_def.get("nullable", True):
         # Optional field without default (None)
-        return Field(default=None, description=description)
+        return Field(default=None, description=description)  # type: ignore[return-value]
     else:
         # Required field
-        return Field(description=description)
+        return Field(description=description)  # type: ignore[no-any-return]
 
 
 def validate_enum_value(field_name: str, value: Any) -> bool:
@@ -516,7 +517,7 @@ def validate_enum_value(field_name: str, value: Any) -> bool:
         return False
 
     enum_values = field_def.get("enum")
-    if not enum_values:
+    if not enum_values or not isinstance(enum_values, (list, tuple)):
         # Not an enum field, so any value is valid
         return True
 
@@ -545,7 +546,7 @@ def normalize_enum_value(field_name: str, value: Any, case_sensitive: bool = Tru
         raise KeyError(f"Field '{field_name}' not found in registry")
 
     enum_values = field_def.get("enum")
-    if not enum_values:
+    if not enum_values or not isinstance(enum_values, (list, tuple)):
         # Not an enum field, return as-is
         return value
 
@@ -611,22 +612,22 @@ def reset_registry() -> None:
 
 # For backward compatibility, keep the old FIELD_DEFINITIONS reference
 # but make it point to the global registry
-def _get_field_definitions():
+def _get_field_definitions() -> dict[str, FieldDefinition]:
     """Backward compatibility getter for FIELD_DEFINITIONS."""
     return get_registry_snapshot()
 
 
 # Create a property-like access to maintain backward compatibility
-class _FieldDefinitionsProxy(dict, collections.abc.MutableMapping):
+class _FieldDefinitionsProxy(dict[str, Any], collections.abc.MutableMapping[str, Any]):
     """Proxy class to maintain backward compatibility with FIELD_DEFINITIONS."""
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: str) -> Any:
         return get_field_definition(key)
 
-    def __setitem__(self, key, value):
+    def __setitem__(self, key: str, value: Any) -> None:
         register_field(key, value)
 
-    def __delitem__(self, key):
+    def __delitem__(self, key: str) -> None:
         """Remove a field from the registry."""
         with _registry_lock:
             if key in _global_registry:
@@ -634,32 +635,32 @@ class _FieldDefinitionsProxy(dict, collections.abc.MutableMapping):
             else:
                 raise KeyError(f"Field '{key}' not found in registry")
 
-    def __contains__(self, key):
-        return key in get_field_names()
+    def __contains__(self, key: object) -> bool:
+        return str(key) in get_field_names()
 
-    def __iter__(self):
+    def __iter__(self) -> Any:
         return iter(get_field_names())
 
-    def keys(self):
+    def keys(self) -> list[str]:  # type: ignore[override]
         return get_field_names()
 
-    def values(self):
+    def values(self) -> list[Any]:  # type: ignore[override]
         with _registry_lock:
             return list(_global_registry.values())
 
-    def items(self):
+    def items(self) -> list[tuple[str, Any]]:  # type: ignore[override]
         with _registry_lock:
             return list(_global_registry.items())
 
-    def __len__(self):
+    def __len__(self) -> int:
         with _registry_lock:
             return len(_global_registry)
 
-    def get(self, key, default=None):
+    def get(self, key: str, default: Any = None) -> Any:
         field_def = get_field_definition(key)
         return field_def if field_def is not None else default
 
-    def update(self, other):
+    def update(self, other: Any, **kwargs: Any) -> None:  # type: ignore[override]
         if hasattr(other, "items"):
             add_field_definitions(dict(other.items()))
         else:
