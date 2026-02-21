@@ -13,10 +13,18 @@ from .consensus import (
     extract_with_consensus,
     extract_with_consensus_async,
 )
+from .debate import (
+    AsyncDebateGroup,
+    DebateConfig,
+    DebateEntry,
+    DebateGroup,
+    DebateResult,
+)
 from .groups import (
     GroupAsAgent,
     LoopGroup,
     RouterAgent,
+    RoutingStrategy,
     SequentialGroup,
 )
 from .types import (
@@ -29,11 +37,16 @@ from .types import (
 
 __all__ = [
     "AgentError",
+    "AsyncDebateGroup",
     "AsyncLoopGroup",
     "AsyncRouterAgent",
     "AsyncSequentialGroup",
     "ConsensusResult",
     "ConsensusStrategy",
+    "DebateConfig",
+    "DebateEntry",
+    "DebateGroup",
+    "DebateResult",
     "ErrorPolicy",
     "GroupAsAgent",
     "GroupCallbacks",
@@ -43,6 +56,7 @@ __all__ = [
     "ModelVote",
     "ParallelGroup",
     "RouterAgent",
+    "RoutingStrategy",
     "SequentialGroup",
     "extract_with_consensus",
     "extract_with_consensus_async",
