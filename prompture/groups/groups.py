@@ -228,9 +228,7 @@ class SequentialGroup:
                             for skip_idx in range(idx + 1, len(self._agents)):
                                 skip_agent, _ = self._agents[skip_idx]
                                 skip_name = _agent_name(skip_agent, skip_idx)
-                                self._callbacks.on_step_skipped(
-                                    skip_name, f"step condition false after {name}"
-                                )
+                                self._callbacks.on_step_skipped(skip_name, f"step condition false after {name}")
                         break
 
             except Exception as exc:

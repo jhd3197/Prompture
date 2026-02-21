@@ -16,6 +16,7 @@ from pydantic import BaseModel
 
 from ..drivers.async_base import AsyncDriver
 from ..drivers.async_registry import get_async_driver_for_model
+from ..infra.budget import BudgetPolicy, BudgetState, enforce_budget
 from ..extraction.fields import get_registry_snapshot
 from ..extraction.tools import (
     clean_json_text,
@@ -62,6 +63,11 @@ class AsyncConversation:
         auto_save: str | Path | None = None,
         tags: list[str] | None = None,
         max_history_messages: int | None = None,
+        max_cost: float | None = None,
+        max_tokens: int | None = None,
+        budget_policy: BudgetPolicy | None = None,
+        fallback_models: list[str] | None = None,
+        on_model_fallback: Callable[[str, str, Any], None] | None = None,
     ) -> None:
         if system_prompt is not None and persona is not None:
             raise ValueError("Cannot provide both 'system_prompt' and 'persona'. Use one or the other.")
@@ -114,6 +120,13 @@ class AsyncConversation:
         self._max_tool_result_length = max_tool_result_length
         self._simulated_tools = simulated_tools
         self._max_history_messages = max_history_messages
+
+        # Budget enforcement
+        self._max_cost = max_cost
+        self._max_tokens = max_tokens
+        self._budget_policy = budget_policy
+        self._fallback_models = list(fallback_models) if fallback_models else None
+        self._on_model_fallback = on_model_fallback
 
         # Full (pre-truncation) tool results keyed by tool_call_id.
         # Populated during ask/aask so that AgentStep.tool_result
@@ -293,6 +306,55 @@ class AsyncConversation:
             logger.debug("Auto-save failed for conversation %s", self._conversation_id, exc_info=True)
 
     # ------------------------------------------------------------------
+    # Budget enforcement
+    # ------------------------------------------------------------------
+
+    @property
+    def budget_remaining(self) -> dict[str, Any] | None:
+        """Current budget status, or ``None`` if no budget is configured."""
+        if self._budget_policy is None:
+            return None
+        state = self._build_budget_state()
+        return {
+            "cost_remaining": state.cost_remaining,
+            "tokens_remaining": state.tokens_remaining,
+            "cost_fraction": state.cost_fraction,
+            "exceeded": state.exceeded,
+            "active_model": self._model_name,
+        }
+
+    def _build_budget_state(self) -> BudgetState:
+        return BudgetState(
+            cost_used=self._usage["cost"],
+            tokens_used=self._usage["total_tokens"],
+            max_cost=self._max_cost,
+            max_tokens=self._max_tokens,
+        )
+
+    def _check_budget(self) -> None:
+        """Enforce budget policy before a driver call. No-op when unconfigured."""
+        if self._budget_policy is None:
+            return
+        state = self._build_budget_state()
+        new_model = enforce_budget(
+            state,
+            self._budget_policy,
+            fallback_models=self._fallback_models,
+            current_model=self._model_name,
+            on_model_fallback=self._on_model_fallback,
+        )
+        if new_model is not None:
+            self._switch_model(new_model)
+
+    def _switch_model(self, new_model: str) -> None:
+        """Replace the active driver with one for *new_model*."""
+        old_callbacks = self._driver.callbacks
+        self._driver = get_async_driver_for_model(new_model)
+        if old_callbacks is not None:
+            self._driver.callbacks = old_callbacks
+        self._model_name = new_model
+
+    # ------------------------------------------------------------------
     # Core methods
     # ------------------------------------------------------------------
 
@@ -379,6 +441,7 @@ class AsyncConversation:
             elif use_native and self._simulated_tools is not True:  # type: ignore[comparison-overlap]
                 return await self._ask_with_tools(content, options, images=images)
 
+        self._check_budget()
         merged = {**self._options, **(options or {})}
         messages = self._build_messages(content, images=images)
         resp = await self._driver.generate_messages_with_hooks(messages, merged)
@@ -409,6 +472,7 @@ class AsyncConversation:
         msgs = self._build_messages_raw()
 
         for _round in range(self._max_tool_rounds):
+            self._check_budget()
             resp = await self._driver.generate_messages_with_tools_with_hooks(msgs, tool_defs, merged)
 
             meta = resp.get("meta", {})
@@ -653,6 +717,7 @@ class AsyncConversation:
         self._messages.append({"role": "user", "content": user_content})
 
         for _round in range(self._max_tool_rounds):
+            self._check_budget()
             # Build messages with the augmented system prompt
             msgs: list[dict[str, Any]] = []
             msgs.append({"role": "system", "content": augmented_system})
@@ -711,6 +776,7 @@ class AsyncConversation:
         Falls back to non-streaming :meth:`ask` if the driver doesn't
         support streaming.
         """
+        self._check_budget()
         if not getattr(self._driver, "supports_streaming", False):
             yield await self.ask(content, options, images=images)
             return
@@ -776,6 +842,7 @@ class AsyncConversation:
         images: list[ImageInput] | None = None,
     ) -> dict[str, Any]:
         """Send a message with schema enforcement and get structured JSON back (async)."""
+        self._check_budget()
         self._last_reasoning = None
 
         merged = {**self._options, **(options or {})}

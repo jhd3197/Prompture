@@ -1,5 +1,12 @@
 """Infrastructure: settings, logging, callbacks, caching, costs, discovery."""
 
+from .budget import (
+    BudgetPolicy,
+    BudgetState,
+    enforce_budget,
+    estimate_cost,
+    estimate_tokens,
+)
 from .cache import (
     CacheBackend,
     MemoryCacheBackend,
@@ -33,6 +40,8 @@ from .tracker import configure_tracker, get_tracker
 
 __all__ = [
     "AudioCostMixin",
+    "BudgetPolicy",
+    "BudgetState",
     "CacheBackend",
     "DriverCallbacks",
     "JSONFormatter",
@@ -48,6 +57,9 @@ __all__ = [
     "configure_cache",
     "configure_logging",
     "configure_tracker",
+    "enforce_budget",
+    "estimate_cost",
+    "estimate_tokens",
     "get_available_audio_models",
     "get_available_image_gen_models",
     "get_available_models",

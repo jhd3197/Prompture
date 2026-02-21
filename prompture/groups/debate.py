@@ -124,10 +124,7 @@ class DebateGroup:
         if self._config.show_position_in_prompt and self._config.positions:
             position = self._config.positions.get(agent_name)
             if position:
-                parts.append(
-                    f"\nYour position: {position}. "
-                    "Argue this position and respond to previous arguments."
-                )
+                parts.append(f"\nYour position: {position}. Argue this position and respond to previous arguments.")
 
         # Transcript so far
         if transcript:
@@ -242,10 +239,8 @@ class DebateGroup:
             judge = self._config.judge
             judge_name = getattr(judge, "name", "judge") or "judge"
             formatted = self._format_transcript(transcript)
-            judge_prompt = (
-                self._config.judge_prompt_template
-                .replace("{topic}", topic)
-                .replace("{transcript}", formatted)
+            judge_prompt = self._config.judge_prompt_template.replace("{topic}", topic).replace(
+                "{transcript}", formatted
             )
 
             if self._callbacks.on_agent_start:
@@ -338,10 +333,7 @@ class AsyncDebateGroup:
         if self._config.show_position_in_prompt and self._config.positions:
             position = self._config.positions.get(agent_name)
             if position:
-                parts.append(
-                    f"\nYour position: {position}. "
-                    "Argue this position and respond to previous arguments."
-                )
+                parts.append(f"\nYour position: {position}. Argue this position and respond to previous arguments.")
 
         if transcript:
             parts.append("\n--- Previous arguments ---")
@@ -451,10 +443,8 @@ class AsyncDebateGroup:
             judge = self._config.judge
             judge_name = getattr(judge, "name", "judge") or "judge"
             formatted = self._format_transcript(transcript)
-            judge_prompt = (
-                self._config.judge_prompt_template
-                .replace("{topic}", topic)
-                .replace("{transcript}", formatted)
+            judge_prompt = self._config.judge_prompt_template.replace("{topic}", topic).replace(
+                "{transcript}", formatted
             )
 
             if self._callbacks.on_agent_start:

@@ -26,6 +26,7 @@ from typing import Any, Generic
 from pydantic import BaseModel
 
 from ..extraction.tools import clean_json_text
+from ..infra.budget import BudgetPolicy, BudgetState, enforce_budget
 from ..infra.callbacks import DriverCallbacks
 from ..infra.session import UsageSession
 from .persona import Persona
@@ -170,6 +171,10 @@ class AsyncAgent(Generic[DepsType]):
         output_type: type[BaseModel] | None = None,
         max_iterations: int = 10,
         max_cost: float | None = None,
+        max_tokens: int | None = None,
+        budget_policy: BudgetPolicy | None = None,
+        fallback_models: list[str] | None = None,
+        on_model_fallback: Callable[..., Any] | None = None,
         options: dict[str, Any] | None = None,
         deps_type: type | None = None,
         agent_callbacks: AgentCallbacks | None = None,
@@ -195,6 +200,10 @@ class AsyncAgent(Generic[DepsType]):
         self._output_type = output_type
         self._max_iterations = max_iterations
         self._max_cost = max_cost
+        self._max_tokens = max_tokens
+        self._budget_policy = budget_policy
+        self._fallback_models = list(fallback_models) if fallback_models else None
+        self._on_model_fallback = on_model_fallback
         self._options = dict(options) if options else {}
         self._deps_type = deps_type
         self._agent_callbacks = agent_callbacks or AgentCallbacks()
@@ -680,9 +689,11 @@ class AsyncAgent(Generic[DepsType]):
     # ------------------------------------------------------------------
 
     def _is_over_budget(self, session: UsageSession) -> bool:
-        if self._max_cost is None:
-            return False
-        return session.cost >= self._max_cost
+        if self._max_cost is not None and session.cost >= self._max_cost:
+            return True
+        if self._max_tokens is not None and session.total_tokens >= self._max_tokens:
+            return True
+        return False
 
     # ------------------------------------------------------------------
     # Internals
@@ -761,6 +772,18 @@ class AsyncAgent(Generic[DepsType]):
         else:
             kwargs["model_name"] = self._model
 
+        # Forward budget params when budget enforcement is active
+        if self._budget_policy is not None:
+            kwargs["budget_policy"] = self._budget_policy
+            if self._max_cost is not None:
+                kwargs["max_cost"] = self._max_cost
+            if self._max_tokens is not None:
+                kwargs["max_tokens"] = self._max_tokens
+            if self._fallback_models is not None:
+                kwargs["fallback_models"] = self._fallback_models
+            if self._on_model_fallback is not None:
+                kwargs["on_model_fallback"] = self._on_model_fallback
+
         conv = AsyncConversation(**kwargs)
         if self._persistent_conversation:
             self._conversation = conv
@@ -809,7 +832,31 @@ class AsyncAgent(Generic[DepsType]):
         if self._agent_callbacks.on_iteration:
             await self._invoke_callback(self._agent_callbacks.on_iteration, 0)
 
-        # 8. Ask the conversation (handles full tool loop internally)
+        # 8. Enforce budget policy at the agent level (pre-call)
+        if self._budget_policy is not None:
+            state = BudgetState(
+                cost_used=session.cost,
+                tokens_used=session.total_tokens,
+                max_cost=self._max_cost,
+                max_tokens=self._max_tokens,
+            )
+            new_model = enforce_budget(
+                state,
+                self._budget_policy,
+                fallback_models=self._fallback_models,
+                current_model=self._model,
+                on_model_fallback=self._on_model_fallback,
+            )
+            if new_model is not None:
+                self._model = new_model
+                self._driver = None  # force rebuild
+                conv = self._build_conversation(
+                    system_prompt=resolved_system_prompt,
+                    tools=wrapped_tools if wrapped_tools else None,
+                    driver_callbacks=driver_callbacks,
+                )
+
+        # 9. Ask the conversation (handles full tool loop internally)
         agent_name = self.name or self.__class__.__name__
         with tracker.agent(agent_name):
             t0 = time.perf_counter()

@@ -7,6 +7,8 @@ inherit from the stdlib exception they replace (e.g. ``DriverError``
 extends ``NotImplementedError``) for backward compatibility.
 """
 
+from typing import Any
+
 
 class PromptureError(Exception):
     """Base exception for all Prompture errors."""
@@ -30,3 +32,7 @@ class ValidationError(PromptureError):
 
 class BudgetExceededError(PromptureError, RuntimeError):
     """Raised when a cost or token budget has been exceeded."""
+
+    def __init__(self, message: str = "", *, budget_state: Any = None) -> None:
+        self.budget_state = budget_state
+        super().__init__(message)
