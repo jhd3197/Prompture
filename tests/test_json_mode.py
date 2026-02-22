@@ -7,8 +7,8 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 from prompture.drivers.async_base import AsyncDriver
-from prompture.extraction.core import ask_for_json
 from prompture.drivers.base import Driver
+from prompture.extraction.core import ask_for_json
 
 # ---------------------------------------------------------------------------
 # Helpers

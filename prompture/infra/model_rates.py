@@ -349,7 +349,7 @@ class ModelCapabilities:
 
 
 # Capabilities KB loaded from per-provider JSON files in rates/
-from .rates import CAPABILITIES_KB as _CAPABILITIES_KB
+from .rates import CAPABILITIES_KB as _CAPABILITIES_KB  # noqa: E402 — deferred to break circular import
 
 
 def _lookup_kb(provider: str, model_id: str) -> Optional[ModelCapabilities]:

@@ -18,7 +18,12 @@ from prompture.extraction.fields import (
     get_field_names,
     get_required_fields,
 )
-from prompture.extraction.tools import get_field_default, get_type_default, load_field_definitions, validate_field_definition
+from prompture.extraction.tools import (
+    get_field_default,
+    get_type_default,
+    load_field_definitions,
+    validate_field_definition,
+)
 
 
 class TestFieldDefinitionsModule:

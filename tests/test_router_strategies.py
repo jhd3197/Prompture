@@ -5,8 +5,6 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import MagicMock
 
-import pytest
-
 from prompture.agents.types import AgentResult, AgentState
 from prompture.drivers.base import Driver
 from prompture.groups.groups import RouterAgent, RoutingStrategy
@@ -97,7 +95,7 @@ class TestKeywordRouting:
             },
         )
         # "write code" matches writer(1: write) and coder(2: code, write)
-        result = router.run("write code to debug")
+        router.run("write code to debug")
 
         coder.run.assert_called_once()  # coder has more keyword matches
 
@@ -206,7 +204,7 @@ class TestLLMRouting:
             agents=[writer],
             strategy=RoutingStrategy.llm,
         )
-        result = router.run("test")
+        router.run("test")
 
         writer.run.assert_called_once()
 

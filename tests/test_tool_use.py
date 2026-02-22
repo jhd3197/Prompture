@@ -2,17 +2,13 @@
 
 from __future__ import annotations
 
-import json
 from typing import Any
-from unittest.mock import MagicMock
 
 import pytest
 
-from prompture.infra.callbacks import DriverCallbacks
 from prompture.agents.conversation import Conversation
+from prompture.agents.tools_schema import ToolRegistry, tool_from_function
 from prompture.drivers.base import Driver
-from prompture.agents.tools_schema import ToolDefinition, ToolRegistry, tool_from_function
-
 
 # ---------------------------------------------------------------------------
 # tool_from_function / ToolDefinition tests

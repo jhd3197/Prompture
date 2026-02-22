@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-import asyncio
 import pytest
 
 from prompture.bridges.tukuy_backend import TukuyLLMBackend, create_tukuy_backend
 from prompture.exceptions import ConfigurationError, DriverError
-
 
 # ---------------------------------------------------------------------------
 # Mock driver
@@ -401,8 +399,6 @@ class TestWithModel:
         )
         # with_model calls get_async_driver_for_model internally, which
         # requires the registry. We'll patch it.
-        import prompture.bridges.tukuy_backend as mod
-        original = mod.TukuyLLMBackend.with_model
 
         def patched_with_model(self, model_hint):
             new_driver = MockAsyncDriver(response_text="new model response")
@@ -486,7 +482,7 @@ class TestCreateFactory:
         monkeypatch.setattr(drivers_mod, "get_async_driver_for_model", fake_get_driver)
 
         sentinel_env = object()
-        backend = create_tukuy_backend("openai/gpt-4o", env=sentinel_env)
+        create_tukuy_backend("openai/gpt-4o", env=sentinel_env)
         assert captured_env[0] is sentinel_env
 
     def test_factory_passes_on_complete(self, monkeypatch):
@@ -574,7 +570,7 @@ class TestStream:
         async for chunk in backend.stream("Hello"):
             chunks.append(chunk)
 
-        done = [c for c in chunks if c["type"] == "done"][0]
+        done = next(c for c in chunks if c["type"] == "done")
         meta = done["meta"]
         assert meta["prompt_tokens"] == 5
         assert meta["completion_tokens"] == 2
@@ -593,7 +589,7 @@ class TestStream:
         async for chunk in backend.stream("Hello"):
             chunks.append(chunk)
 
-        done = [c for c in chunks if c["type"] == "done"][0]
+        done = next(c for c in chunks if c["type"] == "done")
         assert done["meta"]["model"] == "fallback/model"
 
     @pytest.mark.asyncio

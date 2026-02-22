@@ -6,6 +6,7 @@ from typing import Any
 
 import pytest
 
+from prompture.infra.session import UsageSession
 from prompture.media.image import ImageContent
 from prompture.persistence.serialization import (
     EXPORT_VERSION,
@@ -16,7 +17,6 @@ from prompture.persistence.serialization import (
     import_conversation,
     import_usage_session,
 )
-from prompture.infra.session import UsageSession
 
 # ------------------------------------------------------------------
 # Message content round-trips

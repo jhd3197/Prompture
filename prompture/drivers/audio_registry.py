@@ -21,8 +21,6 @@ from .elevenlabs_stt_driver import ElevenLabsSTTDriver
 from .elevenlabs_tts_driver import ElevenLabsTTSDriver
 from .openai_stt_driver import OpenAISTTDriver
 from .openai_tts_driver import OpenAITTSDriver
-from .stt_base import STTDriver
-from .tts_base import TTSDriver
 from .registry import (
     get_async_stt_driver_factory,
     get_async_tts_driver_factory,
@@ -33,6 +31,8 @@ from .registry import (
     register_stt_driver,
     register_tts_driver,
 )
+from .stt_base import STTDriver
+from .tts_base import TTSDriver
 
 # ── Register built-in OpenAI audio drivers ────────────────────────────────
 

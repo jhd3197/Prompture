@@ -13,6 +13,8 @@ try:
 except ImportError:
     requests = None
 
+import contextlib
+
 from ..infra.callbacks import DriverCallbacks
 
 logger = logging.getLogger("prompture.driver")
@@ -57,10 +59,8 @@ def _fetch_openai_compatible_models(
             resp = httpx.get(url, headers=hdrs, timeout=timeout)
             if resp.status_code != 200:
                 detail = ""
-                try:
+                with contextlib.suppress(Exception):
                     detail = f" — {resp.json().get('error', {}).get('message', resp.text[:200])}"
-                except Exception:
-                    pass
                 logger.warning("Model discovery: %s returned HTTP %s%s", url, resp.status_code, detail)
                 return None
             data = resp.json()
@@ -70,10 +70,8 @@ def _fetch_openai_compatible_models(
         resp = requests.get(url, headers=hdrs, timeout=timeout)
         if resp.status_code != 200:
             detail = ""
-            try:
+            with contextlib.suppress(Exception):
                 detail = f" — {resp.json().get('error', {}).get('message', resp.text[:200])}"
-            except Exception:
-                pass
             logger.warning("Model discovery: %s returned HTTP %s%s", url, resp.status_code, detail)
             return None
 

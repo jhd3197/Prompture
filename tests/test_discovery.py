@@ -235,7 +235,7 @@ class TestDiscoveryCache:
     @patch.dict(os.environ, {"OPENAI_API_KEY": "sk-test"})
     def test_clear_discovery_cache(self):
         """clear_discovery_cache() invalidates the cache."""
-        first = get_available_models()
+        get_available_models()
         clear_discovery_cache()
         assert not _discovery_cache.has("models:False:False")
 

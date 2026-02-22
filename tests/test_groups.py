@@ -11,8 +11,16 @@ from unittest.mock import MagicMock
 import pytest
 
 from prompture.agents.agent import Agent
+from prompture.agents.tools_schema import ToolDefinition
 from prompture.agents.types import AgentResult, AgentState
 from prompture.drivers.base import Driver
+from prompture.groups.groups import (
+    GroupAsAgent,
+    LoopGroup,
+    RouterAgent,
+    SequentialGroup,
+    _inject_state,
+)
 from prompture.groups.types import (
     AgentError,
     ErrorPolicy,
@@ -21,15 +29,6 @@ from prompture.groups.types import (
     GroupStep,
     _aggregate_usage,
 )
-from prompture.groups.groups import (
-    GroupAsAgent,
-    LoopGroup,
-    RouterAgent,
-    SequentialGroup,
-    _inject_state,
-)
-from prompture.agents.tools_schema import ToolDefinition
-
 
 # ---------------------------------------------------------------------------
 # Mock helpers
@@ -328,7 +327,7 @@ class TestLoopGroup:
             return state.get("count", "0") == "2"
 
         group = LoopGroup([a], exit_condition=exit_cond, max_iterations=10)
-        result = group.run("test")
+        group.run("test")
 
         assert a.run.call_count == 2
 
@@ -339,7 +338,7 @@ class TestLoopGroup:
             return False
 
         group = LoopGroup([a], exit_condition=never_exit, max_iterations=5)
-        result = group.run("test")
+        group.run("test")
 
         assert a.run.call_count == 5
 
@@ -408,7 +407,7 @@ class TestRouterAgent:
             driver=routing_driver,
             agents=[my_writer],
         )
-        result = router.run("test")
+        router.run("test")
 
         my_writer.run.assert_called_once()
 
@@ -628,7 +627,7 @@ class TestInjectStateMethod:
         """inject_state(recursive=True) should propagate to nested groups."""
         inner_agent = _make_mock_agent("inner", "out")
         inner_group = SequentialGroup([inner_agent], state={"inner_key": "inner_val"})
-        outer_group = SequentialGroup(
+        SequentialGroup(
             [(GroupAsAgent(inner_group, name="nested"), None)],
         )
         # GroupAsAgent doesn't have inject_state, so only the inner_group does.

@@ -1,12 +1,12 @@
 import pytest
 
+from prompture.drivers import get_driver_for_model
 from prompture.extraction.core import (
     extract_and_jsonify,
     extract_with_model,
     manual_extract_and_jsonify,
     stepwise_extract_with_model,
 )
-from prompture.drivers import get_driver_for_model
 
 # Simple schema for extraction
 SIMPLE_SCHEMA = {

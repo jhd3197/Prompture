@@ -16,7 +16,6 @@ from prompture.groups.async_groups import (
 )
 from prompture.groups.types import ErrorPolicy, GroupCallbacks
 
-
 # ---------------------------------------------------------------------------
 # Mock helpers
 # ---------------------------------------------------------------------------
@@ -73,7 +72,7 @@ class TestParallelGroup:
             [(a, "State: {initial}"), (b, "State: {initial}")],
             state={"initial": "frozen_value"},
         )
-        result = await group.run_async()
+        await group.run_async()
 
         # Both agents should see the frozen initial state
         a.run.assert_called_once_with("State: frozen_value")
@@ -238,7 +237,7 @@ class TestAsyncLoopGroup:
             return False
 
         group = AsyncLoopGroup([a], exit_condition=never_exit, max_iterations=4)
-        result = await group.run("test")
+        await group.run("test")
 
         assert a.run.call_count == 4
 
@@ -284,7 +283,7 @@ class TestAsyncRouterAgent:
         mock_conv_class.return_value = mock_conv_instance
 
         import prompture.groups.async_groups as ag
-        original = ag.__dict__.get("AsyncConversation")
+        ag.__dict__.get("AsyncConversation")
 
         # Patch at module level
         import prompture.agents.async_conversation

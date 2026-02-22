@@ -52,7 +52,7 @@ def integration_driver(request):
     """
     try:
         driver = get_driver_for_model(DEFAULT_MODEL)
-    except (ValueError, Exception) as e:  # noqa: BLE001
+    except (ValueError, Exception) as e:
         pytest.skip(f"Could not create driver: {e}")
 
     # Verify the backend is actually reachable before handing the driver
@@ -64,7 +64,7 @@ def integration_driver(request):
             requests.head(base_url, timeout=3)
         except requests.exceptions.ConnectionError:
             pytest.skip(f"Backend server not reachable at {base_url}")
-        except Exception:  # noqa: BLE001
+        except Exception:
             pass  # Non-connection errors (e.g. 404) are fine — server is up
 
     return driver

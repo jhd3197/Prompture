@@ -43,9 +43,7 @@ class BudgetState:
         """True when any hard limit has been reached."""
         if self.max_cost is not None and self.cost_used >= self.max_cost:
             return True
-        if self.max_tokens is not None and self.tokens_used >= self.max_tokens:
-            return True
-        return False
+        return bool(self.max_tokens is not None and self.tokens_used >= self.max_tokens)
 
     @property
     def cost_remaining(self) -> float | None:
@@ -83,7 +81,7 @@ def estimate_tokens(text: str) -> int:
 
         enc = tiktoken.get_encoding("cl100k_base")
         return len(enc.encode(text))
-    except Exception:  # noqa: BLE001
+    except Exception:
         return max(1, len(text) // 4)
 
 

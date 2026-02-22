@@ -30,9 +30,9 @@ from ..infra.provider_env import ProviderEnvironment
 from ..infra.settings import settings
 from .airllm_driver import AirLLMDriver
 from .async_airllm_driver import AsyncAirLLMDriver
-from .async_cachibot_driver import AsyncCachiBotDriver
 from .async_azure_driver import AsyncAzureDriver
 from .async_base import AsyncDriver
+from .async_cachibot_driver import AsyncCachiBotDriver
 from .async_claude_driver import AsyncClaudeDriver
 from .async_elevenlabs_stt_driver import AsyncElevenLabsSTTDriver
 from .async_elevenlabs_tts_driver import AsyncElevenLabsTTSDriver
@@ -477,8 +477,8 @@ __all__ = [
     # Async LLM drivers
     "AsyncAirLLMDriver",
     "AsyncAzureDriver",
-    "AsyncClaudeDriver",
     "AsyncCachiBotDriver",
+    "AsyncClaudeDriver",
     # Async base classes
     "AsyncDriver",
     # Async audio drivers

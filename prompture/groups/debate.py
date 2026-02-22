@@ -12,7 +12,6 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
-from ..agents.types import AgentResult, AgentState
 from .groups import _agent_name
 from .types import (
     AgentError,
