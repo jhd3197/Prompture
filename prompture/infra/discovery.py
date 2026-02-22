@@ -266,7 +266,7 @@ def get_available_models(
                     for model_id in api_models:
                         available_models.add(f"{provider}/{model_id}")
             except Exception as e:
-                logger.debug("list_models() failed for %s: %s", provider, e)
+                logger.warning("list_models() failed for %s: %s", provider, e)
 
             # Static Detection: Get models from MODEL_PRICING only when the API
             # didn't return an authoritative list (failed, returned None, or the
