@@ -345,25 +345,31 @@ class ModelCapabilities:
     max_output_tokens: Optional[int] = None
     modalities_input: tuple[str, ...] = ()
     modalities_output: tuple[str, ...] = ()
+    api_type: Optional[str] = None  # "openai", "anthropic", "google", "openai-compatible"
 
 
-def get_model_capabilities(provider: str, model_id: str) -> Optional[ModelCapabilities]:
-    """Return capability metadata for a model, or ``None`` if unavailable.
+# Capabilities KB loaded from per-provider JSON files in rates/
+from .rates import CAPABILITIES_KB as _CAPABILITIES_KB
 
-    Maps models.dev fields to a :class:`ModelCapabilities` instance:
 
-    - ``temperature`` → ``supports_temperature``
-    - ``tool_call`` → ``supports_tool_use``
-    - ``structured_output`` → ``supports_structured_output``
-    - ``"image" in modalities.input`` → ``supports_vision``
-    - ``reasoning`` → ``is_reasoning``
-    - ``limit.context`` → ``context_window``
-    - ``limit.output`` → ``max_output_tokens``
+def _lookup_kb(provider: str, model_id: str) -> Optional[ModelCapabilities]:
+    """Look up model in hardcoded capabilities knowledge base.
+
+    Tries exact match first, then falls back to stripping date suffixes
+    (e.g. ``claude-sonnet-4-20250514`` → ``claude-sonnet-4``).
     """
-    entry = _lookup_model(provider, model_id)
-    if entry is None:
-        return None
+    api_provider = PROVIDER_MAP.get(provider, provider)
+    caps = _CAPABILITIES_KB.get((api_provider, model_id))
+    if caps is not None:
+        return caps
+    base = _strip_to_base_model(model_id)
+    if base is not None:
+        return _CAPABILITIES_KB.get((api_provider, base))
+    return None
 
+
+def _parse_capabilities_from_entry(entry: dict[str, Any]) -> ModelCapabilities:
+    """Parse a models.dev entry dict into a :class:`ModelCapabilities` instance."""
     # Boolean capabilities (True/False/None)
     supports_temperature: Optional[bool] = None
     if "temperature" in entry:
@@ -422,3 +428,31 @@ def get_model_capabilities(provider: str, model_id: str) -> Optional[ModelCapabi
         modalities_input=modalities_input,
         modalities_output=modalities_output,
     )
+
+
+def get_model_capabilities(provider: str, model_id: str) -> Optional[ModelCapabilities]:
+    """Return capability metadata for a model, or ``None`` if unavailable.
+
+    Resolution order:
+
+    1. **models.dev** — live/cached API data (richest source).
+    2. **api_type overlay** — if the KB has a matching entry, its ``api_type``
+       is overlaid onto the models.dev result (models.dev doesn't track this).
+    3. **KB fallback** — if models.dev has no data, return the hardcoded KB
+       entry directly.
+    4. ``None`` — truly unknown model.
+    """
+    kb_entry = _lookup_kb(provider, model_id)
+
+    entry = _lookup_model(provider, model_id)
+    if entry is not None:
+        caps = _parse_capabilities_from_entry(entry)
+        # Overlay api_type from KB (models.dev doesn't provide it)
+        if kb_entry is not None and kb_entry.api_type is not None:
+            from dataclasses import replace
+
+            caps = replace(caps, api_type=kb_entry.api_type)
+        return caps
+
+    # models.dev unavailable — fall back to KB
+    return kb_entry

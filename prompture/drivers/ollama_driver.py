@@ -49,7 +49,12 @@ class OllamaDriver(Driver):
 
     def __init__(self, endpoint: str | None = None, model: str = "llama3"):
         # Allow override via env var
-        self.endpoint: str = endpoint or os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434/api/generate")  # type: ignore[assignment]
+        raw_endpoint: str = endpoint or os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434/api/generate")  # type: ignore[assignment]
+        # Auto-append /api/generate when given a bare base URL (e.g. http://localhost:11434)
+        if "/api/" not in raw_endpoint:
+            self.endpoint = raw_endpoint.rstrip("/") + "/api/generate"
+        else:
+            self.endpoint = raw_endpoint
         self.model = model
         self.options: dict[str, Any] = {}  # Initialize empty options dict
 

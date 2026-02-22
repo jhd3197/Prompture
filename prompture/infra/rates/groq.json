@@ -1,0 +1,26 @@
+{
+  "llama-3.1-70b": {
+    "supports_temperature": true,
+    "supports_tool_use": true,
+    "supports_structured_output": false,
+    "supports_vision": false,
+    "is_reasoning": false,
+    "context_window": 131072,
+    "max_output_tokens": 8192,
+    "modalities_input": ["text"],
+    "modalities_output": ["text"],
+    "api_type": "openai-compatible"
+  },
+  "mixtral-8x7b-32768": {
+    "supports_temperature": true,
+    "supports_tool_use": false,
+    "supports_structured_output": false,
+    "supports_vision": false,
+    "is_reasoning": false,
+    "context_window": 32768,
+    "max_output_tokens": 4096,
+    "modalities_input": ["text"],
+    "modalities_output": ["text"],
+    "api_type": "openai-compatible"
+  }
+}

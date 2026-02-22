@@ -24,6 +24,12 @@ def pytest_addoption(parser):
 
 
 @pytest.fixture
+def default_model() -> str:
+    """Provide the default model string for integration tests."""
+    return DEFAULT_MODEL
+
+
+@pytest.fixture
 def sample_json_schema() -> dict[str, Any]:
     """Sample JSON schema for testing core functions."""
     return {
