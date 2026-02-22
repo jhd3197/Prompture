@@ -15,10 +15,14 @@ from .async_elevenlabs_stt_driver import AsyncElevenLabsSTTDriver
 from .async_elevenlabs_tts_driver import AsyncElevenLabsTTSDriver
 from .async_openai_stt_driver import AsyncOpenAISTTDriver
 from .async_openai_tts_driver import AsyncOpenAITTSDriver
+from .async_stt_base import AsyncSTTDriver
+from .async_tts_base import AsyncTTSDriver
 from .elevenlabs_stt_driver import ElevenLabsSTTDriver
 from .elevenlabs_tts_driver import ElevenLabsTTSDriver
 from .openai_stt_driver import OpenAISTTDriver
 from .openai_tts_driver import OpenAITTSDriver
+from .stt_base import STTDriver
+from .tts_base import TTSDriver
 from .registry import (
     get_async_stt_driver_factory,
     get_async_tts_driver_factory,
@@ -118,7 +122,7 @@ register_async_tts_driver(
 # ── Factory functions ─────────────────────────────────────────────────────
 
 
-def get_stt_driver_for_model(model_str: str) -> object:
+def get_stt_driver_for_model(model_str: str) -> STTDriver:
     """Instantiate a sync STT driver from a ``"provider/model"`` string.
 
     Args:
@@ -134,7 +138,7 @@ def get_stt_driver_for_model(model_str: str) -> object:
     return factory(model_id)
 
 
-def get_async_stt_driver_for_model(model_str: str) -> object:
+def get_async_stt_driver_for_model(model_str: str) -> AsyncSTTDriver:
     """Instantiate an async STT driver from a ``"provider/model"`` string."""
     parts = model_str.split("/", 1)
     provider = parts[0].lower()
@@ -143,7 +147,7 @@ def get_async_stt_driver_for_model(model_str: str) -> object:
     return factory(model_id)
 
 
-def get_tts_driver_for_model(model_str: str) -> object:
+def get_tts_driver_for_model(model_str: str) -> TTSDriver:
     """Instantiate a sync TTS driver from a ``"provider/model"`` string.
 
     Args:
@@ -159,7 +163,7 @@ def get_tts_driver_for_model(model_str: str) -> object:
     return factory(model_id)
 
 
-def get_async_tts_driver_for_model(model_str: str) -> object:
+def get_async_tts_driver_for_model(model_str: str) -> AsyncTTSDriver:
     """Instantiate an async TTS driver from a ``"provider/model"`` string."""
     parts = model_str.split("/", 1)
     provider = parts[0].lower()

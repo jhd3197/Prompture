@@ -129,10 +129,43 @@ def _ensure_loaded() -> Optional[dict[str, Any]]:
         return _data
 
 
+def _strip_to_base_model(model_id: str) -> Optional[str]:
+    """Try to derive the base model name from a versioned or fine-tuned model ID.
+
+    Handles common patterns:
+    - Date-versioned: ``gpt-4o-2024-08-06`` → ``gpt-4o``
+    - Fine-tuned: ``ft:gpt-4o-mini:org:name:id`` → ``gpt-4o-mini``
+    - Snapshot suffixes: ``claude-3-opus-20240229`` → ``claude-3-opus``
+
+    Returns ``None`` if no base model can be derived or if the result
+    would be identical to the input.
+    """
+    import re
+
+    candidate: Optional[str] = None
+
+    # Fine-tuned models: ft:base-model:rest
+    if model_id.startswith("ft:"):
+        parts = model_id.split(":", 2)
+        if len(parts) >= 2 and parts[1]:
+            candidate = parts[1]
+
+    # Date-versioned: strip trailing -YYYY-MM-DD or -YYYYMMDD
+    if candidate is None:
+        stripped = re.sub(r"-\d{4}-?\d{2}-?\d{2}$", "", model_id)
+        if stripped != model_id:
+            candidate = stripped
+
+    return candidate if candidate and candidate != model_id else None
+
+
 def _lookup_model(provider: str, model_id: str) -> Optional[dict[str, Any]]:
     """Find a model entry in the cached data.
 
     The API structure is ``{provider: {model_id: {...}, ...}, ...}``.
+
+    When an exact match isn't found, attempts to match by stripping date
+    suffixes or fine-tune prefixes (e.g. ``gpt-4o-2024-08-06`` → ``gpt-4o``).
     """
     data = _ensure_loaded()
     if data is None:
@@ -148,7 +181,17 @@ def _lookup_model(provider: str, model_id: str) -> Optional[dict[str, Any]]:
     if not isinstance(models, dict):
         return None
 
-    return models.get(model_id)
+    # Exact match first
+    entry = models.get(model_id)
+    if entry is not None:
+        return entry
+
+    # Fallback: try base model name (date-stripped / fine-tune prefix)
+    base = _strip_to_base_model(model_id)
+    if base is not None:
+        return models.get(base)
+
+    return None
 
 
 # ── Public API ──────────────────────────────────────────────────────────────

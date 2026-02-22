@@ -11,6 +11,7 @@ Usage:
 """
 
 from ..infra.settings import settings
+from .async_img_gen_base import AsyncImageGenDriver
 from .async_google_img_gen_driver import AsyncGoogleImageGenDriver
 from .async_grok_img_gen_driver import AsyncGrokImageGenDriver
 from .async_openai_img_gen_driver import AsyncOpenAIImageGenDriver
@@ -24,6 +25,7 @@ from .registry import (
     register_async_img_gen_driver,
     register_img_gen_driver,
 )
+from .img_gen_base import ImageGenDriver
 from .stability_img_gen_driver import StabilityImageGenDriver
 
 # ── Register built-in OpenAI image gen drivers ────────────────────────────
@@ -165,7 +167,7 @@ register_async_img_gen_driver(
 # ── Factory functions ─────────────────────────────────────────────────────
 
 
-def get_img_gen_driver_for_model(model_str: str) -> object:
+def get_img_gen_driver_for_model(model_str: str) -> ImageGenDriver:
     """Instantiate a sync image gen driver from a ``"provider/model"`` string.
 
     Args:
@@ -181,7 +183,7 @@ def get_img_gen_driver_for_model(model_str: str) -> object:
     return factory(model_id)
 
 
-def get_async_img_gen_driver_for_model(model_str: str) -> object:
+def get_async_img_gen_driver_for_model(model_str: str) -> AsyncImageGenDriver:
     """Instantiate an async image gen driver from a ``"provider/model"`` string."""
     parts = model_str.split("/", 1)
     provider = parts[0].lower()
