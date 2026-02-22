@@ -163,6 +163,9 @@ def get_available_models(
     logger.debug("Discovery cache miss for key=%s — querying providers", cache_key)
     available_models: set[str] = set()
     configured_providers: set[str] = set()
+    # Providers where list_models() returned an authoritative model list.
+    # For these, we trust the API response and skip MODEL_PRICING / models.dev additions.
+    api_authoritative_providers: set[str] = set()
 
     # Map of provider name to driver class
     provider_classes = {
@@ -242,33 +245,44 @@ def get_available_models(
 
             configured_providers.add(provider)
 
-            # Static Detection: Get models from MODEL_PRICING
-            if hasattr(driver_cls, "MODEL_PRICING"):
+            # API-based Detection: call driver's list_models() classmethod.
+            # When this succeeds, the API response is authoritative — it reflects
+            # exactly which models the API key has access to.
+            api_kwargs = _get_list_models_kwargs(provider, env=env)
+            api_succeeded = False
+            try:
+                api_models = driver_cls.list_models(**api_kwargs)  # type: ignore[attr-defined]
+                if api_models is not None:
+                    api_succeeded = True
+                    api_authoritative_providers.add(provider)
+                    for model_id in api_models:
+                        available_models.add(f"{provider}/{model_id}")
+            except Exception as e:
+                logger.debug("list_models() failed for %s: %s", provider, e)
+
+            # Static Detection: Get models from MODEL_PRICING only when the API
+            # didn't return an authoritative list (failed, returned None, or the
+            # driver doesn't implement list_models).
+            if not api_succeeded and hasattr(driver_cls, "MODEL_PRICING"):
                 pricing = driver_cls.MODEL_PRICING
                 for model_id in pricing:
                     if model_id == "default":
                         continue
                     available_models.add(f"{provider}/{model_id}")
 
-            # API-based Detection: call driver's list_models() classmethod
-            api_kwargs = _get_list_models_kwargs(provider, env=env)
-            try:
-                api_models = driver_cls.list_models(**api_kwargs)  # type: ignore[attr-defined]
-                if api_models is not None:
-                    for model_id in api_models:
-                        available_models.add(f"{provider}/{model_id}")
-            except Exception as e:
-                logger.debug("list_models() failed for %s: %s", provider, e)
-
         except Exception as e:
             logger.warning(f"Error detecting models for provider {provider}: {e}")
             continue
 
-    # Enrich with live model list from models.dev cache
+    # Enrich with live model list from models.dev cache — but only for providers
+    # where the API didn't return an authoritative list.  When list_models()
+    # succeeded, the API already told us exactly which models the key can use;
+    # adding the full models.dev catalog would surface models the user can't
+    # actually access (e.g. GPT-5 when the key only has GPT-4o access).
     from .model_rates import PROVIDER_MAP, get_all_provider_models
 
     for prompture_name, api_name in PROVIDER_MAP.items():
-        if prompture_name in configured_providers:
+        if prompture_name in configured_providers and prompture_name not in api_authoritative_providers:
             for model_id in get_all_provider_models(api_name):
                 available_models.add(f"{prompture_name}/{model_id}")
 
