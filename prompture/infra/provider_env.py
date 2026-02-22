@@ -31,6 +31,8 @@ class ProviderEnvironment:
     ollama_endpoint: str | None = None
     lmstudio_endpoint: str | None = None
     lmstudio_api_key: str | None = None
+    cachibot_api_key: str | None = None
+    cachibot_endpoint: str | None = None
     stability_api_key: str | None = None
     elevenlabs_api_key: str | None = None
     hf_endpoint: str | None = None

@@ -17,6 +17,7 @@ from ..infra.provider_env import ProviderEnvironment
 from ..infra.settings import settings
 from .async_airllm_driver import AsyncAirLLMDriver
 from .async_azure_driver import AsyncAzureDriver
+from .async_cachibot_driver import AsyncCachiBotDriver
 from .async_claude_driver import AsyncClaudeDriver
 from .async_google_driver import AsyncGoogleDriver
 from .async_grok_driver import AsyncGrokDriver
@@ -128,6 +129,15 @@ register_async_driver(
         api_key=settings.zhipu_api_key,
         model=model or settings.zhipu_model,
         endpoint=settings.zhipu_endpoint,
+    ),
+    overwrite=True,
+)
+register_async_driver(
+    "cachibot",
+    lambda model=None: AsyncCachiBotDriver(  # type: ignore[misc]
+        api_key=settings.cachibot_api_key,
+        model=model or "openai/gpt-4o-mini",
+        endpoint=settings.cachibot_endpoint,
     ),
     overwrite=True,
 )
@@ -247,6 +257,11 @@ ASYNC_PROVIDER_DRIVER_MAP: dict[str, tuple[type, dict[str, str], str]] = {
         AsyncLMStudioDriver,
         {"endpoint": "lmstudio_endpoint", "api_key": "lmstudio_api_key"},
         "lmstudio_model",
+    ),
+    "cachibot": (
+        AsyncCachiBotDriver,
+        {"api_key": "cachibot_api_key", "endpoint": "cachibot_endpoint"},
+        "openai/gpt-4o-mini",
     ),
     "azure": (
         AsyncAzureDriver,

@@ -159,24 +159,16 @@ def _strip_to_base_model(model_id: str) -> Optional[str]:
     return candidate if candidate and candidate != model_id else None
 
 
-def _lookup_model(provider: str, model_id: str) -> Optional[dict[str, Any]]:
-    """Find a model entry in the cached data.
-
-    The API structure is ``{provider: {model_id: {...}, ...}, ...}``.
-
-    When an exact match isn't found, attempts to match by stripping date
-    suffixes or fine-tune prefixes (e.g. ``gpt-4o-2024-08-06`` → ``gpt-4o``).
-    """
-    data = _ensure_loaded()
-    if data is None:
-        return None
-
-    api_provider = PROVIDER_MAP.get(provider, provider)
+def _lookup_in_provider(
+    data: dict[str, Any],
+    api_provider: str,
+    model_id: str,
+) -> Optional[dict[str, Any]]:
+    """Lookup a model in a specific provider's data, with base-model fallback."""
     provider_data = data.get(api_provider)
     if not isinstance(provider_data, dict):
         return None
 
-    # models.dev nests actual models under a "models" key
     models = provider_data.get("models", provider_data)
     if not isinstance(models, dict):
         return None
@@ -190,6 +182,41 @@ def _lookup_model(provider: str, model_id: str) -> Optional[dict[str, Any]]:
     base = _strip_to_base_model(model_id)
     if base is not None:
         return models.get(base)
+
+    return None
+
+
+def _lookup_model(provider: str, model_id: str) -> Optional[dict[str, Any]]:
+    """Find a model entry in the cached data.
+
+    The API structure is ``{provider: {model_id: {...}, ...}, ...}``.
+
+    When an exact match isn't found, attempts to match by stripping date
+    suffixes or fine-tune prefixes (e.g. ``gpt-4o-2024-08-06`` → ``gpt-4o``).
+
+    For proxy providers (e.g. ``cachibot``), the model_id may contain the
+    real upstream provider (e.g. ``openai/gpt-4o``).  In that case, the
+    lookup is redirected to the upstream provider in models.dev.
+    """
+    data = _ensure_loaded()
+    if data is None:
+        return None
+
+    api_provider = PROVIDER_MAP.get(provider, provider)
+
+    # Try direct lookup in the provider
+    entry = _lookup_in_provider(data, api_provider, model_id)
+    if entry is not None:
+        return entry
+
+    # Proxy provider fallback: model_id may be "upstream_provider/model"
+    # (e.g. provider="cachibot", model_id="openai/gpt-4o")
+    if "/" in model_id:
+        upstream_provider, upstream_model = model_id.split("/", 1)
+        upstream_api = PROVIDER_MAP.get(upstream_provider, upstream_provider)
+        entry = _lookup_in_provider(data, upstream_api, upstream_model)
+        if entry is not None:
+            return entry
 
     return None
 

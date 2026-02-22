@@ -30,6 +30,7 @@ from ..infra.provider_env import ProviderEnvironment
 from ..infra.settings import settings
 from .airllm_driver import AirLLMDriver
 from .async_airllm_driver import AsyncAirLLMDriver
+from .async_cachibot_driver import AsyncCachiBotDriver
 from .async_azure_driver import AsyncAzureDriver
 from .async_base import AsyncDriver
 from .async_claude_driver import AsyncClaudeDriver
@@ -64,6 +65,7 @@ from .azure_config import (
     unregister_azure_config,
 )
 from .azure_driver import AzureDriver
+from .cachibot_driver import CachiBotDriver
 from .claude_driver import ClaudeDriver
 from .elevenlabs_stt_driver import ElevenLabsSTTDriver
 from .elevenlabs_tts_driver import ElevenLabsTTSDriver
@@ -227,6 +229,15 @@ register_driver(
     overwrite=True,
 )
 register_driver(
+    "cachibot",
+    lambda model=None: CachiBotDriver(  # type: ignore[misc]
+        api_key=settings.cachibot_api_key,
+        model=model or "openai/gpt-4o-mini",
+        endpoint=settings.cachibot_endpoint,
+    ),
+    overwrite=True,
+)
+register_driver(
     "airllm",
     lambda model=None: AirLLMDriver(  # type: ignore[misc]
         model=model or settings.airllm_model,
@@ -359,6 +370,11 @@ PROVIDER_DRIVER_MAP: dict[str, tuple[type, dict[str, str], str]] = {
         {"endpoint": "lmstudio_endpoint", "api_key": "lmstudio_api_key"},
         "lmstudio_model",
     ),
+    "cachibot": (
+        CachiBotDriver,
+        {"api_key": "cachibot_api_key", "endpoint": "cachibot_endpoint"},
+        "openai/gpt-4o-mini",
+    ),
     "azure": (
         AzureDriver,
         {"api_key": "azure_api_key", "endpoint": "azure_api_endpoint", "deployment_id": "azure_deployment_id"},
@@ -462,6 +478,7 @@ __all__ = [
     "AsyncAirLLMDriver",
     "AsyncAzureDriver",
     "AsyncClaudeDriver",
+    "AsyncCachiBotDriver",
     # Async base classes
     "AsyncDriver",
     # Async audio drivers
@@ -491,6 +508,7 @@ __all__ = [
     "AsyncZaiDriver",
     # Sync LLM drivers
     "AzureDriver",
+    "CachiBotDriver",
     "ClaudeDriver",
     # Sync audio drivers
     "ElevenLabsSTTDriver",
