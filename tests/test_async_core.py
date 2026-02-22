@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from prompture.drivers.async_base import AsyncDriver
 from prompture.extraction.async_core import (
     ask_for_json,
     clean_json_text_with_ai,
@@ -17,7 +18,6 @@ from prompture.extraction.async_core import (
     render_output,
     stepwise_extract_with_model,
 )
-from prompture.drivers.async_base import AsyncDriver
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -63,7 +63,7 @@ class TestAsyncCleanJsonTextWithAI:
 
     async def test_malformed_json_calls_driver(self):
         driver = _mock_async_driver(text='{"key": "fixed"}')
-        result, meta = await clean_json_text_with_ai(driver, '{"key": broken}')
+        result, _meta = await clean_json_text_with_ai(driver, '{"key": broken}')
         driver.generate_with_hooks.assert_called_once()
         assert json.loads(result) == {"key": "fixed"}
 

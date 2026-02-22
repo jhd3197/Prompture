@@ -5,13 +5,11 @@ from __future__ import annotations
 import base64
 import struct
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
 from prompture.media.audio import (
     AudioContent,
-    AudioInput,
     _guess_media_type,
     _guess_media_type_from_bytes,
     audio_from_base64,
@@ -20,7 +18,6 @@ from prompture.media.audio import (
     audio_from_url,
     make_audio,
 )
-
 
 # ── AudioContent dataclass ────────────────────────────────────────────────
 

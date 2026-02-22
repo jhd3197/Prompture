@@ -15,13 +15,13 @@ from unittest.mock import patch
 import pytest
 from tukuy import Skill, skill
 from tukuy.safety import SecurityContext, reset_security_context, set_security_context
+from tukuy.sandbox.sandbox import PythonSandbox
 
 from prompture import ToolDefinition, ToolRegistry, apply_security_context
 from prompture.agents.agent import Agent
 from prompture.agents.async_agent import AsyncAgent
 from prompture.drivers.base import Driver
 from prompture.integrations.tukuy_bridge import skill_to_tool_definition, skills_to_registry
-from tukuy.sandbox.sandbox import PythonSandbox
 
 # ------------------------------------------------------------------
 # Helpers: mock drivers & tukuy skills

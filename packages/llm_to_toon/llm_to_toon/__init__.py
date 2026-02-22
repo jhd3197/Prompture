@@ -3,8 +3,8 @@ try:
     from prompture import extract_and_jsonify as _extract_and_jsonify
     from prompture.drivers import OllamaDriver
 except Exception:
-    from prompture.extraction.core import extract_and_jsonify as _extract_and_jsonify
     from prompture.drivers import OllamaDriver
+    from prompture.extraction.core import extract_and_jsonify as _extract_and_jsonify
 
 
 def from_llm_text(text: str, schema: dict, driver: dict | None = None):

@@ -20,7 +20,6 @@ from prompture.infra.budget import (
     estimate_tokens,
 )
 
-
 # ---------------------------------------------------------------------------
 # Mock driver
 # ---------------------------------------------------------------------------
@@ -323,7 +322,7 @@ class TestConversationBudget:
         with patch("prompture.agents.conversation.get_driver_for_model") as mock_get:
             cheap_driver = MockDriver(responses=["from cheap"])
             mock_get.return_value = cheap_driver
-            resp = conv.ask("World")
+            conv.ask("World")
 
         mock_get.assert_called_once_with("cheap/model")
         assert conv._model_name == "cheap/model"

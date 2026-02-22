@@ -2,16 +2,13 @@
 
 from __future__ import annotations
 
-import csv
 import tempfile
 from pathlib import Path
-from typing import Any
 
 import pytest
 
 from prompture.ingestion import (
     ChunkingConfig,
-    DocumentChunk,
     DocumentContent,
     async_ingest,
     chunk_document,
@@ -26,7 +23,6 @@ from prompture.ingestion.detect import detect_file_type
 from prompture.ingestion.parsers.base import BaseParser
 from prompture.ingestion.parsers.csv_parser import CsvParser
 from prompture.ingestion.parsers.markdown import MarkdownParser
-
 
 # =============================================================================
 # DocumentContent Tests
@@ -761,8 +757,9 @@ class TestExtractWithModelIntegration:
 
     def test_source_parameter_exists(self):
         """Should accept source parameter without error."""
-        from prompture import extract_with_model
         from pydantic import BaseModel
+
+        from prompture import extract_with_model
 
         class TestModel(BaseModel):
             text: str
@@ -776,8 +773,9 @@ class TestExtractWithModelIntegration:
 
     def test_source_parameter_in_signature(self):
         """Should have source parameter in function signature."""
-        from prompture.extraction.core import extract_with_model
         import inspect
+
+        from prompture.extraction.core import extract_with_model
 
         sig = inspect.signature(extract_with_model)
         params = list(sig.parameters.keys())

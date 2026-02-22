@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -15,7 +15,6 @@ pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient
 
 from prompture.cli.server import create_app
-
 
 # ---------------------------------------------------------------------------
 # Mock async driver

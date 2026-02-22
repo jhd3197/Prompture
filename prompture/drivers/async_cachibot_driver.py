@@ -254,7 +254,7 @@ class AsyncCachiBotDriver(CostMixin, AsyncDriver):
             async for line in response.aiter_lines():
                 if not line or not line.startswith("data: "):
                     continue
-                payload_str = line[len("data: "):]
+                payload_str = line[len("data: ") :]
                 if payload_str.strip() == "[DONE]":
                     break
                 try:

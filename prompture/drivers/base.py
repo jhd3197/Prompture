@@ -13,6 +13,8 @@ try:
 except ImportError:
     requests = None
 
+import contextlib
+
 from ..infra.callbacks import DriverCallbacks
 
 logger = logging.getLogger("prompture.driver")
@@ -56,7 +58,10 @@ def _fetch_openai_compatible_models(
 
             resp = httpx.get(url, headers=hdrs, timeout=timeout)
             if resp.status_code != 200:
-                logger.debug("_fetch_openai_compatible_models %s returned %s", url, resp.status_code)
+                detail = ""
+                with contextlib.suppress(Exception):
+                    detail = f" — {resp.json().get('error', {}).get('message', resp.text[:200])}"
+                logger.warning("Model discovery: %s returned HTTP %s%s", url, resp.status_code, detail)
                 return None
             data = resp.json()
             models = data.get("data", [])
@@ -64,14 +69,17 @@ def _fetch_openai_compatible_models(
 
         resp = requests.get(url, headers=hdrs, timeout=timeout)
         if resp.status_code != 200:
-            logger.debug("_fetch_openai_compatible_models %s returned %s", url, resp.status_code)
+            detail = ""
+            with contextlib.suppress(Exception):
+                detail = f" — {resp.json().get('error', {}).get('message', resp.text[:200])}"
+            logger.warning("Model discovery: %s returned HTTP %s%s", url, resp.status_code, detail)
             return None
 
         data = resp.json()
         models = data.get("data", [])
         return [m["id"] for m in models if m.get("id")]
     except Exception:
-        logger.debug("_fetch_openai_compatible_models failed for %s", base_url, exc_info=True)
+        logger.warning("Model discovery: failed to reach %s", base_url, exc_info=True)
         return None
 
 

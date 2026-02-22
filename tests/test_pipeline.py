@@ -4,8 +4,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from prompture.groups.types import ErrorPolicy
 from prompture.agents.persona import Persona
+from prompture.agents.skills import SkillInfo
+from prompture.groups.types import ErrorPolicy
 from prompture.pipeline.pipeline import (
     PipelineResult,
     PipelineStep,
@@ -14,7 +15,6 @@ from prompture.pipeline.pipeline import (
     _inject_state,
     create_pipeline,
 )
-from prompture.agents.skills import SkillInfo
 
 
 class TestInjectState:

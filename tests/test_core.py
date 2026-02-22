@@ -171,7 +171,7 @@ class TestCleanJsonTextWithAi:
         """Test using AI to clean malformed JSON."""
         malformed_json = '{"name": "Juan", "age": 28, "interests": ["basketball"]'  # Missing closing brace
 
-        result, meta = clean_json_text_with_ai(integration_driver, malformed_json, model_name=default_model)
+        result, _meta = clean_json_text_with_ai(integration_driver, malformed_json, model_name=default_model)
 
         # Verify the result is valid JSON
         parsed = json.loads(result)
@@ -185,7 +185,7 @@ class TestCleanJsonTextWithAi:
         """Test that valid JSON is returned unchanged."""
         valid_json = '{"name": "Juan", "age": 30}'
 
-        result, meta = clean_json_text_with_ai(integration_driver, valid_json, model_name=default_model)
+        result, _meta = clean_json_text_with_ai(integration_driver, valid_json, model_name=default_model)
         assert json.loads(result) == json.loads(valid_json)
 
 
@@ -319,7 +319,7 @@ class TestModelNameParameter:
 
         # Test in clean_json_text_with_ai
         json_text = '{"test": "value"'  # Intentionally malformed
-        result, meta = clean_json_text_with_ai(integration_driver, json_text, model_name=default_model)
+        result, _meta = clean_json_text_with_ai(integration_driver, json_text, model_name=default_model)
         assert isinstance(result, str)
 
         # Test in ask_for_json

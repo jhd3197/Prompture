@@ -7,9 +7,9 @@ from typing import Any
 
 import pytest
 
-from prompture.infra.callbacks import DriverCallbacks
 from prompture.agents.conversation import Conversation
 from prompture.drivers.base import Driver
+from prompture.infra.callbacks import DriverCallbacks
 from prompture.infra.session import UsageSession
 
 # ---------------------------------------------------------------------------
@@ -35,8 +35,7 @@ class MockStreamDriver(Driver):
         }
 
     def generate_messages_stream(self, messages, options) -> Iterator[dict[str, Any]]:
-        for chunk in self._chunks:
-            yield chunk
+        yield from self._chunks
 
 
 class NonStreamDriver(Driver):
@@ -175,8 +174,7 @@ class TestStreamingMultipleTurns:
                 }
 
             def generate_messages_stream(self, messages, options):
-                for c in chunks:
-                    yield c
+                yield from chunks
 
         conv = Conversation(driver=HybridDriver())
 

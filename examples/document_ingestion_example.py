@@ -22,9 +22,7 @@ from pathlib import Path
 # Add parent directory to path for local development
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from pydantic import BaseModel
 
-from prompture import extract_with_model, field_from_registry
 from prompture.ingestion import ChunkingConfig, chunk_document, ingest
 
 # =============================================================================
@@ -64,7 +62,7 @@ The **AI-powered analytics** feature drove significant engagement.
         print(f"File type: {doc.file_type}")
         print(f"Source: {doc.source_path}")
         print(f"Character count: {doc.char_count}")
-        print(f"\nExtracted text (first 200 chars):")
+        print("\nExtracted text (first 200 chars):")
         print(doc.text[:200])
         print("\n✅ Successfully ingested markdown file")
     finally:
@@ -101,8 +99,8 @@ Desk Lamp,34.99,Furniture,200
         print(f"File type: {doc.file_type}")
         print(f"Row count: {doc.metadata.get('row_count')}")
         print(f"Headers: {doc.metadata.get('headers')}")
-        print(f"Delimiter: {repr(doc.metadata.get('delimiter'))}")
-        print(f"\nExtracted data (first 150 chars):")
+        print(f"Delimiter: {doc.metadata.get('delimiter')!r}")
+        print("\nExtracted data (first 150 chars):")
         print(doc.text[:150])
         print("\n✅ Successfully ingested CSV file with metadata")
     finally:
@@ -144,7 +142,7 @@ This is a plain .txt file, but we want to parse it as Markdown.
         doc_override = ingest(temp_path, file_type="markdown")
         print(f"With override: {doc_override.file_type}")
 
-        print(f"\nExtracted text (first 100 chars):")
+        print("\nExtracted text (first 100 chars):")
         print(doc_override.text[:100])
         print("\n✅ File type override works as expected")
     finally:
@@ -249,15 +247,15 @@ advanced AI capabilities and premium build quality.
     try:
         # Show the ingestion part (extraction would need LLM)
         doc = ingest(temp_path)
-        print(f"\nSample document ingested:")
+        print("\nSample document ingested:")
         print(f"  Type: {doc.file_type}")
         print(f"  Size: {doc.char_count} chars")
-        print(f"  Content preview:")
+        print("  Content preview:")
         print(f"  {doc.text[:100]}...")
 
         print("\n💡 To actually extract, you would use:")
         print("   result = extract_with_model(ProductInfo, ")
-        print(f"                                model_name='openai/gpt-4',")
+        print("                                model_name='openai/gpt-4',")
         print(f"                                source='{temp_path}')")
         print("\n✅ source= parameter ready for use with LLM extraction")
     finally:
@@ -345,7 +343,7 @@ def example_chunking_strategies():
         )
         chunks_pages = chunk_document(doc, config_pages)
         print(f"  Created {len(chunks_pages)} chunks with page-based strategy")
-        print(f"  (Falls back to char-based for non-paginated docs)")
+        print("  (Falls back to char-based for non-paginated docs)")
 
         print("\n✅ Both chunking strategies demonstrated")
     finally:

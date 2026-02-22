@@ -631,9 +631,7 @@ class Agent(Generic[DepsType]):
         """Return True if max_cost or max_tokens is set and the session has exceeded it."""
         if self._max_cost is not None and session.cost >= self._max_cost:
             return True
-        if self._max_tokens is not None and session.total_tokens >= self._max_tokens:
-            return True
-        return False
+        return self._max_tokens is not None and session.total_tokens >= self._max_tokens
 
     # ------------------------------------------------------------------
     # Internals

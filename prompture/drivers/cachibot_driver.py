@@ -311,7 +311,7 @@ class CachiBotDriver(CostMixin, Driver):
         for line in resp.iter_lines(decode_unicode=True):
             if not line or not line.startswith("data: "):
                 continue
-            payload_str = line[len("data: "):]
+            payload_str = line[len("data: ") :]
             if payload_str.strip() == "[DONE]":
                 break
             try:

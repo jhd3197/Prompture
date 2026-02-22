@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
 from unittest.mock import MagicMock
-
-import pytest
 
 from prompture.agents.types import AgentResult, AgentState
 from prompture.groups.groups import SequentialGroup
@@ -158,7 +155,7 @@ class TestStepConditions:
             step_conditions=[lambda o, s: False],  # Stop after first
             callbacks=callbacks,
         )
-        result = group.run("test")
+        group.run("test")
 
         assert len(skipped) == 2
         assert skipped[0][0] == "specialist"

@@ -12,6 +12,8 @@ import pytest
 from pydantic import BaseModel
 
 from prompture.agents.agent import Agent, AgentIterator, StreamedAgentResult, _get_first_param_name, _tool_wants_context
+from prompture.agents.async_agent import AsyncAgent, AsyncAgentIterator, AsyncStreamedAgentResult, _is_async_callable
+from prompture.agents.tools_schema import ToolRegistry
 from prompture.agents.types import (
     AgentCallbacks,
     AgentResult,
@@ -23,10 +25,8 @@ from prompture.agents.types import (
     StreamEvent,
     StreamEventType,
 )
-from prompture.agents.async_agent import AsyncAgent, AsyncAgentIterator, AsyncStreamedAgentResult, _is_async_callable
 from prompture.drivers.async_base import AsyncDriver
 from prompture.drivers.base import Driver
-from prompture.agents.tools_schema import ToolRegistry
 
 # ---------------------------------------------------------------------------
 # Mock drivers
