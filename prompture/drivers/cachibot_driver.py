@@ -3,8 +3,11 @@
 Routes requests through the CachiBot hosted API (OpenAI-compatible).
 Uses CACHIBOT_API_KEY env var for authentication.
 
-Model IDs include the upstream provider prefix (e.g. ``anthropic/claude-3-5-haiku``,
-``openai/gpt-4o``).  The driver passes them through to the proxy as-is.
+The proxy's ``/v1/models`` endpoint returns IDs with an upstream provider
+prefix (e.g. ``openai/gpt-4o``).  ``list_models()`` strips that prefix so
+discovery presents models as ``cachibot/gpt-4o``.  Internally the driver
+maintains a mapping to reconstruct the full API model ID for requests and
+to resolve the upstream provider for capability / pricing lookups.
 """
 
 import json
@@ -36,6 +39,10 @@ class CachiBotDriver(CostMixin, Driver):
     # proxy's /v1/models endpoint which already includes pricing.
     MODEL_PRICING: dict[str, dict[str, Any]] = {}
 
+    # Populated by list_models(): maps short name → full proxy model ID.
+    # e.g. {"gpt-4o": "openai/gpt-4o", "claude-3-5-haiku": "anthropic/claude-3-5-haiku"}
+    _MODEL_MAP: dict[str, str] = {}
+
     def __init__(
         self,
         api_key: str | None = None,
@@ -59,14 +66,43 @@ class CachiBotDriver(CostMixin, Driver):
         timeout: int = 10,
         **kw: object,
     ) -> list[str] | None:
-        """List models available via the CachiBot proxy API."""
+        """List models available via the CachiBot proxy API.
+
+        The proxy returns full IDs like ``openai/gpt-4o``.  This method strips
+        the upstream provider prefix so discovery presents them as
+        ``cachibot/gpt-4o``.  The mapping from short name → full proxy ID is
+        stored in ``cls._MODEL_MAP`` for later resolution.
+        """
         from .base import _fetch_openai_compatible_models
 
         key = api_key or os.getenv("CACHIBOT_API_KEY")
         if not key:
             return None
         base = (endpoint or os.getenv("CACHIBOT_ENDPOINT") or _DEFAULT_ENDPOINT).rstrip("/")
-        return _fetch_openai_compatible_models(base, api_key=key, timeout=timeout)
+        raw_models = _fetch_openai_compatible_models(base, api_key=key, timeout=timeout)
+        if raw_models is None:
+            return None
+
+        model_map: dict[str, str] = {}
+        short_names: list[str] = []
+        for full_id in raw_models:
+            if "/" in full_id:
+                # "openai/gpt-4o" → short="gpt-4o", keep full for API calls
+                short = full_id.split("/", 1)[1]
+            else:
+                short = full_id
+            if short in model_map:
+                logger.debug(
+                    "CachiBot model name collision: %r already mapped to %r, overwriting with %r",
+                    short,
+                    model_map[short],
+                    full_id,
+                )
+            model_map[short] = full_id
+            short_names.append(short)
+
+        cls._MODEL_MAP = model_map
+        return short_names
 
     supports_messages = True
 
@@ -89,10 +125,7 @@ class CachiBotDriver(CostMixin, Driver):
             raise RuntimeError("CACHIBOT_API_KEY is required")
 
         model = options.get("model", self.model)
-
-        # The proxy model ID includes the upstream provider (e.g. "openai/gpt-4o").
-        # Extract upstream provider for model config lookup.
-        upstream_provider, upstream_model = _split_proxy_model(model)
+        api_model, upstream_provider, upstream_model = _resolve_model(model)
 
         model_config = self._get_model_config(upstream_provider, upstream_model)
         tokens_param = model_config["tokens_param"]
@@ -101,7 +134,7 @@ class CachiBotDriver(CostMixin, Driver):
         opts = {"temperature": 1.0, "max_tokens": 512, **options}
 
         payload: dict[str, Any] = {
-            "model": model,
+            "model": api_model,
             "messages": messages,
         }
         payload[tokens_param] = opts.get("max_tokens", 512)
@@ -157,7 +190,7 @@ class CachiBotDriver(CostMixin, Driver):
             raise RuntimeError("CACHIBOT_API_KEY is required")
 
         model = options.get("model", self.model)
-        upstream_provider, upstream_model = _split_proxy_model(model)
+        api_model, upstream_provider, upstream_model = _resolve_model(model)
 
         model_config = self._get_model_config(upstream_provider, upstream_model)
         tokens_param = model_config["tokens_param"]
@@ -168,7 +201,7 @@ class CachiBotDriver(CostMixin, Driver):
         opts = {"temperature": 1.0, "max_tokens": 4096, **options}
 
         payload: dict[str, Any] = {
-            "model": model,
+            "model": api_model,
             "messages": messages,
             "tools": tools,
         }
@@ -244,7 +277,7 @@ class CachiBotDriver(CostMixin, Driver):
             raise RuntimeError("CACHIBOT_API_KEY is required")
 
         model = options.get("model", self.model)
-        upstream_provider, upstream_model = _split_proxy_model(model)
+        api_model, upstream_provider, upstream_model = _resolve_model(model)
 
         model_config = self._get_model_config(upstream_provider, upstream_model)
         tokens_param = model_config["tokens_param"]
@@ -253,7 +286,7 @@ class CachiBotDriver(CostMixin, Driver):
         opts = {"temperature": 1.0, "max_tokens": 512, **options}
 
         payload: dict[str, Any] = {
-            "model": model,
+            "model": api_model,
             "messages": messages,
             "stream": True,
         }
@@ -316,15 +349,36 @@ class CachiBotDriver(CostMixin, Driver):
         }
 
 
-def _split_proxy_model(model: str) -> tuple[str, str]:
-    """Split a proxy model ID into (upstream_provider, upstream_model).
+def _resolve_model(model: str) -> tuple[str, str, str]:
+    """Resolve a model name to (api_model_id, upstream_provider, upstream_model).
 
-    CachiBot proxy model IDs are ``upstream_provider/model_id``
-    (e.g. ``openai/gpt-4o``).  Returns the two parts so we can
-    look up model config/capabilities using the real provider.
-    Falls back to ``("cachibot", model)`` for unrecognized formats.
+    Resolution order:
+
+    1. Check ``CachiBotDriver._MODEL_MAP`` — populated by ``list_models()``.
+       e.g. ``"gpt-4o"`` → ``("openai/gpt-4o", "openai", "gpt-4o")``.
+    2. If the model already contains ``/`` (legacy full-ID format),
+       split directly.
+    3. Fallback: treat the model as-is with provider ``"cachibot"``.
+
+    Returns:
+        A 3-tuple ``(api_model_id, upstream_provider, upstream_model)``
+        where *api_model_id* is sent in the API payload and the other
+        two are used for capability / pricing lookups.
     """
+    # 1. Model map (short name → full proxy ID)
+    full_id = CachiBotDriver._MODEL_MAP.get(model)
+    if full_id and "/" in full_id:
+        provider, name = full_id.split("/", 1)
+        return full_id, provider, name
+
+    # 2. Legacy format: model already has upstream prefix
     if "/" in model:
-        parts = model.split("/", 1)
-        return parts[0], parts[1]
-    return "cachibot", model
+        provider, name = model.split("/", 1)
+        return model, provider, name
+
+    # 3. Unknown — pass through
+    return model, "cachibot", model
+
+
+# Keep backward-compatible alias for external imports
+_split_proxy_model = _resolve_model

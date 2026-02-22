@@ -30,6 +30,11 @@ PROVIDER_MAP: dict[str, str] = {
     "elevenlabs": "elevenlabs",
 }
 
+# Proxy providers that re-expose models from other providers.  Used by
+# _lookup_model() to trigger a cross-provider search when the proxy's own
+# name isn't present in models.dev.
+_PROXY_PROVIDERS: frozenset[str] = frozenset({"cachibot"})
+
 _API_URL = "https://models.dev/api.json"
 _CACHE_DIR = Path.home() / ".prompture" / "cache"
 _CACHE_FILE = _CACHE_DIR / "models_dev.json"
@@ -217,6 +222,25 @@ def _lookup_model(provider: str, model_id: str) -> Optional[dict[str, Any]]:
         entry = _lookup_in_provider(data, upstream_api, upstream_model)
         if entry is not None:
             return entry
+
+    # Cross-provider search: for known proxy providers whose models live
+    # under a different provider in models.dev (e.g. cachibot's "gpt-4o"
+    # is really openai's "gpt-4o").
+    if provider in _PROXY_PROVIDERS:
+        for p_data in data.values():
+            if not isinstance(p_data, dict):
+                continue
+            models = p_data.get("models", p_data)
+            if not isinstance(models, dict):
+                continue
+            hit = models.get(model_id)
+            if hit is not None:
+                return hit
+            base = _strip_to_base_model(model_id)
+            if base is not None:
+                hit = models.get(base)
+                if hit is not None:
+                    return hit
 
     return None
 

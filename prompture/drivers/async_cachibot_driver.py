@@ -3,8 +3,9 @@
 Routes requests through the CachiBot hosted API (OpenAI-compatible).
 Uses CACHIBOT_API_KEY env var for authentication.
 
-Model IDs include the upstream provider prefix (e.g. ``anthropic/claude-3-5-haiku``,
-``openai/gpt-4o``).  The driver passes them through to the proxy as-is.
+Model IDs are presented without the upstream provider prefix (e.g. ``gpt-4o``
+instead of ``openai/gpt-4o``).  The driver uses a mapping populated by
+``list_models()`` to reconstruct the full API model ID for requests.
 """
 
 from __future__ import annotations
@@ -19,7 +20,7 @@ import httpx
 
 from ..infra.cost_mixin import CostMixin
 from .async_base import AsyncDriver
-from .cachibot_driver import CachiBotDriver, _split_proxy_model
+from .cachibot_driver import CachiBotDriver, _resolve_model
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +68,7 @@ class AsyncCachiBotDriver(CostMixin, AsyncDriver):
             raise RuntimeError("CACHIBOT_API_KEY is required")
 
         model = options.get("model", self.model)
-        upstream_provider, upstream_model = _split_proxy_model(model)
+        api_model, upstream_provider, upstream_model = _resolve_model(model)
 
         model_config = self._get_model_config(upstream_provider, upstream_model)
         tokens_param = model_config["tokens_param"]
@@ -76,7 +77,7 @@ class AsyncCachiBotDriver(CostMixin, AsyncDriver):
         opts = {"temperature": 1.0, "max_tokens": 512, **options}
 
         payload: dict[str, Any] = {
-            "model": model,
+            "model": api_model,
             "messages": messages,
         }
         payload[tokens_param] = opts.get("max_tokens", 512)
@@ -131,7 +132,7 @@ class AsyncCachiBotDriver(CostMixin, AsyncDriver):
             raise RuntimeError("CACHIBOT_API_KEY is required")
 
         model = options.get("model", self.model)
-        upstream_provider, upstream_model = _split_proxy_model(model)
+        api_model, upstream_provider, upstream_model = _resolve_model(model)
 
         model_config = self._get_model_config(upstream_provider, upstream_model)
         tokens_param = model_config["tokens_param"]
@@ -142,7 +143,7 @@ class AsyncCachiBotDriver(CostMixin, AsyncDriver):
         opts = {"temperature": 1.0, "max_tokens": 4096, **options}
 
         payload: dict[str, Any] = {
-            "model": model,
+            "model": api_model,
             "messages": messages,
             "tools": tools,
         }
@@ -217,7 +218,7 @@ class AsyncCachiBotDriver(CostMixin, AsyncDriver):
             raise RuntimeError("CACHIBOT_API_KEY is required")
 
         model = options.get("model", self.model)
-        upstream_provider, upstream_model = _split_proxy_model(model)
+        api_model, upstream_provider, upstream_model = _resolve_model(model)
 
         model_config = self._get_model_config(upstream_provider, upstream_model)
         tokens_param = model_config["tokens_param"]
@@ -226,7 +227,7 @@ class AsyncCachiBotDriver(CostMixin, AsyncDriver):
         opts = {"temperature": 1.0, "max_tokens": 512, **options}
 
         payload: dict[str, Any] = {
-            "model": model,
+            "model": api_model,
             "messages": messages,
             "stream": True,
         }
