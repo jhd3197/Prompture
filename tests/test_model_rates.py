@@ -396,12 +396,22 @@ class TestGetModelCapabilities:
 
         assert mr.get_model_capabilities("unknown", "gpt-4o") is None
 
-    def test_no_data_returns_none(self):
-        """Returns None when no API data is loaded."""
+    def test_no_data_falls_back_to_kb(self):
+        """Falls back to KB when no API data is loaded for known models."""
         mr._data = None
         mr._loaded = True
 
-        assert mr.get_model_capabilities("openai", "gpt-4o") is None
+        caps = mr.get_model_capabilities("openai", "gpt-4o")
+        assert caps is not None
+        assert caps.supports_vision is True
+        assert caps.api_type == "openai"
+
+    def test_no_data_truly_unknown_returns_none(self):
+        """Returns None for truly unknown model when no API data is loaded."""
+        mr._data = None
+        mr._loaded = True
+
+        assert mr.get_model_capabilities("openai", "totally-fake-model") is None
 
     def test_model_without_capability_fields(self):
         """Model entry with only cost/limit but no capability fields."""
@@ -522,3 +532,112 @@ class TestGetModelConfig:
         assert config["tokens_param"] == "max_tokens"
         assert config["supports_temperature"] is True
         assert config["context_window"] is None
+
+
+class TestCapabilitiesKB:
+    """Tests for the hardcoded capabilities knowledge base."""
+
+    def test_kb_fallback_returns_known_model(self):
+        """KB returns capabilities for a known model when API data is absent."""
+        mr._data = None
+        mr._loaded = True
+
+        caps = mr.get_model_capabilities("claude", "claude-sonnet-4")
+        assert caps is not None
+        assert caps.api_type == "anthropic"
+        assert caps.supports_vision is True
+        assert caps.supports_tool_use is True
+        assert caps.context_window == 200_000
+
+    def test_api_type_overlay_on_live_data(self):
+        """api_type from KB is overlaid onto models.dev result."""
+        mr._data = SAMPLE_API_DATA
+        mr._loaded = True
+
+        caps = mr.get_model_capabilities("openai", "gpt-4o")
+        assert caps is not None
+        assert caps.api_type == "openai"
+        # Original capabilities from models.dev are preserved
+        assert caps.supports_temperature is True
+        assert caps.context_window == 128000
+
+    def test_api_type_overlay_grok(self):
+        """Grok models get api_type='openai-compatible' overlaid."""
+        mr._data = SAMPLE_API_DATA
+        mr._loaded = True
+
+        caps = mr.get_model_capabilities("grok", "grok-3")
+        assert caps is not None
+        assert caps.api_type == "openai-compatible"
+
+    def test_date_suffix_resolution(self):
+        """Date-suffixed model IDs resolve to base model in KB."""
+        mr._data = None
+        mr._loaded = True
+
+        caps = mr.get_model_capabilities("claude", "claude-sonnet-4-20250514")
+        assert caps is not None
+        assert caps.api_type == "anthropic"
+        assert caps.supports_vision is True
+
+    def test_date_suffix_resolution_openai(self):
+        """Date-suffixed OpenAI model IDs resolve to base model in KB."""
+        mr._data = None
+        mr._loaded = True
+
+        caps = mr.get_model_capabilities("openai", "gpt-4o-2024-08-06")
+        assert caps is not None
+        assert caps.api_type == "openai"
+        assert caps.supports_vision is True
+
+    def test_reasoning_flag_openai_reasoning_models(self):
+        """OpenAI reasoning models (o-series) have is_reasoning=True."""
+        mr._data = None
+        mr._loaded = True
+
+        for model_id in ("o1", "o3", "o3-mini", "o4-mini"):
+            caps = mr.get_model_capabilities("openai", model_id)
+            assert caps is not None, f"{model_id} not found in KB"
+            assert caps.is_reasoning is True, f"{model_id} should be reasoning"
+            assert caps.supports_temperature is False, f"{model_id} should not support temperature"
+
+    def test_reasoning_flag_non_reasoning_models(self):
+        """Non-reasoning models have is_reasoning=False."""
+        mr._data = None
+        mr._loaded = True
+
+        for provider, model_id in [("openai", "gpt-4o"), ("openai", "gpt-3.5-turbo"), ("grok", "grok-3")]:
+            caps = mr.get_model_capabilities(provider, model_id)
+            assert caps is not None, f"{provider}/{model_id} not found in KB"
+            assert caps.is_reasoning is False, f"{provider}/{model_id} should not be reasoning"
+
+    def test_all_kb_entries_are_valid(self):
+        """Every entry in the KB has required fields populated."""
+        for (provider, model_id), caps in mr._CAPABILITIES_KB.items():
+            assert isinstance(caps, mr.ModelCapabilities), f"({provider}, {model_id})"
+            assert caps.api_type is not None, f"({provider}, {model_id}) missing api_type"
+            assert caps.api_type in ("openai", "anthropic", "google", "openai-compatible"), (
+                f"({provider}, {model_id}) invalid api_type: {caps.api_type}"
+            )
+            assert caps.context_window is not None, f"({provider}, {model_id}) missing context_window"
+            assert caps.context_window > 0, f"({provider}, {model_id}) context_window must be positive"
+            assert len(caps.modalities_input) > 0, f"({provider}, {model_id}) missing modalities_input"
+            assert len(caps.modalities_output) > 0, f"({provider}, {model_id}) missing modalities_output"
+
+    def test_google_models_have_google_api_type(self):
+        """All Google/Gemini models use api_type='google'."""
+        mr._data = None
+        mr._loaded = True
+
+        for model_id in ("gemini-2.5-pro", "gemini-2.0-flash", "gemini-1.5-pro"):
+            caps = mr.get_model_capabilities("google", model_id)
+            assert caps is not None, f"{model_id} not found in KB"
+            assert caps.api_type == "google"
+
+    def test_unknown_model_returns_none_with_kb(self):
+        """Truly unknown model still returns None even with KB."""
+        mr._data = None
+        mr._loaded = True
+
+        assert mr.get_model_capabilities("openai", "completely-unknown-model-xyz") is None
+        assert mr.get_model_capabilities("unknown-provider", "gpt-4o") is None

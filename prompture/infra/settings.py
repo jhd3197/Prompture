@@ -80,6 +80,10 @@ class Settings(BaseSettings):
     airllm_model: str = "meta-llama/Llama-2-7b-hf"
     airllm_compression: Optional[str] = None  # "4bit" or "8bit"
 
+    # CachiBot.ai (proxy)
+    cachibot_api_key: Optional[str] = None
+    cachibot_endpoint: str = "https://cachibot.ai/api/v1"
+
     # Stability AI (image generation)
     stability_api_key: Optional[str] = None
     stability_endpoint: Optional[str] = None

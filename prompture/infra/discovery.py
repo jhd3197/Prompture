@@ -10,6 +10,7 @@ from typing import Any, Literal, overload
 
 from ..drivers.airllm_driver import AirLLMDriver
 from ..drivers.azure_driver import AzureDriver
+from ..drivers.cachibot_driver import CachiBotDriver
 from ..drivers.claude_driver import ClaudeDriver
 from ..drivers.elevenlabs_stt_driver import ElevenLabsSTTDriver
 from ..drivers.elevenlabs_tts_driver import ElevenLabsTTSDriver
@@ -80,6 +81,9 @@ def _get_list_models_kwargs(
     elif provider == "moonshot":
         kw["api_key"] = _cfg_value(env, "moonshot_api_key", "MOONSHOT_API_KEY")
         kw["endpoint"] = _cfg_value(env, "moonshot_endpoint", "MOONSHOT_ENDPOINT")
+    elif provider == "cachibot":
+        kw["api_key"] = _cfg_value(env, "cachibot_api_key", "CACHIBOT_API_KEY")
+        kw["endpoint"] = _cfg_value(env, "cachibot_endpoint", "CACHIBOT_ENDPOINT")
     elif provider == "ollama":
         kw["endpoint"] = _cfg_value(env, "ollama_endpoint", "OLLAMA_ENDPOINT")
     elif provider == "lmstudio":
@@ -183,6 +187,7 @@ def get_available_models(
         "zai": ZaiDriver,
         "modelscope": ModelScopeDriver,
         "airllm": AirLLMDriver,
+        "cachibot": CachiBotDriver,
     }
 
     for provider, driver_cls in provider_classes.items():
@@ -229,6 +234,9 @@ def get_available_models(
                     is_configured = True
             elif provider == "modelscope":
                 if _cfg_value(env, "modelscope_api_key", "MODELSCOPE_API_KEY"):
+                    is_configured = True
+            elif provider == "cachibot":
+                if _cfg_value(env, "cachibot_api_key", "CACHIBOT_API_KEY"):
                     is_configured = True
             elif provider == "airllm":
                 # AirLLM runs locally, always considered configured

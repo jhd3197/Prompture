@@ -456,9 +456,7 @@ class TestRealLLMIntegration:
     """End-to-end tests that hit a real LLM via the integration driver."""
 
     @pytest.mark.integration
-    def test_extract_from_data_with_real_llm(self, integration_driver):
-        from tests.conftest import DEFAULT_MODEL
-
+    def test_extract_from_data_with_real_llm(self, integration_driver, default_model):
         data = [
             {"id": 1, "name": "Laptop", "price": 999.99},
             {"id": 2, "name": "Book", "price": 19.99},
@@ -479,7 +477,7 @@ class TestRealLLMIntegration:
                 data=data,
                 question="Return the product count and the list of product names.",
                 json_schema=schema,
-                model_name=DEFAULT_MODEL,
+                model_name=default_model,
             )
 
         obj = result["json_object"]
@@ -490,9 +488,8 @@ class TestRealLLMIntegration:
         assert len(obj["product_names"]) >= 2
 
     @pytest.mark.integration
-    def test_extract_from_pandas_with_real_llm(self, integration_driver):
+    def test_extract_from_pandas_with_real_llm(self, integration_driver, default_model):
         pd = pytest.importorskip("pandas")
-        from tests.conftest import DEFAULT_MODEL
 
         df = pd.DataFrame(
             [
@@ -515,7 +512,7 @@ class TestRealLLMIntegration:
                 df=df,
                 question="Identify the most expensive product and the price range.",
                 json_schema=schema,
-                model_name=DEFAULT_MODEL,
+                model_name=default_model,
             )
 
         obj = result["json_object"]
@@ -526,9 +523,7 @@ class TestRealLLMIntegration:
             assert isinstance(obj["price_range"], (int, float))
 
     @pytest.mark.integration
-    def test_find_specific_record_in_json(self, integration_driver):
-        from tests.conftest import DEFAULT_MODEL
-
+    def test_find_specific_record_in_json(self, integration_driver, default_model):
         data = [
             {"id": 1, "name": "Laptop", "price": 999.99},
             {"id": 2, "name": "Book", "price": 19.99},
@@ -549,7 +544,7 @@ class TestRealLLMIntegration:
                 data=data,
                 question="Return the record with id = 2.",
                 json_schema=schema,
-                model_name=DEFAULT_MODEL,
+                model_name=default_model,
             )
 
         obj = result["json_object"]
@@ -559,9 +554,8 @@ class TestRealLLMIntegration:
             assert isinstance(obj["price"], (int, float))
 
     @pytest.mark.integration
-    def test_find_specific_record_in_pandas(self, integration_driver):
+    def test_find_specific_record_in_pandas(self, integration_driver, default_model):
         pd = pytest.importorskip("pandas")
-        from tests.conftest import DEFAULT_MODEL
 
         df = pd.DataFrame(
             [
@@ -585,7 +579,7 @@ class TestRealLLMIntegration:
                 df=df,
                 question="Find the row where id = 2 and return that record.",
                 json_schema=schema,
-                model_name=DEFAULT_MODEL,
+                model_name=default_model,
             )
 
         obj = result["json_object"]

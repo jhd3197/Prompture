@@ -30,6 +30,11 @@ PROVIDER_MAP: dict[str, str] = {
     "elevenlabs": "elevenlabs",
 }
 
+# Proxy providers that re-expose models from other providers.  Used by
+# _lookup_model() to trigger a cross-provider search when the proxy's own
+# name isn't present in models.dev.
+_PROXY_PROVIDERS: frozenset[str] = frozenset({"cachibot"})
+
 _API_URL = "https://models.dev/api.json"
 _CACHE_DIR = Path.home() / ".prompture" / "cache"
 _CACHE_FILE = _CACHE_DIR / "models_dev.json"
@@ -159,24 +164,16 @@ def _strip_to_base_model(model_id: str) -> Optional[str]:
     return candidate if candidate and candidate != model_id else None
 
 
-def _lookup_model(provider: str, model_id: str) -> Optional[dict[str, Any]]:
-    """Find a model entry in the cached data.
-
-    The API structure is ``{provider: {model_id: {...}, ...}, ...}``.
-
-    When an exact match isn't found, attempts to match by stripping date
-    suffixes or fine-tune prefixes (e.g. ``gpt-4o-2024-08-06`` → ``gpt-4o``).
-    """
-    data = _ensure_loaded()
-    if data is None:
-        return None
-
-    api_provider = PROVIDER_MAP.get(provider, provider)
+def _lookup_in_provider(
+    data: dict[str, Any],
+    api_provider: str,
+    model_id: str,
+) -> Optional[dict[str, Any]]:
+    """Lookup a model in a specific provider's data, with base-model fallback."""
     provider_data = data.get(api_provider)
     if not isinstance(provider_data, dict):
         return None
 
-    # models.dev nests actual models under a "models" key
     models = provider_data.get("models", provider_data)
     if not isinstance(models, dict):
         return None
@@ -190,6 +187,60 @@ def _lookup_model(provider: str, model_id: str) -> Optional[dict[str, Any]]:
     base = _strip_to_base_model(model_id)
     if base is not None:
         return models.get(base)
+
+    return None
+
+
+def _lookup_model(provider: str, model_id: str) -> Optional[dict[str, Any]]:
+    """Find a model entry in the cached data.
+
+    The API structure is ``{provider: {model_id: {...}, ...}, ...}``.
+
+    When an exact match isn't found, attempts to match by stripping date
+    suffixes or fine-tune prefixes (e.g. ``gpt-4o-2024-08-06`` → ``gpt-4o``).
+
+    For proxy providers (e.g. ``cachibot``), the model_id may contain the
+    real upstream provider (e.g. ``openai/gpt-4o``).  In that case, the
+    lookup is redirected to the upstream provider in models.dev.
+    """
+    data = _ensure_loaded()
+    if data is None:
+        return None
+
+    api_provider = PROVIDER_MAP.get(provider, provider)
+
+    # Try direct lookup in the provider
+    entry = _lookup_in_provider(data, api_provider, model_id)
+    if entry is not None:
+        return entry
+
+    # Proxy provider fallback: model_id may be "upstream_provider/model"
+    # (e.g. provider="cachibot", model_id="openai/gpt-4o")
+    if "/" in model_id:
+        upstream_provider, upstream_model = model_id.split("/", 1)
+        upstream_api = PROVIDER_MAP.get(upstream_provider, upstream_provider)
+        entry = _lookup_in_provider(data, upstream_api, upstream_model)
+        if entry is not None:
+            return entry
+
+    # Cross-provider search: for known proxy providers whose models live
+    # under a different provider in models.dev (e.g. cachibot's "gpt-4o"
+    # is really openai's "gpt-4o").
+    if provider in _PROXY_PROVIDERS:
+        for p_data in data.values():
+            if not isinstance(p_data, dict):
+                continue
+            models = p_data.get("models", p_data)
+            if not isinstance(models, dict):
+                continue
+            hit = models.get(model_id)
+            if hit is not None:
+                return hit
+            base = _strip_to_base_model(model_id)
+            if base is not None:
+                hit = models.get(base)
+                if hit is not None:
+                    return hit
 
     return None
 
@@ -294,25 +345,31 @@ class ModelCapabilities:
     max_output_tokens: Optional[int] = None
     modalities_input: tuple[str, ...] = ()
     modalities_output: tuple[str, ...] = ()
+    api_type: Optional[str] = None  # "openai", "anthropic", "google", "openai-compatible"
 
 
-def get_model_capabilities(provider: str, model_id: str) -> Optional[ModelCapabilities]:
-    """Return capability metadata for a model, or ``None`` if unavailable.
+# Capabilities KB loaded from per-provider JSON files in rates/
+from .rates import CAPABILITIES_KB as _CAPABILITIES_KB
 
-    Maps models.dev fields to a :class:`ModelCapabilities` instance:
 
-    - ``temperature`` → ``supports_temperature``
-    - ``tool_call`` → ``supports_tool_use``
-    - ``structured_output`` → ``supports_structured_output``
-    - ``"image" in modalities.input`` → ``supports_vision``
-    - ``reasoning`` → ``is_reasoning``
-    - ``limit.context`` → ``context_window``
-    - ``limit.output`` → ``max_output_tokens``
+def _lookup_kb(provider: str, model_id: str) -> Optional[ModelCapabilities]:
+    """Look up model in hardcoded capabilities knowledge base.
+
+    Tries exact match first, then falls back to stripping date suffixes
+    (e.g. ``claude-sonnet-4-20250514`` → ``claude-sonnet-4``).
     """
-    entry = _lookup_model(provider, model_id)
-    if entry is None:
-        return None
+    api_provider = PROVIDER_MAP.get(provider, provider)
+    caps = _CAPABILITIES_KB.get((api_provider, model_id))
+    if caps is not None:
+        return caps
+    base = _strip_to_base_model(model_id)
+    if base is not None:
+        return _CAPABILITIES_KB.get((api_provider, base))
+    return None
 
+
+def _parse_capabilities_from_entry(entry: dict[str, Any]) -> ModelCapabilities:
+    """Parse a models.dev entry dict into a :class:`ModelCapabilities` instance."""
     # Boolean capabilities (True/False/None)
     supports_temperature: Optional[bool] = None
     if "temperature" in entry:
@@ -371,3 +428,31 @@ def get_model_capabilities(provider: str, model_id: str) -> Optional[ModelCapabi
         modalities_input=modalities_input,
         modalities_output=modalities_output,
     )
+
+
+def get_model_capabilities(provider: str, model_id: str) -> Optional[ModelCapabilities]:
+    """Return capability metadata for a model, or ``None`` if unavailable.
+
+    Resolution order:
+
+    1. **models.dev** — live/cached API data (richest source).
+    2. **api_type overlay** — if the KB has a matching entry, its ``api_type``
+       is overlaid onto the models.dev result (models.dev doesn't track this).
+    3. **KB fallback** — if models.dev has no data, return the hardcoded KB
+       entry directly.
+    4. ``None`` — truly unknown model.
+    """
+    kb_entry = _lookup_kb(provider, model_id)
+
+    entry = _lookup_model(provider, model_id)
+    if entry is not None:
+        caps = _parse_capabilities_from_entry(entry)
+        # Overlay api_type from KB (models.dev doesn't provide it)
+        if kb_entry is not None and kb_entry.api_type is not None:
+            from dataclasses import replace
+
+            caps = replace(caps, api_type=kb_entry.api_type)
+        return caps
+
+    # models.dev unavailable — fall back to KB
+    return kb_entry
