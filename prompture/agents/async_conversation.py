@@ -511,7 +511,7 @@ class AsyncConversation:
                     result = await self._tools.aexecute(tc["name"], tc["arguments"])
                     result_str = json.dumps(result) if not isinstance(result, str) else result
                 except Exception as exc:
-                    result_str = f"Error: {exc}"
+                    result_str = f"Error ({type(exc).__name__}): {exc}" if str(exc) else f"Error: {type(exc).__name__}: {exc!r}"
                 finally:
                     _ask_tc_id.reset(_ask_token)
 
@@ -608,7 +608,7 @@ class AsyncConversation:
                     result = await self._tools.aexecute(tc["name"], tc["arguments"])
                     result_str = json.dumps(result) if not isinstance(result, str) else result
                 except Exception as exc:
-                    result_str = f"Error: {exc}"
+                    result_str = f"Error ({type(exc).__name__}): {exc}" if str(exc) else f"Error: {type(exc).__name__}: {exc!r}"
                 finally:
                     current_tool_call_id.reset(_tc_token)
 
