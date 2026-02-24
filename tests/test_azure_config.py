@@ -41,8 +41,8 @@ class TestClassifyBackend:
 
     def test_claude_models(self):
         assert classify_backend("claude-sonnet-4-20250514") == "claude"
-        assert classify_backend("claude-3-5-haiku-20241022") == "claude"
-        assert classify_backend("claude-3-7-sonnet-20250219") == "claude"
+        assert classify_backend("claude-haiku-4-5-20251001") == "claude"
+        assert classify_backend("claude-sonnet-4-6") == "claude"
 
     def test_mistral_models(self):
         assert classify_backend("mistral-large-latest") == "mistral"

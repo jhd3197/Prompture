@@ -408,7 +408,7 @@ class TestClaudeJsonMode:
 
         driver = ClaudeDriver.__new__(ClaudeDriver)
         driver.api_key = "test"
-        driver.model = "claude-3-5-haiku-20241022"
+        driver.model = "claude-haiku-4-5-20251001"
 
         result = driver.generate("test", {"json_mode": True, "json_schema": SAMPLE_SCHEMA})
 
@@ -438,7 +438,7 @@ class TestClaudeJsonMode:
 
         driver = ClaudeDriver.__new__(ClaudeDriver)
         driver.api_key = "test"
-        driver.model = "claude-3-5-haiku-20241022"
+        driver.model = "claude-haiku-4-5-20251001"
 
         driver.generate("test", {})
 

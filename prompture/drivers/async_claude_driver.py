@@ -26,9 +26,9 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
 
     MODEL_PRICING = ClaudeDriver.MODEL_PRICING
 
-    def __init__(self, api_key: str | None = None, model: str = "claude-3-5-haiku-20241022"):
+    def __init__(self, api_key: str | None = None, model: str = "claude-haiku-4-5-20251001"):
         self.api_key = api_key or os.getenv("CLAUDE_API_KEY")
-        self.model = model or os.getenv("CLAUDE_MODEL_NAME", "claude-3-5-haiku-20241022")
+        self.model = model or os.getenv("CLAUDE_MODEL_NAME", "claude-haiku-4-5-20251001")
 
     supports_messages = True
 

@@ -129,11 +129,9 @@ Driver for Anthropic's Claude models with advanced reasoning capabilities.
 
 **Supported Models:**
 
-- ``claude-3-5-sonnet-20241022`` - Latest Claude 3.5 Sonnet (recommended)
-- ``claude-3-5-haiku-20241022`` - Fast Claude 3.5 Haiku
-- ``claude-3-opus-20240229`` - Most capable Claude 3 model
-- ``claude-3-sonnet-20240229`` - Balanced performance model
-- ``claude-3-haiku-20240307`` - Fast and efficient model
+- ``claude-opus-4-6`` - Most capable Claude model
+- ``claude-sonnet-4-6`` - Balanced performance model (recommended)
+- ``claude-haiku-4-5-20251001`` - Fast and efficient model
 
 **Configuration:**
 
@@ -143,7 +141,7 @@ Driver for Anthropic's Claude models with advanced reasoning capabilities.
    
    driver = ClaudeDriver(
        api_key="your-anthropic-key",  # Or set ANTHROPIC_API_KEY env var
-       model="claude-3-5-sonnet-20241022"
+       model="claude-sonnet-4-6"
    )
 
 GoogleDriver

@@ -145,19 +145,19 @@ class ModelRouter:
                 "openai/gpt-4o-mini",
                 "groq/llama-3.1-8b-instant",
                 "groq/llama-3.2-3b-preview",
-                "claude/claude-3-5-haiku-latest",
+                "claude/claude-haiku-4-5-20251001",
                 "google/gemini-2.0-flash-lite",
             ],
             "standard": [
                 "openai/gpt-4o",
-                "claude/claude-sonnet-4-20250514",
+                "claude/claude-sonnet-4-6",
                 "google/gemini-2.0-flash",
                 "groq/llama-3.3-70b-versatile",
             ],
             "premium": [
                 "openai/gpt-4.1",
                 "openai/o3-mini",
-                "claude/claude-opus-4-20250514",
+                "claude/claude-opus-4-6",
                 "google/gemini-2.5-pro-preview-06-05",
             ],
         }

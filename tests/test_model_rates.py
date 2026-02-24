@@ -542,7 +542,7 @@ class TestCapabilitiesKB:
         mr._data = None
         mr._loaded = True
 
-        caps = mr.get_model_capabilities("claude", "claude-sonnet-4")
+        caps = mr.get_model_capabilities("claude", "claude-sonnet-4-6")
         assert caps is not None
         assert caps.api_type == "anthropic"
         assert caps.supports_vision is True
@@ -575,7 +575,7 @@ class TestCapabilitiesKB:
         mr._data = None
         mr._loaded = True
 
-        caps = mr.get_model_capabilities("claude", "claude-sonnet-4-20250514")
+        caps = mr.get_model_capabilities("claude", "claude-haiku-4-5-20251001")
         assert caps is not None
         assert caps.api_type == "anthropic"
         assert caps.supports_vision is True

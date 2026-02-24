@@ -59,7 +59,7 @@ from prompture import (
 # These are reasonable defaults; override with --model if needed.
 PROVIDER_MODELS = {
     "openai": "openai/gpt-4o-mini",
-    "claude": "claude/claude-3-5-haiku-20241022",
+    "claude": "claude/claude-haiku-4-5-20251001",
     "ollama": "ollama/llama3.1:8b",
     "google": "google/gemini-2.5-flash",
     "groq": "groq/llama-3.3-70b-versatile",
@@ -449,7 +449,7 @@ Examples:
     )
     parser.add_argument(
         "--model", "-m",
-        help="Test a specific model (e.g., openai/gpt-4o-mini, claude/claude-3-5-haiku-20241022)",
+        help="Test a specific model (e.g., openai/gpt-4o-mini, claude/claude-haiku-4-5-20251001)",
     )
     parser.add_argument(
         "--tests", "-t",
