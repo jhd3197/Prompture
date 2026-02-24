@@ -525,7 +525,9 @@ class Conversation:
                     result = self._tools.execute(tc["name"], tc["arguments"])
                     result_str = json.dumps(result) if not isinstance(result, str) else result
                 except Exception as exc:
-                    result_str = f"Error ({type(exc).__name__}): {exc}" if str(exc) else f"Error: {type(exc).__name__}: {exc!r}"
+                    result_str = (
+                        f"Error ({type(exc).__name__}): {exc}" if str(exc) else f"Error: {type(exc).__name__}: {exc!r}"
+                    )
 
                 # Preserve full result for step extraction before truncating
                 self._full_tool_results[tc["id"]] = result_str
@@ -623,7 +625,9 @@ class Conversation:
                     result = self._tools.execute(tc["name"], tc["arguments"])
                     result_str = json.dumps(result) if not isinstance(result, str) else result
                 except Exception as exc:
-                    result_str = f"Error ({type(exc).__name__}): {exc}" if str(exc) else f"Error: {type(exc).__name__}: {exc!r}"
+                    result_str = (
+                        f"Error ({type(exc).__name__}): {exc}" if str(exc) else f"Error: {type(exc).__name__}: {exc!r}"
+                    )
 
                 # Yield the FULL result for UI consumers
                 yield {
