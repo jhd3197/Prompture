@@ -40,7 +40,7 @@ class CachiBotDriver(CostMixin, Driver):
     MODEL_PRICING: dict[str, dict[str, Any]] = {}
 
     # Populated by list_models(): maps short name → full proxy model ID.
-    # e.g. {"gpt-4o": "openai/gpt-4o", "claude-3-5-haiku": "anthropic/claude-3-5-haiku"}
+    # e.g. {"gpt-4o": "openai/gpt-4o", "claude-haiku-4-5": "anthropic/claude-haiku-4-5"}
     _MODEL_MAP: dict[str, str] = {}
 
     def __init__(

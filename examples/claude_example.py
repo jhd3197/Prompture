@@ -27,13 +27,13 @@ json_schema = {
     },
 }
 
-# === FIRST EXAMPLE: Default instruction with Claude Haiku 3.5 ===
+# === FIRST EXAMPLE: Default instruction with Claude Haiku 4.5 ===
 print("Extracting information into JSON with default instruction...")
 
 result = extract_and_jsonify(
     text=text,
     json_schema=json_schema,
-    model_name="claude/claude-3-5-haiku-20241022",  # explicitly select model
+    model_name="claude/claude-haiku-4-5-20251001",  # explicitly select model
 )
 
 json_output = result["json_string"]
@@ -54,15 +54,15 @@ print(f"Cost: ${usage['cost']:.6f}")
 print(f"Model used: {usage['model_name']}")
 
 
-# === SECOND EXAMPLE: Custom instruction with Claude Sonnet 3.7 ===
+# === SECOND EXAMPLE: Custom instruction with Claude Sonnet 4.6 ===
 print("\n\n=== SECOND EXAMPLE - CUSTOM INSTRUCTION & DIFFERENT MODEL ===")
-print("Extracting information with custom instruction using Claude Sonnet 3.7...")
+print("Extracting information with custom instruction using Claude Sonnet 4.6...")
 
 custom_result = extract_and_jsonify(
     text=text,
     json_schema=json_schema,
     instruction_template="Parse the biographical details from this text:",
-    model_name="claude/claude-3-7-sonnet-20250219",  # override model here
+    model_name="claude/claude-sonnet-4-6",  # override model here
 )
 
 custom_json_output = custom_result["json_string"]

@@ -420,7 +420,7 @@ class TestModelTierClassification:
         budget_models = [
             "openai/gpt-4o-mini",
             "groq/llama-3.1-8b-instant",
-            "claude/claude-3-5-haiku-latest",
+            "claude/claude-haiku-4-5-20251001",
         ]
 
         for model in budget_models:

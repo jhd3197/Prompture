@@ -30,36 +30,26 @@ class ClaudeDriver(CostMixin, Driver):
 
     # Claude pricing per 1000 tokens (prices should be kept current with Anthropic's pricing)
     MODEL_PRICING = {
-        # Claude Opus 4.1
-        "claude-opus-4-1-20250805": {
-            "prompt": 0.015,  # $15 per 1M prompt tokens
-            "completion": 0.075,  # $75 per 1M completion tokens
+        # Claude Opus 4.6
+        "claude-opus-4-6": {
+            "prompt": 0.005,  # $5 per 1M prompt tokens
+            "completion": 0.025,  # $25 per 1M completion tokens
         },
-        # Claude Opus 4.0
-        "claude-opus-4-20250514": {
-            "prompt": 0.015,  # $15 per 1M prompt tokens
-            "completion": 0.075,  # $75 per 1M completion tokens
-        },
-        # Claude Sonnet 4.0
-        "claude-sonnet-4-20250514": {
+        # Claude Sonnet 4.6
+        "claude-sonnet-4-6": {
             "prompt": 0.003,  # $3 per 1M prompt tokens
             "completion": 0.015,  # $15 per 1M completion tokens
         },
-        # Claude Sonnet 3.7
-        "claude-3-7-sonnet-20250219": {
-            "prompt": 0.003,  # $3 per 1M prompt tokens
-            "completion": 0.015,  # $15 per 1M completion tokens
-        },
-        # Claude Haiku 3.5
-        "claude-3-5-haiku-20241022": {
-            "prompt": 0.0008,  # $0.80 per 1M prompt tokens
-            "completion": 0.004,  # $4 per 1M completion tokens
+        # Claude Haiku 4.5
+        "claude-haiku-4-5-20251001": {
+            "prompt": 0.001,  # $1 per 1M prompt tokens
+            "completion": 0.005,  # $5 per 1M completion tokens
         },
     }
 
-    def __init__(self, api_key: str | None = None, model: str = "claude-3-5-haiku-20241022"):
+    def __init__(self, api_key: str | None = None, model: str = "claude-haiku-4-5-20251001"):
         self.api_key = api_key or os.getenv("CLAUDE_API_KEY")
-        self.model = model or os.getenv("CLAUDE_MODEL_NAME", "claude-3-5-haiku-20241022")
+        self.model = model or os.getenv("CLAUDE_MODEL_NAME", "claude-haiku-4-5-20251001")
 
     @classmethod
     def list_models(cls, *, api_key: str | None = None, timeout: int = 10, **kw: object) -> list[str] | None:

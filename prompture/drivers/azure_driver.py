@@ -76,21 +76,15 @@ class AzureDriver(CostMixin, Driver):
             "supports_temperature": True,
         },
         # Claude models on Azure
-        "claude-sonnet-4-20250514": {
+        "claude-sonnet-4-6": {
             "prompt": 0.003,
             "completion": 0.015,
             "tokens_param": "max_tokens",
             "supports_temperature": True,
         },
-        "claude-3-7-sonnet-20250219": {
-            "prompt": 0.003,
-            "completion": 0.015,
-            "tokens_param": "max_tokens",
-            "supports_temperature": True,
-        },
-        "claude-3-5-haiku-20241022": {
-            "prompt": 0.0008,
-            "completion": 0.004,
+        "claude-haiku-4-5-20251001": {
+            "prompt": 0.001,
+            "completion": 0.005,
             "tokens_param": "max_tokens",
             "supports_temperature": True,
         },

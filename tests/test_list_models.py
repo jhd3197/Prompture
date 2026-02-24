@@ -282,12 +282,12 @@ class TestClaudeDriverListModels:
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.json.return_value = {
-            "data": [{"id": "claude-sonnet-4-20250514"}, {"id": "claude-3-5-haiku-20241022"}]
+            "data": [{"id": "claude-sonnet-4-6"}, {"id": "claude-haiku-4-5-20251001"}]
         }
         mock_get.return_value = mock_resp
 
         result = ClaudeDriver.list_models(api_key="sk-ant-test")
-        assert "claude-sonnet-4-20250514" in result
+        assert "claude-sonnet-4-6" in result
 
         # Verify Anthropic-specific headers
         call_args = mock_get.call_args
