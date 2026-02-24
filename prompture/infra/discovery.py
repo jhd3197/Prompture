@@ -25,6 +25,7 @@ from ..drivers.modelscope_driver import ModelScopeDriver
 from ..drivers.moonshot_driver import MoonshotDriver
 from ..drivers.ollama_driver import OllamaDriver
 from ..drivers.openai_driver import OpenAIDriver
+from ..drivers.openai_embedding_driver import OpenAIEmbeddingDriver
 from ..drivers.openai_img_gen_driver import OpenAIImageGenDriver
 from ..drivers.openai_stt_driver import OpenAISTTDriver
 from ..drivers.openai_tts_driver import OpenAITTSDriver
@@ -489,5 +490,37 @@ def get_available_image_gen_models(
         caps = get_model_capabilities(provider, model_id)
         if caps and "image" in caps.modalities_output:
             available.add(model_str)
+
+    return sorted(available)
+
+
+def get_available_embedding_models(
+    *,
+    env: ProviderEnvironment | None = None,
+) -> list[str]:
+    """Auto-detect available embedding models based on configured API keys.
+
+    Checks which embedding providers are configured and returns their supported models.
+
+    Args:
+        env: Optional per-consumer environment for isolated API keys.
+            When ``None``, uses the global settings singleton (current behavior).
+
+    Returns:
+        A sorted list of unique model strings (e.g. ``"openai/text-embedding-3-small"``).
+    """
+    available: set[str] = set()
+
+    # OpenAI embedding models (requires openai_api_key)
+    if _cfg_value(env, "openai_api_key", "OPENAI_API_KEY"):
+        for model_id in OpenAIEmbeddingDriver.EMBEDDING_PRICING:
+            available.add(f"openai/{model_id}")
+
+    # Ollama embedding models (always available — local)
+    available.add("ollama/nomic-embed-text")
+    available.add("ollama/all-minilm")
+    available.add("ollama/mxbai-embed-large")
+    available.add("ollama/snowflake-arctic-embed")
+    available.add("ollama/bge-m3")
 
     return sorted(available)

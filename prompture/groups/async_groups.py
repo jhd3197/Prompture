@@ -12,7 +12,10 @@ import copy
 import logging
 import time
 from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from ..agents.async_conversation import AsyncConversation
 
 from ..agents.types import AgentResult, AgentState
 from .groups import _agent_name, _inject_state, _normalise_agents
@@ -619,6 +622,8 @@ class AsyncRouterAgent:
         self.description = description
         self.output_key = output_key
         self._rr_index = 0
+        self._last_conv: AsyncConversation | None = None
+        self._last_llm_response: str | None = None
 
     async def _classify(self, prompt: str) -> tuple[str | None, str, float]:
         """Classify which agent should handle the prompt."""

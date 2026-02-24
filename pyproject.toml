@@ -125,6 +125,7 @@ module = [
     "PyPDF2",
     "redis.*",
     "requests",
+    "tiktoken",
     "toon",
     "transformers",
     "tukuy.*",

@@ -19,7 +19,7 @@ from typing import Any
 try:
     import requests as _requests
 except Exception:
-    _requests = None  # type: ignore[assignment]
+    _requests = None
 
 from ..infra.cost_mixin import CostMixin
 from .base import Driver

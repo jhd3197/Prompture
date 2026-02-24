@@ -154,6 +154,51 @@ class AudioCostMixin:
         return round(cost, 6)
 
 
+class EmbeddingCostMixin:
+    """Mixin that provides ``_calculate_embedding_cost`` to embedding drivers.
+
+    Embedding pricing is typically per-million input tokens (no output tokens).
+    """
+
+    # Subclasses should define EMBEDDING_PRICING as a class attribute.
+    # Format: {"model_id": {"per_million_tokens": float}}
+    EMBEDDING_PRICING: dict[str, dict[str, float]] = {}
+
+    def _calculate_embedding_cost(
+        self,
+        provider: str,
+        model: str,
+        *,
+        total_tokens: int = 0,
+    ) -> float:
+        """Calculate USD cost for an embedding API call.
+
+        Resolution order:
+        1. Live rates from ``model_rates.get_model_rates()`` (per 1M tokens, input only).
+        2. Hardcoded ``EMBEDDING_PRICING`` on the driver class.
+        3. Zero if neither source has data.
+
+        Args:
+            provider: Provider name (e.g. ``"openai"``).
+            model: Model identifier (e.g. ``"text-embedding-3-small"``).
+            total_tokens: Total number of input tokens processed.
+
+        Returns:
+            Estimated cost in USD, rounded to 6 decimal places.
+        """
+        from .model_rates import get_model_rates
+
+        live_rates = get_model_rates(provider, model)
+        if live_rates and live_rates.get("input"):
+            cost = (total_tokens / 1_000_000) * live_rates["input"]
+        else:
+            pricing = self.EMBEDDING_PRICING.get(model, {})
+            per_million = pricing.get("per_million_tokens", 0.0)
+            cost = (total_tokens / 1_000_000) * per_million
+
+        return round(cost, 6)
+
+
 class ImageCostMixin:
     """Mixin that provides ``_calculate_image_cost`` to image generation drivers.
 

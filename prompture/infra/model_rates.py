@@ -181,12 +181,13 @@ def _lookup_in_provider(
     # Exact match first
     entry = models.get(model_id)
     if entry is not None:
-        return entry
+        return dict(entry)
 
     # Fallback: try base model name (date-stripped / fine-tune prefix)
     base = _strip_to_base_model(model_id)
     if base is not None:
-        return models.get(base)
+        hit = models.get(base)
+        return dict(hit) if hit is not None else None
 
     return None
 
@@ -235,12 +236,12 @@ def _lookup_model(provider: str, model_id: str) -> Optional[dict[str, Any]]:
                 continue
             hit = models.get(model_id)
             if hit is not None:
-                return hit
+                return dict(hit)
             base = _strip_to_base_model(model_id)
             if base is not None:
                 hit = models.get(base)
                 if hit is not None:
-                    return hit
+                    return dict(hit)
 
     return None
 
@@ -357,7 +358,7 @@ def _load_capabilities() -> dict[tuple[str, str], "ModelCapabilities"]:
     kb: dict[tuple[str, str], ModelCapabilities] = {}
     for json_file in sorted(_RATES_DIR.glob("*.json")):
         provider = json_file.stem
-        raw: dict[str, dict] = json.loads(json_file.read_text(encoding="utf-8"))
+        raw: dict[str, dict[str, Any]] = json.loads(json_file.read_text(encoding="utf-8"))
         for model_id, entry in raw.items():
             kb[(provider, model_id)] = ModelCapabilities(
                 supports_temperature=entry.get("supports_temperature"),

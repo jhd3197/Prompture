@@ -28,6 +28,10 @@ class ProviderEnvironment:
     azure_api_key: str | None = None
     azure_api_endpoint: str | None = None
     azure_deployment_id: str | None = None
+    azure_claude_api_key: str | None = None
+    azure_claude_endpoint: str | None = None
+    azure_mistral_api_key: str | None = None
+    azure_mistral_endpoint: str | None = None
     ollama_endpoint: str | None = None
     lmstudio_endpoint: str | None = None
     lmstudio_api_key: str | None = None

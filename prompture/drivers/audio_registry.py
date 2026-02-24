@@ -10,6 +10,8 @@ Usage:
     result = stt.transcribe(audio_bytes, {})
 """
 
+from typing import cast
+
 from ..infra.settings import settings
 from .async_elevenlabs_stt_driver import AsyncElevenLabsSTTDriver
 from .async_elevenlabs_tts_driver import AsyncElevenLabsTTSDriver
@@ -135,7 +137,7 @@ def get_stt_driver_for_model(model_str: str) -> STTDriver:
     provider = parts[0].lower()
     model_id = parts[1] if len(parts) > 1 else None
     factory = get_stt_driver_factory(provider)
-    return factory(model_id)
+    return cast(STTDriver, factory(model_id))
 
 
 def get_async_stt_driver_for_model(model_str: str) -> AsyncSTTDriver:
@@ -144,7 +146,7 @@ def get_async_stt_driver_for_model(model_str: str) -> AsyncSTTDriver:
     provider = parts[0].lower()
     model_id = parts[1] if len(parts) > 1 else None
     factory = get_async_stt_driver_factory(provider)
-    return factory(model_id)
+    return cast(AsyncSTTDriver, factory(model_id))
 
 
 def get_tts_driver_for_model(model_str: str) -> TTSDriver:
@@ -160,7 +162,7 @@ def get_tts_driver_for_model(model_str: str) -> TTSDriver:
     provider = parts[0].lower()
     model_id = parts[1] if len(parts) > 1 else None
     factory = get_tts_driver_factory(provider)
-    return factory(model_id)
+    return cast(TTSDriver, factory(model_id))
 
 
 def get_async_tts_driver_for_model(model_str: str) -> AsyncTTSDriver:
@@ -169,4 +171,4 @@ def get_async_tts_driver_for_model(model_str: str) -> AsyncTTSDriver:
     provider = parts[0].lower()
     model_id = parts[1] if len(parts) > 1 else None
     factory = get_async_tts_driver_factory(provider)
-    return factory(model_id)
+    return cast(AsyncTTSDriver, factory(model_id))
