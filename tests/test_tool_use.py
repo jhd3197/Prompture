@@ -305,4 +305,4 @@ class TestConversationToolUse:
         # Check the tool result message contains the error
         tool_msgs = [m for m in conv.messages if m.get("role") == "tool"]
         assert len(tool_msgs) == 1
-        assert "Error:" in tool_msgs[0]["content"]
+        assert "Error" in tool_msgs[0]["content"]

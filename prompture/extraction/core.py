@@ -1170,12 +1170,18 @@ def stepwise_extract_with_model(
     for field_name, field_info in field_items:
         logger.debug("[stepwise] Extracting field: %s", field_name)
 
-        # Create field schema that expects a direct value rather than a dict
+        # Create field schema that expects a direct value wrapped in an object.
+        # Root must be type "object" for providers that use strict JSON schema
+        # mode (e.g. OpenAI structured outputs).
         field_schema = {
-            "value": {
-                "type": "integer" if field_info.annotation is int else "string",
-                "description": field_info.description or f"Value for {field_name}",
-            }
+            "type": "object",
+            "properties": {
+                "value": {
+                    "type": "integer" if field_info.annotation is int else "string",
+                    "description": field_info.description or f"Value for {field_name}",
+                }
+            },
+            "required": ["value"],
         }
 
         try:
