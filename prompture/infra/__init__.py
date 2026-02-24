@@ -17,10 +17,11 @@ from .cache import (
     get_cache,
 )
 from .callbacks import DriverCallbacks
-from .cost_mixin import AudioCostMixin
+from .cost_mixin import AudioCostMixin, EmbeddingCostMixin
 from .discovery import (
     clear_discovery_cache,
     get_available_audio_models,
+    get_available_embedding_models,
     get_available_image_gen_models,
     get_available_models,
 )
@@ -44,6 +45,7 @@ __all__ = [
     "BudgetState",
     "CacheBackend",
     "DriverCallbacks",
+    "EmbeddingCostMixin",
     "JSONFormatter",
     "MemoryCacheBackend",
     "ModelCapabilities",
@@ -61,6 +63,7 @@ __all__ = [
     "estimate_cost",
     "estimate_tokens",
     "get_available_audio_models",
+    "get_available_embedding_models",
     "get_available_image_gen_models",
     "get_available_models",
     "get_cache",

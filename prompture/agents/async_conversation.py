@@ -10,7 +10,7 @@ from collections.abc import AsyncIterator
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
-from typing import Any, Callable, Literal, Union
+from typing import Any, Callable, Literal, Union, cast
 
 from pydantic import BaseModel
 
@@ -326,7 +326,7 @@ class AsyncConversation:
     def _build_budget_state(self) -> BudgetState:
         return BudgetState(
             cost_used=self._usage["cost"],
-            tokens_used=self._usage["total_tokens"],
+            tokens_used=int(self._usage["total_tokens"]),
             max_cost=self._max_cost,
             max_tokens=self._max_tokens,
         )
@@ -349,7 +349,7 @@ class AsyncConversation:
     def _switch_model(self, new_model: str) -> None:
         """Replace the active driver with one for *new_model*."""
         old_callbacks = self._driver.callbacks
-        self._driver = get_async_driver_for_model(new_model)
+        self._driver = cast(AsyncDriver, get_async_driver_for_model(new_model))
         if old_callbacks is not None:
             self._driver.callbacks = old_callbacks
         self._model_name = new_model

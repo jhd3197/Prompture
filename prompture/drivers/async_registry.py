@@ -75,6 +75,10 @@ register_async_driver(
         endpoint=settings.azure_api_endpoint,
         deployment_id=settings.azure_deployment_id,
         model=model or "gpt-4o-mini",
+        claude_api_key=settings.azure_claude_api_key,
+        claude_endpoint=settings.azure_claude_endpoint,
+        mistral_api_key=settings.azure_mistral_api_key,
+        mistral_endpoint=settings.azure_mistral_endpoint,
     ),
     overwrite=True,
 )
@@ -265,7 +269,15 @@ ASYNC_PROVIDER_DRIVER_MAP: dict[str, tuple[type, dict[str, str], str]] = {
     ),
     "azure": (
         AsyncAzureDriver,
-        {"api_key": "azure_api_key", "endpoint": "azure_api_endpoint", "deployment_id": "azure_deployment_id"},
+        {
+            "api_key": "azure_api_key",
+            "endpoint": "azure_api_endpoint",
+            "deployment_id": "azure_deployment_id",
+            "claude_api_key": "azure_claude_api_key",
+            "claude_endpoint": "azure_claude_endpoint",
+            "mistral_api_key": "azure_mistral_api_key",
+            "mistral_endpoint": "azure_mistral_endpoint",
+        },
         "gpt-4o-mini",
     ),
     "huggingface": (AsyncHuggingFaceDriver, {"endpoint": "hf_endpoint", "token": "hf_token"}, "bert-base-uncased"),  # nosec B105

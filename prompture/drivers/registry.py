@@ -49,10 +49,15 @@ _ASYNC_TTS_REGISTRY: dict[str, DriverFactory] = {}
 _IMG_GEN_REGISTRY: dict[str, DriverFactory] = {}
 _ASYNC_IMG_GEN_REGISTRY: dict[str, DriverFactory] = {}
 
+# Embedding driver registries
+_EMBEDDING_REGISTRY: dict[str, DriverFactory] = {}
+_ASYNC_EMBEDDING_REGISTRY: dict[str, DriverFactory] = {}
+
 # Track whether entry points have been loaded
 _entry_points_loaded = False
 _audio_entry_points_loaded = False
 _img_gen_entry_points_loaded = False
+_embedding_entry_points_loaded = False
 
 
 def register_driver(name: str, factory: DriverFactory, *, overwrite: bool = False) -> None:
@@ -312,7 +317,11 @@ def _get_async_registry() -> dict[str, DriverFactory]:
 
 def _reset_registries() -> None:
     """Reset registries to empty state (for testing only)."""
-    global _entry_points_loaded, _audio_entry_points_loaded, _img_gen_entry_points_loaded
+    global \
+        _entry_points_loaded, \
+        _audio_entry_points_loaded, \
+        _img_gen_entry_points_loaded, \
+        _embedding_entry_points_loaded
     _SYNC_REGISTRY.clear()
     _ASYNC_REGISTRY.clear()
     _STT_REGISTRY.clear()
@@ -321,9 +330,12 @@ def _reset_registries() -> None:
     _ASYNC_TTS_REGISTRY.clear()
     _IMG_GEN_REGISTRY.clear()
     _ASYNC_IMG_GEN_REGISTRY.clear()
+    _EMBEDDING_REGISTRY.clear()
+    _ASYNC_EMBEDDING_REGISTRY.clear()
     _entry_points_loaded = False
     _audio_entry_points_loaded = False
     _img_gen_entry_points_loaded = False
+    _embedding_entry_points_loaded = False
 
 
 # ── STT Driver Registration ───────────────────────────────────────────────
@@ -742,3 +754,161 @@ def _ensure_img_gen_entry_points_loaded() -> None:
     global _img_gen_entry_points_loaded
     if not _img_gen_entry_points_loaded:
         load_img_gen_entry_point_drivers()
+
+
+# ── Embedding Driver Registration ──────────────────────────────────────────
+
+
+def register_embedding_driver(name: str, factory: DriverFactory, *, overwrite: bool = False) -> None:
+    """Register a sync embedding driver factory for a provider name.
+
+    Args:
+        name: Provider name (e.g., "openai"). Will be lowercased.
+        factory: Callable that takes an optional model name and returns an embedding driver.
+        overwrite: If True, allow overwriting an existing registration.
+    """
+    name = name.lower()
+    if name in _EMBEDDING_REGISTRY and not overwrite:
+        raise ValueError(f"Embedding driver '{name}' is already registered. Use overwrite=True to replace it.")
+    _EMBEDDING_REGISTRY[name] = factory
+    logger.debug("Registered sync embedding driver: %s", name)
+
+
+def register_async_embedding_driver(name: str, factory: DriverFactory, *, overwrite: bool = False) -> None:
+    """Register an async embedding driver factory for a provider name."""
+    name = name.lower()
+    if name in _ASYNC_EMBEDDING_REGISTRY and not overwrite:
+        raise ValueError(f"Async embedding driver '{name}' is already registered. Use overwrite=True to replace it.")
+    _ASYNC_EMBEDDING_REGISTRY[name] = factory
+    logger.debug("Registered async embedding driver: %s", name)
+
+
+def unregister_embedding_driver(name: str) -> bool:
+    """Unregister a sync embedding driver by name."""
+    name = name.lower()
+    if name in _EMBEDDING_REGISTRY:
+        del _EMBEDDING_REGISTRY[name]
+        return True
+    return False
+
+
+def unregister_async_embedding_driver(name: str) -> bool:
+    """Unregister an async embedding driver by name."""
+    name = name.lower()
+    if name in _ASYNC_EMBEDDING_REGISTRY:
+        del _ASYNC_EMBEDDING_REGISTRY[name]
+        return True
+    return False
+
+
+def list_registered_embedding_drivers() -> list[str]:
+    """Return a sorted list of registered sync embedding driver names."""
+    _ensure_embedding_entry_points_loaded()
+    return sorted(_EMBEDDING_REGISTRY.keys())
+
+
+def list_registered_async_embedding_drivers() -> list[str]:
+    """Return a sorted list of registered async embedding driver names."""
+    _ensure_embedding_entry_points_loaded()
+    return sorted(_ASYNC_EMBEDDING_REGISTRY.keys())
+
+
+def is_embedding_driver_registered(name: str) -> bool:
+    """Check if a sync embedding driver is registered."""
+    _ensure_embedding_entry_points_loaded()
+    return name.lower() in _EMBEDDING_REGISTRY
+
+
+def is_async_embedding_driver_registered(name: str) -> bool:
+    """Check if an async embedding driver is registered."""
+    _ensure_embedding_entry_points_loaded()
+    return name.lower() in _ASYNC_EMBEDDING_REGISTRY
+
+
+def get_embedding_driver_factory(name: str) -> DriverFactory:
+    """Get a registered sync embedding driver factory by name."""
+    _ensure_embedding_entry_points_loaded()
+    name = name.lower()
+    if name not in _EMBEDDING_REGISTRY:
+        raise ValueError(f"Unsupported embedding provider '{name}'")
+    return _EMBEDDING_REGISTRY[name]
+
+
+def get_async_embedding_driver_factory(name: str) -> DriverFactory:
+    """Get a registered async embedding driver factory by name."""
+    _ensure_embedding_entry_points_loaded()
+    name = name.lower()
+    if name not in _ASYNC_EMBEDDING_REGISTRY:
+        raise ValueError(f"Unsupported async embedding provider '{name}'")
+    return _ASYNC_EMBEDDING_REGISTRY[name]
+
+
+# ── Embedding Registry Internals ───────────────────────────────────────────
+
+
+def _get_embedding_registry() -> dict[str, DriverFactory]:
+    """Get the internal sync embedding registry dict."""
+    _ensure_embedding_entry_points_loaded()
+    return _EMBEDDING_REGISTRY
+
+
+def _get_async_embedding_registry() -> dict[str, DriverFactory]:
+    """Get the internal async embedding registry dict."""
+    _ensure_embedding_entry_points_loaded()
+    return _ASYNC_EMBEDDING_REGISTRY
+
+
+def load_embedding_entry_point_drivers() -> tuple[int, int]:
+    """Load embedding drivers from installed packages via entry points.
+
+    Scans for ``prompture.embedding_drivers`` and ``prompture.async_embedding_drivers`` groups.
+
+    Returns:
+        A tuple of (sync_count, async_count) counts.
+    """
+    global _embedding_entry_points_loaded
+
+    counts = [0, 0]
+    groups = [
+        ("prompture.embedding_drivers", _EMBEDDING_REGISTRY, 0),
+        ("prompture.async_embedding_drivers", _ASYNC_EMBEDDING_REGISTRY, 1),
+    ]
+
+    if sys.version_info >= (3, 10):
+        from importlib.metadata import entry_points as _ep_func
+
+        for group_name, registry, idx in groups:
+            for ep in _ep_func(group=group_name):
+                try:
+                    if ep.name.lower() in registry:
+                        continue
+                    factory = ep.load()
+                    registry[ep.name.lower()] = factory
+                    counts[idx] += 1
+                    logger.info("Loaded embedding driver from entry point: %s (%s)", ep.name, group_name)
+                except Exception:
+                    logger.exception("Failed to load embedding driver entry point: %s", ep.name)
+    else:
+        from importlib.metadata import entry_points as _ep_func
+
+        all_eps = _ep_func()
+        for group_name, registry, idx in groups:
+            for ep in all_eps.get(group_name, []):
+                try:
+                    if ep.name.lower() in registry:
+                        continue
+                    factory = ep.load()
+                    registry[ep.name.lower()] = factory
+                    counts[idx] += 1
+                except Exception:
+                    logger.exception("Failed to load embedding driver entry point: %s", ep.name)
+
+    _embedding_entry_points_loaded = True
+    return (counts[0], counts[1])
+
+
+def _ensure_embedding_entry_points_loaded() -> None:
+    """Ensure embedding entry points have been loaded (lazy initialization)."""
+    global _embedding_entry_points_loaded
+    if not _embedding_entry_points_loaded:
+        load_embedding_entry_point_drivers()

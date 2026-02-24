@@ -109,6 +109,10 @@ class AzureDriver(CostMixin, Driver):
         endpoint: str | None = None,
         deployment_id: str | None = None,
         model: str = "gpt-4o-mini",
+        claude_api_key: str | None = None,
+        claude_endpoint: str | None = None,
+        mistral_api_key: str | None = None,
+        mistral_endpoint: str | None = None,
     ):
         self.model = model
         # Store default config from env vars (may be partial/None)
@@ -118,6 +122,28 @@ class AzureDriver(CostMixin, Driver):
             "deployment_id": deployment_id or os.getenv("AZURE_DEPLOYMENT_ID"),
             "api_version": os.getenv("AZURE_API_VERSION", "2024-02-15-preview"),
         }
+        # Per-backend defaults: separate credentials for Claude/Mistral on Azure.
+        # Falls back to the main default for any field not explicitly set.
+        self._backend_defaults: dict[str, dict[str, Any]] = {}
+
+        c_key = claude_api_key or os.getenv("AZURE_CLAUDE_API_KEY")
+        c_ep = claude_endpoint or os.getenv("AZURE_CLAUDE_ENDPOINT")
+        if c_key or c_ep:
+            self._backend_defaults["claude"] = {
+                "api_key": c_key or self._default_config["api_key"],
+                "endpoint": c_ep or self._default_config["endpoint"],
+                "api_version": os.getenv("AZURE_CLAUDE_API_VERSION", "2024-06-01"),
+            }
+
+        m_key = mistral_api_key or os.getenv("AZURE_MISTRAL_API_KEY")
+        m_ep = mistral_endpoint or os.getenv("AZURE_MISTRAL_ENDPOINT")
+        if m_key or m_ep:
+            self._backend_defaults["mistral"] = {
+                "api_key": m_key or self._default_config["api_key"],
+                "endpoint": m_ep or self._default_config["endpoint"],
+                "api_version": os.getenv("AZURE_MISTRAL_API_VERSION", "2024-02-15-preview"),
+            }
+
         # Client caches: (endpoint, key) → client instance
         self._openai_clients: dict[tuple[str, str], AzureOpenAI] = {}
         self._anthropic_clients: dict[tuple[str, str], Any] = {}
@@ -130,9 +156,15 @@ class AzureDriver(CostMixin, Driver):
         return _prepare_openai_vision_messages(messages)
 
     def _resolve_model_config(self, model: str, options: dict[str, Any]) -> dict[str, Any]:
-        """Resolve Azure config for this model using the priority chain."""
+        """Resolve Azure config for this model using the priority chain.
+
+        Uses backend-specific defaults (Claude, Mistral) when available,
+        falling back to the generic default config.
+        """
         override = options.pop("azure_config", None)
-        return resolve_config(model, override=override, default_config=self._default_config)
+        backend = classify_backend(model)
+        default = self._backend_defaults.get(backend, self._default_config)
+        return resolve_config(model, override=override, default_config=default)
 
     def _get_openai_client(self, config: dict[str, Any]) -> "AzureOpenAI":
         """Get or create an AzureOpenAI client for the given config."""

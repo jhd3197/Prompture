@@ -11,7 +11,10 @@ import logging
 import re
 import time
 from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from ..agents.conversation import Conversation
 
 from ..agents.types import AgentResult, AgentState
 from .types import (
@@ -527,6 +530,8 @@ class RouterAgent:
         self.description = description
         self.output_key = output_key
         self._rr_index = 0
+        self._last_conv: Conversation | None = None
+        self._last_llm_response: str | None = None
 
     def _classify(self, prompt: str) -> tuple[str | None, str, float]:
         """Classify which agent should handle the prompt.

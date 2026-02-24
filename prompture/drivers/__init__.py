@@ -36,6 +36,7 @@ from .async_cachibot_driver import AsyncCachiBotDriver
 from .async_claude_driver import AsyncClaudeDriver
 from .async_elevenlabs_stt_driver import AsyncElevenLabsSTTDriver
 from .async_elevenlabs_tts_driver import AsyncElevenLabsTTSDriver
+from .async_embedding_base import AsyncEmbeddingDriver
 from .async_google_driver import AsyncGoogleDriver
 from .async_google_img_gen_driver import AsyncGoogleImageGenDriver
 from .async_grok_driver import AsyncGrokDriver
@@ -48,7 +49,9 @@ from .async_local_http_driver import AsyncLocalHTTPDriver
 from .async_modelscope_driver import AsyncModelScopeDriver
 from .async_moonshot_driver import AsyncMoonshotDriver
 from .async_ollama_driver import AsyncOllamaDriver
+from .async_ollama_embedding_driver import AsyncOllamaEmbeddingDriver
 from .async_openai_driver import AsyncOpenAIDriver
+from .async_openai_embedding_driver import AsyncOpenAIEmbeddingDriver
 from .async_openai_img_gen_driver import AsyncOpenAIImageGenDriver
 from .async_openai_stt_driver import AsyncOpenAISTTDriver
 from .async_openai_tts_driver import AsyncOpenAITTSDriver
@@ -69,6 +72,7 @@ from .cachibot_driver import CachiBotDriver
 from .claude_driver import ClaudeDriver
 from .elevenlabs_stt_driver import ElevenLabsSTTDriver
 from .elevenlabs_tts_driver import ElevenLabsTTSDriver
+from .embedding_base import EMBEDDING_MODEL_DIMENSIONS, EmbeddingDriver
 from .google_driver import GoogleDriver
 from .google_img_gen_driver import GoogleImageGenDriver
 from .grok_driver import GrokDriver
@@ -81,7 +85,9 @@ from .local_http_driver import LocalHTTPDriver
 from .modelscope_driver import ModelScopeDriver
 from .moonshot_driver import MoonshotDriver
 from .ollama_driver import OllamaDriver
+from .ollama_embedding_driver import OllamaEmbeddingDriver
 from .openai_driver import OpenAIDriver
+from .openai_embedding_driver import OpenAIEmbeddingDriver
 from .openai_img_gen_driver import OpenAIImageGenDriver
 from .openai_stt_driver import OpenAISTTDriver
 from .openai_tts_driver import OpenAITTSDriver
@@ -89,43 +95,53 @@ from .openrouter_driver import OpenRouterDriver
 from .registry import (
     _get_sync_registry,
     get_async_driver_factory,
+    get_async_embedding_driver_factory,
     get_async_img_gen_driver_factory,
     get_async_stt_driver_factory,
     get_async_tts_driver_factory,
     get_driver_factory,
+    get_embedding_driver_factory,
     get_img_gen_driver_factory,
     get_stt_driver_factory,
     get_tts_driver_factory,
     is_async_driver_registered,
+    is_async_embedding_driver_registered,
     is_async_img_gen_driver_registered,
     is_async_stt_driver_registered,
     is_async_tts_driver_registered,
     is_driver_registered,
+    is_embedding_driver_registered,
     is_img_gen_driver_registered,
     is_stt_driver_registered,
     is_tts_driver_registered,
     list_registered_async_drivers,
+    list_registered_async_embedding_drivers,
     list_registered_async_img_gen_drivers,
     list_registered_async_stt_drivers,
     list_registered_async_tts_drivers,
     list_registered_drivers,
+    list_registered_embedding_drivers,
     list_registered_img_gen_drivers,
     list_registered_stt_drivers,
     list_registered_tts_drivers,
     load_entry_point_drivers,
     register_async_driver,
+    register_async_embedding_driver,
     register_async_img_gen_driver,
     register_async_stt_driver,
     register_async_tts_driver,
     register_driver,
+    register_embedding_driver,
     register_img_gen_driver,
     register_stt_driver,
     register_tts_driver,
     unregister_async_driver,
+    unregister_async_embedding_driver,
     unregister_async_img_gen_driver,
     unregister_async_stt_driver,
     unregister_async_tts_driver,
     unregister_driver,
+    unregister_embedding_driver,
     unregister_img_gen_driver,
     unregister_stt_driver,
     unregister_tts_driver,
@@ -173,6 +189,10 @@ register_driver(
         endpoint=settings.azure_api_endpoint,
         deployment_id=settings.azure_deployment_id,
         model=model or "gpt-4o-mini",
+        claude_api_key=settings.azure_claude_api_key,
+        claude_endpoint=settings.azure_claude_endpoint,
+        mistral_api_key=settings.azure_mistral_api_key,
+        mistral_endpoint=settings.azure_mistral_endpoint,
     ),
     overwrite=True,
 )
@@ -317,6 +337,12 @@ from .audio_registry import (
     get_tts_driver_for_model,
 )
 
+# Trigger embedding driver registration
+from .embedding_registry import (
+    get_async_embedding_driver_for_model,
+    get_embedding_driver_for_model,
+)
+
 # Trigger image gen driver registration
 from .img_gen_registry import (
     get_async_img_gen_driver_for_model,
@@ -377,7 +403,15 @@ PROVIDER_DRIVER_MAP: dict[str, tuple[type, dict[str, str], str]] = {
     ),
     "azure": (
         AzureDriver,
-        {"api_key": "azure_api_key", "endpoint": "azure_api_endpoint", "deployment_id": "azure_deployment_id"},
+        {
+            "api_key": "azure_api_key",
+            "endpoint": "azure_api_endpoint",
+            "deployment_id": "azure_deployment_id",
+            "claude_api_key": "azure_claude_api_key",
+            "claude_endpoint": "azure_claude_endpoint",
+            "mistral_api_key": "azure_mistral_api_key",
+            "mistral_endpoint": "azure_mistral_endpoint",
+        },
         "gpt-4o-mini",
     ),
     "huggingface": (HuggingFaceDriver, {"endpoint": "hf_endpoint", "token": "hf_token"}, "bert-base-uncased"),  # nosec B105
@@ -472,6 +506,8 @@ __all__ = [
     "ASYNC_DRIVER_REGISTRY",
     # Legacy registry dicts (for backwards compatibility)
     "DRIVER_REGISTRY",
+    # Embedding model dimension metadata
+    "EMBEDDING_MODEL_DIMENSIONS",
     # Sync LLM drivers
     "AirLLMDriver",
     # Async LLM drivers
@@ -484,6 +520,8 @@ __all__ = [
     # Async audio drivers
     "AsyncElevenLabsSTTDriver",
     "AsyncElevenLabsTTSDriver",
+    # Async embedding drivers
+    "AsyncEmbeddingDriver",
     "AsyncGoogleDriver",
     # Async image gen drivers
     "AsyncGoogleImageGenDriver",
@@ -497,7 +535,9 @@ __all__ = [
     "AsyncModelScopeDriver",
     "AsyncMoonshotDriver",
     "AsyncOllamaDriver",
+    "AsyncOllamaEmbeddingDriver",
     "AsyncOpenAIDriver",
+    "AsyncOpenAIEmbeddingDriver",
     "AsyncOpenAIImageGenDriver",
     "AsyncOpenAISTTDriver",
     "AsyncOpenAITTSDriver",
@@ -513,6 +553,8 @@ __all__ = [
     # Sync audio drivers
     "ElevenLabsSTTDriver",
     "ElevenLabsTTSDriver",
+    # Embedding base class
+    "EmbeddingDriver",
     "GoogleDriver",
     # Sync image gen drivers
     "GoogleImageGenDriver",
@@ -527,7 +569,9 @@ __all__ = [
     "ModelScopeDriver",
     "MoonshotDriver",
     "OllamaDriver",
+    "OllamaEmbeddingDriver",
     "OpenAIDriver",
+    "OpenAIEmbeddingDriver",
     "OpenAIImageGenDriver",
     "OpenAISTTDriver",
     "OpenAITTSDriver",
@@ -541,6 +585,10 @@ __all__ = [
     "clear_azure_configs",
     "get_async_driver",
     "get_async_driver_for_model",
+    # Embedding registry query functions
+    "get_async_embedding_driver_factory",
+    # Embedding factory functions
+    "get_async_embedding_driver_for_model",
     # Image gen registry query functions
     "get_async_img_gen_driver_factory",
     # Image gen factory functions
@@ -554,6 +602,8 @@ __all__ = [
     # LLM factory functions
     "get_driver",
     "get_driver_for_model",
+    "get_embedding_driver_factory",
+    "get_embedding_driver_for_model",
     "get_img_gen_driver_factory",
     "get_img_gen_driver_for_model",
     "get_stt_driver_factory",
@@ -562,39 +612,47 @@ __all__ = [
     "get_tts_driver_for_model",
     # Other registry query functions
     "is_async_driver_registered",
+    "is_async_embedding_driver_registered",
     "is_async_img_gen_driver_registered",
     "is_async_stt_driver_registered",
     "is_async_tts_driver_registered",
     "is_driver_registered",
+    "is_embedding_driver_registered",
     "is_img_gen_driver_registered",
     "is_stt_driver_registered",
     "is_tts_driver_registered",
     "list_registered_async_drivers",
+    "list_registered_async_embedding_drivers",
     "list_registered_async_img_gen_drivers",
     "list_registered_async_stt_drivers",
     "list_registered_async_tts_drivers",
     "list_registered_drivers",
+    "list_registered_embedding_drivers",
     "list_registered_img_gen_drivers",
     "list_registered_stt_drivers",
     "list_registered_tts_drivers",
     "load_entry_point_drivers",
     "register_async_driver",
+    "register_async_embedding_driver",
     "register_async_img_gen_driver",
     "register_async_stt_driver",
     "register_async_tts_driver",
     "register_azure_config",
     # Registry functions (public API)
     "register_driver",
+    "register_embedding_driver",
     "register_img_gen_driver",
     "register_stt_driver",
     "register_tts_driver",
     "set_azure_config_resolver",
     "unregister_async_driver",
+    "unregister_async_embedding_driver",
     "unregister_async_img_gen_driver",
     "unregister_async_stt_driver",
     "unregister_async_tts_driver",
     "unregister_azure_config",
     "unregister_driver",
+    "unregister_embedding_driver",
     "unregister_img_gen_driver",
     "unregister_stt_driver",
     "unregister_tts_driver",
