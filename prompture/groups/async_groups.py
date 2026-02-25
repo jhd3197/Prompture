@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import inspect
 import logging
 import time
 from collections.abc import Callable
@@ -29,6 +30,16 @@ from .types import (
 )
 
 logger = logging.getLogger("prompture.async_groups")
+
+
+async def _fire(callback: Callable[..., Any], *args: Any) -> None:
+    """Invoke a callback, awaiting it if it returns a coroutine.
+
+    This allows group callbacks to be either sync or async functions.
+    """
+    result = callback(*args)
+    if inspect.isawaitable(result):
+        await result
 
 
 # ------------------------------------------------------------------
@@ -61,6 +72,7 @@ class ParallelGroup:
         timeout_ms: float | None = None,
         callbacks: GroupCallbacks | None = None,
         max_total_cost: float | None = None,
+        deps: Any = None,
     ) -> None:
         self._agents = _normalise_agents(agents)
         self._state: dict[str, Any] = dict(state) if state else {}
@@ -68,6 +80,7 @@ class ParallelGroup:
         self._timeout_ms = timeout_ms
         self._callbacks = callbacks or GroupCallbacks()
         self._max_total_cost = max_total_cost
+        self._deps = deps
         self._stop_requested = False
 
     def stop(self) -> None:
@@ -95,8 +108,9 @@ class ParallelGroup:
                 if hasattr(agent, "inject_state"):
                     agent.inject_state(state, recursive=True)
 
-    async def run_async(self, prompt: str = "") -> GroupResult:
+    async def run_async(self, prompt: str = "", *, deps: Any = None) -> GroupResult:
         """Execute all agents concurrently."""
+        effective_deps = deps if deps is not None else self._deps
         self._stop_requested = False
         t0 = time.perf_counter()
 
@@ -116,11 +130,11 @@ class ParallelGroup:
                 effective = ""
 
             if self._callbacks.on_agent_start:
-                self._callbacks.on_agent_start(name, effective)
+                await _fire(self._callbacks.on_agent_start, name, effective)
 
             step_t0 = time.perf_counter()
             try:
-                coro = agent.run(effective)
+                coro = agent.run(effective, deps=effective_deps) if effective_deps is not None else agent.run(effective)
                 if self._timeout_ms is not None:
                     result = await asyncio.wait_for(coro, timeout=self._timeout_ms / 1000)
                 else:
@@ -135,7 +149,7 @@ class ParallelGroup:
                     usage_delta=getattr(result, "run_usage", {}),
                 )
                 if self._callbacks.on_agent_complete:
-                    self._callbacks.on_agent_complete(name, result)
+                    await _fire(self._callbacks.on_agent_complete, name, result)
                 return idx, name, result, None, step
 
             except Exception as exc:
@@ -153,7 +167,7 @@ class ParallelGroup:
                     error=str(exc),
                 )
                 if self._callbacks.on_agent_error:
-                    self._callbacks.on_agent_error(name, exc)
+                    await _fire(self._callbacks.on_agent_error, name, exc)
                 return idx, name, None, err, step
 
         # Launch all agents concurrently
@@ -182,7 +196,7 @@ class ParallelGroup:
                 if output_key:
                     self._state[output_key] = result.output_text
                     if self._callbacks.on_state_update:
-                        self._callbacks.on_state_update(output_key, result.output_text)
+                        await _fire(self._callbacks.on_state_update, output_key, result.output_text)
 
         elapsed_ms = (time.perf_counter() - t0) * 1000
         return GroupResult(
@@ -195,9 +209,9 @@ class ParallelGroup:
             success=len(errors) == 0,
         )
 
-    def run(self, prompt: str = "") -> GroupResult:
+    def run(self, prompt: str = "", *, deps: Any = None) -> GroupResult:
         """Sync wrapper around :meth:`run_async`."""
-        return asyncio.run(self.run_async(prompt))
+        return asyncio.run(self.run_async(prompt, deps=deps))
 
 
 # ------------------------------------------------------------------
@@ -232,6 +246,7 @@ class AsyncSequentialGroup:
         callbacks: GroupCallbacks | None = None,
         max_total_cost: float | None = None,
         step_conditions: list[Callable[[str, dict[str, Any]], bool]] | None = None,
+        deps: Any = None,
     ) -> None:
         self._agents = _normalise_agents(agents)
         self._state: dict[str, Any] = dict(state) if state else {}
@@ -240,6 +255,7 @@ class AsyncSequentialGroup:
         self._callbacks = callbacks or GroupCallbacks()
         self._max_total_cost = max_total_cost
         self._step_conditions = step_conditions
+        self._deps = deps
         self._stop_requested = False
 
     def stop(self) -> None:
@@ -266,8 +282,9 @@ class AsyncSequentialGroup:
                 if hasattr(agent, "inject_state"):
                     agent.inject_state(state, recursive=True)
 
-    async def run(self, prompt: str = "") -> GroupResult:
+    async def run(self, prompt: str = "", *, deps: Any = None) -> GroupResult:
         """Execute all agents in sequence (async)."""
+        effective_deps = deps if deps is not None else self._deps
         self._stop_requested = False
         t0 = time.perf_counter()
         timeline: list[GroupStep] = []
@@ -298,11 +315,13 @@ class AsyncSequentialGroup:
                 break
 
             if self._callbacks.on_agent_start:
-                self._callbacks.on_agent_start(name, effective)
+                await _fire(self._callbacks.on_agent_start, name, effective)
 
             step_t0 = time.perf_counter()
             try:
-                result = await agent.run(effective)
+                result = await (
+                    agent.run(effective, deps=effective_deps) if effective_deps is not None else agent.run(effective)
+                )
                 duration_ms = (time.perf_counter() - step_t0) * 1000
                 turns += 1
 
@@ -314,7 +333,7 @@ class AsyncSequentialGroup:
                 if output_key:
                     self._state[output_key] = result.output_text
                     if self._callbacks.on_state_update:
-                        self._callbacks.on_state_update(output_key, result.output_text)
+                        await _fire(self._callbacks.on_state_update, output_key, result.output_text)
 
                 timeline.append(
                     GroupStep(
@@ -327,7 +346,7 @@ class AsyncSequentialGroup:
                 )
 
                 if self._callbacks.on_agent_complete:
-                    self._callbacks.on_agent_complete(name, result)
+                    await _fire(self._callbacks.on_agent_complete, name, result)
 
                 # Step condition check (waterfall mode)
                 if self._step_conditions is not None and idx < len(self._step_conditions):
@@ -339,7 +358,9 @@ class AsyncSequentialGroup:
                             for skip_idx in range(idx + 1, len(self._agents)):
                                 skip_agent, _ = self._agents[skip_idx]
                                 skip_name = _agent_name(skip_agent, skip_idx)
-                                self._callbacks.on_step_skipped(skip_name, f"step condition false after {name}")
+                                await _fire(
+                                    self._callbacks.on_step_skipped, skip_name, f"step condition false after {name}"
+                                )
                         break
 
             except Exception as exc:
@@ -362,7 +383,7 @@ class AsyncSequentialGroup:
                 )
 
                 if self._callbacks.on_agent_error:
-                    self._callbacks.on_agent_error(name, exc)
+                    await _fire(self._callbacks.on_agent_error, name, exc)
 
                 if self._error_policy == ErrorPolicy.raise_on_error:
                     raise
@@ -413,6 +434,7 @@ class AsyncLoopGroup:
         error_policy: ErrorPolicy = ErrorPolicy.fail_fast,
         callbacks: GroupCallbacks | None = None,
         max_total_cost: float | None = None,
+        deps: Any = None,
     ) -> None:
         self._agents = _normalise_agents(agents)
         self._exit_condition = exit_condition
@@ -421,6 +443,7 @@ class AsyncLoopGroup:
         self._error_policy = error_policy
         self._callbacks = callbacks or GroupCallbacks()
         self._max_total_cost = max_total_cost
+        self._deps = deps
         self._stop_requested = False
 
     def stop(self) -> None:
@@ -447,8 +470,9 @@ class AsyncLoopGroup:
                 if hasattr(agent, "inject_state"):
                     agent.inject_state(state, recursive=True)
 
-    async def run(self, prompt: str = "") -> GroupResult:
+    async def run(self, prompt: str = "", *, deps: Any = None) -> GroupResult:
         """Execute the loop (async)."""
+        effective_deps = deps if deps is not None else self._deps
         self._stop_requested = False
         t0 = time.perf_counter()
         timeline: list[GroupStep] = []
@@ -468,7 +492,7 @@ class AsyncLoopGroup:
                 break
 
             if self._callbacks.on_round_start:
-                self._callbacks.on_round_start(iteration)
+                await _fire(self._callbacks.on_round_start, iteration)
 
             for idx, (agent, custom_prompt) in enumerate(self._agents):
                 if self._stop_requested:
@@ -485,11 +509,15 @@ class AsyncLoopGroup:
                     effective = ""
 
                 if self._callbacks.on_agent_start:
-                    self._callbacks.on_agent_start(name, effective)
+                    await _fire(self._callbacks.on_agent_start, name, effective)
 
                 step_t0 = time.perf_counter()
                 try:
-                    result = await agent.run(effective)
+                    result = await (
+                        agent.run(effective, deps=effective_deps)
+                        if effective_deps is not None
+                        else agent.run(effective)
+                    )
                     duration_ms = (time.perf_counter() - step_t0) * 1000
 
                     agent_results[result_key] = result
@@ -500,7 +528,7 @@ class AsyncLoopGroup:
                     if output_key:
                         self._state[output_key] = result.output_text
                         if self._callbacks.on_state_update:
-                            self._callbacks.on_state_update(output_key, result.output_text)
+                            await _fire(self._callbacks.on_state_update, output_key, result.output_text)
 
                     timeline.append(
                         GroupStep(
@@ -513,7 +541,7 @@ class AsyncLoopGroup:
                     )
 
                     if self._callbacks.on_agent_complete:
-                        self._callbacks.on_agent_complete(name, result)
+                        await _fire(self._callbacks.on_agent_complete, name, result)
 
                 except Exception as exc:
                     duration_ms = (time.perf_counter() - step_t0) * 1000
@@ -534,7 +562,7 @@ class AsyncLoopGroup:
                     )
 
                     if self._callbacks.on_agent_error:
-                        self._callbacks.on_agent_error(name, exc)
+                        await _fire(self._callbacks.on_agent_error, name, exc)
 
                     if self._error_policy == ErrorPolicy.raise_on_error:
                         raise
@@ -542,7 +570,7 @@ class AsyncLoopGroup:
                         break
 
             if self._callbacks.on_round_complete:
-                self._callbacks.on_round_complete(iteration)
+                await _fire(self._callbacks.on_round_complete, iteration)
 
             if errors and self._error_policy == ErrorPolicy.fail_fast:
                 break
@@ -696,14 +724,14 @@ class AsyncRouterAgent:
         agent_name, reason, confidence = await self._classify(prompt)
 
         if self._callbacks.on_route_decision:
-            self._callbacks.on_route_decision(agent_name or "(none)", reason, confidence)
+            await _fire(self._callbacks.on_route_decision, agent_name or "(none)", reason, confidence)
 
         if agent_name and agent_name in self._agents:
             selected = self._agents[agent_name]
             return await selected.run(prompt, deps=deps) if deps is not None else await selected.run(prompt)  # type: ignore[no-any-return]
         elif self._fallback is not None:
             if self._callbacks.on_route_decision and agent_name is None:
-                self._callbacks.on_route_decision("(fallback)", "No match, using fallback", 0.0)
+                await _fire(self._callbacks.on_route_decision, "(fallback)", "No match, using fallback", 0.0)
             return await self._fallback.run(prompt, deps=deps) if deps is not None else await self._fallback.run(prompt)  # type: ignore[no-any-return]
         else:
             text = self._last_llm_response if self._last_llm_response is not None else reason
