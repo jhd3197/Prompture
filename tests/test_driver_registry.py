@@ -365,7 +365,8 @@ class TestDriverWithApiKeyOverrides:
         driver = get_driver_for_model(
             "ollama/llama3", api_key=None, endpoint="http://custom:11434"
         )
-        assert driver.endpoint == "http://custom:11434"
+        # OllamaDriver auto-appends /api/generate to bare base URLs
+        assert driver.endpoint == "http://custom:11434/api/generate"
         assert driver.model == "llama3"
 
     def test_async_overrides_forward_extra_kwargs(self):
@@ -373,7 +374,8 @@ class TestDriverWithApiKeyOverrides:
         driver = get_async_driver_for_model(
             "ollama/llama3", api_key=None, endpoint="http://custom:11434"
         )
-        assert driver.endpoint == "http://custom:11434"
+        # OllamaDriver auto-appends /api/generate to bare base URLs
+        assert driver.endpoint == "http://custom:11434/api/generate"
         assert driver.model == "llama3"
 
     def test_sync_unknown_provider_with_api_key_raises(self):
