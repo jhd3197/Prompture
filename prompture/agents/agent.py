@@ -280,6 +280,16 @@ class Agent(Generic[DepsType]):
         self._stop_requested = True
 
     @property
+    def callbacks(self) -> AgentCallbacks:
+        """Current agent-level callbacks."""
+        return self._agent_callbacks
+
+    @callbacks.setter
+    def callbacks(self, value: AgentCallbacks) -> None:
+        """Set agent-level callbacks."""
+        self._agent_callbacks = value
+
+    @property
     def conversation(self) -> Conversation | None:
         """The current persistent conversation, or ``None``."""
         return self._conversation

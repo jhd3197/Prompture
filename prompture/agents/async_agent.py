@@ -257,6 +257,16 @@ class AsyncAgent(Generic[DepsType]):
         self._stop_requested = True
 
     @property
+    def callbacks(self) -> AgentCallbacks:
+        """Current agent-level callbacks."""
+        return self._agent_callbacks
+
+    @callbacks.setter
+    def callbacks(self, value: AgentCallbacks) -> None:
+        """Set agent-level callbacks."""
+        self._agent_callbacks = value
+
+    @property
     def conversation(self) -> Any:
         """The current persistent conversation, or ``None``."""
         return self._conversation
@@ -902,6 +912,10 @@ class AsyncAgent(Generic[DepsType]):
                 result = await self._run_output_guardrails(ctx, result, conv, session, steps, all_tool_calls)
 
             # 11. Fire callbacks (async-aware)
+            if self._agent_callbacks.on_thinking:
+                for step in steps:
+                    if step.step_type == StepType.think and step.content:
+                        await self._invoke_callback(self._agent_callbacks.on_thinking, step.content)
             if self._agent_callbacks.on_step:
                 for step in steps:
                     await self._invoke_callback(self._agent_callbacks.on_step, step)
@@ -937,6 +951,20 @@ class AsyncAgent(Generic[DepsType]):
                 }
 
             if role == "assistant":
+                content = msg.get("content", "") or ""
+
+                # Extract thinking content from <think> tags
+                thinking_text = self._extract_thinking(content)
+                if thinking_text:
+                    steps.append(
+                        AgentStep(
+                            step_type=StepType.think,
+                            timestamp=now,
+                            content=thinking_text,
+                            usage=step_usage,
+                        )
+                    )
+
                 tc_list = msg.get("tool_calls", [])
                 if tc_list:
                     for tc in tc_list:
@@ -955,7 +983,7 @@ class AsyncAgent(Generic[DepsType]):
                             AgentStep(
                                 step_type=StepType.tool_call,
                                 timestamp=now,
-                                content=msg.get("content", ""),
+                                content=content,
                                 tool_name=name,
                                 tool_args=args,
                                 usage=step_usage,
@@ -967,7 +995,7 @@ class AsyncAgent(Generic[DepsType]):
                         AgentStep(
                             step_type=StepType.output,
                             timestamp=now,
-                            content=msg.get("content", ""),
+                            content=content,
                             usage=step_usage,
                         )
                     )
@@ -988,6 +1016,26 @@ class AsyncAgent(Generic[DepsType]):
                         tool_result=full_result,
                     )
                 )
+
+    def _extract_thinking(self, content: str) -> str | None:
+        """Extract thinking content from <think> tags.
+
+        Some models (like DeepSeek, Qwen) emit chain-of-thought reasoning
+        within <think>...</think> tags. This method extracts that content.
+
+        Args:
+            content: The assistant message content.
+
+        Returns:
+            The thinking text if found, None otherwise.
+        """
+        import re
+
+        pattern = r"<think>(.*?)</think>"
+        matches = re.findall(pattern, content, re.DOTALL | re.IGNORECASE)
+        if matches:
+            return "\n".join(match.strip() for match in matches)
+        return None
 
     async def _parse_output(
         self,
