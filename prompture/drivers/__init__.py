@@ -592,10 +592,10 @@ __all__ = [
     "ASYNC_DRIVER_REGISTRY",
     # Legacy registry dicts (for backwards compatibility)
     "DRIVER_REGISTRY",
-    # Provider driver maps (for explicit-credential construction)
-    "PROVIDER_DRIVER_MAP",
     # Embedding model dimension metadata
     "EMBEDDING_MODEL_DIMENSIONS",
+    # Provider driver maps (for explicit-credential construction)
+    "PROVIDER_DRIVER_MAP",
     # Sync LLM drivers
     "AirLLMDriver",
     # Async LLM drivers

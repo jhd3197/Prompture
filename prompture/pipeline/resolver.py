@@ -48,8 +48,7 @@ class NoModelConfiguredError(ConfigurationError):
     def __init__(self, slot: str = "default") -> None:
         self.slot = slot
         super().__init__(
-            f"No AI model configured for slot '{slot}'. "
-            "Please set a default model in settings or pass one explicitly."
+            f"No AI model configured for slot '{slot}'. Please set a default model in settings or pass one explicitly."
         )
 
 
@@ -117,7 +116,7 @@ def attr_layer(
         attr_map = {"default": "model", "utility": "utility_model"}
 
     def _resolve(slot: str) -> str | None:
-        attr_name = attr_map.get(slot)  # type: ignore[union-attr]
+        attr_name = attr_map.get(slot)
         if attr_name is None:
             return None
         val = getattr(obj, attr_name, None)
