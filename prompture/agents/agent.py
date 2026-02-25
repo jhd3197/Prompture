@@ -280,6 +280,16 @@ class Agent(Generic[DepsType]):
         self._stop_requested = True
 
     @property
+    def callbacks(self) -> AgentCallbacks:
+        """Current agent-level callbacks."""
+        return self._agent_callbacks
+
+    @callbacks.setter
+    def callbacks(self, value: AgentCallbacks) -> None:
+        """Set agent-level callbacks."""
+        self._agent_callbacks = value
+
+    @property
     def conversation(self) -> Conversation | None:
         """The current persistent conversation, or ``None``."""
         return self._conversation
@@ -842,6 +852,10 @@ class Agent(Generic[DepsType]):
                 result = self._run_output_guardrails(ctx, result, conv, session, steps, all_tool_calls)
 
             # 12. Fire callbacks
+            if self._agent_callbacks.on_thinking:
+                for step in steps:
+                    if step.step_type == StepType.think and step.content:
+                        self._agent_callbacks.on_thinking(step.content)
             if self._agent_callbacks.on_step:
                 for step in steps:
                     self._agent_callbacks.on_step(step)
@@ -883,9 +897,7 @@ class Agent(Generic[DepsType]):
 
                 # Extract thinking content from <think> tags
                 thinking_text = self._extract_thinking(content)
-                if thinking_text and self._agent_callbacks.on_thinking:
-                    self._agent_callbacks.on_thinking(thinking_text)
-                    # Also record as a think step
+                if thinking_text:
                     steps.append(
                         AgentStep(
                             step_type=StepType.think,
@@ -1184,6 +1196,10 @@ class Agent(Generic[DepsType]):
                 result = self._run_output_guardrails(ctx, result, conv, session, steps, all_tool_calls)
 
             # 12. Fire callbacks
+            if self._agent_callbacks.on_thinking:
+                for step in steps:
+                    if step.step_type == StepType.think and step.content:
+                        self._agent_callbacks.on_thinking(step.content)
             if self._agent_callbacks.on_step:
                 for step in steps:
                     self._agent_callbacks.on_step(step)

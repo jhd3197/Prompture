@@ -23,6 +23,7 @@ dependencies = [
     "python-dotenv>=0.19.0",
     "python-dateutil>=2.9.0",
     "pyyaml>=6.0",
+    "requests>=2.28",
 ]
 
 [project.optional-dependencies]
@@ -32,9 +33,8 @@ google = ["google-genai>=1.0.0"]
 groq = ["groq>=0.4.0"]
 toon = ["python-toon>=0.1.0", "tukuy==0.0.30"]
 pandas = ["pandas>=1.3.0"]
-requests = ["requests>=2.28"]
 all = [
-    "prompture[openai,anthropic,google,groq,toon,pandas,requests]",
+    "prompture[openai,anthropic,google,groq,toon,pandas]",
 ]
 test = ["pytest>=7.0", "pytest-asyncio>=0.23.0", "prompture[all]"]
 dev = ["pytest>=7.0", "pytest-asyncio>=0.23.0", "ruff>=0.8.0", "prompture[all]"]
