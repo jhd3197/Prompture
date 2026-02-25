@@ -117,6 +117,9 @@ class GroupResult:
 class GroupCallbacks:
     """Observability callbacks for group execution.
 
+    Callbacks may be synchronous or asynchronous functions. When used
+    with async groups, async callbacks are properly awaited.
+
     Attributes:
         on_agent_start: Called when an agent begins execution ``(name, prompt)``.
         on_agent_complete: Called when an agent finishes ``(name, result)``.
@@ -129,14 +132,14 @@ class GroupCallbacks:
             ``(agent_name, reason, confidence)``.
     """
 
-    on_agent_start: Callable[[str, str], None] | None = None
-    on_agent_complete: Callable[[str, Any], None] | None = None
-    on_agent_error: Callable[[str, Exception], None] | None = None
-    on_state_update: Callable[[str, Any], None] | None = None
-    on_round_start: Callable[[int], None] | None = None
-    on_round_complete: Callable[[int], None] | None = None
-    on_step_skipped: Callable[[str, str], None] | None = None
-    on_route_decision: Callable[[str, str, float], None] | None = None
+    on_agent_start: Callable[..., Any] | None = None
+    on_agent_complete: Callable[..., Any] | None = None
+    on_agent_error: Callable[..., Any] | None = None
+    on_state_update: Callable[..., Any] | None = None
+    on_round_start: Callable[..., Any] | None = None
+    on_round_complete: Callable[..., Any] | None = None
+    on_step_skipped: Callable[..., Any] | None = None
+    on_route_decision: Callable[..., Any] | None = None
 
 
 def _aggregate_usage(*sessions: dict[str, Any]) -> dict[str, Any]:

@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import uuid
@@ -216,20 +217,80 @@ class GoogleDriver(CostMixin, Driver):
             if json_schema:
                 config_dict["response_schema"] = json_schema
 
-        # Convert messages to Gemini format
+        # Convert messages to Gemini format, including tool calls/results
         system_instruction = None
         contents: list[dict[str, Any]] = []
+        # Track tool_call id → name mapping for tool result messages
+        tool_call_names: dict[str, str] = {}
+
         for msg in messages:
             role = msg.get("role", "user")
             content = msg.get("content", "")
+
             if role == "system":
                 system_instruction = content if isinstance(content, str) else str(content)
-            else:
-                gemini_role = "model" if role == "assistant" else "user"
-                if msg.get("_vision_parts"):
-                    contents.append({"role": gemini_role, "parts": content})
+
+            elif role == "assistant":
+                tool_calls = msg.get("tool_calls")
+                if tool_calls:
+                    # Assistant message with function calls → model with function_call parts
+                    parts: list[Any] = []
+                    if content:
+                        parts.append(content)
+                    for tc in tool_calls:
+                        fn = tc.get("function", tc)
+                        name = fn.get("name", "")
+                        tc_id = tc.get("id", "")
+                        tool_call_names[tc_id] = name
+                        args = fn.get("arguments", {})
+                        if isinstance(args, str):
+                            try:
+                                args = json.loads(args)
+                            except (json.JSONDecodeError, TypeError):
+                                args = {}
+                        parts.append(
+                            types.Part(
+                                function_call=types.FunctionCall(
+                                    name=name,
+                                    args=args,
+                                )
+                            )
+                        )
+                    contents.append({"role": "model", "parts": parts})
                 else:
-                    contents.append({"role": gemini_role, "parts": [content]})
+                    if msg.get("_vision_parts"):
+                        contents.append({"role": "model", "parts": content})
+                    else:
+                        contents.append({"role": "model", "parts": [content]})
+
+            elif role == "tool":
+                # Tool result → user with function_response part
+                tc_id = msg.get("tool_call_id", "")
+                name = tool_call_names.get(tc_id, "unknown_tool")
+                result_content = content
+                if isinstance(result_content, str):
+                    try:
+                        result_content = json.loads(result_content)
+                    except (json.JSONDecodeError, TypeError):
+                        result_content = {"result": result_content}
+                if not isinstance(result_content, dict):
+                    result_content = {"result": str(result_content)}
+                parts = [
+                    types.Part(
+                        function_response=types.FunctionResponse(
+                            name=name,
+                            response=result_content,
+                        )
+                    )
+                ]
+                contents.append({"role": "user", "parts": parts})
+
+            else:
+                # Regular user message
+                if msg.get("_vision_parts"):
+                    contents.append({"role": "user", "parts": content})
+                else:
+                    contents.append({"role": "user", "parts": [content]})
 
         # For a single message, unwrap only if it has exactly one string part
         gen_input: str | list[dict[str, Any]]

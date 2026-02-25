@@ -56,7 +56,12 @@ from .async_openai_img_gen_driver import AsyncOpenAIImageGenDriver
 from .async_openai_stt_driver import AsyncOpenAISTTDriver
 from .async_openai_tts_driver import AsyncOpenAITTSDriver
 from .async_openrouter_driver import AsyncOpenRouterDriver
-from .async_registry import ASYNC_DRIVER_REGISTRY, get_async_driver, get_async_driver_for_model
+from .async_registry import (
+    ASYNC_DRIVER_REGISTRY,
+    ASYNC_PROVIDER_DRIVER_MAP,
+    get_async_driver,
+    get_async_driver_for_model,
+)
 from .async_stability_img_gen_driver import AsyncStabilityImageGenDriver
 from .async_stt_base import AsyncSTTDriver
 from .async_tts_base import AsyncTTSDriver
@@ -419,6 +424,19 @@ PROVIDER_DRIVER_MAP: dict[str, tuple[type, dict[str, str], str]] = {
 }
 
 
+def _find_credential_kwarg(kwarg_map: dict[str, str]) -> str | None:
+    """Find the constructor kwarg used for authentication credentials.
+
+    Checks for ``"api_key"`` first, then ``"token"`` (e.g. HuggingFace).
+    Returns ``None`` for providers with no auth kwarg (e.g. Ollama).
+    """
+    if "api_key" in kwarg_map:
+        return "api_key"
+    if "token" in kwarg_map:
+        return "token"
+    return None
+
+
 def _build_driver_with_env(
     provider: str,
     model_id: str | None,
@@ -445,35 +463,106 @@ def _build_driver_with_env(
     return driver_cls(**kwargs)
 
 
-def get_driver(provider_name: str | None = None, *, env: ProviderEnvironment | None = None) -> object:
+def _build_driver_with_overrides(
+    provider: str,
+    model_id: str | None,
+    api_key: str | None = None,
+    env: ProviderEnvironment | None = None,
+    **overrides: object,
+) -> object:
+    """Construct a sync driver with explicit ``api_key`` and/or ``**overrides``.
+
+    Precedence for each kwarg: ``overrides`` > ``api_key`` > ``env`` > global settings.
+
+    Raises:
+        ValueError: If *provider* is not in :data:`PROVIDER_DRIVER_MAP`.
     """
-    Factory to get a driver instance based on the provider name (legacy style).
+    info = PROVIDER_DRIVER_MAP.get(provider)
+    if info is None:
+        raise ValueError(
+            f"Unknown provider '{provider}' for explicit-credential construction. "
+            f"Known providers: {', '.join(sorted(PROVIDER_DRIVER_MAP))}"
+        )
+
+    driver_cls, kwarg_map, default_model = info
+    kwargs: dict[str, object] = {}
+
+    # Base layer: resolve each kwarg from env (with settings fallback) or settings directly
+    for ctor_kwarg, attr_name in kwarg_map.items():
+        if env is not None:
+            kwargs[ctor_kwarg] = env.resolve(attr_name)
+        else:
+            kwargs[ctor_kwarg] = getattr(settings, attr_name, None)
+
+    # Inject api_key into the credential kwarg (overrides env/settings for that kwarg)
+    if api_key is not None:
+        cred_kwarg = _find_credential_kwarg(kwarg_map)
+        if cred_kwarg:
+            kwargs[cred_kwarg] = api_key
+
+    # Set model
+    if model_id:
+        kwargs["model"] = model_id
+    elif default_model:
+        kwargs["model"] = getattr(settings, default_model, default_model)
+
+    # Explicit overrides take top precedence
+    kwargs.update(overrides)
+
+    return driver_cls(**kwargs)
+
+
+def get_driver(
+    provider_name: str | None = None,
+    *,
+    env: ProviderEnvironment | None = None,
+    api_key: str | None = None,
+    **overrides: object,
+) -> object:
+    """Factory to get a driver instance based on the provider name (legacy style).
+
     Uses default model from settings if not overridden.
 
     Args:
         provider_name: Provider name (e.g. "openai"). Defaults to ``settings.ai_provider``.
         env: Optional per-consumer environment for isolated API keys.
             When ``None``, uses the global settings singleton (current behavior).
+        api_key: Explicit API key injected into the driver's credential kwarg.
+            Takes precedence over *env* and global settings for that kwarg.
+        **overrides: Extra kwargs forwarded to the driver constructor
+            (e.g. ``endpoint=``, ``deployment_id=``). Take top precedence.
     """
     provider = (provider_name or settings.ai_provider or "ollama").strip().lower()
+    if api_key is not None or overrides:
+        return _build_driver_with_overrides(provider, None, api_key=api_key, env=env, **overrides)
     if env is not None:
         return _build_driver_with_env(provider, None, env)
     factory = get_driver_factory(provider)
     return factory(None)  # use default model from settings
 
 
-def get_driver_for_model(model_str: str, *, env: ProviderEnvironment | None = None) -> object:
-    """
-    Factory to get a driver instance based on a full model string.
-    Format: provider/model_id
-    Example: "openai/gpt-4-turbo-preview"
+def get_driver_for_model(
+    model_str: str,
+    *,
+    env: ProviderEnvironment | None = None,
+    api_key: str | None = None,
+    **overrides: object,
+) -> object:
+    """Factory to get a driver instance based on a full model string.
+
+    Format: ``provider/model_id``
+    Example: ``"openai/gpt-4-turbo-preview"``
 
     Args:
         model_str: Model identifier string. Can be either:
-                   - Full format: "provider/model" (e.g. "openai/gpt-4")
-                   - Provider only: "provider" (e.g. "openai")
+                   - Full format: ``"provider/model"`` (e.g. ``"openai/gpt-4"``)
+                   - Provider only: ``"provider"`` (e.g. ``"openai"``)
         env: Optional per-consumer environment for isolated API keys.
             When ``None``, uses the global settings singleton (current behavior).
+        api_key: Explicit API key injected into the driver's credential kwarg.
+            Takes precedence over *env* and global settings for that kwarg.
+        **overrides: Extra kwargs forwarded to the driver constructor
+            (e.g. ``endpoint=``, ``deployment_id=``). Take top precedence.
 
     Returns:
         A configured driver instance for the specified provider/model.
@@ -492,6 +581,8 @@ def get_driver_for_model(model_str: str, *, env: ProviderEnvironment | None = No
     provider = parts[0].lower()
     model_id = parts[1] if len(parts) > 1 else None
 
+    if api_key is not None or overrides:
+        return _build_driver_with_overrides(provider, model_id, api_key=api_key, env=env, **overrides)
     if env is not None:
         return _build_driver_with_env(provider, model_id, env)
 
@@ -504,10 +595,14 @@ def get_driver_for_model(model_str: str, *, env: ProviderEnvironment | None = No
 
 __all__ = [
     "ASYNC_DRIVER_REGISTRY",
+    # Provider driver maps (for explicit-credential construction)
+    "ASYNC_PROVIDER_DRIVER_MAP",
     # Legacy registry dicts (for backwards compatibility)
     "DRIVER_REGISTRY",
     # Embedding model dimension metadata
     "EMBEDDING_MODEL_DIMENSIONS",
+    # Provider driver maps (for explicit-credential construction)
+    "PROVIDER_DRIVER_MAP",
     # Sync LLM drivers
     "AirLLMDriver",
     # Async LLM drivers

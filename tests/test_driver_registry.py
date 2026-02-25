@@ -4,11 +4,15 @@ import pytest
 
 from prompture.drivers import (
     DRIVER_REGISTRY,
+    PROVIDER_DRIVER_MAP,
+    get_driver,
     get_driver_for_model,
 )
 from prompture.drivers.async_base import AsyncDriver
 from prompture.drivers.async_registry import (
     ASYNC_DRIVER_REGISTRY,
+    ASYNC_PROVIDER_DRIVER_MAP,
+    get_async_driver,
     get_async_driver_for_model,
 )
 from prompture.drivers.base import Driver
@@ -339,3 +343,98 @@ class TestDriverInterface:
 
         # Clean up
         unregister_async_driver("async_interface_test")
+
+
+class TestDriverWithApiKeyOverrides:
+    """Tests for api_key= and **overrides on factory functions."""
+
+    def test_sync_api_key_creates_driver_with_explicit_key(self):
+        """api_key= injects the key into the driver's credential kwarg."""
+        driver = get_driver_for_model("openai/gpt-test", api_key="sk-test-123")
+        assert driver.api_key == "sk-test-123"
+        assert driver.model == "gpt-test"
+
+    def test_async_api_key_creates_driver_with_explicit_key(self):
+        """api_key= works the same on the async path."""
+        driver = get_async_driver_for_model("openai/gpt-test", api_key="sk-test-456")
+        assert driver.api_key == "sk-test-456"
+        assert driver.model == "gpt-test"
+
+    def test_sync_overrides_forward_extra_kwargs(self):
+        """**overrides are forwarded to the driver constructor."""
+        driver = get_driver_for_model(
+            "ollama/llama3", api_key=None, endpoint="http://custom:11434"
+        )
+        # OllamaDriver auto-appends /api/generate to bare base URLs
+        assert driver.endpoint == "http://custom:11434/api/generate"
+        assert driver.model == "llama3"
+
+    def test_async_overrides_forward_extra_kwargs(self):
+        """**overrides are forwarded to the async driver constructor."""
+        driver = get_async_driver_for_model(
+            "ollama/llama3", api_key=None, endpoint="http://custom:11434"
+        )
+        # OllamaDriver auto-appends /api/generate to bare base URLs
+        assert driver.endpoint == "http://custom:11434/api/generate"
+        assert driver.model == "llama3"
+
+    def test_sync_unknown_provider_with_api_key_raises(self):
+        """Unknown provider with api_key= raises ValueError."""
+        with pytest.raises(ValueError, match="Unknown provider"):
+            get_driver_for_model("nonexistent_xyz/model", api_key="key")
+
+    def test_async_unknown_provider_with_api_key_raises(self):
+        """Unknown provider with api_key= raises ValueError."""
+        with pytest.raises(ValueError, match="Unknown provider"):
+            get_async_driver_for_model("nonexistent_xyz/model", api_key="key")
+
+    def test_sync_no_api_key_no_env_falls_through_to_registry(self):
+        """Without api_key or env, falls through to global registry (existing behavior)."""
+        register_driver(
+            "fallback_test",
+            lambda model=None: MockDriver(model=model, api_key="registry-key"),
+            overwrite=True,
+        )
+        driver = get_driver_for_model("fallback_test/my-model")
+        assert isinstance(driver, MockDriver)
+        assert driver.model == "my-model"
+        assert driver.api_key == "registry-key"
+        unregister_driver("fallback_test")
+
+    def test_async_no_api_key_no_env_falls_through_to_registry(self):
+        """Without api_key or env, falls through to async global registry."""
+        register_async_driver(
+            "async_fallback_test",
+            lambda model=None: MockAsyncDriver(model=model, api_key="registry-key"),
+            overwrite=True,
+        )
+        driver = get_async_driver_for_model("async_fallback_test/my-model")
+        assert isinstance(driver, MockAsyncDriver)
+        assert driver.model == "my-model"
+        assert driver.api_key == "registry-key"
+        unregister_async_driver("async_fallback_test")
+
+    def test_sync_get_driver_with_api_key(self):
+        """get_driver() (provider-only) also accepts api_key=."""
+        driver = get_driver("openai", api_key="sk-override")
+        assert driver.api_key == "sk-override"
+
+    def test_async_get_driver_with_api_key(self):
+        """get_async_driver() (provider-only) also accepts api_key=."""
+        driver = get_async_driver("openai", api_key="sk-override")
+        assert driver.api_key == "sk-override"
+
+    def test_overrides_can_set_model(self):
+        """Explicit model= override beats the model_id from the model string."""
+        driver = get_driver_for_model("openai/gpt-test", api_key="sk-base", model="gpt-override")
+        assert driver.model == "gpt-override"
+
+    def test_sync_provider_driver_map_has_expected_providers(self):
+        """Sanity check that PROVIDER_DRIVER_MAP has the main providers."""
+        for provider in ("openai", "claude", "google", "groq", "ollama", "azure"):
+            assert provider in PROVIDER_DRIVER_MAP
+
+    def test_async_provider_driver_map_has_expected_providers(self):
+        """Sanity check that ASYNC_PROVIDER_DRIVER_MAP has the main providers."""
+        for provider in ("openai", "claude", "google", "groq", "ollama", "azure"):
+            assert provider in ASYNC_PROVIDER_DRIVER_MAP

@@ -110,6 +110,7 @@ class SequentialGroup:
         callbacks: GroupCallbacks | None = None,
         max_total_cost: float | None = None,
         step_conditions: list[Callable[[str, dict[str, Any]], bool]] | None = None,
+        deps: Any = None,
     ) -> None:
         self._agents = _normalise_agents(agents)
         self._state: dict[str, Any] = dict(state) if state else {}
@@ -118,6 +119,7 @@ class SequentialGroup:
         self._callbacks = callbacks or GroupCallbacks()
         self._max_total_cost = max_total_cost
         self._step_conditions = step_conditions
+        self._deps = deps
         self._stop_requested = False
 
     def stop(self) -> None:
@@ -150,8 +152,9 @@ class SequentialGroup:
         result = self.run()
         result.save(path)
 
-    def run(self, prompt: str = "") -> GroupResult:
+    def run(self, prompt: str = "", *, deps: Any = None) -> GroupResult:
         """Execute all agents in order."""
+        effective_deps = deps if deps is not None else self._deps
         self._stop_requested = False
         t0 = time.perf_counter()
         timeline: list[GroupStep] = []
@@ -192,7 +195,9 @@ class SequentialGroup:
 
             step_t0 = time.perf_counter()
             try:
-                result = agent.run(effective)
+                result = (
+                    agent.run(effective, deps=effective_deps) if effective_deps is not None else agent.run(effective)
+                )
                 duration_ms = (time.perf_counter() - step_t0) * 1000
                 turns += 1
 
@@ -307,6 +312,7 @@ class LoopGroup:
         error_policy: ErrorPolicy = ErrorPolicy.fail_fast,
         callbacks: GroupCallbacks | None = None,
         max_total_cost: float | None = None,
+        deps: Any = None,
     ) -> None:
         self._agents = _normalise_agents(agents)
         self._exit_condition = exit_condition
@@ -315,6 +321,7 @@ class LoopGroup:
         self._error_policy = error_policy
         self._callbacks = callbacks or GroupCallbacks()
         self._max_total_cost = max_total_cost
+        self._deps = deps
         self._stop_requested = False
 
     def stop(self) -> None:
@@ -342,8 +349,9 @@ class LoopGroup:
                 if hasattr(agent, "inject_state"):
                     agent.inject_state(state, recursive=True)
 
-    def run(self, prompt: str = "") -> GroupResult:
+    def run(self, prompt: str = "", *, deps: Any = None) -> GroupResult:
         """Execute the loop."""
+        effective_deps = deps if deps is not None else self._deps
         self._stop_requested = False
         t0 = time.perf_counter()
         timeline: list[GroupStep] = []
@@ -384,7 +392,11 @@ class LoopGroup:
 
                 step_t0 = time.perf_counter()
                 try:
-                    result = agent.run(effective)
+                    result = (
+                        agent.run(effective, deps=effective_deps)
+                        if effective_deps is not None
+                        else agent.run(effective)
+                    )
                     duration_ms = (time.perf_counter() - step_t0) * 1000
 
                     agent_results[result_key] = result
@@ -688,7 +700,8 @@ class GroupAsAgent:
 
     def run(self, prompt: str, **kwargs: Any) -> AgentResult:
         """Run the wrapped group and return an AgentResult."""
-        group_result = self._group.run(prompt)
+        deps = kwargs.pop("deps", None)
+        group_result = self._group.run(prompt, deps=deps) if deps is not None else self._group.run(prompt)
 
         # Use the last agent's output text, or the shared state
         output_text = ""
