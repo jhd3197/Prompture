@@ -56,7 +56,12 @@ from .async_openai_img_gen_driver import AsyncOpenAIImageGenDriver
 from .async_openai_stt_driver import AsyncOpenAISTTDriver
 from .async_openai_tts_driver import AsyncOpenAITTSDriver
 from .async_openrouter_driver import AsyncOpenRouterDriver
-from .async_registry import ASYNC_DRIVER_REGISTRY, get_async_driver, get_async_driver_for_model
+from .async_registry import (
+    ASYNC_DRIVER_REGISTRY,
+    ASYNC_PROVIDER_DRIVER_MAP,
+    get_async_driver,
+    get_async_driver_for_model,
+)
 from .async_stability_img_gen_driver import AsyncStabilityImageGenDriver
 from .async_stt_base import AsyncSTTDriver
 from .async_tts_base import AsyncTTSDriver
@@ -590,6 +595,8 @@ def get_driver_for_model(
 
 __all__ = [
     "ASYNC_DRIVER_REGISTRY",
+    # Provider driver maps (for explicit-credential construction)
+    "ASYNC_PROVIDER_DRIVER_MAP",
     # Legacy registry dicts (for backwards compatibility)
     "DRIVER_REGISTRY",
     # Embedding model dimension metadata
