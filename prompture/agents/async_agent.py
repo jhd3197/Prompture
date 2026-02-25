@@ -1031,6 +1031,7 @@ class AsyncAgent(Generic[DepsType]):
         """
         import re
 
+        # Match <think>...</think> tags (case-insensitive, allows multiline)
         pattern = r"<think>(.*?)</think>"
         matches = re.findall(pattern, content, re.DOTALL | re.IGNORECASE)
         if matches:
