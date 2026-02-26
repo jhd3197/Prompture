@@ -59,6 +59,33 @@ def _capability_badges(caps: dict) -> str:
     return ", ".join(badges) if badges else ""
 
 
+def _status_badge(entry: dict) -> str:
+    """Build a deprecation/lifecycle badge from an enriched entry."""
+    status = entry.get("status")
+    if status == "deprecated":
+        superseded = entry.get("superseded_by")
+        badge = "DEPRECATED"
+        if superseded:
+            badge += f" -> {superseded}"
+        eos = entry.get("end_of_support")
+        if eos:
+            badge += f" (EOS: {eos})"
+        return f" [{badge}]"
+    if status == "legacy":
+        superseded = entry.get("superseded_by")
+        badge = "LEGACY"
+        if superseded:
+            badge += f" -> {superseded}"
+        return f" [{badge}]"
+    return ""
+
+
+def _source_tag(entry: dict) -> str:
+    """Return a compact source indicator."""
+    source = entry.get("source", "unknown")
+    return f"({source})"
+
+
 def main():
     parser = argparse.ArgumentParser(description="Auto-detect available LLM models")
     parser.add_argument("--simple", action="store_true", help="Plain list without capabilities")
@@ -105,6 +132,8 @@ def main():
             for entry in sorted(entries, key=lambda e: e["model_id"]):
                 caps = entry.get("capabilities")
                 verified_badge = " [verified]" if entry.get("verified") else ""
+                deprecation_badge = _status_badge(entry)
+                source = _source_tag(entry)
                 last_used = entry.get("last_used")
                 use_info = ""
                 if last_used:
@@ -127,12 +156,12 @@ def main():
                         detail += f"  [{badges}]"
                     if price_str:
                         detail += price_str
-                    print(f"  {entry['model_id']:<40s} {detail}{verified_badge}{use_info}")
+                    print(f"  {entry['model_id']:<40s} {detail}  {source}{verified_badge}{deprecation_badge}{use_info}")
                 else:
                     line = f"  {entry['model_id']}"
                     if price_str:
                         line += f"  {price_str.strip()}"
-                    print(f"{line}{verified_badge}{use_info}")
+                    print(f"{line}  {source}{verified_badge}{deprecation_badge}{use_info}")
             print()
 
     except Exception as e:

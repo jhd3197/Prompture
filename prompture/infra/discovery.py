@@ -166,7 +166,8 @@ def get_available_models(
             return cached  # type: ignore[no-any-return]
 
     logger.debug("Discovery cache miss for key=%s — querying providers", cache_key)
-    available_models: set[str] = set()
+    # Maps model string → source ("api", "static", "catalog"). First source wins.
+    model_sources: dict[str, str] = {}
     configured_providers: set[str] = set()
     # Providers where list_models() returned an authoritative model list.
     # For these, we trust the API response and skip MODEL_PRICING / models.dev additions.
@@ -265,7 +266,9 @@ def get_available_models(
                     api_succeeded = True
                     api_authoritative_providers.add(provider)
                     for model_id in api_models:
-                        available_models.add(f"{provider}/{model_id}")
+                        model_str = f"{provider}/{model_id}"
+                        if model_str not in model_sources:
+                            model_sources[model_str] = "api"
             except Exception as e:
                 logger.warning("list_models() failed for %s: %s", provider, e)
 
@@ -277,7 +280,9 @@ def get_available_models(
                 for model_id in pricing:
                     if model_id == "default":
                         continue
-                    available_models.add(f"{provider}/{model_id}")
+                    model_str = f"{provider}/{model_id}"
+                    if model_str not in model_sources:
+                        model_sources[model_str] = "static"
 
         except Exception as e:
             logger.warning(f"Error detecting models for provider {provider}: {e}")
@@ -293,9 +298,11 @@ def get_available_models(
     for prompture_name, api_name in PROVIDER_MAP.items():
         if prompture_name in configured_providers and prompture_name not in api_authoritative_providers:
             for model_id in get_all_provider_models(api_name):
-                available_models.add(f"{prompture_name}/{model_id}")
+                model_str = f"{prompture_name}/{model_id}"
+                if model_str not in model_sources:
+                    model_sources[model_str] = "catalog"
 
-    sorted_models = sorted(available_models)
+    sorted_models = sorted(model_sources.keys())
 
     # --- verified_only filtering ---
     verified_set: set[str] | None = None
@@ -316,8 +323,8 @@ def get_available_models(
         _discovery_cache.set(cache_key, sorted_models, ttl=ttl)
         return sorted_models
 
-    # Build enriched dicts with capabilities from models.dev
-    from .model_rates import get_model_capabilities
+    # Build enriched dicts with capabilities and lifecycle from models.dev
+    from .model_rates import get_model_capabilities, get_model_lifecycle
 
     # Fetch all ledger stats for annotation (keyed by model_name)
     ledger_stats: dict[str, dict[str, Any]] = {}
@@ -348,12 +355,20 @@ def get_available_models(
         caps = get_model_capabilities(provider, model_id)
         caps_dict = dataclasses.asdict(caps) if caps is not None else None
 
+        lifecycle = get_model_lifecycle(provider, model_id)
+
         entry: dict[str, Any] = {
             "model": model_str,
             "provider": provider,
             "model_id": model_id,
             "capabilities": caps_dict,
+            "source": model_sources.get(model_str, "unknown"),
             "verified": verified_set is not None and model_str in verified_set,
+            "status": lifecycle.get("status") if lifecycle else None,
+            "family": lifecycle.get("family") if lifecycle else None,
+            "release_date": lifecycle.get("release_date") if lifecycle else None,
+            "superseded_by": lifecycle.get("superseded_by") if lifecycle else None,
+            "end_of_support": lifecycle.get("end_of_support") if lifecycle else None,
         }
 
         stats = ledger_stats.get(model_str)

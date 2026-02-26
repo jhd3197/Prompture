@@ -31,6 +31,7 @@ from .model_rates import (
     ModelCapabilities,
     get_model_capabilities,
     get_model_info,
+    get_model_lifecycle,
     get_model_rates,
     refresh_rates_cache,
 )
@@ -69,6 +70,7 @@ __all__ = [
     "get_cache",
     "get_model_capabilities",
     "get_model_info",
+    "get_model_lifecycle",
     "get_model_rates",
     "get_recently_used_models",
     "get_tracker",

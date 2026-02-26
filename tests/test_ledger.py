@@ -260,8 +260,15 @@ class TestDiscoveryIntegration:
                 assert entry["use_count"] == 5
                 assert entry["last_used"] == "2024-06-15T12:00:00+00:00"
 
-            # Any enriched entry should have the new fields
+            # Any enriched entry should have the expected fields
             for entry in enriched:
                 assert "verified" in entry
                 assert "last_used" in entry
                 assert "use_count" in entry
+                assert "source" in entry
+                assert entry["source"] in ("api", "static", "catalog", "unknown")
+                assert "status" in entry
+                assert "family" in entry
+                assert "release_date" in entry
+                assert "superseded_by" in entry
+                assert "end_of_support" in entry
