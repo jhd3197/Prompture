@@ -44,6 +44,10 @@ _lock = threading.Lock()
 _data: Optional[dict[str, Any]] = None
 _loaded = False
 
+# Lifecycle cache: maps models.dev provider name → {model_id: lifecycle_dict}
+_lifecycle_cache: dict[str, dict[str, dict[str, Any]]] = {}
+_lifecycle_lock = threading.Lock()
+
 
 def _get_ttl_days() -> int:
     """Get TTL from settings if available, otherwise default to 7."""
@@ -321,6 +325,9 @@ def refresh_rates_cache(force: bool = False) -> bool:
             _data = fresh
             _write_cache(fresh)
             _loaded = True
+            # Clear lifecycle cache so it's recomputed from fresh data
+            with _lifecycle_lock:
+                _lifecycle_cache.clear()
             return True
 
         return False
@@ -482,3 +489,154 @@ def get_model_capabilities(provider: str, model_id: str) -> Optional[ModelCapabi
 
     # models.dev unavailable — fall back to KB
     return kb_entry
+
+
+# ── Model Lifecycle / Deprecation ──────────────────────────────────────────
+
+
+def _compute_family_status(provider_api_name: str) -> dict[str, dict[str, Any]]:
+    """Compute lifecycle status for every model of a provider from models.dev data.
+
+    Groups models by ``family`` field, sorts each family by ``release_date``
+    descending, and assigns statuses:
+
+    - ``"current"`` — newest model in the family (or has ``"(latest)"`` marker).
+    - ``"legacy"`` — >6 months old with a newer sibling.
+    - ``"deprecated"`` — >18 months old with a newer sibling, or explicitly
+      marked ``status: "deprecated"`` in models.dev.
+
+    Returns a dict mapping ``model_id`` → lifecycle metadata dict with keys:
+    ``status``, ``family``, ``release_date``, ``superseded_by``, ``end_of_support``.
+    """
+    from datetime import timedelta
+
+    data = _ensure_loaded()
+    if data is None:
+        return {}
+
+    provider_data = data.get(provider_api_name)
+    if not isinstance(provider_data, dict):
+        return {}
+
+    models = provider_data.get("models", provider_data)
+    if not isinstance(models, dict):
+        return {}
+
+    now = datetime.now(timezone.utc)
+
+    # Build per-family lists: {family: [(model_id, entry, release_date, is_latest_marker), ...]}
+    families: dict[str, list[tuple[str, dict[str, Any], Optional[datetime], bool]]] = {}
+    for model_id, entry in models.items():
+        if not isinstance(entry, dict):
+            continue
+
+        family = entry.get("family") or _infer_family(model_id)
+        name = entry.get("name", "")
+        is_latest_marker = "(latest)" in name.lower() if name else False
+
+        release_date: Optional[datetime] = None
+        raw_date = entry.get("release_date")
+        if raw_date:
+            with contextlib.suppress(Exception):
+                release_date = datetime.fromisoformat(str(raw_date).replace("Z", "+00:00"))
+                if release_date.tzinfo is None:
+                    release_date = release_date.replace(tzinfo=timezone.utc)
+
+        families.setdefault(family, []).append((model_id, entry, release_date, is_latest_marker))
+
+    result: dict[str, dict[str, Any]] = {}
+
+    for family, members in families.items():
+        # Sort by release_date descending (None dates go last)
+        members.sort(key=lambda m: m[2] or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
+
+        # Identify the "current" model: explicit (latest) marker wins, else newest by date
+        current_idx = 0
+        for i, (_, _, _, is_latest) in enumerate(members):
+            if is_latest:
+                current_idx = i
+                break
+
+        for i, (model_id, entry, release_date, _) in enumerate(members):
+            # Check explicit status from models.dev
+            explicit_status = entry.get("status")
+            if isinstance(explicit_status, str) and explicit_status.lower() == "deprecated":
+                status = "deprecated"
+            elif i == current_idx:
+                status = "current"
+            elif release_date is not None:
+                age = now - release_date
+                has_newer = i > current_idx  # there's a newer sibling
+                if has_newer and age > timedelta(days=548):  # ~18 months
+                    status = "deprecated"
+                elif has_newer and age > timedelta(days=183):  # ~6 months
+                    status = "legacy"
+                else:
+                    status = "current"
+            else:
+                # No date info — if not the current one, mark as unknown
+                status = "current" if i == current_idx else "unknown"
+
+            # Compute superseded_by: next newer model in the family
+            superseded_by: Optional[str] = None
+            if i > current_idx and i > 0:
+                superseded_by = members[i - 1][0]
+
+            # Estimate end_of_support for legacy/deprecated: release_date + 24 months
+            end_of_support: Optional[str] = None
+            if status in ("legacy", "deprecated") and release_date is not None:
+                eos = release_date + timedelta(days=730)  # ~24 months
+                end_of_support = eos.strftime("%Y-%m-%d")
+
+            result[model_id] = {
+                "status": status,
+                "family": family,
+                "release_date": release_date.strftime("%Y-%m-%d") if release_date else None,
+                "superseded_by": superseded_by,
+                "end_of_support": end_of_support,
+            }
+
+    return result
+
+
+def _infer_family(model_id: str) -> str:
+    """Infer a family name from a model ID by stripping date/version suffixes.
+
+    Examples:
+    - ``claude-3-haiku-20240307`` → ``claude-3-haiku``
+    - ``gpt-4o-2024-08-06`` → ``gpt-4o``
+    - ``gemini-1.5-pro`` → ``gemini-1.5-pro``  (no suffix to strip)
+    """
+    import re
+
+    # Strip trailing date patterns: -YYYYMMDD or -YYYY-MM-DD
+    stripped = re.sub(r"-\d{4}-?\d{2}-?\d{2}$", "", model_id)
+    return stripped
+
+
+def get_model_lifecycle(provider: str, model_id: str) -> Optional[dict[str, Any]]:
+    """Return lifecycle/deprecation metadata for a model.
+
+    Returns a dict with keys: ``status``, ``family``, ``release_date``,
+    ``superseded_by``, ``end_of_support``.  Returns ``None`` for unknown models.
+
+    Results are cached per-provider; call :func:`refresh_rates_cache` to clear.
+    """
+    api_provider = PROVIDER_MAP.get(provider, provider)
+
+    with _lifecycle_lock:
+        if api_provider not in _lifecycle_cache:
+            _lifecycle_cache[api_provider] = _compute_family_status(api_provider)
+
+    family_status = _lifecycle_cache.get(api_provider, {})
+
+    # Exact match
+    if model_id in family_status:
+        return dict(family_status[model_id])
+
+    # Try base model fallback (date-stripped)
+    base = _strip_to_base_model(model_id)
+    if base is not None and base in family_status:
+        return dict(family_status[base])
+
+    return None

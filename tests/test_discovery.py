@@ -1,5 +1,5 @@
 import os
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -200,6 +200,140 @@ class TestElevenLabsSTTListModels:
         with patch.dict(os.environ, {}, clear=True):
             result = ElevenLabsSTTDriver.list_models(api_key=None)
             assert result is None
+
+
+class TestProvenanceTracking:
+    """Tests for source provenance tracking in enriched discovery results."""
+
+    def _mock_settings(self, mock_settings):
+        """Configure mock_settings so only ollama is 'configured'."""
+        mock_settings.openai_api_key = None
+        mock_settings.azure_api_key = None
+        mock_settings.claude_api_key = None
+        mock_settings.google_api_key = None
+        mock_settings.groq_api_key = None
+        mock_settings.openrouter_api_key = None
+        mock_settings.grok_api_key = None
+        mock_settings.moonshot_api_key = None
+        mock_settings.zhipu_api_key = None
+        mock_settings.modelscope_api_key = None
+        mock_settings.cachibot_api_key = None
+        mock_settings.ollama_endpoint = "http://localhost:11434/api/generate"
+        mock_settings.lmstudio_endpoint = None
+        mock_settings.lmstudio_api_key = None
+
+    @patch.object(OllamaDriver, "list_models", return_value=["llama3:latest"])
+    def test_api_source_models(self, mock_list):
+        """Models from list_models() are tagged source='api'."""
+        mock_ledger = MagicMock()
+        mock_ledger.get_verified_models.return_value = set()
+        mock_ledger.get_all_stats.return_value = []
+
+        with (
+            patch("prompture.infra.ledger._get_ledger", return_value=mock_ledger),
+            patch("prompture.infra.discovery.settings") as mock_settings,
+            patch("prompture.infra.model_rates.PROVIDER_MAP", {}),
+        ):
+            self._mock_settings(mock_settings)
+            enriched = get_available_models(include_capabilities=True)
+            llama = [e for e in enriched if e["model"] == "ollama/llama3:latest"]
+            assert len(llama) == 1
+            assert llama[0]["source"] == "api"
+
+    @patch.object(OllamaDriver, "list_models", return_value=None)
+    def test_static_source_models(self, mock_list):
+        """When list_models() returns None, MODEL_PRICING models are tagged source='static'."""
+        mock_ledger = MagicMock()
+        mock_ledger.get_verified_models.return_value = set()
+        mock_ledger.get_all_stats.return_value = []
+
+        with (
+            patch("prompture.infra.ledger._get_ledger", return_value=mock_ledger),
+            patch("prompture.infra.discovery.settings") as mock_settings,
+            patch("prompture.infra.model_rates.PROVIDER_MAP", {}),
+        ):
+            self._mock_settings(mock_settings)
+            enriched = get_available_models(include_capabilities=True)
+            ollama_entries = [e for e in enriched if e["provider"] == "ollama"]
+            # All should be static since list_models returned None
+            for entry in ollama_entries:
+                assert entry["source"] == "static", f"{entry['model']} should be static"
+
+    def test_catalog_source_models(self):
+        """Models from models.dev catalog (non-authoritative) are tagged source='catalog'."""
+        mock_ledger = MagicMock()
+        mock_ledger.get_verified_models.return_value = set()
+        mock_ledger.get_all_stats.return_value = []
+
+        # Set up: grok is configured, list_models fails, no MODEL_PRICING,
+        # but models.dev has grok models
+        with (
+            patch("prompture.infra.ledger._get_ledger", return_value=mock_ledger),
+            patch("prompture.infra.discovery.settings") as mock_settings,
+            patch("prompture.infra.model_rates.PROVIDER_MAP", {"grok": "xai"}),
+            patch(
+                "prompture.infra.model_rates.get_all_provider_models",
+                return_value=["grok-2"],
+            ),
+            patch(
+                "prompture.drivers.grok_driver.GrokDriver.list_models",
+                side_effect=Exception("no api"),
+            ),
+        ):
+            self._mock_settings(mock_settings)
+            mock_settings.grok_api_key = "xai-test"
+            # Remove MODEL_PRICING so static path doesn't fire
+            with patch.object(
+                type(
+                    __import__("prompture.drivers.grok_driver", fromlist=["GrokDriver"]).GrokDriver
+                ),
+                "MODEL_PRICING",
+                {},
+                create=True,
+            ):
+                enriched = get_available_models(include_capabilities=True)
+                grok_entries = [e for e in enriched if e["model"] == "grok/grok-2"]
+                assert len(grok_entries) == 1
+                assert grok_entries[0]["source"] == "catalog"
+
+    @patch.object(OllamaDriver, "list_models", return_value=["llama3:latest"])
+    def test_source_not_in_plain_mode(self, mock_list):
+        """Plain string mode still returns list[str], no source info."""
+        models = get_available_models(include_capabilities=False)
+        assert isinstance(models, list)
+        if models:
+            assert isinstance(models[0], str)
+
+    @patch.object(OllamaDriver, "list_models", return_value=["llama3:latest"])
+    def test_api_source_wins_over_catalog(self, mock_list):
+        """When a model is found via API, catalog doesn't overwrite its source."""
+        mock_ledger = MagicMock()
+        mock_ledger.get_verified_models.return_value = set()
+        mock_ledger.get_all_stats.return_value = []
+
+        with (
+            patch("prompture.infra.ledger._get_ledger", return_value=mock_ledger),
+            patch("prompture.infra.discovery.settings") as mock_settings,
+            # Set up PROVIDER_MAP so catalog also tries to add ollama models
+            patch(
+                "prompture.infra.model_rates.PROVIDER_MAP",
+                {"ollama": "ollama"},
+            ),
+            patch(
+                "prompture.infra.model_rates.get_all_provider_models",
+                return_value=["llama3:latest", "mistral:latest"],
+            ),
+        ):
+            self._mock_settings(mock_settings)
+            enriched = get_available_models(include_capabilities=True)
+            # llama3:latest came from API, catalog shouldn't overwrite
+            llama = [e for e in enriched if e["model"] == "ollama/llama3:latest"]
+            assert len(llama) == 1
+            assert llama[0]["source"] == "api"
+            # mistral:latest was only in catalog (not returned by list_models)
+            # Actually, list_models returned ["llama3:latest"] and was authoritative,
+            # so ollama is in api_authoritative_providers — catalog won't add models.
+            # The catalog path skips api_authoritative providers, so mistral won't appear.
 
 
 class TestDiscoveryCache:
