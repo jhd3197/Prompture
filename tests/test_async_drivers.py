@@ -153,7 +153,7 @@ class TestAsyncOllamaDriver:
 
         mock_response = MagicMock()
         mock_response.json.return_value = {
-            "response": '{"answer": "yes"}',
+            "message": {"content": '{"answer": "yes"}'},
             "prompt_eval_count": 20,
             "eval_count": 10,
         }
