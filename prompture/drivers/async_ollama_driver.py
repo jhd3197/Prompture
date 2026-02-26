@@ -41,61 +41,11 @@ class AsyncOllamaDriver(AsyncDriver):
         return _prepare_ollama_vision_messages(messages)
 
     async def generate(self, prompt: str, options: dict[str, Any] | None = None) -> dict[str, Any]:
-        merged_options = self.options.copy()
-        if options:
-            merged_options.update(options)
-
-        payload = {
-            "prompt": prompt,
-            "model": merged_options.get("model", self.model),
-            "stream": False,
-        }
-
-        # Native JSON mode / structured output support
-        if merged_options.get("json_mode"):
-            json_schema = merged_options.get("json_schema")
-            payload["format"] = json_schema if json_schema else "json"
-
-        if "temperature" in merged_options:
-            payload["temperature"] = merged_options["temperature"]
-        if "top_p" in merged_options:
-            payload["top_p"] = merged_options["top_p"]
-        if "top_k" in merged_options:
-            payload["top_k"] = merged_options["top_k"]
-
-        async with httpx.AsyncClient() as client:
-            try:
-                r = await client.post(self.endpoint, json=payload, timeout=120)
-                r.raise_for_status()
-                response_data = r.json()
-            except httpx.HTTPStatusError as e:
-                raise RuntimeError(f"Ollama request failed: {e}") from e
-            except Exception as e:
-                raise RuntimeError(f"Ollama request failed: {e}") from e
-
-        prompt_tokens = response_data.get("prompt_eval_count", 0)
-        completion_tokens = response_data.get("eval_count", 0)
-        total_tokens = prompt_tokens + completion_tokens
-
-        meta = {
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
-            "total_tokens": total_tokens,
-            "cost": 0.0,
-            "raw_response": response_data,
-            "model_name": merged_options.get("model", self.model),
-        }
-
-        text = response_data.get("response", "")
-        reasoning_content = response_data.get("thinking") or None
-
-        if not text and reasoning_content:
-            text = reasoning_content
-
-        result: dict[str, Any] = {"text": text, "meta": meta}
-        if reasoning_content is not None:
-            result["reasoning_content"] = reasoning_content
-        return result
+        # Delegate to /api/chat — the /api/generate endpoint produces
+        # poor results with instruction-tuned models and does not support
+        # JSON schema objects in the ``format`` field.
+        messages = [{"role": "user", "content": prompt}]
+        return await self.generate_messages(messages, options or {})
 
     # ------------------------------------------------------------------
     # Tool use

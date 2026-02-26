@@ -43,6 +43,13 @@ print(person.name)  # Maria
 - **Auto-repair** — Optional second LLM pass to fix malformed JSON
 - **Batch testing** — Spec-driven suites to compare models side by side
 
+## Built With Prompture
+
+Projects powered by Prompture at their core:
+
+- **[CachiBot](https://github.com/jhd3197/CachiBot)** — AI-powered bot built on Prompture's structured extraction and multi-provider driver system
+- **[AgentSite](https://github.com/jhd3197/AgentSite)** — Agent-driven web platform using Prompture for LLM orchestration and structured output
+
 ## Installation
 
 ```bash
