@@ -86,92 +86,11 @@ class OllamaDriver(Driver):
         return _prepare_ollama_vision_messages(messages)
 
     def generate(self, prompt: str, options: Optional[dict[str, Any]] = None) -> dict[str, Any]:
-        # Merge instance options with call-specific options
-        merged_options = self.options.copy()
-        if options:
-            merged_options.update(options)
-
-        payload = {
-            "prompt": prompt,
-            "model": merged_options.get("model", self.model),
-            "stream": False,
-        }
-
-        # Native JSON mode / structured output support
-        if merged_options.get("json_mode"):
-            json_schema = merged_options.get("json_schema")
-            payload["format"] = json_schema if json_schema else "json"
-
-        # Add any Ollama-specific options from merged_options
-        if "temperature" in merged_options:
-            payload["temperature"] = merged_options["temperature"]
-        if "top_p" in merged_options:
-            payload["top_p"] = merged_options["top_p"]
-        if "top_k" in merged_options:
-            payload["top_k"] = merged_options["top_k"]
-
-        try:
-            logger.debug(f"Sending request to Ollama endpoint: {self.endpoint}")
-            logger.debug(f"Request payload: {payload}")
-
-            r = requests.post(self.endpoint, json=payload, timeout=merged_options.get("timeout", 300))  # nosec B113
-            logger.debug(f"Response status code: {r.status_code}")
-
-            r.raise_for_status()
-
-            response_text = r.text
-            logger.debug(f"Raw response text: {response_text}")
-
-            response_data = r.json()
-            logger.debug(f"Parsed response data: {response_data}")
-
-            if not isinstance(response_data, dict):
-                raise ValueError(f"Expected dict response, got {type(response_data)}")
-
-        except requests.exceptions.ConnectionError as e:
-            logger.error(f"Connection error to Ollama endpoint: {e}")
-            # Preserve original exception
-            raise
-        except requests.exceptions.HTTPError as e:
-            logger.error(f"HTTP error from Ollama endpoint: {e}")
-            # Preserve original exception
-            raise
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to decode JSON response: {e}")
-            # Re-raise JSONDecodeError with more context
-            raise json.JSONDecodeError(f"Invalid JSON response from Ollama: {e.msg}", e.doc, e.pos) from e
-        except Exception as e:
-            logger.error(f"Unexpected error in Ollama request: {e}")
-            # Only wrap unknown exceptions in RuntimeError
-            raise RuntimeError(f"Ollama request failed: {e}") from e
-
-        # Extract token counts
-        prompt_tokens = response_data.get("prompt_eval_count", 0)
-        completion_tokens = response_data.get("eval_count", 0)
-        total_tokens = prompt_tokens + completion_tokens
-
-        # Build meta info
-        meta = {
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
-            "total_tokens": total_tokens,
-            "cost": 0.0,
-            "raw_response": response_data,
-            "model_name": merged_options.get("model", self.model),
-        }
-
-        # Ollama returns text in "response"
-        text = response_data.get("response", "")
-        reasoning_content = response_data.get("thinking") or None
-
-        # Reasoning models may return content only in thinking
-        if not text and reasoning_content:
-            text = reasoning_content
-
-        result: dict[str, Any] = {"text": text, "meta": meta}
-        if reasoning_content is not None:
-            result["reasoning_content"] = reasoning_content
-        return result
+        # Delegate to /api/chat — the /api/generate endpoint produces
+        # poor results with instruction-tuned models and does not support
+        # JSON schema objects in the ``format`` field.
+        messages = [{"role": "user", "content": prompt}]
+        return self.generate_messages(messages, options or {})
 
     # ------------------------------------------------------------------
     # Tool use
