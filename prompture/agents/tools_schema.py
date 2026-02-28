@@ -22,6 +22,7 @@ Example::
 from __future__ import annotations
 
 import inspect
+import json
 import logging
 from dataclasses import dataclass, field
 from typing import Any, Callable, get_type_hints
@@ -471,6 +472,36 @@ class ToolRegistry:
         return "\n\n".join(td.to_prompt_format() for td in self._tools.values())
 
     # ------------------------------------------------------------------
+    # Argument validation
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _validate_arguments(td: ToolDefinition, arguments: dict[str, Any]) -> str | None:
+        """Return an LLM-friendly error message if required arguments are missing, else ``None``."""
+        schema = td.parameters
+        if not schema or not isinstance(schema, dict):
+            return None
+        required = schema.get("required", [])
+        properties = schema.get("properties", {})
+        missing = [p for p in required if p not in arguments]
+        if not missing:
+            return None
+        parts = []
+        for p in missing:
+            prop = properties.get(p, {})
+            ptype = prop.get("type", "any")
+            desc = prop.get("description", "")
+            detail = f"  - {p} ({ptype})"
+            if desc:
+                detail += f": {desc}"
+            parts.append(detail)
+        return (
+            f"Missing required argument(s) for '{td.name}'. "
+            f"You must provide:\n" + "\n".join(parts) + "\n"
+            f"You sent: {json.dumps(arguments) if arguments else '{} (empty)'}"
+        )
+
+    # ------------------------------------------------------------------
     # Execution
     # ------------------------------------------------------------------
 
@@ -483,6 +514,9 @@ class ToolRegistry:
         td = self._tools.get(name)
         if td is None:
             raise KeyError(f"Tool not registered: {name!r}")
+        error = self._validate_arguments(td, arguments)
+        if error:
+            return error
         return td.function(**arguments)
 
     async def aexecute(self, name: str, arguments: dict[str, Any]) -> Any:
@@ -500,6 +534,9 @@ class ToolRegistry:
         td = self._tools.get(name)
         if td is None:
             raise KeyError(f"Tool not registered: {name!r}")
+        error = self._validate_arguments(td, arguments)
+        if error:
+            return error
         # Prefer dedicated async wrapper (set by tukuy bridge)
         async_fn = getattr(td.function, "_async_fn", None)
         if async_fn is not None:

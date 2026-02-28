@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 from collections.abc import AsyncIterator
@@ -15,6 +14,7 @@ except Exception:
 
 from ..infra.cost_mixin import CostMixin, prepare_strict_schema
 from .async_base import AsyncDriver
+from .base import _parse_tool_arguments
 from .openai_driver import OpenAIDriver
 
 logger = logging.getLogger(__name__)
@@ -176,25 +176,7 @@ class AsyncOpenAIDriver(CostMixin, AsyncDriver):
         tool_calls_out: list[dict[str, Any]] = []
         if choice.message.tool_calls:
             for tc in choice.message.tool_calls:
-                try:
-                    args = json.loads(tc.function.arguments)
-                except (json.JSONDecodeError, TypeError):
-                    raw = tc.function.arguments
-                    if stop_reason == "length":
-                        logger.warning(
-                            "Tool arguments for %s were truncated due to max_tokens limit. "
-                            "Increase max_tokens in options to allow longer tool outputs. "
-                            "Truncated arguments: %r",
-                            tc.function.name,
-                            raw[:200] if raw else raw,
-                        )
-                    else:
-                        logger.warning(
-                            "Failed to parse tool arguments for %s: %r",
-                            tc.function.name,
-                            raw,
-                        )
-                    args = {}
+                args = _parse_tool_arguments(tc.function.arguments, tc.function.name, stop_reason)
                 tool_calls_out.append(
                     {
                         "id": tc.id,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import time
 from abc import ABC, abstractmethod
@@ -18,6 +19,51 @@ import contextlib
 from ..infra.callbacks import DriverCallbacks
 
 logger = logging.getLogger("prompture.driver")
+
+
+# ------------------------------------------------------------------
+# Shared tool-argument parser for OpenAI-compatible drivers
+# ------------------------------------------------------------------
+
+
+def _parse_tool_arguments(raw_args: Any, tool_name: str, stop_reason: str | None = None) -> dict[str, Any]:
+    """Parse tool call arguments, handling both string and dict formats.
+
+    Some providers return ``arguments`` as a JSON string, others as an
+    already-parsed dict.  Calling ``json.loads()`` on a dict raises
+    ``TypeError`` which previously caused a silent fallback to ``{}``.
+    """
+    if isinstance(raw_args, dict):
+        return raw_args
+    if isinstance(raw_args, str):
+        try:
+            parsed = json.loads(raw_args)
+            return parsed if isinstance(parsed, dict) else {}
+        except json.JSONDecodeError:
+            if stop_reason == "length":
+                logger.warning(
+                    "Tool arguments for %s were truncated due to max_tokens limit. "
+                    "Increase max_tokens in options to allow longer tool outputs. "
+                    "Truncated arguments: %r",
+                    tool_name,
+                    raw_args[:200] if raw_args else raw_args,
+                )
+            else:
+                logger.warning(
+                    "Failed to parse tool arguments for %s: %r",
+                    tool_name,
+                    raw_args[:200] if raw_args else raw_args,
+                )
+            return {}
+    if raw_args is None:
+        return {}
+    logger.warning(
+        "Unexpected argument type %s for tool %s: %r",
+        type(raw_args).__name__,
+        tool_name,
+        raw_args,
+    )
+    return {}
 
 
 # ------------------------------------------------------------------
