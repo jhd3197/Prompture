@@ -298,9 +298,7 @@ class AsyncMoonshotDriver(CostMixin, AsyncDriver):
 
         tool_calls_out: list[dict[str, Any]] = []
         for tc in message.get("tool_calls", []):
-            args = _parse_tool_arguments(
-                tc["function"]["arguments"], tc["function"]["name"], stop_reason
-            )
+            args = _parse_tool_arguments(tc["function"]["arguments"], tc["function"]["name"], stop_reason)
             tool_calls_out.append(
                 {
                     "id": tc["id"],

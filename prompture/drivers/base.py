@@ -26,9 +26,7 @@ logger = logging.getLogger("prompture.driver")
 # ------------------------------------------------------------------
 
 
-def _parse_tool_arguments(
-    raw_args: Any, tool_name: str, stop_reason: str | None = None
-) -> dict[str, Any]:
+def _parse_tool_arguments(raw_args: Any, tool_name: str, stop_reason: str | None = None) -> dict[str, Any]:
     """Parse tool call arguments, handling both string and dict formats.
 
     Some providers return ``arguments`` as a JSON string, others as an
