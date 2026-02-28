@@ -272,14 +272,13 @@ def get_available_models(
             except Exception as e:
                 logger.warning("list_models() failed for %s: %s", provider, e)
 
-            # Static Detection: Get models from MODEL_PRICING only when the API
-            # didn't return an authoritative list (failed, returned None, or the
-            # driver doesn't implement list_models).
-            if not api_succeeded and hasattr(driver_cls, "MODEL_PRICING"):
-                pricing = driver_cls.MODEL_PRICING
-                for model_id in pricing:
-                    if model_id == "default":
-                        continue
+            # Static Detection: Get models from the capabilities knowledge base
+            # (JSON rate files) when the API didn't return an authoritative list
+            # (failed, returned None, or the driver doesn't implement list_models).
+            if not api_succeeded:
+                from .model_rates import get_kb_models_for_provider
+
+                for model_id in get_kb_models_for_provider(provider):
                     model_str = f"{provider}/{model_id}"
                     if model_str not in model_sources:
                         model_sources[model_str] = "static"

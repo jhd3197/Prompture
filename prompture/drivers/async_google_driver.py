@@ -32,7 +32,6 @@ class AsyncGoogleDriver(CostMixin, AsyncDriver):
     supports_streaming = True
 
     MODEL_PRICING = GoogleDriver.MODEL_PRICING
-    _PRICING_UNIT = 1_000_000
 
     def __init__(self, api_key: str | None = None, model: str = "gemini-1.5-pro"):
         if genai is None:
@@ -45,7 +44,11 @@ class AsyncGoogleDriver(CostMixin, AsyncDriver):
         self.options: dict[str, Any] = {}
 
     def _calculate_cost_chars(self, prompt_chars: int, completion_chars: int) -> float:
-        """Calculate cost from character counts (same logic as sync GoogleDriver)."""
+        """Calculate cost from character counts (same logic as sync GoogleDriver).
+
+        Estimates tokens from characters (~4 chars/token) and uses
+        models.dev live rates.  Returns 0.0 if no rates available.
+        """
         from ..infra.model_rates import get_model_rates
 
         live_rates = get_model_rates("google", self.model)
@@ -54,11 +57,9 @@ class AsyncGoogleDriver(CostMixin, AsyncDriver):
             est_completion_tokens = completion_chars / 4
             prompt_cost = (est_prompt_tokens / 1_000_000) * live_rates["input"]
             completion_cost = (est_completion_tokens / 1_000_000) * live_rates["output"]
-        else:
-            model_pricing = self.MODEL_PRICING.get(self.model, {"prompt": 0, "completion": 0})
-            prompt_cost = (prompt_chars / 1_000_000) * model_pricing["prompt"]
-            completion_cost = (completion_chars / 1_000_000) * model_pricing["completion"]
-        return round(prompt_cost + completion_cost, 6)
+            return round(prompt_cost + completion_cost, 6)
+
+        return 0.0
 
     def _extract_usage_metadata(self, response: Any, messages: list[dict[str, Any]]) -> dict[str, Any]:
         """Extract token counts from response, falling back to character estimation."""

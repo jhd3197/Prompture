@@ -22,22 +22,9 @@ class GroqDriver(CostMixin, Driver):
     supports_tool_use = True
     supports_vision = True
 
-    # Approximate pricing per 1K tokens (to be updated with official pricing)
-    # Each model entry defines token parameters and temperature support
-    MODEL_PRICING = {
-        "llama2-70b-4096": {
-            "prompt": 0.0007,  # Estimated pricing
-            "completion": 0.0007,
-            "tokens_param": "max_tokens",
-            "supports_temperature": True,
-        },
-        "mixtral-8x7b-32768": {
-            "prompt": 0.0004,  # Estimated pricing
-            "completion": 0.0004,
-            "tokens_param": "max_tokens",
-            "supports_temperature": True,
-        },
-    }
+    # All pricing and model config now resolved from JSON rate files (KB) and
+    # models.dev live data.  See prompture/infra/rates/groq.json.
+    MODEL_PRICING: dict[str, dict[str, Any]] = {}
 
     def __init__(self, api_key: str | None = None, model: str = "llama2-70b-4096"):
         """Initialize Groq driver.

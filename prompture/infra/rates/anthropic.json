@@ -9,7 +9,8 @@
     "max_output_tokens": 32000,
     "modalities_input": ["text", "image"],
     "modalities_output": ["text"],
-    "api_type": "anthropic"
+    "api_type": "anthropic",
+    "tokens_param": "max_tokens"
   },
   "claude-sonnet-4-6": {
     "supports_temperature": true,
@@ -21,7 +22,8 @@
     "max_output_tokens": 16000,
     "modalities_input": ["text", "image"],
     "modalities_output": ["text"],
-    "api_type": "anthropic"
+    "api_type": "anthropic",
+    "tokens_param": "max_tokens"
   },
   "claude-haiku-4-5": {
     "supports_temperature": true,
@@ -33,6 +35,7 @@
     "max_output_tokens": 8192,
     "modalities_input": ["text", "image"],
     "modalities_output": ["text"],
-    "api_type": "anthropic"
+    "api_type": "anthropic",
+    "tokens_param": "max_tokens"
   }
 }

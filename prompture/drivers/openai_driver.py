@@ -25,47 +25,9 @@ class OpenAIDriver(CostMixin, Driver):
     supports_streaming = True
     supports_vision = True
 
-    # Approximate pricing per 1K tokens (keep updated with OpenAI's official pricing)
-    # Each model entry also defines which token parameter it supports and
-    # whether it accepts temperature.
-    MODEL_PRICING = {
-        "gpt-5-mini": {
-            "prompt": 0.0003,
-            "completion": 0.0006,
-            "tokens_param": "max_completion_tokens",
-            "supports_temperature": False,
-        },
-        "gpt-4o": {
-            "prompt": 0.005,
-            "completion": 0.015,
-            "tokens_param": "max_completion_tokens",
-            "supports_temperature": True,
-        },
-        "gpt-4o-mini": {
-            "prompt": 0.00015,
-            "completion": 0.0006,
-            "tokens_param": "max_completion_tokens",
-            "supports_temperature": True,
-        },
-        "gpt-4": {
-            "prompt": 0.03,
-            "completion": 0.06,
-            "tokens_param": "max_tokens",
-            "supports_temperature": True,
-        },
-        "gpt-4-turbo": {
-            "prompt": 0.01,
-            "completion": 0.03,
-            "tokens_param": "max_tokens",
-            "supports_temperature": True,
-        },
-        "gpt-3.5-turbo": {
-            "prompt": 0.0015,
-            "completion": 0.002,
-            "tokens_param": "max_tokens",
-            "supports_temperature": True,
-        },
-    }
+    # All pricing and model config now resolved from JSON rate files (KB) and
+    # models.dev live data.  See prompture/infra/rates/openai.json.
+    MODEL_PRICING: dict[str, dict[str, Any]] = {}
 
     def __init__(self, api_key: str | None = None, model: str = "gpt-4o-mini"):
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")

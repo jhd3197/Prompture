@@ -8,7 +8,6 @@ ignoring environment defaults.
 """
 
 from prompture import extract_and_jsonify
-from prompture.drivers.openai_driver import OpenAIDriver
 
 # Define the complex text for parsing - 4-paragraph smartphone description
 COMPLEX_TEXT = """
@@ -72,8 +71,15 @@ COMPLEX_SCHEMA = {
     "required": ["name", "price"],
 }
 
-# List of OpenAI models to test (from OpenAIDriver.MODEL_PRICING)
-MODELS_TO_TEST = list(OpenAIDriver.MODEL_PRICING.keys())
+# List of OpenAI models to test
+MODELS_TO_TEST = [
+    "gpt-5.2",
+    "gpt-5.1",
+    "gpt-4o",
+    "gpt-4o-mini",
+    "gpt-4-turbo",
+    "gpt-3.5-turbo",
+]
 
 
 def compare_openai_models():

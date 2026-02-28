@@ -35,28 +35,11 @@ class TestCostMixin:
             expected = round(0.01 + 0.015, 6)
             assert cost == expected
 
-    def test_calculate_cost_fallback_to_model_pricing(self):
-        class TestDriver(CostMixin):
-            MODEL_PRICING = {"test-model": {"prompt": 0.01, "completion": 0.02}}
-
-        driver = TestDriver()
+    def test_calculate_cost_no_rates_returns_zero(self):
+        mixin = CostMixin()
         with patch("prompture.infra.model_rates.get_model_rates", return_value=None):
-            cost = driver._calculate_cost("test", "test-model", 1000, 500)
-            # (1000 / 1000) * 0.01 + (500 / 1000) * 0.02
-            expected = round(0.01 + 0.01, 6)
-            assert cost == expected
-
-    def test_calculate_cost_custom_pricing_unit(self):
-        class TestDriver(CostMixin):
-            _PRICING_UNIT = 1_000_000
-            MODEL_PRICING = {"test-model": {"prompt": 3.0, "completion": 15.0}}
-
-        driver = TestDriver()
-        with patch("prompture.infra.model_rates.get_model_rates", return_value=None):
-            cost = driver._calculate_cost("test", "test-model", 1000, 500)
-            # (1000 / 1_000_000) * 3.0 + (500 / 1_000_000) * 15.0
-            expected = round(0.003 + 0.0075, 6)
-            assert cost == expected
+            cost = mixin._calculate_cost("test", "test-model", 1000, 500)
+            assert cost == 0.0
 
     def test_calculate_cost_unknown_model_returns_zero(self):
         mixin = CostMixin()

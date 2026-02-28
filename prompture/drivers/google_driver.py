@@ -27,41 +27,9 @@ class GoogleDriver(CostMixin, Driver):
     supports_tool_use = True
     supports_streaming = True
 
-    # Based on current Gemini pricing (as of 2025)
-    # Source: https://cloud.google.com/vertex-ai/pricing#gemini_models
-    _PRICING_UNIT = 1_000_000
-    MODEL_PRICING = {
-        "gemini-1.5-pro": {
-            "prompt": 0.00025,  # $0.25/1M chars input
-            "completion": 0.0005,  # $0.50/1M chars output
-        },
-        "gemini-1.5-pro-vision": {
-            "prompt": 0.00025,  # $0.25/1M chars input
-            "completion": 0.0005,  # $0.50/1M chars output
-        },
-        "gemini-2.5-pro": {
-            "prompt": 0.0004,  # $0.40/1M chars input
-            "completion": 0.0008,  # $0.80/1M chars output
-        },
-        "gemini-2.5-flash": {
-            "prompt": 0.0004,  # $0.40/1M chars input
-            "completion": 0.0008,  # $0.80/1M chars output
-        },
-        "gemini-2.5-flash-lite": {
-            "prompt": 0.0002,  # $0.20/1M chars input
-            "completion": 0.0004,  # $0.40/1M chars output
-        },
-        "gemini-2.0-flash": {
-            "prompt": 0.0004,  # $0.40/1M chars input
-            "completion": 0.0008,  # $0.80/1M chars output
-        },
-        "gemini-2.0-flash-lite": {
-            "prompt": 0.0002,  # $0.20/1M chars input
-            "completion": 0.0004,  # $0.40/1M chars output
-        },
-        "gemini-1.5-flash": {"prompt": 0.00001875, "completion": 0.000075},
-        "gemini-1.5-flash-8b": {"prompt": 0.00001, "completion": 0.00004},
-    }
+    # All pricing and model config now resolved from JSON rate files (KB) and
+    # models.dev live data.  See prompture/infra/rates/google.json.
+    MODEL_PRICING: dict[str, dict[str, Any]] = {}
 
     @classmethod
     def list_models(cls, *, api_key: str | None = None, timeout: int = 10, **kw: object) -> list[str] | None:
@@ -96,9 +64,6 @@ class GoogleDriver(CostMixin, Driver):
             raise ValueError("Google API key not found. Set GOOGLE_API_KEY env var or pass api_key to constructor")
 
         self.model = model
-        # Warn if model is not in pricing table but allow it (might be new)
-        if model not in self.MODEL_PRICING:
-            logger.warning(f"Model {model} not found in pricing table. Cost calculations will be 0.")
 
         # Create google-genai client
         self._client = genai.Client(api_key=self.api_key)
@@ -120,8 +85,8 @@ class GoogleDriver(CostMixin, Driver):
     def _calculate_cost_chars(self, prompt_chars: int, completion_chars: int) -> float:
         """Calculate cost from character counts.
 
-        Live rates use token-based pricing (estimate ~4 chars/token).
-        Hardcoded MODEL_PRICING uses per-1M-character rates.
+        Estimates tokens from characters (~4 chars/token) and uses
+        models.dev live rates.  Returns 0.0 if no rates available.
         """
         from ..infra.model_rates import get_model_rates
 
@@ -131,11 +96,9 @@ class GoogleDriver(CostMixin, Driver):
             est_completion_tokens = completion_chars / 4
             prompt_cost = (est_prompt_tokens / 1_000_000) * live_rates["input"]
             completion_cost = (est_completion_tokens / 1_000_000) * live_rates["output"]
-        else:
-            model_pricing = self.MODEL_PRICING.get(self.model, {"prompt": 0, "completion": 0})
-            prompt_cost = (prompt_chars / 1_000_000) * model_pricing["prompt"]
-            completion_cost = (completion_chars / 1_000_000) * model_pricing["completion"]
-        return round(prompt_cost + completion_cost, 6)
+            return round(prompt_cost + completion_cost, 6)
+
+        return 0.0
 
     def _extract_usage_metadata(self, response: Any, messages: list[dict[str, Any]]) -> dict[str, Any]:
         """Extract token counts from response, falling back to character estimation."""

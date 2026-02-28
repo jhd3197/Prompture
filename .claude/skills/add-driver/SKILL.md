@@ -22,7 +22,7 @@ Ask the user for:
 
 Also look up the provider on [models.dev](https://models.dev) to determine:
 - **models.dev provider name** (e.g., `"anthropic"` for Claude, `"xai"` for Grok, `"moonshotai"` for Moonshot)
-- **Whether models.dev has entries** — if yes, pricing comes from models.dev live data (set `MODEL_PRICING = {}`). If no, add hardcoded pricing.
+- **Whether models.dev has entries** — if yes, pricing comes from models.dev live data (set `MODEL_PRICING = {}`). Either way, add a JSON rate file in `prompture/infra/rates/` with model capabilities (`tokens_param`, `supports_temperature`, etc.).
 
 ## Files to Create or Modify (11 total)
 
@@ -36,7 +36,8 @@ Key rules:
 - Use `self._get_model_config(provider, model)` to get per-model `tokens_param` and `supports_temperature` from models.dev
 - Use `self._calculate_cost(provider, model, prompt_tokens, completion_tokens)` — do NOT manually compute costs
 - Use `self._validate_model_capabilities(provider, model, ...)` before API calls to warn about unsupported features
-- If models.dev has this provider's data, set `MODEL_PRICING = {}` (empty — pricing comes live from models.dev)
+- Set `MODEL_PRICING: dict[str, dict[str, Any]] = {}` (always empty — pricing and config come from JSON rate files and models.dev)
+- Create a JSON rate file at `prompture/infra/rates/{provider}.json` with model capabilities
 - `generate()` returns `{"text": str, "meta": dict}`
 - `meta` MUST contain: `prompt_tokens`, `completion_tokens`, `total_tokens`, `cost`, `raw_response`, `model_name`
 - Implement `generate_messages()`, `generate_messages_with_tools()`, and `generate_messages_stream()` for full feature support
@@ -101,7 +102,7 @@ Two changes required:
   For local/endpoint-only providers (like ollama), use endpoint presence instead.
 
 **b) This ensures `get_available_models()` returns the provider's models** from both:
-- Static detection: `MODEL_PRICING` keys (or empty if pricing is from models.dev)
+- Static detection: capabilities KB (JSON rate files) via `get_kb_models_for_provider()`
 - models.dev enrichment: via `PROVIDER_MAP` in `model_rates.py` (see step 7)
 
 ### 7. `prompture/model_rates.py` — `PROVIDER_MAP`

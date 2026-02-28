@@ -30,16 +30,9 @@ class MoonshotDriver(CostMixin, Driver):
     supports_streaming = True
     supports_vision = True
 
-    # Fallback pricing (per 1K tokens) when models.dev data is missing/zero.
-    # Source: https://openrouter.ai/moonshotai/ (Jan 2026)
-    MODEL_PRICING: dict[str, dict[str, Any]] = {
-        "kimi-k2.5": {"prompt": 0.0005, "completion": 0.0028},
-        "kimi-k2-0905-preview": {"prompt": 0.0006, "completion": 0.0025},
-        "kimi-k2-0711-preview": {"prompt": 0.0006, "completion": 0.0025},
-        "kimi-k2-thinking": {"prompt": 0.0006, "completion": 0.0025},
-        "kimi-k2-thinking-turbo": {"prompt": 0.00115, "completion": 0.008},
-        "kimi-k2-turbo-preview": {"prompt": 0.0024, "completion": 0.01},
-    }
+    # All pricing and model config now resolved from JSON rate files (KB) and
+    # models.dev live data.  See prompture/infra/rates/moonshot.json.
+    MODEL_PRICING: dict[str, dict[str, Any]] = {}
 
     def __init__(
         self,
