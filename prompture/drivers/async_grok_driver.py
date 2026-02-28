@@ -22,7 +22,6 @@ class AsyncGrokDriver(CostMixin, AsyncDriver):
     supports_vision = True
 
     MODEL_PRICING = GrokDriver.MODEL_PRICING
-    _PRICING_UNIT = 1_000_000
 
     def __init__(self, api_key: str | None = None, model: str = "grok-4-fast-reasoning"):
         self.api_key = api_key or os.getenv("GROK_API_KEY")

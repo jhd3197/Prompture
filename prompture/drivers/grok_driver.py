@@ -19,58 +19,9 @@ class GrokDriver(CostMixin, Driver):
     supports_tool_use = True
     supports_vision = True
 
-    # Pricing per 1M tokens based on xAI's documentation
-    _PRICING_UNIT = 1_000_000
-    MODEL_PRICING = {
-        "grok-code-fast-1": {
-            "prompt": 0.20,
-            "completion": 1.50,
-            "tokens_param": "max_tokens",
-            "supports_temperature": True,
-        },
-        "grok-4-fast-reasoning": {
-            "prompt": 0.20,
-            "completion": 0.50,
-            "tokens_param": "max_tokens",
-            "supports_temperature": True,
-        },
-        "grok-4-fast-non-reasoning": {
-            "prompt": 0.20,
-            "completion": 0.50,
-            "tokens_param": "max_tokens",
-            "supports_temperature": True,
-        },
-        "grok-4-0709": {
-            "prompt": 3.00,
-            "completion": 15.00,
-            "tokens_param": "max_tokens",
-            "supports_temperature": True,
-        },
-        "grok-3-mini": {
-            "prompt": 0.30,
-            "completion": 0.50,
-            "tokens_param": "max_tokens",
-            "supports_temperature": True,
-        },
-        "grok-3": {
-            "prompt": 3.00,
-            "completion": 15.00,
-            "tokens_param": "max_tokens",
-            "supports_temperature": True,
-        },
-        "grok-2-vision-1212us-east-1": {
-            "prompt": 2.00,
-            "completion": 10.00,
-            "tokens_param": "max_tokens",
-            "supports_temperature": True,
-        },
-        "grok-2-vision-1212eu-west-1": {
-            "prompt": 2.00,
-            "completion": 10.00,
-            "tokens_param": "max_tokens",
-            "supports_temperature": True,
-        },
-    }
+    # All pricing and model config now resolved from JSON rate files (KB) and
+    # models.dev live data.  See prompture/infra/rates/xai.json.
+    MODEL_PRICING: dict[str, dict[str, Any]] = {}
 
     def __init__(self, api_key: str | None = None, model: str = "grok-4-fast-reasoning"):
         """Initialize Grok driver.

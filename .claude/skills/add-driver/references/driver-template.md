@@ -34,11 +34,9 @@ class {Provider}Driver(CostMixin, Driver):
     supports_vision = False  # set True if the provider supports image input
     supports_messages = True
 
-    # All pricing resolved live from models.dev (provider: "{models_dev_name}")
-    # If models.dev does NOT have this provider, add hardcoded pricing:
-    #   MODEL_PRICING = {
-    #       "model-name": {"prompt": 0.001, "completion": 0.002},
-    #   }
+    # All pricing resolved live from models.dev (provider: "{models_dev_name}").
+    # Model config (tokens_param, supports_temperature) comes from
+    # prompture/infra/rates/{provider}.json (capabilities KB).
     MODEL_PRICING: dict[str, dict[str, Any]] = {}
 
     def __init__(

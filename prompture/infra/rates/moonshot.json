@@ -1,0 +1,80 @@
+{
+  "kimi-k2.5": {
+    "supports_temperature": true,
+    "supports_tool_use": true,
+    "supports_structured_output": true,
+    "supports_vision": true,
+    "is_reasoning": false,
+    "context_window": 131072,
+    "max_output_tokens": 8192,
+    "modalities_input": ["text", "image"],
+    "modalities_output": ["text"],
+    "api_type": "openai-compatible",
+    "tokens_param": "max_tokens"
+  },
+  "kimi-k2-0905-preview": {
+    "supports_temperature": true,
+    "supports_tool_use": true,
+    "supports_structured_output": true,
+    "supports_vision": true,
+    "is_reasoning": false,
+    "context_window": 131072,
+    "max_output_tokens": 8192,
+    "modalities_input": ["text", "image"],
+    "modalities_output": ["text"],
+    "api_type": "openai-compatible",
+    "tokens_param": "max_tokens"
+  },
+  "kimi-k2-0711-preview": {
+    "supports_temperature": true,
+    "supports_tool_use": true,
+    "supports_structured_output": true,
+    "supports_vision": true,
+    "is_reasoning": false,
+    "context_window": 131072,
+    "max_output_tokens": 8192,
+    "modalities_input": ["text", "image"],
+    "modalities_output": ["text"],
+    "api_type": "openai-compatible",
+    "tokens_param": "max_tokens"
+  },
+  "kimi-k2-thinking": {
+    "supports_temperature": true,
+    "supports_tool_use": true,
+    "supports_structured_output": false,
+    "supports_vision": true,
+    "is_reasoning": true,
+    "context_window": 131072,
+    "max_output_tokens": 8192,
+    "modalities_input": ["text", "image"],
+    "modalities_output": ["text"],
+    "api_type": "openai-compatible",
+    "tokens_param": "max_tokens"
+  },
+  "kimi-k2-thinking-turbo": {
+    "supports_temperature": true,
+    "supports_tool_use": true,
+    "supports_structured_output": false,
+    "supports_vision": true,
+    "is_reasoning": true,
+    "context_window": 131072,
+    "max_output_tokens": 8192,
+    "modalities_input": ["text", "image"],
+    "modalities_output": ["text"],
+    "api_type": "openai-compatible",
+    "tokens_param": "max_tokens"
+  },
+  "kimi-k2-turbo-preview": {
+    "supports_temperature": true,
+    "supports_tool_use": true,
+    "supports_structured_output": true,
+    "supports_vision": true,
+    "is_reasoning": false,
+    "context_window": 131072,
+    "max_output_tokens": 8192,
+    "modalities_input": ["text", "image"],
+    "modalities_output": ["text"],
+    "api_type": "openai-compatible",
+    "tokens_param": "max_tokens"
+  }
+}

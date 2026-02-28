@@ -24,40 +24,9 @@ class OpenRouterDriver(CostMixin, Driver):
     supports_streaming = True
     supports_vision = True
 
-    # Approximate pricing per 1K tokens based on OpenRouter's pricing
-    # https://openrouter.ai/docs#pricing
-    MODEL_PRICING = {
-        "openai/gpt-4o": {
-            "prompt": 0.005,
-            "completion": 0.015,
-            "tokens_param": "max_tokens",
-            "supports_temperature": True,
-        },
-        "openai/gpt-4o-mini": {
-            "prompt": 0.00015,
-            "completion": 0.0006,
-            "tokens_param": "max_tokens",
-            "supports_temperature": True,
-        },
-        "anthropic/claude-sonnet-4-20250514": {
-            "prompt": 0.003,
-            "completion": 0.015,
-            "tokens_param": "max_tokens",
-            "supports_temperature": True,
-        },
-        "google/gemini-2.0-flash-001": {
-            "prompt": 0.0001,
-            "completion": 0.0004,
-            "tokens_param": "max_tokens",
-            "supports_temperature": True,
-        },
-        "meta-llama/llama-3.1-70b-instruct": {
-            "prompt": 0.0004,
-            "completion": 0.0004,
-            "tokens_param": "max_tokens",
-            "supports_temperature": True,
-        },
-    }
+    # All pricing and model config now resolved from JSON rate files (KB) and
+    # models.dev live data.  See prompture/infra/rates/openrouter.json.
+    MODEL_PRICING: dict[str, dict[str, Any]] = {}
 
     def __init__(self, api_key: str | None = None, model: str = "openai/gpt-4o-mini"):
         """Initialize OpenRouter driver.

@@ -9,7 +9,8 @@
     "max_output_tokens": 131072,
     "modalities_input": ["text", "image"],
     "modalities_output": ["text"],
-    "api_type": "openai-compatible"
+    "api_type": "openai-compatible",
+    "tokens_param": "max_tokens"
   },
   "grok-3": {
     "supports_temperature": true,
@@ -21,7 +22,8 @@
     "max_output_tokens": 131072,
     "modalities_input": ["text"],
     "modalities_output": ["text"],
-    "api_type": "openai-compatible"
+    "api_type": "openai-compatible",
+    "tokens_param": "max_tokens"
   },
   "grok-3-mini": {
     "supports_temperature": true,
@@ -33,7 +35,8 @@
     "max_output_tokens": 131072,
     "modalities_input": ["text"],
     "modalities_output": ["text"],
-    "api_type": "openai-compatible"
+    "api_type": "openai-compatible",
+    "tokens_param": "max_tokens"
   },
   "grok-2-vision": {
     "supports_temperature": true,
@@ -45,6 +48,7 @@
     "max_output_tokens": 4096,
     "modalities_input": ["text", "image"],
     "modalities_output": ["text"],
-    "api_type": "openai-compatible"
+    "api_type": "openai-compatible",
+    "tokens_param": "max_tokens"
   }
 }

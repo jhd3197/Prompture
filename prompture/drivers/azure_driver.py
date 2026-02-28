@@ -37,65 +37,9 @@ class AzureDriver(CostMixin, Driver):
     supports_tool_use = True
     supports_vision = True
 
-    # Pricing per 1K tokens (adjust if your Azure pricing differs from OpenAI defaults)
-    MODEL_PRICING = {
-        "gpt-5-mini": {
-            "prompt": 0.0003,
-            "completion": 0.0006,
-            "tokens_param": "max_completion_tokens",
-            "supports_temperature": False,
-        },
-        "gpt-4o": {
-            "prompt": 0.005,
-            "completion": 0.015,
-            "tokens_param": "max_completion_tokens",
-            "supports_temperature": True,
-        },
-        "gpt-4o-mini": {
-            "prompt": 0.00015,
-            "completion": 0.0006,
-            "tokens_param": "max_completion_tokens",
-            "supports_temperature": True,
-        },
-        "gpt-4": {
-            "prompt": 0.03,
-            "completion": 0.06,
-            "tokens_param": "max_tokens",
-            "supports_temperature": True,
-        },
-        "gpt-4-turbo": {
-            "prompt": 0.01,
-            "completion": 0.03,
-            "tokens_param": "max_tokens",
-            "supports_temperature": True,
-        },
-        "gpt-4.1": {
-            "prompt": 0.03,
-            "completion": 0.06,
-            "tokens_param": "max_tokens",
-            "supports_temperature": True,
-        },
-        # Claude models on Azure
-        "claude-sonnet-4-6": {
-            "prompt": 0.003,
-            "completion": 0.015,
-            "tokens_param": "max_tokens",
-            "supports_temperature": True,
-        },
-        "claude-haiku-4-5-20251001": {
-            "prompt": 0.001,
-            "completion": 0.005,
-            "tokens_param": "max_tokens",
-            "supports_temperature": True,
-        },
-        # Mistral models on Azure
-        "mistral-large-latest": {
-            "prompt": 0.004,
-            "completion": 0.012,
-            "tokens_param": "max_tokens",
-            "supports_temperature": True,
-        },
-    }
+    # All pricing and model config now resolved from JSON rate files (KB) and
+    # models.dev live data.  See prompture/infra/rates/azure.json.
+    MODEL_PRICING: dict[str, dict[str, Any]] = {}
 
     def __init__(
         self,

@@ -354,6 +354,7 @@ class ModelCapabilities:
     modalities_input: tuple[str, ...] = ()
     modalities_output: tuple[str, ...] = ()
     api_type: Optional[str] = None  # "openai", "anthropic", "google", "openai-compatible"
+    tokens_param: Optional[str] = None  # "max_tokens" or "max_completion_tokens"
 
 
 # Capabilities KB loaded from per-provider JSON files in rates/
@@ -378,6 +379,7 @@ def _load_capabilities() -> dict[tuple[str, str], "ModelCapabilities"]:
                 modalities_input=tuple(entry.get("modalities_input", ())),
                 modalities_output=tuple(entry.get("modalities_output", ())),
                 api_type=entry.get("api_type"),
+                tokens_param=entry.get("tokens_param"),
             )
     return kb
 
@@ -480,15 +482,32 @@ def get_model_capabilities(provider: str, model_id: str) -> Optional[ModelCapabi
     entry = _lookup_model(provider, model_id)
     if entry is not None:
         caps = _parse_capabilities_from_entry(entry)
-        # Overlay api_type from KB (models.dev doesn't provide it)
-        if kb_entry is not None and kb_entry.api_type is not None:
+        # Overlay fields from KB that models.dev doesn't provide or may get wrong
+        if kb_entry is not None:
             from dataclasses import replace
 
-            caps = replace(caps, api_type=kb_entry.api_type)
+            overrides: dict[str, Any] = {}
+            if kb_entry.api_type is not None:
+                overrides["api_type"] = kb_entry.api_type
+            if kb_entry.tokens_param is not None:
+                overrides["tokens_param"] = kb_entry.tokens_param
+            if kb_entry.supports_temperature is not None:
+                overrides["supports_temperature"] = kb_entry.supports_temperature
+            if overrides:
+                caps = replace(caps, **overrides)
         return caps
 
     # models.dev unavailable — fall back to KB
     return kb_entry
+
+
+def get_kb_models_for_provider(provider: str) -> list[str]:
+    """Return model IDs from the hardcoded capabilities KB for a provider.
+
+    Used by discovery as a static fallback when no API list_models() is available.
+    """
+    api_provider = PROVIDER_MAP.get(provider, provider)
+    return [model_id for (p, model_id) in _CAPABILITIES_KB if p == api_provider]
 
 
 # ── Model Lifecycle / Deprecation ──────────────────────────────────────────

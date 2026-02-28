@@ -28,24 +28,9 @@ class ClaudeDriver(CostMixin, Driver):
     supports_streaming = True
     supports_vision = True
 
-    # Claude pricing per 1000 tokens (prices should be kept current with Anthropic's pricing)
-    MODEL_PRICING = {
-        # Claude Opus 4.6
-        "claude-opus-4-6": {
-            "prompt": 0.005,  # $5 per 1M prompt tokens
-            "completion": 0.025,  # $25 per 1M completion tokens
-        },
-        # Claude Sonnet 4.6
-        "claude-sonnet-4-6": {
-            "prompt": 0.003,  # $3 per 1M prompt tokens
-            "completion": 0.015,  # $15 per 1M completion tokens
-        },
-        # Claude Haiku 4.5
-        "claude-haiku-4-5-20251001": {
-            "prompt": 0.001,  # $1 per 1M prompt tokens
-            "completion": 0.005,  # $5 per 1M completion tokens
-        },
-    }
+    # All pricing and model config now resolved from JSON rate files (KB) and
+    # models.dev live data.  See prompture/infra/rates/anthropic.json.
+    MODEL_PRICING: dict[str, dict[str, Any]] = {}
 
     def __init__(self, api_key: str | None = None, model: str = "claude-haiku-4-5-20251001"):
         self.api_key = api_key or os.getenv("CLAUDE_API_KEY")
