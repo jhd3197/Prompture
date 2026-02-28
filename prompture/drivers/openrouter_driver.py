@@ -12,7 +12,7 @@ from typing import Any
 import requests
 
 from ..infra.cost_mixin import CostMixin, prepare_strict_schema
-from .base import Driver
+from .base import Driver, _parse_tool_arguments
 
 logger = logging.getLogger(__name__)
 
@@ -281,25 +281,9 @@ class OpenRouterDriver(CostMixin, Driver):
 
         tool_calls_out: list[dict[str, Any]] = []
         for tc in choice["message"].get("tool_calls", []):
-            try:
-                args = json.loads(tc["function"]["arguments"])
-            except (json.JSONDecodeError, TypeError):
-                raw = tc["function"].get("arguments")
-                if stop_reason == "length":
-                    logger.warning(
-                        "Tool arguments for %s were truncated due to max_tokens limit. "
-                        "Increase max_tokens in options to allow longer tool outputs. "
-                        "Truncated arguments: %r",
-                        tc["function"]["name"],
-                        raw[:200] if raw else raw,
-                    )
-                else:
-                    logger.warning(
-                        "Failed to parse tool arguments for %s: %r",
-                        tc["function"]["name"],
-                        raw,
-                    )
-                args = {}
+            args = _parse_tool_arguments(
+                tc["function"]["arguments"], tc["function"]["name"], stop_reason
+            )
             tool_calls_out.append(
                 {
                     "id": tc["id"],
