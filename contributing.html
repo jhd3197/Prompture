@@ -1,0 +1,592 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Contributing to Prompture &mdash; Prompture 1.0.49 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=fa44fd50" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/custom.css?v=0cbbaaf5" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=9c1456b3"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="API Reference" href="api/index.html" />
+    <link rel="prev" title="Examples" href="examples.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #048b41" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            Prompture
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="quickstart.html">Quick Start Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="toon_input_guide.html">TOON Input Conversion Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="field_definitions_reference.html">Field Definitions Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Contributing to Prompture</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#getting-started">Getting Started</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#prerequisites">Prerequisites</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#setting-up-development-environment">Setting Up Development Environment</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#types-of-contributions">Types of Contributions</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#bug-reports">Bug Reports</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#feature-requests">Feature Requests</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#documentation-improvements">Documentation Improvements</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#code-contributions">Code Contributions</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#development-workflow">Development Workflow</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#coding-standards">Coding Standards</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#code-style">Code Style</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#documentation">Documentation</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#testing-guidelines">Testing Guidelines</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#test-structure">Test Structure</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#running-tests">Running Tests</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#test-coverage">Test Coverage</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#adding-new-llm-drivers">Adding New LLM Drivers</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#adding-new-field-types">Adding New Field Types</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#documentation-contributions">Documentation Contributions</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#building-documentation">Building Documentation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#documentation-standards">Documentation Standards</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#pull-request-guidelines">Pull Request Guidelines</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#creating-good-pull-requests">Creating Good Pull Requests</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#pull-request-template">Pull Request Template</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#code-review-process">Code Review Process</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#common-review-feedback">Common Review Feedback</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#release-process">Release Process</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#getting-help">Getting Help</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#recognition">Recognition</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Documentation:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="api/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #048b41" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">Prompture</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Contributing to Prompture</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/contributing.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="contributing-to-prompture">
+<h1>Contributing to Prompture<a class="headerlink" href="#contributing-to-prompture" title="Link to this heading"></a></h1>
+<p>We welcome contributions to Prompture! This guide will help you get started with contributing to the project.</p>
+<section id="getting-started">
+<h2>Getting Started<a class="headerlink" href="#getting-started" title="Link to this heading"></a></h2>
+<section id="prerequisites">
+<h3>Prerequisites<a class="headerlink" href="#prerequisites" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p>Python 3.8 or higher</p></li>
+<li><p>Git for version control</p></li>
+<li><p>A GitHub account</p></li>
+</ul>
+</section>
+<section id="setting-up-development-environment">
+<h3>Setting Up Development Environment<a class="headerlink" href="#setting-up-development-environment" title="Link to this heading"></a></h3>
+<ol class="arabic">
+<li><p><strong>Fork the Repository</strong></p>
+<p>Fork the Prompture repository on GitHub to your account.</p>
+</li>
+<li><p><strong>Clone Your Fork</strong></p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/your-username/prompture.git
+<span class="nb">cd</span><span class="w"> </span>prompture
+</pre></div>
+</div>
+</li>
+<li><p><strong>Create a Virtual Environment</strong></p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-m<span class="w"> </span>venv<span class="w"> </span>prompture-dev
+<span class="nb">source</span><span class="w"> </span>prompture-dev/bin/activate<span class="w">  </span><span class="c1"># On Windows: prompture-dev\Scripts\activate</span>
+</pre></div>
+</div>
+</li>
+<li><p><strong>Install in Development Mode</strong></p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;.[dev]&quot;</span>
+</pre></div>
+</div>
+</li>
+<li><p><strong>Install Pre-commit Hooks</strong> (if available)</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pre-commit<span class="w"> </span>install
+</pre></div>
+</div>
+</li>
+</ol>
+</section>
+</section>
+<section id="types-of-contributions">
+<h2>Types of Contributions<a class="headerlink" href="#types-of-contributions" title="Link to this heading"></a></h2>
+<p>We accept several types of contributions:</p>
+<section id="bug-reports">
+<h3>Bug Reports<a class="headerlink" href="#bug-reports" title="Link to this heading"></a></h3>
+<p>If you find a bug, please create an issue with:</p>
+<ul class="simple">
+<li><p><strong>Clear description</strong> of the problem</p></li>
+<li><p><strong>Steps to reproduce</strong> the issue</p></li>
+<li><p><strong>Expected vs actual behavior</strong></p></li>
+<li><p><strong>System information</strong> (Python version, OS, etc.)</p></li>
+<li><p><strong>Code example</strong> that demonstrates the issue</p></li>
+</ul>
+</section>
+<section id="feature-requests">
+<h3>Feature Requests<a class="headerlink" href="#feature-requests" title="Link to this heading"></a></h3>
+<p>For new features, please:</p>
+<ul class="simple">
+<li><p><strong>Check existing issues</strong> to avoid duplicates</p></li>
+<li><p><strong>Describe the use case</strong> and why it’s needed</p></li>
+<li><p><strong>Provide examples</strong> of how it would be used</p></li>
+<li><p><strong>Consider backward compatibility</strong></p></li>
+</ul>
+</section>
+<section id="documentation-improvements">
+<h3>Documentation Improvements<a class="headerlink" href="#documentation-improvements" title="Link to this heading"></a></h3>
+<p>Documentation contributions are highly valued:</p>
+<ul class="simple">
+<li><p><strong>Fix typos</strong> and grammar errors</p></li>
+<li><p><strong>Improve clarity</strong> of existing documentation</p></li>
+<li><p><strong>Add examples</strong> and use cases</p></li>
+<li><p><strong>Update outdated information</strong></p></li>
+</ul>
+</section>
+<section id="code-contributions">
+<h3>Code Contributions<a class="headerlink" href="#code-contributions" title="Link to this heading"></a></h3>
+<p>Code contributions should:</p>
+<ul class="simple">
+<li><p><strong>Follow coding standards</strong> (see below)</p></li>
+<li><p><strong>Include tests</strong> for new functionality</p></li>
+<li><p><strong>Update documentation</strong> as needed</p></li>
+<li><p><strong>Maintain backward compatibility</strong> when possible</p></li>
+</ul>
+</section>
+</section>
+<section id="development-workflow">
+<h2>Development Workflow<a class="headerlink" href="#development-workflow" title="Link to this heading"></a></h2>
+<ol class="arabic">
+<li><p><strong>Create a Branch</strong></p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>git<span class="w"> </span>checkout<span class="w"> </span>-b<span class="w"> </span>feature/your-feature-name
+<span class="c1"># or</span>
+git<span class="w"> </span>checkout<span class="w"> </span>-b<span class="w"> </span>bugfix/issue-description
+</pre></div>
+</div>
+</li>
+<li><p><strong>Make Your Changes</strong></p>
+<p>Write your code following the project standards.</p>
+</li>
+<li><p><strong>Run Tests</strong></p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pytest<span class="w"> </span>tests/
+</pre></div>
+</div>
+</li>
+<li><p><strong>Update Documentation</strong></p>
+<p>Update relevant documentation files and docstrings.</p>
+</li>
+<li><p><strong>Commit Your Changes</strong></p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>git<span class="w"> </span>add<span class="w"> </span>.
+git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;feat: add new extraction method for PDFs&quot;</span>
+</pre></div>
+</div>
+</li>
+<li><p><strong>Push to Your Fork</strong></p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>feature/your-feature-name
+</pre></div>
+</div>
+</li>
+<li><p><strong>Create Pull Request</strong></p>
+<p>Open a pull request from your fork to the main repository.</p>
+</li>
+</ol>
+</section>
+<section id="coding-standards">
+<h2>Coding Standards<a class="headerlink" href="#coding-standards" title="Link to this heading"></a></h2>
+<section id="code-style">
+<h3>Code Style<a class="headerlink" href="#code-style" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p>Follow <strong>PEP 8</strong> Python style guidelines</p></li>
+<li><p>Use <strong>type hints</strong> for function parameters and return values</p></li>
+<li><p>Write <strong>clear, descriptive variable names</strong></p></li>
+<li><p>Keep <strong>line length under 100 characters</strong></p></li>
+</ul>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># Good example</span>
+<span class="k">def</span> <span class="nf">extract_person_data</span><span class="p">(</span><span class="n">text</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">model_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;openai/gpt-4&quot;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Extract person information from text using specified model.&quot;&quot;&quot;</span>
+    <span class="k">pass</span>
+
+<span class="c1"># Bad example</span>
+<span class="k">def</span> <span class="nf">extract</span><span class="p">(</span><span class="n">txt</span><span class="p">,</span> <span class="n">m</span><span class="o">=</span><span class="s2">&quot;gpt4&quot;</span><span class="p">):</span>
+    <span class="k">pass</span>
+</pre></div>
+</div>
+</section>
+<section id="documentation">
+<h3>Documentation<a class="headerlink" href="#documentation" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p>Write <strong>comprehensive docstrings</strong> for all public functions and classes</p></li>
+<li><p>Use <strong>Google-style docstrings</strong></p></li>
+<li><p>Include <strong>examples</strong> in docstrings when helpful</p></li>
+</ul>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span> <span class="nf">register_field</span><span class="p">(</span><span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">definition</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Register a custom field definition in the global registry.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        name: Unique identifier for the field</span>
+<span class="sd">        definition: Field specification dictionary containing type,</span>
+<span class="sd">            description, instructions, and validation rules</span>
+
+<span class="sd">    Raises:</span>
+<span class="sd">        ValueError: If field definition is invalid</span>
+<span class="sd">        KeyError: If required definition keys are missing</span>
+
+<span class="sd">    Example:</span>
+<span class="sd">        &gt;&gt;&gt; register_field(&quot;skills&quot;, {</span>
+<span class="sd">        ...     &quot;type&quot;: &quot;list&quot;,</span>
+<span class="sd">        ...     &quot;description&quot;: &quot;List of professional skills&quot;,</span>
+<span class="sd">        ...     &quot;instructions&quot;: &quot;Extract as comma-separated values&quot;,</span>
+<span class="sd">        ...     &quot;default&quot;: []</span>
+<span class="sd">        ... })</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="testing-guidelines">
+<h2>Testing Guidelines<a class="headerlink" href="#testing-guidelines" title="Link to this heading"></a></h2>
+<section id="test-structure">
+<h3>Test Structure<a class="headerlink" href="#test-structure" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p>Place tests in the <code class="docutils literal notranslate"><span class="pre">tests/</span></code> directory</p></li>
+<li><p>Name test files with <code class="docutils literal notranslate"><span class="pre">test_</span></code> prefix</p></li>
+<li><p>Group related tests in test classes</p></li>
+<li><p>Use descriptive test method names</p></li>
+</ul>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">pytest</span>
+<span class="kn">from</span> <span class="nn">prompture</span> <span class="kn">import</span> <span class="n">extract_and_jsonify</span><span class="p">,</span> <span class="n">register_field</span>
+
+<span class="k">class</span> <span class="nc">TestFieldRegistration</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Test field registration functionality.&quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">test_register_custom_field_success</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Test successful registration of custom field.&quot;&quot;&quot;</span>
+        <span class="n">register_field</span><span class="p">(</span><span class="s2">&quot;test_field&quot;</span><span class="p">,</span> <span class="p">{</span>
+            <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;str&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;Test field for unit testing&quot;</span>
+        <span class="p">})</span>
+        <span class="c1"># Add assertions here</span>
+
+    <span class="k">def</span> <span class="nf">test_register_field_invalid_type_raises_error</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Test that invalid field type raises ValueError.&quot;&quot;&quot;</span>
+        <span class="k">with</span> <span class="n">pytest</span><span class="o">.</span><span class="n">raises</span><span class="p">(</span><span class="ne">ValueError</span><span class="p">):</span>
+            <span class="n">register_field</span><span class="p">(</span><span class="s2">&quot;bad_field&quot;</span><span class="p">,</span> <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;invalid_type&quot;</span><span class="p">})</span>
+</pre></div>
+</div>
+</section>
+<section id="running-tests">
+<h3>Running Tests<a class="headerlink" href="#running-tests" title="Link to this heading"></a></h3>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># Run all tests</span>
+pytest
+
+<span class="c1"># Run specific test file</span>
+pytest<span class="w"> </span>tests/test_field_definitions.py
+
+<span class="c1"># Run with coverage</span>
+pytest<span class="w"> </span>--cov<span class="o">=</span>prompture<span class="w"> </span>tests/
+
+<span class="c1"># Run with verbose output</span>
+pytest<span class="w"> </span>-v
+</pre></div>
+</div>
+</section>
+<section id="test-coverage">
+<h3>Test Coverage<a class="headerlink" href="#test-coverage" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p>Aim for <strong>high test coverage</strong> (&gt;80%)</p></li>
+<li><p>Test <strong>both success and failure cases</strong></p></li>
+<li><p>Include <strong>edge cases</strong> and <strong>boundary conditions</strong></p></li>
+<li><p>Mock external API calls in tests</p></li>
+</ul>
+</section>
+</section>
+<section id="adding-new-llm-drivers">
+<h2>Adding New LLM Drivers<a class="headerlink" href="#adding-new-llm-drivers" title="Link to this heading"></a></h2>
+<p>To add support for a new LLM provider:</p>
+<ol class="arabic">
+<li><p><strong>Create Driver Class</strong></p>
+<p>Create a new file in <code class="docutils literal notranslate"><span class="pre">prompture/drivers/</span></code> following the pattern:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">prompture.driver</span> <span class="kn">import</span> <span class="n">Driver</span>
+<span class="kn">import</span> <span class="nn">requests</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">Any</span>
+
+<span class="k">class</span> <span class="nc">NewProviderDriver</span><span class="p">(</span><span class="n">Driver</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Driver for NewProvider LLM service.&quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">model_name</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">api_key</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;api_key&#39;</span><span class="p">)</span> <span class="ow">or</span> <span class="n">os</span><span class="o">.</span><span class="n">getenv</span><span class="p">(</span><span class="s1">&#39;NEWPROVIDER_API_KEY&#39;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">base_url</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;base_url&#39;</span><span class="p">,</span> <span class="s1">&#39;https://api.newprovider.com/v1&#39;</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">ask_for_json</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">prompt</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Send prompt to NewProvider API and return JSON response.&quot;&quot;&quot;</span>
+        <span class="c1"># Implement API call logic here</span>
+        <span class="k">pass</span>
+</pre></div>
+</div>
+</li>
+<li><p><strong>Update Driver Registry</strong></p>
+<p>Add your driver to the driver registry in <code class="docutils literal notranslate"><span class="pre">prompture/drivers/__init__.py</span></code>.</p>
+</li>
+<li><p><strong>Add Tests</strong></p>
+<p>Create comprehensive tests for your driver in <code class="docutils literal notranslate"><span class="pre">tests/test_drivers.py</span></code>.</p>
+</li>
+<li><p><strong>Update Documentation</strong></p>
+<p>Add documentation for the new driver including setup instructions and examples.</p>
+</li>
+</ol>
+</section>
+<section id="adding-new-field-types">
+<h2>Adding New Field Types<a class="headerlink" href="#adding-new-field-types" title="Link to this heading"></a></h2>
+<p>To add built-in field definitions:</p>
+<ol class="arabic">
+<li><p><strong>Add Field Definition</strong></p>
+<p>Add the field to <code class="docutils literal notranslate"><span class="pre">prompture/field_definitions.py</span></code>:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">FIELD_DEFINITIONS</span><span class="p">[</span><span class="s2">&quot;new_field_type&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;str&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;Description of the new field type&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;instructions&quot;</span><span class="p">:</span> <span class="s2">&quot;Instructions for LLM on how to extract this field&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;default&quot;</span><span class="p">:</span> <span class="s2">&quot;default_value&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;nullable&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+    <span class="s2">&quot;validation&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;pattern&quot;</span><span class="p">:</span> <span class="sa">r</span><span class="s2">&quot;^[A-Z][a-z]+$&quot;</span>  <span class="c1"># Optional regex validation</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</li>
+<li><p><strong>Add Tests</strong></p>
+<p>Test the field definition in <code class="docutils literal notranslate"><span class="pre">tests/test_field_definitions.py</span></code>.</p>
+</li>
+<li><p><strong>Update Documentation</strong></p>
+<p>Document the new field type in the API documentation.</p>
+</li>
+</ol>
+</section>
+<section id="documentation-contributions">
+<h2>Documentation Contributions<a class="headerlink" href="#documentation-contributions" title="Link to this heading"></a></h2>
+<section id="building-documentation">
+<h3>Building Documentation<a class="headerlink" href="#building-documentation" title="Link to this heading"></a></h3>
+<p>To build the documentation locally:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">cd</span><span class="w"> </span>docs/
+pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </span>requirements.txt
+make<span class="w"> </span>html<span class="w">  </span><span class="c1"># On Windows: make.bat html</span>
+</pre></div>
+</div>
+<p>The built documentation will be in <code class="docutils literal notranslate"><span class="pre">docs/_build/html/</span></code>.</p>
+</section>
+<section id="documentation-standards">
+<h3>Documentation Standards<a class="headerlink" href="#documentation-standards" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p>Use <strong>reStructuredText</strong> format for documentation files</p></li>
+<li><p>Include <strong>practical examples</strong> for all features</p></li>
+<li><p>Keep <strong>language clear and concise</strong></p></li>
+<li><p>Use <strong>proper cross-references</strong> with <code class="docutils literal notranslate"><span class="pre">:doc:</span></code> and <code class="docutils literal notranslate"><span class="pre">:ref:</span></code> directives</p></li>
+</ul>
+<div class="highlight-rst notranslate"><div class="highlight"><pre><span></span>See the <span class="na">:doc:</span><span class="nv">`quickstart`</span> guide for basic usage examples.
+
+For more details, refer to <span class="na">:func:</span><span class="nv">`prompture.extract_and_jsonify`</span>.
+</pre></div>
+</div>
+</section>
+</section>
+<section id="pull-request-guidelines">
+<h2>Pull Request Guidelines<a class="headerlink" href="#pull-request-guidelines" title="Link to this heading"></a></h2>
+<section id="creating-good-pull-requests">
+<h3>Creating Good Pull Requests<a class="headerlink" href="#creating-good-pull-requests" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p><strong>Use descriptive titles</strong> that explain what the PR does</p></li>
+<li><p><strong>Write detailed descriptions</strong> explaining the changes and why they were made</p></li>
+<li><p><strong>Reference related issues</strong> using <code class="docutils literal notranslate"><span class="pre">Fixes</span> <span class="pre">#123</span></code> or <code class="docutils literal notranslate"><span class="pre">Closes</span> <span class="pre">#456</span></code></p></li>
+<li><p><strong>Keep PRs focused</strong> - one feature or fix per PR</p></li>
+<li><p><strong>Update relevant documentation</strong></p></li>
+</ul>
+</section>
+<section id="pull-request-template">
+<h3>Pull Request Template<a class="headerlink" href="#pull-request-template" title="Link to this heading"></a></h3>
+<p>When creating a PR, include:</p>
+<div class="highlight-markdown notranslate"><div class="highlight"><pre><span></span><span class="gu">## Description</span>
+Brief description of changes made.
+
+<span class="gu">## Type of Change</span>
+<span class="k">- [ ]</span> Bug fix
+<span class="k">- [ ]</span> New feature
+<span class="k">- [ ]</span> Documentation update
+<span class="k">- [ ]</span> Performance improvement
+
+<span class="gu">## Testing</span>
+<span class="k">- [ ]</span> Added tests for new functionality
+<span class="k">- [ ]</span> All existing tests pass
+<span class="k">- [ ]</span> Manual testing completed
+
+<span class="gu">## Documentation</span>
+<span class="k">- [ ]</span> Updated relevant documentation
+<span class="k">- [ ]</span> Added docstrings for new functions
+<span class="k">- [ ]</span> Updated API reference if needed
+</pre></div>
+</div>
+</section>
+<section id="code-review-process">
+<h3>Code Review Process<a class="headerlink" href="#code-review-process" title="Link to this heading"></a></h3>
+<p>All contributions go through code review:</p>
+<ol class="arabic simple">
+<li><p><strong>Automated checks</strong> run on your PR (tests, linting, etc.)</p></li>
+<li><p><strong>Maintainer review</strong> for code quality and design</p></li>
+<li><p><strong>Feedback incorporation</strong> - address review comments</p></li>
+<li><p><strong>Final approval</strong> and merge</p></li>
+</ol>
+</section>
+<section id="common-review-feedback">
+<h3>Common Review Feedback<a class="headerlink" href="#common-review-feedback" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p><strong>Add type hints</strong> for better code clarity</p></li>
+<li><p><strong>Improve test coverage</strong> for edge cases</p></li>
+<li><p><strong>Update documentation</strong> to reflect changes</p></li>
+<li><p><strong>Follow naming conventions</strong> consistently</p></li>
+<li><p><strong>Handle errors gracefully</strong> with proper exception handling</p></li>
+</ul>
+</section>
+</section>
+<section id="release-process">
+<h2>Release Process<a class="headerlink" href="#release-process" title="Link to this heading"></a></h2>
+<p>Prompture follows semantic versioning (SemVer):</p>
+<ul class="simple">
+<li><p><strong>Major version</strong> (1.0.0) - Breaking changes</p></li>
+<li><p><strong>Minor version</strong> (0.1.0) - New features, backward compatible</p></li>
+<li><p><strong>Patch version</strong> (0.0.1) - Bug fixes, backward compatible</p></li>
+</ul>
+<p>Releases are managed by maintainers and include:</p>
+<ul class="simple">
+<li><p>Updated version numbers</p></li>
+<li><p>Changelog entries</p></li>
+<li><p>Git tags</p></li>
+<li><p>PyPI package uploads</p></li>
+</ul>
+</section>
+<section id="getting-help">
+<h2>Getting Help<a class="headerlink" href="#getting-help" title="Link to this heading"></a></h2>
+<p>If you need help with contributing:</p>
+<ul class="simple">
+<li><p><strong>Check existing documentation</strong> and examples first</p></li>
+<li><p><strong>Search existing issues</strong> for similar problems</p></li>
+<li><p><strong>Create a discussion</strong> for general questions</p></li>
+<li><p><strong>Join community channels</strong> (if available)</p></li>
+<li><p><strong>Tag maintainers</strong> in issues for urgent matters</p></li>
+</ul>
+</section>
+<section id="recognition">
+<h2>Recognition<a class="headerlink" href="#recognition" title="Link to this heading"></a></h2>
+<p>Contributors are recognized in:</p>
+<ul class="simple">
+<li><p><strong>CONTRIBUTORS.md</strong> file listing all contributors</p></li>
+<li><p><strong>Release notes</strong> highlighting major contributions</p></li>
+<li><p><strong>Documentation credits</strong> for documentation contributors</p></li>
+</ul>
+<p>Thank you for contributing to Prompture! Your contributions help make structured LLM data extraction better for everyone.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="examples.html" class="btn btn-neutral float-left" title="Examples" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="api/index.html" class="btn btn-neutral float-right" title="API Reference" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Juan Denis.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+  
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    var footerCopy = document.querySelector("footer .copyright");
+    if (footerCopy) {
+        footerCopy.innerHTML = footerCopy.innerHTML.replace(
+            "Juan Denis",
+            '<a href="https://juandenis.com">Juan Denis</a>'
+        );
+    }
+});
+</script>
+ 
+
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

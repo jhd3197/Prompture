@@ -1,0 +1,606 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Field Definitions Module &mdash; Prompture 1.0.49 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=fa44fd50" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=0cbbaaf5" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=9c1456b3"></script>
+      <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Drivers Module" href="drivers.html" />
+    <link rel="prev" title="Core Module" href="core.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #048b41" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            Prompture
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../installation.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../quickstart.html">Quick Start Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../toon_input_guide.html">TOON Input Conversion Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../field_definitions_reference.html">Field Definitions Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples.html">Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../contributing.html">Contributing to Prompture</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Documentation:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="index.html">API Reference</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="index.html#overview">Overview</a></li>
+<li class="toctree-l2"><a class="reference internal" href="index.html#quick-reference">Quick Reference</a></li>
+<li class="toctree-l2"><a class="reference internal" href="index.html#core-functions">Core Functions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="index.html#field-registry-system">Field Registry System</a></li>
+<li class="toctree-l2"><a class="reference internal" href="index.html#built-in-field-types">Built-in Field Types</a></li>
+<li class="toctree-l2"><a class="reference internal" href="index.html#driver-system">Driver System</a></li>
+<li class="toctree-l2"><a class="reference internal" href="index.html#validation-and-utilities">Validation and Utilities</a></li>
+<li class="toctree-l2"><a class="reference internal" href="index.html#error-handling">Error Handling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="index.html#configuration">Configuration</a></li>
+<li class="toctree-l2 current"><a class="reference internal" href="index.html#module-reference">Module Reference</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="core.html">Core Module</a></li>
+<li class="toctree-l3 current"><a class="current reference internal" href="#">Field Definitions Module</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#overview">Overview</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#registry-management-functions">Registry Management Functions</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#registry-inspection-functions">Registry Inspection Functions</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#registry-maintenance-functions">Registry Maintenance Functions</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#built-in-field-definitions">Built-in Field Definitions</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#template-variable-system">Template Variable System</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#field-definition-structure">Field Definition Structure</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#advanced-usage-patterns">Advanced Usage Patterns</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#integration-with-core-functions">Integration with Core Functions</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#best-practices">Best Practices</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="drivers.html">Drivers Module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="tools.html">Tools Module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="runner.html">Runner Module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="validator.html">Validator Module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="index.html#core-modules">Core Modules</a></li>
+<li class="toctree-l3"><a class="reference internal" href="index.html#utility-modules">Utility Modules</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #048b41" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">Prompture</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="index.html">API Reference</a></li>
+      <li class="breadcrumb-item active">Field Definitions Module</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/api/field_definitions.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="field-definitions-module">
+<h1>Field Definitions Module<a class="headerlink" href="#field-definitions-module" title="Link to this heading"></a></h1>
+<p>The field definitions module provides a centralized registry system for defining reusable field specifications that enhance structured data extraction with type hints, descriptions, validation rules, and LLM-specific extraction instructions.</p>
+<section id="overview">
+<h2>Overview<a class="headerlink" href="#overview" title="Link to this heading"></a></h2>
+<p>The field definitions system allows you to:</p>
+<ul class="simple">
+<li><p><strong>Define reusable field specifications</strong> with type information, descriptions, and extraction instructions</p></li>
+<li><p><strong>Register custom fields</strong> that can be used across multiple extraction operations</p></li>
+<li><p><strong>Leverage built-in field definitions</strong> for common data types (names, ages, emails, etc.)</p></li>
+<li><p><strong>Use template variables</strong> for dynamic values like <code class="docutils literal notranslate"><span class="pre">{{current_year}}</span></code> and <code class="docutils literal notranslate"><span class="pre">{{current_date}}</span></code></p></li>
+<li><p><strong>Integrate with Pydantic models</strong> through the [<cite>field_from_registry()</cite>](#field_from_registry) function</p></li>
+</ul>
+</section>
+<section id="registry-management-functions">
+<h2>Registry Management Functions<a class="headerlink" href="#registry-management-functions" title="Link to this heading"></a></h2>
+<section id="get-field-definition">
+<h3>get_field_definition()<a class="headerlink" href="#get-field-definition" title="Link to this heading"></a></h3>
+<p>Retrieve a specific field definition from the registry with optional template variable substitution.</p>
+<p><strong>Example:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># Get the built-in &quot;age&quot; field definition</span>
+<span class="n">age_def</span> <span class="o">=</span> <span class="n">get_field_definition</span><span class="p">(</span><span class="s2">&quot;age&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">age_def</span><span class="p">)</span>
+<span class="c1"># {</span>
+<span class="c1">#     &quot;type&quot;: int,</span>
+<span class="c1">#     &quot;description&quot;: &quot;The age of the person in number of years.&quot;,</span>
+<span class="c1">#     &quot;instructions&quot;: &quot;Calculate as 2024 - birth_year if needed.&quot;,</span>
+<span class="c1">#     &quot;default&quot;: 0,</span>
+<span class="c1">#     &quot;nullable&quot;: False</span>
+<span class="c1"># }</span>
+</pre></div>
+</div>
+</section>
+<section id="register-field">
+<h3>register_field()<a class="headerlink" href="#register-field" title="Link to this heading"></a></h3>
+<p>Register a new field definition or update an existing one in the global registry.</p>
+<p><strong>Example:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">register_field</span><span class="p">(</span><span class="s2">&quot;skills&quot;</span><span class="p">,</span> <span class="p">{</span>
+    <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span>
+    <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;List of professional skills and competencies&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;instructions&quot;</span><span class="p">:</span> <span class="s2">&quot;Extract as a list of strings, one skill per item&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;default&quot;</span><span class="p">:</span> <span class="p">[],</span>
+    <span class="s2">&quot;nullable&quot;</span><span class="p">:</span> <span class="kc">True</span>
+<span class="p">})</span>
+</pre></div>
+</div>
+</section>
+<section id="add-field-definition">
+<h3>add_field_definition()<a class="headerlink" href="#add-field-definition" title="Link to this heading"></a></h3>
+<p>Alias for [<cite>register_field()</cite>](#register_field) - adds or updates a field definition in the registry.</p>
+</section>
+<section id="add-field-definitions">
+<h3>add_field_definitions()<a class="headerlink" href="#add-field-definitions" title="Link to this heading"></a></h3>
+<p>Register multiple field definitions at once from a dictionary.</p>
+<p><strong>Example:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">new_fields</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;salary&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+        <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;Annual salary in USD&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;instructions&quot;</span><span class="p">:</span> <span class="s2">&quot;Extract numeric value, convert K/M suffixes&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;default&quot;</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">,</span>
+        <span class="s2">&quot;nullable&quot;</span><span class="p">:</span> <span class="kc">True</span>
+    <span class="p">},</span>
+    <span class="s2">&quot;department&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;Department or division name&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;instructions&quot;</span><span class="p">:</span> <span class="s2">&quot;Extract official department name&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;default&quot;</span><span class="p">:</span> <span class="s2">&quot;&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;nullable&quot;</span><span class="p">:</span> <span class="kc">True</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+<span class="n">add_field_definitions</span><span class="p">(</span><span class="n">new_fields</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="field-from-registry">
+<h3>field_from_registry()<a class="headerlink" href="#field-from-registry" title="Link to this heading"></a></h3>
+<p>Create a Pydantic Field object from a registered field definition for use in Pydantic models.</p>
+<p><strong>Key Features:</strong></p>
+<ul class="simple">
+<li><p>Automatic conversion to Pydantic Field objects</p></li>
+<li><p>Template variable substitution in defaults and descriptions</p></li>
+<li><p>Type annotation integration</p></li>
+<li><p>Custom field configuration support</p></li>
+</ul>
+<p><strong>Example:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">pydantic</span> <span class="kn">import</span> <span class="n">BaseModel</span>
+<span class="kn">from</span> <span class="nn">prompture</span> <span class="kn">import</span> <span class="n">field_from_registry</span>
+
+<span class="k">class</span> <span class="nc">Employee</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;name&quot;</span><span class="p">)</span>
+    <span class="n">age</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;age&quot;</span><span class="p">)</span>
+    <span class="n">email</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;email&quot;</span><span class="p">)</span>
+    <span class="n">department</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;department&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="registry-inspection-functions">
+<h2>Registry Inspection Functions<a class="headerlink" href="#registry-inspection-functions" title="Link to this heading"></a></h2>
+<section id="get-registry-snapshot">
+<h3>get_registry_snapshot()<a class="headerlink" href="#get-registry-snapshot" title="Link to this heading"></a></h3>
+<p>Get a complete copy of the current field registry for inspection or backup.</p>
+<p><strong>Example:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">registry</span> <span class="o">=</span> <span class="n">get_registry_snapshot</span><span class="p">()</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Available fields: </span><span class="si">{</span><span class="nb">list</span><span class="p">(</span><span class="n">registry</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+<span class="c1"># Use in stepwise extraction for enhanced defaults</span>
+<span class="kn">from</span> <span class="nn">prompture.core</span> <span class="kn">import</span> <span class="n">stepwise_extract_with_model</span>
+<span class="n">result</span> <span class="o">=</span> <span class="n">stepwise_extract_with_model</span><span class="p">(</span>
+    <span class="n">model_cls</span><span class="o">=</span><span class="n">Person</span><span class="p">,</span>
+    <span class="n">text</span><span class="o">=</span><span class="s2">&quot;...&quot;</span><span class="p">,</span>
+    <span class="n">model_name</span><span class="o">=</span><span class="s2">&quot;openai/gpt-4&quot;</span><span class="p">,</span>
+    <span class="n">field_definitions</span><span class="o">=</span><span class="n">registry</span>  <span class="c1"># Explicit registry usage</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="get-field-names">
+<h3>get_field_names()<a class="headerlink" href="#get-field-names" title="Link to this heading"></a></h3>
+<p>Get a list of all currently registered field names.</p>
+<p><strong>Example:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">available_fields</span> <span class="o">=</span> <span class="n">get_field_names</span><span class="p">()</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Available field types:&quot;</span><span class="p">,</span> <span class="n">available_fields</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="get-required-fields">
+<h3>get_required_fields()<a class="headerlink" href="#get-required-fields" title="Link to this heading"></a></h3>
+<p>Get a list of field names that are marked as non-nullable (required fields).</p>
+<p><strong>Example:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">required</span> <span class="o">=</span> <span class="n">get_required_fields</span><span class="p">()</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Required fields:&quot;</span><span class="p">,</span> <span class="n">required</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="registry-maintenance-functions">
+<h2>Registry Maintenance Functions<a class="headerlink" href="#registry-maintenance-functions" title="Link to this heading"></a></h2>
+<section id="clear-registry">
+<h3>clear_registry()<a class="headerlink" href="#clear-registry" title="Link to this heading"></a></h3>
+<p>Remove all custom field definitions from the registry, keeping only built-in fields.</p>
+<p><strong>Example:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># Clear custom fields while preserving built-ins</span>
+<span class="n">clear_registry</span><span class="p">()</span>
+
+<span class="c1"># Only built-in fields like &quot;name&quot;, &quot;age&quot;, &quot;email&quot; remain</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">get_field_names</span><span class="p">())</span>
+</pre></div>
+</div>
+</section>
+<section id="reset-registry">
+<h3>reset_registry()<a class="headerlink" href="#reset-registry" title="Link to this heading"></a></h3>
+<p>Completely reset the registry to its initial state with only built-in field definitions.</p>
+<p><strong>Example:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># Add some custom fields</span>
+<span class="n">register_field</span><span class="p">(</span><span class="s2">&quot;custom_field&quot;</span><span class="p">,</span> <span class="p">{</span><span class="o">...</span><span class="p">})</span>
+
+<span class="c1"># Reset to built-in fields only</span>
+<span class="n">reset_registry</span><span class="p">()</span>
+
+<span class="c1"># Custom field is now gone</span>
+<span class="k">assert</span> <span class="s2">&quot;custom_field&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">get_field_names</span><span class="p">()</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="built-in-field-definitions">
+<h2>Built-in Field Definitions<a class="headerlink" href="#built-in-field-definitions" title="Link to this heading"></a></h2>
+<p>Prompture includes extensive built-in field definitions organized by category:</p>
+<section id="personal-information-fields">
+<h3>Personal Information Fields<a class="headerlink" href="#personal-information-fields" title="Link to this heading"></a></h3>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Field Name</p></th>
+<th class="head"><p>Type</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">name</span></code></p></td>
+<td><p>str</p></td>
+<td><p>Full legal name of the person</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">age</span></code></p></td>
+<td><p>int</p></td>
+<td><p>Age in years (0-150)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">birth_year</span></code></p></td>
+<td><p>int</p></td>
+<td><p>Year born (YYYY format)</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="contact-information-fields">
+<h3>Contact Information Fields<a class="headerlink" href="#contact-information-fields" title="Link to this heading"></a></h3>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Field Name</p></th>
+<th class="head"><p>Type</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">email</span></code></p></td>
+<td><p>str</p></td>
+<td><p>Primary email address with validation</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">phone</span></code></p></td>
+<td><p>str</p></td>
+<td><p>Phone number in standardized format</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">address</span></code></p></td>
+<td><p>str</p></td>
+<td><p>Full mailing address</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="professional-fields">
+<h3>Professional Fields<a class="headerlink" href="#professional-fields" title="Link to this heading"></a></h3>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Field Name</p></th>
+<th class="head"><p>Type</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">occupation</span></code></p></td>
+<td><p>str</p></td>
+<td><p>Job title or profession</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">company</span></code></p></td>
+<td><p>str</p></td>
+<td><p>Company or organization name</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">experience_years</span></code></p></td>
+<td><p>int</p></td>
+<td><p>Years of professional experience</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="temporal-fields">
+<h3>Temporal Fields<a class="headerlink" href="#temporal-fields" title="Link to this heading"></a></h3>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Field Name</p></th>
+<th class="head"><p>Type</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">date</span></code></p></td>
+<td><p>str</p></td>
+<td><p>Date in various formats</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">year</span></code></p></td>
+<td><p>int</p></td>
+<td><p>Year (1900-current)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">last_updated</span></code></p></td>
+<td><p>str</p></td>
+<td><p>Timestamp with template support</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="content-and-classification-fields">
+<h3>Content and Classification Fields<a class="headerlink" href="#content-and-classification-fields" title="Link to this heading"></a></h3>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Field Name</p></th>
+<th class="head"><p>Type</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">title</span></code></p></td>
+<td><p>str</p></td>
+<td><p>Title or heading text</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">description</span></code></p></td>
+<td><p>str</p></td>
+<td><p>Longer descriptive text</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">category</span></code></p></td>
+<td><p>str</p></td>
+<td><p>Classification or category</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">content</span></code></p></td>
+<td><p>str</p></td>
+<td><p>General content field</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+</section>
+<section id="template-variable-system">
+<h2>Template Variable System<a class="headerlink" href="#template-variable-system" title="Link to this heading"></a></h2>
+<p>Field definitions support template variables that are automatically resolved:</p>
+<section id="available-template-variables">
+<h3>Available Template Variables<a class="headerlink" href="#available-template-variables" title="Link to this heading"></a></h3>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Variable</p></th>
+<th class="head"><p>Description</p></th>
+<th class="head"><p>Example Value</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">{{current_year}}</span></code></p></td>
+<td><p>Current year</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">2024</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">{{current_date}}</span></code></p></td>
+<td><p>Current date (ISO format)</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">2024-03-15</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">{{current_datetime}}</span></code></p></td>
+<td><p>Current datetime (ISO format)</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">2024-03-15T14:30:00</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">{{current_timestamp}}</span></code></p></td>
+<td><p>Unix timestamp</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">1710512400</span></code></p></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Example with Template Variables:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">register_field</span><span class="p">(</span><span class="s2">&quot;processed_date&quot;</span><span class="p">,</span> <span class="p">{</span>
+    <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;Date when this record was processed&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;instructions&quot;</span><span class="p">:</span> <span class="s2">&quot;Use the current date&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;default&quot;</span><span class="p">:</span> <span class="s2">&quot;{{current_date}}&quot;</span><span class="p">,</span>  <span class="c1"># Resolves to actual date</span>
+    <span class="s2">&quot;nullable&quot;</span><span class="p">:</span> <span class="kc">False</span>
+<span class="p">})</span>
+
+<span class="c1"># When used, &quot;{{current_date}}&quot; becomes &quot;2024-03-15&quot;</span>
+<span class="n">field_def</span> <span class="o">=</span> <span class="n">get_field_definition</span><span class="p">(</span><span class="s2">&quot;processed_date&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">field_def</span><span class="p">[</span><span class="s2">&quot;default&quot;</span><span class="p">])</span>  <span class="c1"># &quot;2024-03-15&quot;</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="field-definition-structure">
+<h2>Field Definition Structure<a class="headerlink" href="#field-definition-structure" title="Link to this heading"></a></h2>
+<p>Each field definition is a dictionary with the following structure:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+    <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="nb">int</span> <span class="o">|</span> <span class="nb">float</span> <span class="o">|</span> <span class="nb">list</span> <span class="o">|</span> <span class="nb">dict</span> <span class="o">|</span> <span class="nb">bool</span><span class="p">,</span>  <span class="c1"># Python type</span>
+    <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;Human-readable field description&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;instructions&quot;</span><span class="p">:</span> <span class="s2">&quot;LLM extraction instructions&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;default&quot;</span><span class="p">:</span> <span class="s2">&quot;Default value or template variable&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;nullable&quot;</span><span class="p">:</span> <span class="kc">True</span> <span class="o">|</span> <span class="kc">False</span><span class="p">,</span>  <span class="c1"># Whether field can be None</span>
+    <span class="s2">&quot;validation&quot;</span><span class="p">:</span> <span class="p">{</span><span class="o">...</span><span class="p">}</span>  <span class="c1"># Optional validation rules</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p><strong>Field Definition Properties:</strong></p>
+<ul class="simple">
+<li><p><strong>type</strong>: The Python type for this field (str, int, float, list, dict, bool)</p></li>
+<li><p><strong>description</strong>: Human-readable description of what this field represents</p></li>
+<li><p><strong>instructions</strong>: Specific instructions for the LLM on how to extract this field</p></li>
+<li><p><strong>default</strong>: Default value to use when extraction fails or field is missing</p></li>
+<li><p><strong>nullable</strong>: Whether the field can accept None/null values</p></li>
+<li><p><strong>validation</strong>: Optional dictionary containing validation rules and constraints</p></li>
+</ul>
+</section>
+<section id="advanced-usage-patterns">
+<h2>Advanced Usage Patterns<a class="headerlink" href="#advanced-usage-patterns" title="Link to this heading"></a></h2>
+<section id="loading-field-definitions-from-files">
+<h3>Loading Field Definitions from Files<a class="headerlink" href="#loading-field-definitions-from-files" title="Link to this heading"></a></h3>
+<p>You can load field definitions from JSON or YAML files:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">prompture.tools</span> <span class="kn">import</span> <span class="n">load_field_definitions</span>
+
+<span class="c1"># Load from JSON file</span>
+<span class="n">custom_fields</span> <span class="o">=</span> <span class="n">load_field_definitions</span><span class="p">(</span><span class="s2">&quot;my_fields.json&quot;</span><span class="p">)</span>
+<span class="n">add_field_definitions</span><span class="p">(</span><span class="n">custom_fields</span><span class="p">)</span>
+
+<span class="c1"># Load from YAML file</span>
+<span class="n">yaml_fields</span> <span class="o">=</span> <span class="n">load_field_definitions</span><span class="p">(</span><span class="s2">&quot;fields.yaml&quot;</span><span class="p">)</span>
+<span class="n">add_field_definitions</span><span class="p">(</span><span class="n">yaml_fields</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="thread-safety">
+<h3>Thread Safety<a class="headerlink" href="#thread-safety" title="Link to this heading"></a></h3>
+<p>The field registry is thread-safe and can be used safely in multi-threaded applications:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">threading</span>
+
+<span class="k">def</span> <span class="nf">worker_thread</span><span class="p">():</span>
+    <span class="c1"># Safe to call from multiple threads</span>
+    <span class="n">register_field</span><span class="p">(</span><span class="s2">&quot;thread_field&quot;</span><span class="p">,</span> <span class="p">{</span><span class="o">...</span><span class="p">})</span>
+    <span class="n">field_def</span> <span class="o">=</span> <span class="n">get_field_definition</span><span class="p">(</span><span class="s2">&quot;name&quot;</span><span class="p">)</span>
+
+<span class="n">threads</span> <span class="o">=</span> <span class="p">[</span><span class="n">threading</span><span class="o">.</span><span class="n">Thread</span><span class="p">(</span><span class="n">target</span><span class="o">=</span><span class="n">worker_thread</span><span class="p">)</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">10</span><span class="p">)]</span>
+<span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">threads</span><span class="p">:</span>
+    <span class="n">t</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="integration-with-core-functions">
+<h2>Integration with Core Functions<a class="headerlink" href="#integration-with-core-functions" title="Link to this heading"></a></h2>
+<p>The field definitions system integrates seamlessly with core extraction functions:</p>
+<p><strong>With extract_with_model():</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">prompture</span> <span class="kn">import</span> <span class="n">extract_with_model</span><span class="p">,</span> <span class="n">field_from_registry</span>
+
+<span class="k">class</span> <span class="nc">Person</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;name&quot;</span><span class="p">)</span>
+    <span class="n">email</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;email&quot;</span><span class="p">)</span>
+
+<span class="n">result</span> <span class="o">=</span> <span class="n">extract_with_model</span><span class="p">(</span><span class="n">Person</span><span class="p">,</span> <span class="n">text</span><span class="p">,</span> <span class="s2">&quot;openai/gpt-4&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p><strong>With stepwise_extract_with_model():</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">prompture.core</span> <span class="kn">import</span> <span class="n">stepwise_extract_with_model</span>
+
+<span class="c1"># Automatically uses global registry for enhanced defaults</span>
+<span class="n">result</span> <span class="o">=</span> <span class="n">stepwise_extract_with_model</span><span class="p">(</span>
+    <span class="n">model_cls</span><span class="o">=</span><span class="n">Person</span><span class="p">,</span>
+    <span class="n">text</span><span class="o">=</span><span class="s2">&quot;...&quot;</span><span class="p">,</span>
+    <span class="n">model_name</span><span class="o">=</span><span class="s2">&quot;openai/gpt-4&quot;</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="best-practices">
+<h2>Best Practices<a class="headerlink" href="#best-practices" title="Link to this heading"></a></h2>
+<ol class="arabic simple">
+<li><p><strong>Use built-in fields</strong> when possible before creating custom ones</p></li>
+<li><p><strong>Provide clear instructions</strong> that help LLMs extract the field correctly</p></li>
+<li><p><strong>Set appropriate defaults</strong> that make sense when extraction fails</p></li>
+<li><p><strong>Use template variables</strong> for dynamic values like dates and timestamps</p></li>
+<li><p><strong>Group related fields</strong> logically when registering multiple definitions</p></li>
+<li><p><strong>Document custom fields</strong> with descriptive names and comprehensive instructions</p></li>
+<li><p><strong>Test field definitions</strong> with representative text samples to ensure accuracy</p></li>
+</ol>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="core.html" class="btn btn-neutral float-left" title="Core Module" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="drivers.html" class="btn btn-neutral float-right" title="Drivers Module" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Juan Denis.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+  
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    var footerCopy = document.querySelector("footer .copyright");
+    if (footerCopy) {
+        footerCopy.innerHTML = footerCopy.innerHTML.replace(
+            "Juan Denis",
+            '<a href="https://juandenis.com">Juan Denis</a>'
+        );
+    }
+});
+</script>
+ 
+
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -1,0 +1,283 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Prompture Documentation &mdash; Prompture 1.0.49 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=fa44fd50" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/custom.css?v=0cbbaaf5" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=9c1456b3"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Installation Guide" href="installation.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #048b41" >
+
+          
+          
+          <a href="#" class="icon icon-home">
+            Prompture
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="quickstart.html">Quick Start Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="toon_input_guide.html">TOON Input Conversion Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="field_definitions_reference.html">Field Definitions Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="contributing.html">Contributing to Prompture</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Documentation:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="api/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #048b41" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="#">Prompture</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="#" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Prompture Documentation</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/index.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="prompture-documentation">
+<h1>Prompture Documentation<a class="headerlink" href="#prompture-documentation" title="Link to this heading"></a></h1>
+<p>Prompture is a Python library for structured LLM data extraction. It provides an API-first approach to ask LLMs to return structured JSON and run cross-model tests.</p>
+<p><strong>Key Features:</strong></p>
+<ul class="simple">
+<li><p><strong>Multi-LLM Support</strong>: Works with OpenAI, Anthropic, Google, Groq, and more</p></li>
+<li><p><strong>Structured Output</strong>: Get consistent JSON responses from any LLM</p></li>
+<li><p><strong>TOON Input Conversion</strong>: 45-60% token savings for structured data analysis</p></li>
+<li><p><strong>Field Definitions</strong>: Define your data structure with validation</p></li>
+<li><p><strong>Cross-Model Testing</strong>: Compare results across different models</p></li>
+<li><p><strong>Driver Architecture</strong>: Extensible design for adding new LLM providers</p></li>
+</ul>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Prompture is currently in development (version 1.0.49). APIs may change between versions.</p>
+</div>
+<section id="quick-start">
+<h2>Quick Start<a class="headerlink" href="#quick-start" title="Link to this heading"></a></h2>
+<p>Install Prompture:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>prompture
+</pre></div>
+</div>
+<p>Basic usage:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">prompture</span> <span class="kn">import</span> <span class="n">extract_and_jsonify</span>
+
+<span class="c1"># Extract structured data</span>
+<span class="n">result</span> <span class="o">=</span> <span class="n">extract_and_jsonify</span><span class="p">(</span>
+    <span class="n">prompt</span><span class="o">=</span><span class="s2">&quot;Extract name and age from: John is 25 years old&quot;</span><span class="p">,</span>
+    <span class="n">fields</span><span class="o">=</span><span class="p">{</span>
+        <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;name&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;age&quot;</span><span class="p">:</span> <span class="s2">&quot;age&quot;</span>
+    <span class="p">},</span>
+    <span class="n">model_name</span><span class="o">=</span><span class="s2">&quot;openai/gpt-4&quot;</span>
+<span class="p">)</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="p">)</span>
+<span class="c1"># Output: {&quot;name&quot;: &quot;John&quot;, &quot;age&quot;: 25}</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="documentation">
+<h1>Documentation<a class="headerlink" href="#documentation" title="Link to this heading"></a></h1>
+<div class="toctree-wrapper compound">
+<p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation Guide</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#requirements">Requirements</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#installation">Installation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#environment-configuration">Environment Configuration</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#verification">Verification</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#troubleshooting">Troubleshooting</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#next-steps">Next Steps</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="quickstart.html">Quick Start Guide</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="quickstart.html#basic-setup">Basic Setup</a></li>
+<li class="toctree-l2"><a class="reference internal" href="quickstart.html#your-first-extraction">Your First Extraction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="quickstart.html#using-field-definitions">Using Field Definitions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="quickstart.html#using-pydantic-models-recommended">Using Pydantic Models (Recommended)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="quickstart.html#custom-field-definitions">Custom Field Definitions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="quickstart.html#different-llm-providers">Different LLM Providers</a></li>
+<li class="toctree-l2"><a class="reference internal" href="quickstart.html#template-variables">Template Variables</a></li>
+<li class="toctree-l2"><a class="reference internal" href="quickstart.html#error-handling">Error Handling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="quickstart.html#batch-processing">Batch Processing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="quickstart.html#configuration-tips">Configuration Tips</a></li>
+<li class="toctree-l2"><a class="reference internal" href="quickstart.html#next-steps">Next Steps</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="toon_input_guide.html">TOON Input Conversion Guide</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="toon_input_guide.html#overview">Overview</a></li>
+<li class="toctree-l2"><a class="reference internal" href="toon_input_guide.html#quick-start">Quick Start</a></li>
+<li class="toctree-l2"><a class="reference internal" href="toon_input_guide.html#advanced-usage">Advanced Usage</a></li>
+<li class="toctree-l2"><a class="reference internal" href="toon_input_guide.html#token-savings-analysis">Token Savings Analysis</a></li>
+<li class="toctree-l2"><a class="reference internal" href="toon_input_guide.html#best-practices">Best Practices</a></li>
+<li class="toctree-l2"><a class="reference internal" href="toon_input_guide.html#error-handling">Error Handling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="toon_input_guide.html#migration-from-existing-code">Migration from Existing Code</a></li>
+<li class="toctree-l2"><a class="reference internal" href="toon_input_guide.html#api-reference">API Reference</a></li>
+<li class="toctree-l2"><a class="reference internal" href="toon_input_guide.html#examples-and-use-cases">Examples and Use Cases</a></li>
+<li class="toctree-l2"><a class="reference internal" href="toon_input_guide.html#troubleshooting">Troubleshooting</a></li>
+<li class="toctree-l2"><a class="reference internal" href="toon_input_guide.html#conclusion">Conclusion</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="field_definitions_reference.html">Field Definitions Reference</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="field_definitions_reference.html#overview">Overview</a></li>
+<li class="toctree-l2"><a class="reference internal" href="field_definitions_reference.html#quick-start">Quick Start</a></li>
+<li class="toctree-l2"><a class="reference internal" href="field_definitions_reference.html#built-in-field-definitions">Built-in Field Definitions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="field_definitions_reference.html#template-variable-system">Template Variable System</a></li>
+<li class="toctree-l2"><a class="reference internal" href="field_definitions_reference.html#custom-field-registration">Custom Field Registration</a></li>
+<li class="toctree-l2"><a class="reference internal" href="field_definitions_reference.html#integration-examples">Integration Examples</a></li>
+<li class="toctree-l2"><a class="reference internal" href="field_definitions_reference.html#registry-management">Registry Management</a></li>
+<li class="toctree-l2"><a class="reference internal" href="field_definitions_reference.html#best-practices">Best Practices</a></li>
+<li class="toctree-l2"><a class="reference internal" href="field_definitions_reference.html#api-reference">API Reference</a></li>
+<li class="toctree-l2"><a class="reference internal" href="field_definitions_reference.html#see-also">See Also</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="examples.html#resume-and-cv-processing">Resume and CV Processing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples.html#medical-record-processing">Medical Record Processing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples.html#e-commerce-product-extraction">E-commerce Product Extraction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples.html#financial-document-analysis">Financial Document Analysis</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples.html#social-media-content-analysis">Social Media Content Analysis</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples.html#cross-model-comparison">Cross-Model Comparison</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples.html#batch-processing-with-error-handling">Batch Processing with Error Handling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples.html#working-with-local-models-ollama">Working with Local Models (Ollama)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples.html#real-time-data-processing">Real-time Data Processing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples.html#tips-and-best-practices">Tips and Best Practices</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="contributing.html">Contributing to Prompture</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="contributing.html#getting-started">Getting Started</a></li>
+<li class="toctree-l2"><a class="reference internal" href="contributing.html#types-of-contributions">Types of Contributions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="contributing.html#development-workflow">Development Workflow</a></li>
+<li class="toctree-l2"><a class="reference internal" href="contributing.html#coding-standards">Coding Standards</a></li>
+<li class="toctree-l2"><a class="reference internal" href="contributing.html#testing-guidelines">Testing Guidelines</a></li>
+<li class="toctree-l2"><a class="reference internal" href="contributing.html#adding-new-llm-drivers">Adding New LLM Drivers</a></li>
+<li class="toctree-l2"><a class="reference internal" href="contributing.html#adding-new-field-types">Adding New Field Types</a></li>
+<li class="toctree-l2"><a class="reference internal" href="contributing.html#documentation-contributions">Documentation Contributions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="contributing.html#pull-request-guidelines">Pull Request Guidelines</a></li>
+<li class="toctree-l2"><a class="reference internal" href="contributing.html#release-process">Release Process</a></li>
+<li class="toctree-l2"><a class="reference internal" href="contributing.html#getting-help">Getting Help</a></li>
+<li class="toctree-l2"><a class="reference internal" href="contributing.html#recognition">Recognition</a></li>
+</ul>
+</li>
+</ul>
+</div>
+</section>
+<section id="api-reference">
+<h1>API Reference<a class="headerlink" href="#api-reference" title="Link to this heading"></a></h1>
+<div class="toctree-wrapper compound">
+<p class="caption" role="heading"><span class="caption-text">API Documentation:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="api/index.html">API Reference</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="api/index.html#overview">Overview</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api/index.html#quick-reference">Quick Reference</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api/index.html#core-functions">Core Functions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api/index.html#field-registry-system">Field Registry System</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api/index.html#built-in-field-types">Built-in Field Types</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api/index.html#driver-system">Driver System</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api/index.html#validation-and-utilities">Validation and Utilities</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api/index.html#error-handling">Error Handling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api/index.html#configuration">Configuration</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api/index.html#module-reference">Module Reference</a></li>
+</ul>
+</li>
+</ul>
+</div>
+</section>
+<section id="indices-and-tables">
+<h1>Indices and tables<a class="headerlink" href="#indices-and-tables" title="Link to this heading"></a></h1>
+<ul class="simple">
+<li><p><a class="reference internal" href="genindex.html"><span class="std std-ref">Index</span></a></p></li>
+<li><p><a class="reference internal" href="py-modindex.html"><span class="std std-ref">Module Index</span></a></p></li>
+<li><p><a class="reference internal" href="search.html"><span class="std std-ref">Search Page</span></a></p></li>
+</ul>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="installation.html" class="btn btn-neutral float-right" title="Installation Guide" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Juan Denis.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+  
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    var footerCopy = document.querySelector("footer .copyright");
+    if (footerCopy) {
+        footerCopy.innerHTML = footerCopy.innerHTML.replace(
+            "Juan Denis",
+            '<a href="https://juandenis.com">Juan Denis</a>'
+        );
+    }
+});
+</script>
+ 
+
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

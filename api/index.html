@@ -1,0 +1,636 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>API Reference &mdash; Prompture 1.0.49 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=fa44fd50" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=0cbbaaf5" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=9c1456b3"></script>
+      <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Core Module" href="core.html" />
+    <link rel="prev" title="Contributing to Prompture" href="../contributing.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #048b41" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            Prompture
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../installation.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../quickstart.html">Quick Start Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../toon_input_guide.html">TOON Input Conversion Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../field_definitions_reference.html">Field Definitions Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples.html">Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../contributing.html">Contributing to Prompture</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Documentation:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="current reference internal" href="#">API Reference</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#overview">Overview</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#quick-reference">Quick Reference</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#core-functions">Core Functions</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#extract-and-jsonify">extract_and_jsonify()</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#extract-with-model">extract_with_model()</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#stepwise-extract-with-model">stepwise_extract_with_model()</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#field-registry-system">Field Registry System</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#field-from-registry">field_from_registry()</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#register-field">register_field()</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#built-in-field-types">Built-in Field Types</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#driver-system">Driver System</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#supported-models">Supported Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#driver-base-class">Driver Base Class</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#validation-and-utilities">Validation and Utilities</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#validate-against-schema">validate_against_schema()</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#error-handling">Error Handling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#configuration">Configuration</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#environment-variables">Environment Variables</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#template-variables">Template Variables</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#module-reference">Module Reference</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="core.html">Core Module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="field_definitions.html">Field Definitions Module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="drivers.html">Drivers Module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="tools.html">Tools Module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="runner.html">Runner Module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="validator.html">Validator Module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#core-modules">Core Modules</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#utility-modules">Utility Modules</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #048b41" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">Prompture</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">API Reference</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/api/index.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="api-reference">
+<h1>API Reference<a class="headerlink" href="#api-reference" title="Link to this heading"></a></h1>
+<p>This section provides detailed documentation for all Prompture modules, classes, and functions.</p>
+<section id="overview">
+<h2>Overview<a class="headerlink" href="#overview" title="Link to this heading"></a></h2>
+<p>Prompture is organized into several key modules:</p>
+<ul class="simple">
+<li><p><strong>Core Module</strong> (<a class="reference internal" href="core.html"><span class="doc">Core Module</span></a>) - Main extraction functions and utilities</p></li>
+<li><p><strong>Field Definitions</strong> (<a class="reference internal" href="field_definitions.html"><span class="doc">Field Definitions Module</span></a>) - Field registry and validation system</p></li>
+<li><p><strong>Drivers</strong> (<a class="reference internal" href="drivers.html"><span class="doc">Drivers Module</span></a>) - LLM provider interfaces</p></li>
+<li><p><strong>Runner</strong> (<a class="reference internal" href="runner.html"><span class="doc">Runner Module</span></a>) - Test suite and batch processing</p></li>
+<li><p><strong>Validator</strong> (<a class="reference internal" href="validator.html"><span class="doc">Validator Module</span></a>) - Data validation utilities</p></li>
+</ul>
+</section>
+<section id="quick-reference">
+<h2>Quick Reference<a class="headerlink" href="#quick-reference" title="Link to this heading"></a></h2>
+<p><strong>Main Extraction Functions</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">prompture</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">extract_and_jsonify</span><span class="p">,</span>        <span class="c1"># Basic extraction with field definitions</span>
+    <span class="n">extract_with_model</span><span class="p">,</span>         <span class="c1"># Extract using Pydantic models</span>
+    <span class="n">stepwise_extract_with_model</span> <span class="c1"># Multi-step extraction process</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p><strong>Field Registry System</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">prompture</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">field_from_registry</span><span class="p">,</span>        <span class="c1"># Get field for Pydantic models</span>
+    <span class="n">register_field</span><span class="p">,</span>             <span class="c1"># Register custom field definition</span>
+    <span class="n">get_registry_snapshot</span><span class="p">,</span>      <span class="c1"># View all registered fields</span>
+    <span class="n">clear_registry</span>             <span class="c1"># Clear custom fields</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p><strong>Driver and Utilities</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">prompture</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">Driver</span><span class="p">,</span>                     <span class="c1"># Base driver class</span>
+    <span class="n">validate_against_schema</span><span class="p">,</span>    <span class="c1"># JSON schema validation</span>
+    <span class="n">run_suite_from_spec</span>        <span class="c1"># Run test suites</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="core-functions">
+<h2>Core Functions<a class="headerlink" href="#core-functions" title="Link to this heading"></a></h2>
+<section id="extract-and-jsonify">
+<h3>extract_and_jsonify()<a class="headerlink" href="#extract-and-jsonify" title="Link to this heading"></a></h3>
+<p>Main function for extracting structured data from text using field definitions.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span> <span class="nf">extract_and_jsonify</span><span class="p">(</span>
+    <span class="n">prompt</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">fields</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
+    <span class="n">model_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;auto&quot;</span><span class="p">,</span>
+    <span class="o">**</span><span class="n">kwargs</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Extract structured JSON data from text using field definitions.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        prompt: The input text to extract data from</span>
+<span class="sd">        fields: Dictionary mapping field names to field types or definitions</span>
+<span class="sd">        model_name: LLM model to use (e.g., &quot;openai/gpt-4&quot;)</span>
+<span class="sd">        **kwargs: Additional parameters passed to the driver</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        Dictionary containing extracted structured data</span>
+
+<span class="sd">    Raises:</span>
+<span class="sd">        ValueError: If extraction fails or data is invalid</span>
+<span class="sd">        RuntimeError: If model or driver is not available</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+</pre></div>
+</div>
+<p><strong>Example:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">result</span> <span class="o">=</span> <span class="n">extract_and_jsonify</span><span class="p">(</span>
+    <span class="n">prompt</span><span class="o">=</span><span class="s2">&quot;John Smith is 25 years old&quot;</span><span class="p">,</span>
+    <span class="n">fields</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;name&quot;</span><span class="p">,</span> <span class="s2">&quot;age&quot;</span><span class="p">:</span> <span class="s2">&quot;age&quot;</span><span class="p">},</span>
+    <span class="n">model_name</span><span class="o">=</span><span class="s2">&quot;openai/gpt-4&quot;</span>
+<span class="p">)</span>
+<span class="c1"># Returns: {&quot;name&quot;: &quot;John Smith&quot;, &quot;age&quot;: 25}</span>
+</pre></div>
+</div>
+</section>
+<section id="extract-with-model">
+<h3>extract_with_model()<a class="headerlink" href="#extract-with-model" title="Link to this heading"></a></h3>
+<p>Extract data using Pydantic models with the field registry system.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span> <span class="nf">extract_with_model</span><span class="p">(</span>
+    <span class="n">model_class</span><span class="p">:</span> <span class="n">Type</span><span class="p">[</span><span class="n">BaseModel</span><span class="p">],</span>
+    <span class="n">prompt</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">model_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;auto&quot;</span><span class="p">,</span>
+    <span class="o">**</span><span class="n">kwargs</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">BaseModel</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Extract structured data using a Pydantic model.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        model_class: Pydantic model class defining the output structure</span>
+<span class="sd">        prompt: The input text to extract data from</span>
+<span class="sd">        model_name: LLM model to use</span>
+<span class="sd">        **kwargs: Additional parameters</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        Instance of the Pydantic model with extracted data</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+</pre></div>
+</div>
+<p><strong>Example:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">class</span> <span class="nc">Person</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;name&quot;</span><span class="p">)</span>
+    <span class="n">age</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;age&quot;</span><span class="p">)</span>
+
+<span class="n">person</span> <span class="o">=</span> <span class="n">extract_with_model</span><span class="p">(</span>
+    <span class="n">model_class</span><span class="o">=</span><span class="n">Person</span><span class="p">,</span>
+    <span class="n">prompt</span><span class="o">=</span><span class="s2">&quot;Alice Johnson, 32 years old&quot;</span><span class="p">,</span>
+    <span class="n">model_name</span><span class="o">=</span><span class="s2">&quot;openai/gpt-4&quot;</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="stepwise-extract-with-model">
+<h3>stepwise_extract_with_model()<a class="headerlink" href="#stepwise-extract-with-model" title="Link to this heading"></a></h3>
+<p>Multi-step extraction process with enhanced validation and error handling.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span> <span class="nf">stepwise_extract_with_model</span><span class="p">(</span>
+    <span class="n">model_class</span><span class="p">:</span> <span class="n">Type</span><span class="p">[</span><span class="n">BaseModel</span><span class="p">],</span>
+    <span class="n">prompt</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">model_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;auto&quot;</span><span class="p">,</span>
+    <span class="o">**</span><span class="n">kwargs</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">BaseModel</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Extract data using a multi-step validation process.</span>
+
+<span class="sd">    This function performs extraction in multiple phases with</span>
+<span class="sd">    validation at each step for improved accuracy.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        model_class: Pydantic model class</span>
+<span class="sd">        prompt: Input text</span>
+<span class="sd">        model_name: LLM model to use</span>
+<span class="sd">        **kwargs: Additional parameters</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        Validated Pydantic model instance</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="field-registry-system">
+<h2>Field Registry System<a class="headerlink" href="#field-registry-system" title="Link to this heading"></a></h2>
+<section id="field-from-registry">
+<h3>field_from_registry()<a class="headerlink" href="#field-from-registry" title="Link to this heading"></a></h3>
+<p>Get a field definition from the registry for use in Pydantic models.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span> <span class="nf">field_from_registry</span><span class="p">(</span><span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Retrieve a field definition from the registry.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        field_name: Name of the registered field</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        Pydantic Field object with the registered definition</span>
+
+<span class="sd">    Raises:</span>
+<span class="sd">        KeyError: If field_name is not registered</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+</pre></div>
+</div>
+</section>
+<section id="register-field">
+<h3>register_field()<a class="headerlink" href="#register-field" title="Link to this heading"></a></h3>
+<p>Register a custom field definition in the global registry.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span> <span class="nf">register_field</span><span class="p">(</span><span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">definition</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Register a custom field definition.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        name: Field name identifier</span>
+<span class="sd">        definition: Dictionary containing field specification</span>
+
+<span class="sd">    Definition format:</span>
+<span class="sd">        {</span>
+<span class="sd">            &quot;type&quot;: &quot;str|int|float|list|dict|bool&quot;,</span>
+<span class="sd">            &quot;description&quot;: &quot;Human readable description&quot;,</span>
+<span class="sd">            &quot;instructions&quot;: &quot;Instructions for LLM extraction&quot;,</span>
+<span class="sd">            &quot;default&quot;: &quot;Default value or template variable&quot;,</span>
+<span class="sd">            &quot;nullable&quot;: True/False,</span>
+<span class="sd">            &quot;validation&quot;: {...}  # Optional validation rules</span>
+<span class="sd">        }</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+</pre></div>
+</div>
+<p><strong>Example:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">register_field</span><span class="p">(</span><span class="s2">&quot;skills&quot;</span><span class="p">,</span> <span class="p">{</span>
+    <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;list&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;List of professional skills&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;instructions&quot;</span><span class="p">:</span> <span class="s2">&quot;Extract skills as list of strings&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;default&quot;</span><span class="p">:</span> <span class="p">[],</span>
+    <span class="s2">&quot;nullable&quot;</span><span class="p">:</span> <span class="kc">True</span>
+<span class="p">})</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="built-in-field-types">
+<h2>Built-in Field Types<a class="headerlink" href="#built-in-field-types" title="Link to this heading"></a></h2>
+<p>Prompture includes many built-in field definitions:</p>
+<dl class="simple">
+<dt><strong>Personal Information</strong></dt><dd><ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">name</span></code> - Person’s full name</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">age</span></code> - Age in years (0-150)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">email</span></code> - Email address with validation</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">phone</span></code> - Phone number</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">address</span></code> - Physical address</p></li>
+</ul>
+</dd>
+<dt><strong>Professional Fields</strong></dt><dd><ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">occupation</span></code> - Job title or profession</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">company</span></code> - Company or organization name</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">experience_years</span></code> - Years of experience</p></li>
+</ul>
+</dd>
+<dt><strong>Temporal Fields</strong></dt><dd><ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">date</span></code> - Date in various formats</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">year</span></code> - Year (1900-current)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">last_updated</span></code> - Timestamp field</p></li>
+</ul>
+</dd>
+<dt><strong>Content Fields</strong></dt><dd><ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">title</span></code> - Title or heading text</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">description</span></code> - Longer descriptive text</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">category</span></code> - Classification or category</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">content</span></code> - General content field</p></li>
+</ul>
+</dd>
+</dl>
+</section>
+<section id="driver-system">
+<h2>Driver System<a class="headerlink" href="#driver-system" title="Link to this heading"></a></h2>
+<p>The driver system provides a unified interface for different LLM providers.</p>
+<section id="supported-models">
+<h3>Supported Models<a class="headerlink" href="#supported-models" title="Link to this heading"></a></h3>
+<dl class="simple">
+<dt><strong>OpenAI</strong></dt><dd><ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">openai/gpt-4</span></code> - GPT-4 (recommended for complex tasks)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">openai/gpt-3.5-turbo</span></code> - GPT-3.5 Turbo (fast and cost-effective)</p></li>
+</ul>
+</dd>
+<dt><strong>Anthropic</strong></dt><dd><ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">anthropic/claude-3-opus-20240229</span></code> - Claude 3 Opus (most capable)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">anthropic/claude-3-sonnet-20240229</span></code> - Claude 3 Sonnet (balanced)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">anthropic/claude-3-haiku-20240307</span></code> - Claude 3 Haiku (fast)</p></li>
+</ul>
+</dd>
+<dt><strong>Google</strong></dt><dd><ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">google/gemini-pro</span></code> - Gemini Pro</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">google/gemini-pro-vision</span></code> - Gemini Pro with vision</p></li>
+</ul>
+</dd>
+<dt><strong>Groq</strong></dt><dd><ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">groq/llama2-70b-4096</span></code> - Llama 2 70B (fast inference)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">groq/mixtral-8x7b-32768</span></code> - Mixtral 8x7B</p></li>
+</ul>
+</dd>
+<dt><strong>Local Models</strong></dt><dd><ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">ollama/llama2</span></code> - Local Llama 2 via Ollama</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">ollama/mistral</span></code> - Local Mistral via Ollama</p></li>
+</ul>
+</dd>
+</dl>
+</section>
+<section id="driver-base-class">
+<h3>Driver Base Class<a class="headerlink" href="#driver-base-class" title="Link to this heading"></a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">class</span> <span class="nc">Driver</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Base class for LLM drivers.&quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Initialize the driver with model configuration.&quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">ask_for_json</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">prompt</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Send prompt to LLM and return JSON response.&quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">validate_response</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">response</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Validate the LLM response format.&quot;&quot;&quot;</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="validation-and-utilities">
+<h2>Validation and Utilities<a class="headerlink" href="#validation-and-utilities" title="Link to this heading"></a></h2>
+<section id="validate-against-schema">
+<h3>validate_against_schema()<a class="headerlink" href="#validate-against-schema" title="Link to this heading"></a></h3>
+<p>Validate extracted data against a JSON schema.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span> <span class="nf">validate_against_schema</span><span class="p">(</span><span class="n">data</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span> <span class="n">schema</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Validate data against a JSON schema.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        data: Dictionary to validate</span>
+<span class="sd">        schema: JSON schema specification</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        True if data matches schema, False otherwise</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+</pre></div>
+</div>
+<p><strong>Example:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">schema</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;object&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;properties&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;string&quot;</span><span class="p">},</span>
+        <span class="s2">&quot;age&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;integer&quot;</span><span class="p">,</span> <span class="s2">&quot;minimum&quot;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span> <span class="s2">&quot;maximum&quot;</span><span class="p">:</span> <span class="mi">150</span><span class="p">}</span>
+    <span class="p">},</span>
+    <span class="s2">&quot;required&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;name&quot;</span><span class="p">,</span> <span class="s2">&quot;age&quot;</span><span class="p">]</span>
+<span class="p">}</span>
+
+<span class="n">is_valid</span> <span class="o">=</span> <span class="n">validate_against_schema</span><span class="p">(</span><span class="n">result</span><span class="p">,</span> <span class="n">schema</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="error-handling">
+<h2>Error Handling<a class="headerlink" href="#error-handling" title="Link to this heading"></a></h2>
+<p>Prompture defines several custom exceptions:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">class</span> <span class="nc">PromptureError</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Base exception for Prompture errors.&quot;&quot;&quot;</span>
+
+<span class="k">class</span> <span class="nc">ExtractionError</span><span class="p">(</span><span class="n">PromptureError</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Raised when data extraction fails.&quot;&quot;&quot;</span>
+
+<span class="k">class</span> <span class="nc">ValidationError</span><span class="p">(</span><span class="n">PromptureError</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Raised when data validation fails.&quot;&quot;&quot;</span>
+
+<span class="k">class</span> <span class="nc">DriverError</span><span class="p">(</span><span class="n">PromptureError</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Raised when driver operations fail.&quot;&quot;&quot;</span>
+</pre></div>
+</div>
+</section>
+<section id="configuration">
+<h2>Configuration<a class="headerlink" href="#configuration" title="Link to this heading"></a></h2>
+<section id="environment-variables">
+<h3>Environment Variables<a class="headerlink" href="#environment-variables" title="Link to this heading"></a></h3>
+<p>Prompture uses environment variables for configuration:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># API Keys</span>
+<span class="nv">OPENAI_API_KEY</span><span class="o">=</span>your_openai_key
+<span class="nv">ANTHROPIC_API_KEY</span><span class="o">=</span>your_anthropic_key
+<span class="nv">GOOGLE_API_KEY</span><span class="o">=</span>your_google_key
+<span class="nv">GROQ_API_KEY</span><span class="o">=</span>your_groq_key
+
+<span class="c1"># Custom Endpoints</span>
+<span class="nv">OPENAI_BASE_URL</span><span class="o">=</span>https://api.openai.com/v1
+<span class="nv">LOCAL_API_BASE_URL</span><span class="o">=</span>http://localhost:8000
+<span class="nv">OLLAMA_BASE_URL</span><span class="o">=</span>http://localhost:11434
+</pre></div>
+</div>
+</section>
+<section id="template-variables">
+<h3>Template Variables<a class="headerlink" href="#template-variables" title="Link to this heading"></a></h3>
+<p>Field definitions support template variables that are automatically resolved:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">{{current_year}}</span></code> - Current year (e.g., 2024)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">{{current_date}}</span></code> - Current date (YYYY-MM-DD format)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">{{current_datetime}}</span></code> - Current datetime (ISO format)</p></li>
+</ul>
+<p><strong>Example:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">register_field</span><span class="p">(</span><span class="s2">&quot;processed_at&quot;</span><span class="p">,</span> <span class="p">{</span>
+    <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;str&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;Processing timestamp&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;default&quot;</span><span class="p">:</span> <span class="s2">&quot;{{current_datetime}}&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;nullable&quot;</span><span class="p">:</span> <span class="kc">False</span>
+<span class="p">})</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="module-reference">
+<h2>Module Reference<a class="headerlink" href="#module-reference" title="Link to this heading"></a></h2>
+<div class="toctree-wrapper compound">
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="core.html">Core Module</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="core.html#overview">Overview</a></li>
+<li class="toctree-l2"><a class="reference internal" href="core.html#main-functions">Main Functions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="core.html#utility-functions">Utility Functions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="core.html#error-handling">Error Handling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="core.html#return-value-structure">Return Value Structure</a></li>
+<li class="toctree-l2"><a class="reference internal" href="core.html#integration-with-other-modules">Integration with Other Modules</a></li>
+<li class="toctree-l2"><a class="reference internal" href="core.html#best-practices">Best Practices</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="field_definitions.html">Field Definitions Module</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="field_definitions.html#overview">Overview</a></li>
+<li class="toctree-l2"><a class="reference internal" href="field_definitions.html#registry-management-functions">Registry Management Functions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="field_definitions.html#registry-inspection-functions">Registry Inspection Functions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="field_definitions.html#registry-maintenance-functions">Registry Maintenance Functions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="field_definitions.html#built-in-field-definitions">Built-in Field Definitions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="field_definitions.html#template-variable-system">Template Variable System</a></li>
+<li class="toctree-l2"><a class="reference internal" href="field_definitions.html#field-definition-structure">Field Definition Structure</a></li>
+<li class="toctree-l2"><a class="reference internal" href="field_definitions.html#advanced-usage-patterns">Advanced Usage Patterns</a></li>
+<li class="toctree-l2"><a class="reference internal" href="field_definitions.html#integration-with-core-functions">Integration with Core Functions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="field_definitions.html#best-practices">Best Practices</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="drivers.html">Drivers Module</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="drivers.html#overview">Overview</a></li>
+<li class="toctree-l2"><a class="reference internal" href="drivers.html#driver-selection-functions">Driver Selection Functions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="drivers.html#available-driver-classes">Available Driver Classes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="drivers.html#local-and-custom-drivers">Local and Custom Drivers</a></li>
+<li class="toctree-l2"><a class="reference internal" href="drivers.html#driver-interface">Driver Interface</a></li>
+<li class="toctree-l2"><a class="reference internal" href="drivers.html#cost-tracking-and-pricing">Cost Tracking and Pricing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="drivers.html#environment-variables">Environment Variables</a></li>
+<li class="toctree-l2"><a class="reference internal" href="drivers.html#error-handling">Error Handling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="drivers.html#best-practices">Best Practices</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="tools.html">Tools Module</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="tools.html#overview">Overview</a></li>
+<li class="toctree-l2"><a class="reference internal" href="tools.html#data-parsing-and-conversion">Data Parsing and Conversion</a></li>
+<li class="toctree-l2"><a class="reference internal" href="tools.html#schema-generation-and-validation">Schema Generation and Validation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="tools.html#data-conversion-and-type-handling">Data Conversion and Type Handling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="tools.html#file-and-data-loading">File and Data Loading</a></li>
+<li class="toctree-l2"><a class="reference internal" href="tools.html#default-value-management">Default Value Management</a></li>
+<li class="toctree-l2"><a class="reference internal" href="tools.html#text-processing-utilities">Text Processing Utilities</a></li>
+<li class="toctree-l2"><a class="reference internal" href="tools.html#best-practices">Best Practices</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="runner.html">Runner Module</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="runner.html#overview">Overview</a></li>
+<li class="toctree-l2"><a class="reference internal" href="runner.html#main-functions">Main Functions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="runner.html#test-suite-components">Test Suite Components</a></li>
+<li class="toctree-l2"><a class="reference internal" href="runner.html#advanced-usage-patterns">Advanced Usage Patterns</a></li>
+<li class="toctree-l2"><a class="reference internal" href="runner.html#integration-with-testing-frameworks">Integration with Testing Frameworks</a></li>
+<li class="toctree-l2"><a class="reference internal" href="runner.html#best-practices">Best Practices</a></li>
+<li class="toctree-l2"><a class="reference internal" href="runner.html#error-handling">Error Handling</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="validator.html">Validator Module</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="validator.html#overview">Overview</a></li>
+<li class="toctree-l2"><a class="reference internal" href="validator.html#main-functions">Main Functions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="validator.html#supported-json-schema-features">Supported JSON Schema Features</a></li>
+<li class="toctree-l2"><a class="reference internal" href="validator.html#advanced-schema-features">Advanced Schema Features</a></li>
+<li class="toctree-l2"><a class="reference internal" href="validator.html#integration-with-prompture">Integration with Prompture</a></li>
+<li class="toctree-l2"><a class="reference internal" href="validator.html#error-handling-and-debugging">Error Handling and Debugging</a></li>
+<li class="toctree-l2"><a class="reference internal" href="validator.html#best-practices">Best Practices</a></li>
+<li class="toctree-l2"><a class="reference internal" href="validator.html#dependencies">Dependencies</a></li>
+</ul>
+</li>
+</ul>
+</div>
+<p>For detailed module documentation, select a module from the list above.</p>
+<p>The following API documentation files have been generated using Sphinx autodoc:</p>
+<section id="core-modules">
+<h3>Core Modules<a class="headerlink" href="#core-modules" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p><strong>Core Module</strong> (<a class="reference internal" href="core.html"><span class="doc">Core Module</span></a>) - Main extraction functions: [<cite>extract_and_jsonify()</cite>](core.rst#extract_and_jsonify), [<cite>extract_with_model()</cite>](core.rst#extract_with_model), [<cite>stepwise_extract_with_model()</cite>](core.rst#stepwise_extract_with_model)</p></li>
+<li><p><strong>Field Definitions</strong> (<a class="reference internal" href="field_definitions.html"><span class="doc">Field Definitions Module</span></a>) - Field registry system: [<cite>field_from_registry()</cite>](field_definitions.rst#field_from_registry), [<cite>register_field()</cite>](field_definitions.rst#register_field), [<cite>get_registry_snapshot()</cite>](field_definitions.rst#get_registry_snapshot)</p></li>
+<li><p><strong>Drivers</strong> (<a class="reference internal" href="drivers.html"><span class="doc">Drivers Module</span></a>) - LLM provider interfaces: [<cite>get_driver_for_model()</cite>](drivers.rst#get_driver_for_model), [<cite>OpenAIDriver</cite>](drivers.rst#openaidriver), [<cite>ClaudeDriver</cite>](drivers.rst#claudedriver), and more</p></li>
+</ul>
+</section>
+<section id="utility-modules">
+<h3>Utility Modules<a class="headerlink" href="#utility-modules" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p><strong>Tools</strong> (<a class="reference internal" href="tools.html"><span class="doc">Tools Module</span></a>) - Utility functions: [<cite>convert_value()</cite>](tools.rst#convert_value), [<cite>clean_json_text()</cite>](tools.rst#clean_json_text)</p></li>
+<li><p><strong>Runner</strong> (<a class="reference internal" href="runner.html"><span class="doc">Runner Module</span></a>) - Test suite and batch processing utilities</p></li>
+<li><p><strong>Validator</strong> (<a class="reference internal" href="validator.html"><span class="doc">Validator Module</span></a>) - Data validation and schema checking utilities</p></li>
+</ul>
+</section>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="../contributing.html" class="btn btn-neutral float-left" title="Contributing to Prompture" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="core.html" class="btn btn-neutral float-right" title="Core Module" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Juan Denis.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+  
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    var footerCopy = document.querySelector("footer .copyright");
+    if (footerCopy) {
+        footerCopy.innerHTML = footerCopy.innerHTML.replace(
+            "Juan Denis",
+            '<a href="https://juandenis.com">Juan Denis</a>'
+        );
+    }
+});
+</script>
+ 
+
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

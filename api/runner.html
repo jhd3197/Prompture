@@ -1,0 +1,462 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Runner Module &mdash; Prompture 1.0.49 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=fa44fd50" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=0cbbaaf5" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=9c1456b3"></script>
+      <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Validator Module" href="validator.html" />
+    <link rel="prev" title="Tools Module" href="tools.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #048b41" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            Prompture
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../installation.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../quickstart.html">Quick Start Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../toon_input_guide.html">TOON Input Conversion Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../field_definitions_reference.html">Field Definitions Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples.html">Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../contributing.html">Contributing to Prompture</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Documentation:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="index.html">API Reference</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="index.html#overview">Overview</a></li>
+<li class="toctree-l2"><a class="reference internal" href="index.html#quick-reference">Quick Reference</a></li>
+<li class="toctree-l2"><a class="reference internal" href="index.html#core-functions">Core Functions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="index.html#field-registry-system">Field Registry System</a></li>
+<li class="toctree-l2"><a class="reference internal" href="index.html#built-in-field-types">Built-in Field Types</a></li>
+<li class="toctree-l2"><a class="reference internal" href="index.html#driver-system">Driver System</a></li>
+<li class="toctree-l2"><a class="reference internal" href="index.html#validation-and-utilities">Validation and Utilities</a></li>
+<li class="toctree-l2"><a class="reference internal" href="index.html#error-handling">Error Handling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="index.html#configuration">Configuration</a></li>
+<li class="toctree-l2 current"><a class="reference internal" href="index.html#module-reference">Module Reference</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="core.html">Core Module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="field_definitions.html">Field Definitions Module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="drivers.html">Drivers Module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="tools.html">Tools Module</a></li>
+<li class="toctree-l3 current"><a class="current reference internal" href="#">Runner Module</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#overview">Overview</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#main-functions">Main Functions</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#test-suite-components">Test Suite Components</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#advanced-usage-patterns">Advanced Usage Patterns</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#integration-with-testing-frameworks">Integration with Testing Frameworks</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#best-practices">Best Practices</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#error-handling">Error Handling</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="validator.html">Validator Module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="index.html#core-modules">Core Modules</a></li>
+<li class="toctree-l3"><a class="reference internal" href="index.html#utility-modules">Utility Modules</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #048b41" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">Prompture</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="index.html">API Reference</a></li>
+      <li class="breadcrumb-item active">Runner Module</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/api/runner.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="runner-module">
+<h1>Runner Module<a class="headerlink" href="#runner-module" title="Link to this heading"></a></h1>
+<p>The runner module provides test suite functionality for executing and validating JSON extraction tests across multiple LLM models and drivers.</p>
+<section id="overview">
+<h2>Overview<a class="headerlink" href="#overview" title="Link to this heading"></a></h2>
+<p>The runner module enables:</p>
+<ul class="simple">
+<li><p><strong>Batch Testing</strong>: Execute extraction tests across multiple models simultaneously</p></li>
+<li><p><strong>Validation</strong>: Automatic validation of extraction results against expected outputs</p></li>
+<li><p><strong>Comparison</strong>: Compare performance and accuracy across different LLM providers</p></li>
+<li><p><strong>Reporting</strong>: Generate detailed test results and performance metrics</p></li>
+</ul>
+</section>
+<section id="main-functions">
+<h2>Main Functions<a class="headerlink" href="#main-functions" title="Link to this heading"></a></h2>
+<section id="run-suite-from-spec">
+<h3>run_suite_from_spec()<a class="headerlink" href="#run-suite-from-spec" title="Link to this heading"></a></h3>
+<p>Execute a test suite specification against multiple drivers and collect comprehensive results.</p>
+<p><strong>Features:</strong></p>
+<ul class="simple">
+<li><p><strong>Multi-model Testing</strong>: Run the same tests across different LLM providers</p></li>
+<li><p><strong>Automatic Validation</strong>: Compare extraction results against expected outputs</p></li>
+<li><p><strong>Error Handling</strong>: Graceful handling of driver failures and extraction errors</p></li>
+<li><p><strong>Performance Metrics</strong>: Collect timing and token usage data</p></li>
+<li><p><strong>Detailed Reporting</strong>: Generate comprehensive test result summaries</p></li>
+</ul>
+<p><strong>Test Suite Specification Format:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">test_spec</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;Person Extraction Test Suite&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;Test extraction of person information&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;tests&quot;</span><span class="p">:</span> <span class="p">[</span>
+        <span class="p">{</span>
+            <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;Basic Person Info&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;input_text&quot;</span><span class="p">:</span> <span class="s2">&quot;John Smith is 25 years old&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;schema&quot;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;object&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;properties&quot;</span><span class="p">:</span> <span class="p">{</span>
+                    <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;string&quot;</span><span class="p">},</span>
+                    <span class="s2">&quot;age&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;integer&quot;</span><span class="p">}</span>
+                <span class="p">}</span>
+            <span class="p">},</span>
+            <span class="s2">&quot;expected&quot;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;John Smith&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;age&quot;</span><span class="p">:</span> <span class="mi">25</span>
+            <span class="p">}</span>
+        <span class="p">}</span>
+    <span class="p">]</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p><strong>Example Usage:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">prompture.runner</span> <span class="kn">import</span> <span class="n">run_suite_from_spec</span>
+<span class="kn">from</span> <span class="nn">prompture.drivers</span> <span class="kn">import</span> <span class="n">get_driver_for_model</span>
+
+<span class="c1"># Prepare drivers for testing</span>
+<span class="n">drivers</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;gpt-4&quot;</span><span class="p">:</span> <span class="n">get_driver_for_model</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4&quot;</span><span class="p">),</span>
+    <span class="s2">&quot;claude&quot;</span><span class="p">:</span> <span class="n">get_driver_for_model</span><span class="p">(</span><span class="s2">&quot;anthropic/claude-3-sonnet-20240229&quot;</span><span class="p">),</span>
+    <span class="s2">&quot;gemini&quot;</span><span class="p">:</span> <span class="n">get_driver_for_model</span><span class="p">(</span><span class="s2">&quot;google/gemini-pro&quot;</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="c1"># Run the test suite</span>
+<span class="n">results</span> <span class="o">=</span> <span class="n">run_suite_from_spec</span><span class="p">(</span><span class="n">test_spec</span><span class="p">,</span> <span class="n">drivers</span><span class="p">)</span>
+
+<span class="c1"># Analyze results</span>
+<span class="k">for</span> <span class="n">driver_name</span><span class="p">,</span> <span class="n">driver_results</span> <span class="ow">in</span> <span class="n">results</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Results for </span><span class="si">{</span><span class="n">driver_name</span><span class="si">}</span><span class="s2">:&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  Tests passed: </span><span class="si">{</span><span class="n">driver_results</span><span class="p">[</span><span class="s1">&#39;passed&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">driver_results</span><span class="p">[</span><span class="s1">&#39;total&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  Average accuracy: </span><span class="si">{</span><span class="n">driver_results</span><span class="p">[</span><span class="s1">&#39;accuracy&#39;</span><span class="p">]</span><span class="si">:</span><span class="s2">.2%</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p><strong>Return Value Structure:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+    <span class="s2">&quot;driver_name&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;passed&quot;</span><span class="p">:</span> <span class="mi">8</span><span class="p">,</span>           <span class="c1"># Number of tests passed</span>
+        <span class="s2">&quot;total&quot;</span><span class="p">:</span> <span class="mi">10</span><span class="p">,</span>           <span class="c1"># Total number of tests</span>
+        <span class="s2">&quot;accuracy&quot;</span><span class="p">:</span> <span class="mf">0.85</span><span class="p">,</span>      <span class="c1"># Overall accuracy score</span>
+        <span class="s2">&quot;avg_time&quot;</span><span class="p">:</span> <span class="mf">1.23</span><span class="p">,</span>      <span class="c1"># Average response time (seconds)</span>
+        <span class="s2">&quot;total_tokens&quot;</span><span class="p">:</span> <span class="mi">1500</span><span class="p">,</span>  <span class="c1"># Total tokens used</span>
+        <span class="s2">&quot;total_cost&quot;</span><span class="p">:</span> <span class="mf">0.045</span><span class="p">,</span>   <span class="c1"># Total estimated cost (USD)</span>
+        <span class="s2">&quot;test_results&quot;</span><span class="p">:</span> <span class="p">[</span>      <span class="c1"># Individual test results</span>
+            <span class="p">{</span>
+                <span class="s2">&quot;test_name&quot;</span><span class="p">:</span> <span class="s2">&quot;Basic Person Info&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;passed&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+                <span class="s2">&quot;expected&quot;</span><span class="p">:</span> <span class="p">{</span><span class="o">...</span><span class="p">},</span>
+                <span class="s2">&quot;actual&quot;</span><span class="p">:</span> <span class="p">{</span><span class="o">...</span><span class="p">},</span>
+                <span class="s2">&quot;accuracy_score&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span>
+                <span class="s2">&quot;response_time&quot;</span><span class="p">:</span> <span class="mf">1.1</span><span class="p">,</span>
+                <span class="s2">&quot;tokens_used&quot;</span><span class="p">:</span> <span class="mi">150</span><span class="p">,</span>
+                <span class="s2">&quot;cost&quot;</span><span class="p">:</span> <span class="mf">0.0045</span><span class="p">,</span>
+                <span class="s2">&quot;error&quot;</span><span class="p">:</span> <span class="kc">None</span>
+            <span class="p">}</span>
+        <span class="p">]</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="test-suite-components">
+<h2>Test Suite Components<a class="headerlink" href="#test-suite-components" title="Link to this heading"></a></h2>
+<section id="test-specification-structure">
+<h3>Test Specification Structure<a class="headerlink" href="#test-specification-structure" title="Link to this heading"></a></h3>
+<p>Each test suite specification should contain:</p>
+<p><strong>Suite Level Properties:</strong></p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">name</span></code>: Human-readable name for the test suite</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">description</span></code>: Detailed description of what the suite tests</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">tests</span></code>: Array of individual test cases</p></li>
+</ul>
+<p><strong>Individual Test Properties:</strong></p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">name</span></code>: Name of the specific test case</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">input_text</span></code>: Text to extract information from</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">schema</span></code>: JSON schema defining the expected output structure</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">expected</span></code>: Expected extraction results for validation</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">options</span></code>: Optional driver-specific options</p></li>
+</ul>
+</section>
+<section id="validation-and-scoring">
+<h3>Validation and Scoring<a class="headerlink" href="#validation-and-scoring" title="Link to this heading"></a></h3>
+<p>The runner automatically validates extraction results:</p>
+<p><strong>Validation Methods:</strong></p>
+<ol class="arabic simple">
+<li><p><strong>Schema Validation</strong>: Ensures output matches the JSON schema structure</p></li>
+<li><p><strong>Value Comparison</strong>: Compares extracted values against expected results</p></li>
+<li><p><strong>Type Checking</strong>: Validates that extracted data types are correct</p></li>
+<li><p><strong>Completeness</strong>: Checks that all required fields are present</p></li>
+</ol>
+<p><strong>Accuracy Scoring:</strong></p>
+<ul class="simple">
+<li><p><strong>Perfect Match</strong>: 1.0 score when extracted data exactly matches expected</p></li>
+<li><p><strong>Partial Match</strong>: Proportional score based on correct fields</p></li>
+<li><p><strong>Schema Valid</strong>: Minimum score for schema-compliant but incorrect data</p></li>
+<li><p><strong>Invalid</strong>: 0.0 score for schema violations or extraction failures</p></li>
+</ul>
+</section>
+<section id="performance-metrics">
+<h3>Performance Metrics<a class="headerlink" href="#performance-metrics" title="Link to this heading"></a></h3>
+<p>The runner collects comprehensive performance data:</p>
+<p><strong>Timing Metrics:</strong></p>
+<ul class="simple">
+<li><p>Response time per test</p></li>
+<li><p>Average response time per driver</p></li>
+<li><p>Total execution time</p></li>
+</ul>
+<p><strong>Usage Metrics:</strong></p>
+<ul class="simple">
+<li><p>Token usage per test and driver</p></li>
+<li><p>Cost estimation based on model pricing</p></li>
+<li><p>Request/response sizes</p></li>
+</ul>
+<p><strong>Quality Metrics:</strong></p>
+<ul class="simple">
+<li><p>Accuracy scores per test</p></li>
+<li><p>Pass/fail rates</p></li>
+<li><p>Error categorization</p></li>
+</ul>
+</section>
+</section>
+<section id="advanced-usage-patterns">
+<h2>Advanced Usage Patterns<a class="headerlink" href="#advanced-usage-patterns" title="Link to this heading"></a></h2>
+<section id="comparative-analysis">
+<h3>Comparative Analysis<a class="headerlink" href="#comparative-analysis" title="Link to this heading"></a></h3>
+<p>Run the same tests across multiple providers to compare performance:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># Test multiple providers</span>
+<span class="n">providers</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;openai-gpt4&quot;</span><span class="p">:</span> <span class="n">get_driver_for_model</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4&quot;</span><span class="p">),</span>
+    <span class="s2">&quot;openai-gpt35&quot;</span><span class="p">:</span> <span class="n">get_driver_for_model</span><span class="p">(</span><span class="s2">&quot;openai/gpt-3.5-turbo&quot;</span><span class="p">),</span>
+    <span class="s2">&quot;anthropic-claude&quot;</span><span class="p">:</span> <span class="n">get_driver_for_model</span><span class="p">(</span><span class="s2">&quot;anthropic/claude-3-sonnet-20240229&quot;</span><span class="p">),</span>
+    <span class="s2">&quot;google-gemini&quot;</span><span class="p">:</span> <span class="n">get_driver_for_model</span><span class="p">(</span><span class="s2">&quot;google/gemini-pro&quot;</span><span class="p">),</span>
+    <span class="s2">&quot;groq-llama&quot;</span><span class="p">:</span> <span class="n">get_driver_for_model</span><span class="p">(</span><span class="s2">&quot;groq/llama2-70b-4096&quot;</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="n">results</span> <span class="o">=</span> <span class="n">run_suite_from_spec</span><span class="p">(</span><span class="n">comprehensive_test_spec</span><span class="p">,</span> <span class="n">providers</span><span class="p">)</span>
+
+<span class="c1"># Analyze comparative performance</span>
+<span class="n">performance_summary</span> <span class="o">=</span> <span class="p">{}</span>
+<span class="k">for</span> <span class="n">provider</span><span class="p">,</span> <span class="n">result</span> <span class="ow">in</span> <span class="n">results</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+    <span class="n">performance_summary</span><span class="p">[</span><span class="n">provider</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;accuracy&quot;</span><span class="p">:</span> <span class="n">result</span><span class="p">[</span><span class="s2">&quot;accuracy&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;avg_time&quot;</span><span class="p">:</span> <span class="n">result</span><span class="p">[</span><span class="s2">&quot;avg_time&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;cost_per_test&quot;</span><span class="p">:</span> <span class="n">result</span><span class="p">[</span><span class="s2">&quot;total_cost&quot;</span><span class="p">]</span> <span class="o">/</span> <span class="n">result</span><span class="p">[</span><span class="s2">&quot;total&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;tokens_per_test&quot;</span><span class="p">:</span> <span class="n">result</span><span class="p">[</span><span class="s2">&quot;total_tokens&quot;</span><span class="p">]</span> <span class="o">/</span> <span class="n">result</span><span class="p">[</span><span class="s2">&quot;total&quot;</span><span class="p">]</span>
+    <span class="p">}</span>
+</pre></div>
+</div>
+</section>
+<section id="regression-testing">
+<h3>Regression Testing<a class="headerlink" href="#regression-testing" title="Link to this heading"></a></h3>
+<p>Use the runner for regression testing when updating Prompture:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># Load test suite from file</span>
+<span class="kn">import</span> <span class="nn">json</span>
+<span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="s2">&quot;regression_tests.json&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+    <span class="n">regression_spec</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+
+<span class="c1"># Run against current production setup</span>
+<span class="n">production_results</span> <span class="o">=</span> <span class="n">run_suite_from_spec</span><span class="p">(</span><span class="n">regression_spec</span><span class="p">,</span> <span class="n">production_drivers</span><span class="p">)</span>
+
+<span class="c1"># Compare against baseline results</span>
+<span class="n">baseline_accuracy</span> <span class="o">=</span> <span class="mf">0.92</span>
+<span class="n">current_accuracy</span> <span class="o">=</span> <span class="n">production_results</span><span class="p">[</span><span class="s2">&quot;main_driver&quot;</span><span class="p">][</span><span class="s2">&quot;accuracy&quot;</span><span class="p">]</span>
+
+<span class="k">if</span> <span class="n">current_accuracy</span> <span class="o">&lt;</span> <span class="n">baseline_accuracy</span> <span class="o">*</span> <span class="mf">0.95</span><span class="p">:</span>  <span class="c1"># 5% tolerance</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;WARNING: Accuracy regression detected!&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="custom-test-generation">
+<h3>Custom Test Generation<a class="headerlink" href="#custom-test-generation" title="Link to this heading"></a></h3>
+<p>Generate test suites programmatically:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span> <span class="nf">generate_field_tests</span><span class="p">(</span><span class="n">field_definitions</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Generate test cases for field definitions.&quot;&quot;&quot;</span>
+    <span class="n">tests</span> <span class="o">=</span> <span class="p">[]</span>
+
+    <span class="k">for</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">field_def</span> <span class="ow">in</span> <span class="n">field_definitions</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="n">test</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;Extract </span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;input_text&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;Sample text containing </span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2"> information&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;schema&quot;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;object&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;properties&quot;</span><span class="p">:</span> <span class="p">{</span>
+                    <span class="n">field_name</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="n">field_def</span><span class="p">[</span><span class="s2">&quot;type&quot;</span><span class="p">]</span><span class="o">.</span><span class="vm">__name__</span><span class="o">.</span><span class="n">lower</span><span class="p">()}</span>
+                <span class="p">}</span>
+            <span class="p">},</span>
+            <span class="s2">&quot;expected&quot;</span><span class="p">:</span> <span class="p">{</span><span class="n">field_name</span><span class="p">:</span> <span class="n">field_def</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;default&quot;</span><span class="p">)}</span>
+        <span class="p">}</span>
+        <span class="n">tests</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">test</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;Field Definition Tests&quot;</span><span class="p">,</span> <span class="s2">&quot;tests&quot;</span><span class="p">:</span> <span class="n">tests</span><span class="p">}</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="integration-with-testing-frameworks">
+<h2>Integration with Testing Frameworks<a class="headerlink" href="#integration-with-testing-frameworks" title="Link to this heading"></a></h2>
+<p>The runner integrates well with standard testing frameworks:</p>
+<p><strong>pytest Integration:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">pytest</span>
+<span class="kn">from</span> <span class="nn">prompture.runner</span> <span class="kn">import</span> <span class="n">run_suite_from_spec</span>
+
+<span class="k">def</span> <span class="nf">test_extraction_accuracy</span><span class="p">():</span>
+    <span class="n">results</span> <span class="o">=</span> <span class="n">run_suite_from_spec</span><span class="p">(</span><span class="n">test_spec</span><span class="p">,</span> <span class="n">test_drivers</span><span class="p">)</span>
+
+    <span class="k">for</span> <span class="n">driver_name</span><span class="p">,</span> <span class="n">result</span> <span class="ow">in</span> <span class="n">results</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="k">assert</span> <span class="n">result</span><span class="p">[</span><span class="s2">&quot;accuracy&quot;</span><span class="p">]</span> <span class="o">&gt;=</span> <span class="mf">0.8</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">driver_name</span><span class="si">}</span><span class="s2"> accuracy too low&quot;</span>
+        <span class="k">assert</span> <span class="n">result</span><span class="p">[</span><span class="s2">&quot;passed&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="n">result</span><span class="p">[</span><span class="s2">&quot;total&quot;</span><span class="p">],</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">driver_name</span><span class="si">}</span><span class="s2"> had failures&quot;</span>
+</pre></div>
+</div>
+<p><strong>unittest Integration:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">unittest</span>
+<span class="kn">from</span> <span class="nn">prompture.runner</span> <span class="kn">import</span> <span class="n">run_suite_from_spec</span>
+
+<span class="k">class</span> <span class="nc">TestExtractionSuite</span><span class="p">(</span><span class="n">unittest</span><span class="o">.</span><span class="n">TestCase</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">setUp</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">drivers</span> <span class="o">=</span> <span class="p">{</span><span class="o">...</span><span class="p">}</span>  <span class="c1"># Initialize test drivers</span>
+
+    <span class="k">def</span> <span class="nf">test_person_extraction</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">results</span> <span class="o">=</span> <span class="n">run_suite_from_spec</span><span class="p">(</span><span class="n">person_test_spec</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">drivers</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">assertGreaterEqual</span><span class="p">(</span><span class="n">results</span><span class="p">[</span><span class="s2">&quot;main&quot;</span><span class="p">][</span><span class="s2">&quot;accuracy&quot;</span><span class="p">],</span> <span class="mf">0.85</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="best-practices">
+<h2>Best Practices<a class="headerlink" href="#best-practices" title="Link to this heading"></a></h2>
+<ol class="arabic simple">
+<li><p><strong>Comprehensive Test Coverage</strong>: Create tests covering various input formats and edge cases</p></li>
+<li><p><strong>Multiple Provider Testing</strong>: Test against multiple LLM providers to ensure robustness</p></li>
+<li><p><strong>Regular Regression Testing</strong>: Run test suites regularly to catch performance degradation</p></li>
+<li><p><strong>Baseline Establishment</strong>: Establish accuracy baselines for different test scenarios</p></li>
+<li><p><strong>Performance Monitoring</strong>: Track token usage and costs over time</p></li>
+<li><p><strong>Error Analysis</strong>: Analyze failed tests to improve field definitions and prompts</p></li>
+<li><p><strong>Incremental Testing</strong>: Start with simple tests and gradually increase complexity</p></li>
+</ol>
+</section>
+<section id="error-handling">
+<h2>Error Handling<a class="headerlink" href="#error-handling" title="Link to this heading"></a></h2>
+<p>The runner handles various error conditions gracefully:</p>
+<p><strong>Driver Errors:</strong></p>
+<ul class="simple">
+<li><p>Connection failures</p></li>
+<li><p>Authentication issues</p></li>
+<li><p>Rate limiting</p></li>
+<li><p>Model unavailability</p></li>
+</ul>
+<p><strong>Extraction Errors:</strong></p>
+<ul class="simple">
+<li><p>Invalid JSON responses</p></li>
+<li><p>Schema validation failures</p></li>
+<li><p>Timeout errors</p></li>
+<li><p>Unexpected response formats</p></li>
+</ul>
+<p><strong>Test Specification Errors:</strong></p>
+<ul class="simple">
+<li><p>Malformed test specifications</p></li>
+<li><p>Missing required fields</p></li>
+<li><p>Invalid schema definitions</p></li>
+</ul>
+<p>All errors are logged and reported in the test results without stopping the entire suite execution.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="tools.html" class="btn btn-neutral float-left" title="Tools Module" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="validator.html" class="btn btn-neutral float-right" title="Validator Module" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Juan Denis.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+  
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    var footerCopy = document.querySelector("footer .copyright");
+    if (footerCopy) {
+        footerCopy.innerHTML = footerCopy.innerHTML.replace(
+            "Juan Denis",
+            '<a href="https://juandenis.com">Juan Denis</a>'
+        );
+    }
+});
+</script>
+ 
+
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

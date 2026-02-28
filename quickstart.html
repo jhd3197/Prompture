@@ -1,0 +1,470 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Quick Start Guide &mdash; Prompture 1.0.49 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=fa44fd50" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/custom.css?v=0cbbaaf5" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=9c1456b3"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="TOON Input Conversion Guide" href="toon_input_guide.html" />
+    <link rel="prev" title="Installation Guide" href="installation.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #048b41" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            Prompture
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation Guide</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Quick Start Guide</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#basic-setup">Basic Setup</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#your-first-extraction">Your First Extraction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#using-field-definitions">Using Field Definitions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#using-pydantic-models-recommended">Using Pydantic Models (Recommended)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#custom-field-definitions">Custom Field Definitions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#different-llm-providers">Different LLM Providers</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#template-variables">Template Variables</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#error-handling">Error Handling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#batch-processing">Batch Processing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#configuration-tips">Configuration Tips</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#next-steps">Next Steps</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="toon_input_guide.html">TOON Input Conversion Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="field_definitions_reference.html">Field Definitions Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="contributing.html">Contributing to Prompture</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Documentation:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="api/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #048b41" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">Prompture</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Quick Start Guide</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/quickstart.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="quick-start-guide">
+<h1>Quick Start Guide<a class="headerlink" href="#quick-start-guide" title="Link to this heading"></a></h1>
+<p>This guide will get you up and running with Prompture in just a few minutes. After completing the <a class="reference internal" href="installation.html"><span class="doc">Installation Guide</span></a> guide, you’re ready to start extracting structured data from text using LLMs.</p>
+<section id="basic-setup">
+<h2>Basic Setup<a class="headerlink" href="#basic-setup" title="Link to this heading"></a></h2>
+<p>First, make sure you have your API keys configured in a <code class="docutils literal notranslate"><span class="pre">.env</span></code> file:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># .env file</span>
+<span class="nv">OPENAI_API_KEY</span><span class="o">=</span>your_openai_api_key_here
+<span class="nv">ANTHROPIC_API_KEY</span><span class="o">=</span>your_anthropic_api_key_here
+</pre></div>
+</div>
+<p>Import Prompture in your Python script:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">prompture</span> <span class="kn">import</span> <span class="n">extract_and_jsonify</span><span class="p">,</span> <span class="n">extract_with_model</span><span class="p">,</span> <span class="n">field_from_registry</span>
+<span class="kn">from</span> <span class="nn">pydantic</span> <span class="kn">import</span> <span class="n">BaseModel</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Optional</span>
+</pre></div>
+</div>
+</section>
+<section id="your-first-extraction">
+<h2>Your First Extraction<a class="headerlink" href="#your-first-extraction" title="Link to this heading"></a></h2>
+<p>Let’s start with a simple example extracting person information from text:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">prompture</span> <span class="kn">import</span> <span class="n">extract_and_jsonify</span>
+
+<span class="c1"># Define what data you want to extract</span>
+<span class="n">fields</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;string&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;age&quot;</span><span class="p">:</span> <span class="s2">&quot;integer&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;occupation&quot;</span><span class="p">:</span> <span class="s2">&quot;string&quot;</span>
+<span class="p">}</span>
+
+<span class="c1"># Text containing the information</span>
+<span class="n">text</span> <span class="o">=</span> <span class="s2">&quot;Sarah Johnson is a 32-year-old software engineer at TechCorp.&quot;</span>
+
+<span class="c1"># Extract structured data</span>
+<span class="n">result</span> <span class="o">=</span> <span class="n">extract_and_jsonify</span><span class="p">(</span>
+    <span class="n">prompt</span><span class="o">=</span><span class="n">text</span><span class="p">,</span>
+    <span class="n">fields</span><span class="o">=</span><span class="n">fields</span><span class="p">,</span>
+    <span class="n">model_name</span><span class="o">=</span><span class="s2">&quot;openai/gpt-3.5-turbo&quot;</span>
+<span class="p">)</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="p">)</span>
+<span class="c1"># Output: {&quot;name&quot;: &quot;Sarah Johnson&quot;, &quot;age&quot;: 32, &quot;occupation&quot;: &quot;software engineer&quot;}</span>
+</pre></div>
+</div>
+</section>
+<section id="using-field-definitions">
+<h2>Using Field Definitions<a class="headerlink" href="#using-field-definitions" title="Link to this heading"></a></h2>
+<p>Prompture provides a powerful field definitions system with built-in validation and descriptions. Here’s how to use pre-defined fields:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">prompture</span> <span class="kn">import</span> <span class="n">extract_and_jsonify</span>
+
+<span class="c1"># Use built-in field definitions</span>
+<span class="n">fields</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;name&quot;</span><span class="p">,</span>           <span class="c1"># Built-in name field with validation</span>
+    <span class="s2">&quot;age&quot;</span><span class="p">:</span> <span class="s2">&quot;age&quot;</span><span class="p">,</span>             <span class="c1"># Built-in age field (integer, 0-150)</span>
+    <span class="s2">&quot;email&quot;</span><span class="p">:</span> <span class="s2">&quot;email&quot;</span><span class="p">,</span>         <span class="c1"># Built-in email field with format validation</span>
+    <span class="s2">&quot;phone&quot;</span><span class="p">:</span> <span class="s2">&quot;phone&quot;</span>          <span class="c1"># Built-in phone field</span>
+<span class="p">}</span>
+
+<span class="n">text</span> <span class="o">=</span> <span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">Contact: John Doe, 28 years old</span>
+<span class="s2">Email: john.doe@company.com</span>
+<span class="s2">Phone: +1-555-123-4567</span>
+<span class="s2">&quot;&quot;&quot;</span>
+
+<span class="n">result</span> <span class="o">=</span> <span class="n">extract_and_jsonify</span><span class="p">(</span>
+    <span class="n">prompt</span><span class="o">=</span><span class="n">text</span><span class="p">,</span>
+    <span class="n">fields</span><span class="o">=</span><span class="n">fields</span><span class="p">,</span>
+    <span class="n">model_name</span><span class="o">=</span><span class="s2">&quot;openai/gpt-4&quot;</span>
+<span class="p">)</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="using-pydantic-models-recommended">
+<h2>Using Pydantic Models (Recommended)<a class="headerlink" href="#using-pydantic-models-recommended" title="Link to this heading"></a></h2>
+<p>The modern approach uses Pydantic models with the field registry system. This provides better type safety and validation:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">pydantic</span> <span class="kn">import</span> <span class="n">BaseModel</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Optional</span>
+<span class="kn">from</span> <span class="nn">prompture</span> <span class="kn">import</span> <span class="n">field_from_registry</span><span class="p">,</span> <span class="n">extract_with_model</span>
+
+<span class="c1"># Define your data model</span>
+<span class="k">class</span> <span class="nc">Person</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;name&quot;</span><span class="p">)</span>
+    <span class="n">age</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;age&quot;</span><span class="p">)</span>
+    <span class="n">email</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;email&quot;</span><span class="p">)</span>
+    <span class="n">occupation</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;occupation&quot;</span><span class="p">)</span>
+
+<span class="c1"># Extract using the model</span>
+<span class="n">text</span> <span class="o">=</span> <span class="s2">&quot;Dr. Alice Smith, 45, is a cardiologist. Email: alice@hospital.com&quot;</span>
+
+<span class="n">result</span> <span class="o">=</span> <span class="n">extract_with_model</span><span class="p">(</span>
+    <span class="n">model_class</span><span class="o">=</span><span class="n">Person</span><span class="p">,</span>
+    <span class="n">prompt</span><span class="o">=</span><span class="n">text</span><span class="p">,</span>
+    <span class="n">model_name</span><span class="o">=</span><span class="s2">&quot;openai/gpt-4&quot;</span>
+<span class="p">)</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Name: </span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">, Age: </span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">age</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="custom-field-definitions">
+<h2>Custom Field Definitions<a class="headerlink" href="#custom-field-definitions" title="Link to this heading"></a></h2>
+<p>You can register your own field definitions for reusable, validated fields:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">prompture</span> <span class="kn">import</span> <span class="n">register_field</span><span class="p">,</span> <span class="n">field_from_registry</span><span class="p">,</span> <span class="n">extract_with_model</span>
+<span class="kn">from</span> <span class="nn">pydantic</span> <span class="kn">import</span> <span class="n">BaseModel</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span>
+
+<span class="c1"># Register custom fields</span>
+<span class="n">register_field</span><span class="p">(</span><span class="s2">&quot;skills&quot;</span><span class="p">,</span> <span class="p">{</span>
+    <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;list&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;List of professional skills and competencies&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;instructions&quot;</span><span class="p">:</span> <span class="s2">&quot;Extract skills as a list of strings&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;default&quot;</span><span class="p">:</span> <span class="p">[],</span>
+    <span class="s2">&quot;nullable&quot;</span><span class="p">:</span> <span class="kc">True</span>
+<span class="p">})</span>
+
+<span class="n">register_field</span><span class="p">(</span><span class="s2">&quot;experience_years&quot;</span><span class="p">,</span> <span class="p">{</span>
+    <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;int&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;Years of professional experience&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;instructions&quot;</span><span class="p">:</span> <span class="s2">&quot;Extract total years of work experience&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;default&quot;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>
+    <span class="s2">&quot;nullable&quot;</span><span class="p">:</span> <span class="kc">True</span>
+<span class="p">})</span>
+
+<span class="c1"># Use custom fields in a model</span>
+<span class="k">class</span> <span class="nc">Professional</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;name&quot;</span><span class="p">)</span>
+    <span class="n">skills</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;skills&quot;</span><span class="p">)</span>
+    <span class="n">experience_years</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;experience_years&quot;</span><span class="p">)</span>
+    <span class="n">occupation</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;occupation&quot;</span><span class="p">)</span>
+
+<span class="c1"># Extract professional profile</span>
+<span class="n">text</span> <span class="o">=</span> <span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">Michael Chen has 8 years of experience as a data scientist.</span>
+<span class="s2">His skills include Python, machine learning, SQL, and data visualization.</span>
+<span class="s2">&quot;&quot;&quot;</span>
+
+<span class="n">result</span> <span class="o">=</span> <span class="n">extract_with_model</span><span class="p">(</span>
+    <span class="n">model_class</span><span class="o">=</span><span class="n">Professional</span><span class="p">,</span>
+    <span class="n">prompt</span><span class="o">=</span><span class="n">text</span><span class="p">,</span>
+    <span class="n">model_name</span><span class="o">=</span><span class="s2">&quot;openai/gpt-4&quot;</span>
+<span class="p">)</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Professional: </span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Skills: </span><span class="si">{</span><span class="s1">&#39;, &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">skills</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Experience: </span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">experience_years</span><span class="si">}</span><span class="s2"> years&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="different-llm-providers">
+<h2>Different LLM Providers<a class="headerlink" href="#different-llm-providers" title="Link to this heading"></a></h2>
+<p>Prompture supports multiple LLM providers. Simply change the <code class="docutils literal notranslate"><span class="pre">model_name</span></code> parameter:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">prompture</span> <span class="kn">import</span> <span class="n">extract_and_jsonify</span>
+
+<span class="n">fields</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;name&quot;</span><span class="p">,</span> <span class="s2">&quot;age&quot;</span><span class="p">:</span> <span class="s2">&quot;age&quot;</span><span class="p">}</span>
+<span class="n">text</span> <span class="o">=</span> <span class="s2">&quot;Emma Watson, 33 years old&quot;</span>
+
+<span class="c1"># OpenAI GPT models</span>
+<span class="n">result1</span> <span class="o">=</span> <span class="n">extract_and_jsonify</span><span class="p">(</span><span class="n">text</span><span class="p">,</span> <span class="n">fields</span><span class="p">,</span> <span class="n">model_name</span><span class="o">=</span><span class="s2">&quot;openai/gpt-4&quot;</span><span class="p">)</span>
+<span class="n">result2</span> <span class="o">=</span> <span class="n">extract_and_jsonify</span><span class="p">(</span><span class="n">text</span><span class="p">,</span> <span class="n">fields</span><span class="p">,</span> <span class="n">model_name</span><span class="o">=</span><span class="s2">&quot;openai/gpt-3.5-turbo&quot;</span><span class="p">)</span>
+
+<span class="c1"># Anthropic Claude models</span>
+<span class="n">result3</span> <span class="o">=</span> <span class="n">extract_and_jsonify</span><span class="p">(</span><span class="n">text</span><span class="p">,</span> <span class="n">fields</span><span class="p">,</span> <span class="n">model_name</span><span class="o">=</span><span class="s2">&quot;anthropic/claude-3-haiku-20240307&quot;</span><span class="p">)</span>
+<span class="n">result4</span> <span class="o">=</span> <span class="n">extract_and_jsonify</span><span class="p">(</span><span class="n">text</span><span class="p">,</span> <span class="n">fields</span><span class="p">,</span> <span class="n">model_name</span><span class="o">=</span><span class="s2">&quot;anthropic/claude-3-sonnet-20240229&quot;</span><span class="p">)</span>
+
+<span class="c1"># Google Gemini models</span>
+<span class="n">result5</span> <span class="o">=</span> <span class="n">extract_and_jsonify</span><span class="p">(</span><span class="n">text</span><span class="p">,</span> <span class="n">fields</span><span class="p">,</span> <span class="n">model_name</span><span class="o">=</span><span class="s2">&quot;google/gemini-pro&quot;</span><span class="p">)</span>
+
+<span class="c1"># Groq models (fast inference)</span>
+<span class="n">result6</span> <span class="o">=</span> <span class="n">extract_and_jsonify</span><span class="p">(</span><span class="n">text</span><span class="p">,</span> <span class="n">fields</span><span class="p">,</span> <span class="n">model_name</span><span class="o">=</span><span class="s2">&quot;groq/llama2-70b-4096&quot;</span><span class="p">)</span>
+
+<span class="c1"># Local models via Ollama</span>
+<span class="n">result7</span> <span class="o">=</span> <span class="n">extract_and_jsonify</span><span class="p">(</span><span class="n">text</span><span class="p">,</span> <span class="n">fields</span><span class="p">,</span> <span class="n">model_name</span><span class="o">=</span><span class="s2">&quot;ollama/llama2&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="template-variables">
+<h2>Template Variables<a class="headerlink" href="#template-variables" title="Link to this heading"></a></h2>
+<p>Prompture supports template variables in field definitions for dynamic defaults:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">prompture</span> <span class="kn">import</span> <span class="n">register_field</span><span class="p">,</span> <span class="n">field_from_registry</span><span class="p">,</span> <span class="n">extract_with_model</span>
+<span class="kn">from</span> <span class="nn">pydantic</span> <span class="kn">import</span> <span class="n">BaseModel</span>
+
+<span class="c1"># Register field with template variables</span>
+<span class="n">register_field</span><span class="p">(</span><span class="s2">&quot;processed_at&quot;</span><span class="p">,</span> <span class="p">{</span>
+    <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;str&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;When this data was processed&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;instructions&quot;</span><span class="p">:</span> <span class="s2">&quot;Use {{current_datetime}} for processing timestamp&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;default&quot;</span><span class="p">:</span> <span class="s2">&quot;{{current_datetime}}&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;nullable&quot;</span><span class="p">:</span> <span class="kc">False</span>
+<span class="p">})</span>
+
+<span class="n">register_field</span><span class="p">(</span><span class="s2">&quot;document_year&quot;</span><span class="p">,</span> <span class="p">{</span>
+    <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;int&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;Year of the document&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;instructions&quot;</span><span class="p">:</span> <span class="s2">&quot;Extract year, use {{current_year}} if not specified&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;default&quot;</span><span class="p">:</span> <span class="s2">&quot;{{current_year}}&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;nullable&quot;</span><span class="p">:</span> <span class="kc">False</span>
+<span class="p">})</span>
+
+<span class="k">class</span> <span class="nc">Document</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">title</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;title&quot;</span><span class="p">)</span>
+    <span class="n">document_year</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;document_year&quot;</span><span class="p">)</span>
+    <span class="n">processed_at</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;processed_at&quot;</span><span class="p">)</span>
+
+<span class="n">text</span> <span class="o">=</span> <span class="s2">&quot;Annual Report: Company Performance Review&quot;</span>
+
+<span class="n">result</span> <span class="o">=</span> <span class="n">extract_with_model</span><span class="p">(</span>
+    <span class="n">model_class</span><span class="o">=</span><span class="n">Document</span><span class="p">,</span>
+    <span class="n">prompt</span><span class="o">=</span><span class="n">text</span><span class="p">,</span>
+    <span class="n">model_name</span><span class="o">=</span><span class="s2">&quot;openai/gpt-4&quot;</span>
+<span class="p">)</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Document: </span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">title</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Year: </span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">document_year</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>  <span class="c1"># Will use current year if not found</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Processed: </span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">processed_at</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>  <span class="c1"># Current datetime</span>
+</pre></div>
+</div>
+</section>
+<section id="error-handling">
+<h2>Error Handling<a class="headerlink" href="#error-handling" title="Link to this heading"></a></h2>
+<p>Prompture provides built-in error handling and validation:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">prompture</span> <span class="kn">import</span> <span class="n">extract_and_jsonify</span><span class="p">,</span> <span class="n">validate_against_schema</span>
+<span class="kn">import</span> <span class="nn">json</span>
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">result</span> <span class="o">=</span> <span class="n">extract_and_jsonify</span><span class="p">(</span>
+        <span class="n">prompt</span><span class="o">=</span><span class="s2">&quot;Invalid text with no clear data&quot;</span><span class="p">,</span>
+        <span class="n">fields</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;name&quot;</span><span class="p">,</span> <span class="s2">&quot;age&quot;</span><span class="p">:</span> <span class="s2">&quot;age&quot;</span><span class="p">},</span>
+        <span class="n">model_name</span><span class="o">=</span><span class="s2">&quot;openai/gpt-4&quot;</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Validate the result</span>
+    <span class="n">schema</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;object&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;properties&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;string&quot;</span><span class="p">},</span>
+            <span class="s2">&quot;age&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;integer&quot;</span><span class="p">,</span> <span class="s2">&quot;minimum&quot;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span> <span class="s2">&quot;maximum&quot;</span><span class="p">:</span> <span class="mi">150</span><span class="p">}</span>
+        <span class="p">},</span>
+        <span class="s2">&quot;required&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;name&quot;</span><span class="p">,</span> <span class="s2">&quot;age&quot;</span><span class="p">]</span>
+    <span class="p">}</span>
+
+    <span class="n">is_valid</span> <span class="o">=</span> <span class="n">validate_against_schema</span><span class="p">(</span><span class="n">result</span><span class="p">,</span> <span class="n">schema</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">is_valid</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;✅ Valid result:&quot;</span><span class="p">,</span> <span class="n">result</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;❌ Invalid result format&quot;</span><span class="p">)</span>
+
+<span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;❌ Extraction failed: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="batch-processing">
+<h2>Batch Processing<a class="headerlink" href="#batch-processing" title="Link to this heading"></a></h2>
+<p>For processing multiple texts, you can use a loop or batch approach:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">prompture</span> <span class="kn">import</span> <span class="n">extract_with_model</span>
+<span class="kn">from</span> <span class="nn">pydantic</span> <span class="kn">import</span> <span class="n">BaseModel</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Optional</span>
+
+<span class="k">class</span> <span class="nc">Contact</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;name&quot;</span><span class="p">)</span>
+    <span class="n">email</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;email&quot;</span><span class="p">)</span>
+    <span class="n">phone</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;phone&quot;</span><span class="p">)</span>
+
+<span class="c1"># Multiple text samples</span>
+<span class="n">texts</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="s2">&quot;John Smith - john@company.com - (555) 123-4567&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;Alice Johnson, email: alice.j@startup.io, phone: +1-555-987-6543&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;Bob Wilson | bwilson@corp.com | 555.111.2222&quot;</span>
+<span class="p">]</span>
+
+<span class="n">results</span> <span class="o">=</span> <span class="p">[]</span>
+<span class="k">for</span> <span class="n">text</span> <span class="ow">in</span> <span class="n">texts</span><span class="p">:</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">contact</span> <span class="o">=</span> <span class="n">extract_with_model</span><span class="p">(</span>
+            <span class="n">model_class</span><span class="o">=</span><span class="n">Contact</span><span class="p">,</span>
+            <span class="n">prompt</span><span class="o">=</span><span class="n">text</span><span class="p">,</span>
+            <span class="n">model_name</span><span class="o">=</span><span class="s2">&quot;openai/gpt-3.5-turbo&quot;</span>
+        <span class="p">)</span>
+        <span class="n">results</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">contact</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Failed to extract from &#39;</span><span class="si">{</span><span class="n">text</span><span class="si">}</span><span class="s2">&#39;: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+<span class="k">for</span> <span class="n">contact</span> <span class="ow">in</span> <span class="n">results</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Name: </span><span class="si">{</span><span class="n">contact</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">, Email: </span><span class="si">{</span><span class="n">contact</span><span class="o">.</span><span class="n">email</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="configuration-tips">
+<h2>Configuration Tips<a class="headerlink" href="#configuration-tips" title="Link to this heading"></a></h2>
+<dl class="simple">
+<dt><strong>Environment Variables</strong></dt><dd><p>Keep API keys in <code class="docutils literal notranslate"><span class="pre">.env</span></code> files and never commit them to version control.</p>
+</dd>
+<dt><strong>Model Selection</strong></dt><dd><ul class="simple">
+<li><p>Use <code class="docutils literal notranslate"><span class="pre">gpt-3.5-turbo</span></code> for fast, cost-effective extraction</p></li>
+<li><p>Use <code class="docutils literal notranslate"><span class="pre">gpt-4</span></code> for complex or nuanced extraction tasks</p></li>
+<li><p>Use <code class="docutils literal notranslate"><span class="pre">claude-3-haiku</span></code> for fast Anthropic processing</p></li>
+<li><p>Use local models (Ollama) for privacy or offline use</p></li>
+</ul>
+</dd>
+<dt><strong>Field Definitions</strong></dt><dd><ul class="simple">
+<li><p>Use built-in fields when possible for consistency</p></li>
+<li><p>Register custom fields for domain-specific data</p></li>
+<li><p>Include clear descriptions and instructions in field definitions</p></li>
+</ul>
+</dd>
+<dt><strong>Error Handling</strong></dt><dd><ul class="simple">
+<li><p>Always wrap extraction calls in try-catch blocks</p></li>
+<li><p>Validate results when data quality is critical</p></li>
+<li><p>Use nullable fields for optional data</p></li>
+</ul>
+</dd>
+</dl>
+</section>
+<section id="next-steps">
+<h2>Next Steps<a class="headerlink" href="#next-steps" title="Link to this heading"></a></h2>
+<p>Now that you’ve learned the basics, explore:</p>
+<ul class="simple">
+<li><p><a class="reference internal" href="examples.html"><span class="doc">Examples</span></a> - More comprehensive examples and use cases</p></li>
+<li><p><span class="xref std std-doc">field_definitions</span> - Advanced field definition techniques</p></li>
+<li><p><span class="xref std std-doc">drivers</span> - Working with different LLM providers</p></li>
+<li><p><a class="reference internal" href="api/index.html"><span class="doc">API Reference</span></a> - Complete API reference</p></li>
+</ul>
+<p>For practical examples with different LLM providers and complex extraction scenarios, see the <a class="reference internal" href="examples.html"><span class="doc">Examples</span></a> section.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="installation.html" class="btn btn-neutral float-left" title="Installation Guide" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="toon_input_guide.html" class="btn btn-neutral float-right" title="TOON Input Conversion Guide" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Juan Denis.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+  
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    var footerCopy = document.querySelector("footer .copyright");
+    if (footerCopy) {
+        footerCopy.innerHTML = footerCopy.innerHTML.replace(
+            "Juan Denis",
+            '<a href="https://juandenis.com">Juan Denis</a>'
+        );
+    }
+});
+</script>
+ 
+
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -1,0 +1,330 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Installation Guide &mdash; Prompture 1.0.49 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=fa44fd50" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/custom.css?v=0cbbaaf5" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=9c1456b3"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Quick Start Guide" href="quickstart.html" />
+    <link rel="prev" title="Prompture Documentation" href="index.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #048b41" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            Prompture
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Installation Guide</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#requirements">Requirements</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#installation">Installation</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#installing-from-pypi">Installing from PyPI</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#installing-from-source">Installing from Source</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#virtual-environment-setup">Virtual Environment Setup</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#environment-configuration">Environment Configuration</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#required-api-keys">Required API Keys</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#verification">Verification</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#troubleshooting">Troubleshooting</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#common-installation-issues">Common Installation Issues</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#development-installation">Development Installation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#docker-installation">Docker Installation</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#next-steps">Next Steps</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="quickstart.html">Quick Start Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="toon_input_guide.html">TOON Input Conversion Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="field_definitions_reference.html">Field Definitions Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="contributing.html">Contributing to Prompture</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Documentation:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="api/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #048b41" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">Prompture</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Installation Guide</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/installation.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="installation-guide">
+<h1>Installation Guide<a class="headerlink" href="#installation-guide" title="Link to this heading"></a></h1>
+<p>This guide covers the installation and initial setup of Prompture.</p>
+<section id="requirements">
+<h2>Requirements<a class="headerlink" href="#requirements" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p>Python 3.8 or higher</p></li>
+<li><p>pip (Python package installer)</p></li>
+</ul>
+</section>
+<section id="installation">
+<h2>Installation<a class="headerlink" href="#installation" title="Link to this heading"></a></h2>
+<section id="installing-from-pypi">
+<h3>Installing from PyPI<a class="headerlink" href="#installing-from-pypi" title="Link to this heading"></a></h3>
+<p>The recommended way to install Prompture is from PyPI using pip:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>prompture
+</pre></div>
+</div>
+</section>
+<section id="installing-from-source">
+<h3>Installing from Source<a class="headerlink" href="#installing-from-source" title="Link to this heading"></a></h3>
+<p>To install the latest development version from GitHub:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># Clone the repository</span>
+git<span class="w"> </span>clone<span class="w"> </span>https://github.com/your-org/prompture.git
+<span class="nb">cd</span><span class="w"> </span>prompture
+
+<span class="c1"># Install in development mode</span>
+pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span>.
+
+<span class="c1"># Or install directly from GitHub</span>
+pip<span class="w"> </span>install<span class="w"> </span>git+https://github.com/your-org/prompture.git
+</pre></div>
+</div>
+</section>
+<section id="virtual-environment-setup">
+<h3>Virtual Environment Setup<a class="headerlink" href="#virtual-environment-setup" title="Link to this heading"></a></h3>
+<p>It’s recommended to use a virtual environment to avoid dependency conflicts:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># Create a virtual environment</span>
+python<span class="w"> </span>-m<span class="w"> </span>venv<span class="w"> </span>prompture-env
+
+<span class="c1"># Activate it (Linux/macOS)</span>
+<span class="nb">source</span><span class="w"> </span>prompture-env/bin/activate
+
+<span class="c1"># Activate it (Windows)</span>
+prompture-env<span class="se">\S</span>cripts<span class="se">\a</span>ctivate
+
+<span class="c1"># Install prompture</span>
+pip<span class="w"> </span>install<span class="w"> </span>prompture
+</pre></div>
+</div>
+</section>
+</section>
+<section id="environment-configuration">
+<h2>Environment Configuration<a class="headerlink" href="#environment-configuration" title="Link to this heading"></a></h2>
+<p>Prompture uses environment variables for API configuration. Create a <code class="docutils literal notranslate"><span class="pre">.env</span></code> file in your project directory:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># OpenAI Configuration</span>
+<span class="nv">OPENAI_API_KEY</span><span class="o">=</span>your_openai_api_key_here
+<span class="nv">OPENAI_BASE_URL</span><span class="o">=</span>https://api.openai.com/v1<span class="w">  </span><span class="c1"># Optional, uses default if not set</span>
+
+<span class="c1"># Anthropic Configuration</span>
+<span class="nv">ANTHROPIC_API_KEY</span><span class="o">=</span>your_anthropic_api_key_here
+
+<span class="c1"># Google AI Configuration</span>
+<span class="nv">GOOGLE_API_KEY</span><span class="o">=</span>your_google_api_key_here
+
+<span class="c1"># Groq Configuration</span>
+<span class="nv">GROQ_API_KEY</span><span class="o">=</span>your_groq_api_key_here
+
+<span class="c1"># Azure OpenAI Configuration</span>
+<span class="nv">AZURE_OPENAI_API_KEY</span><span class="o">=</span>your_azure_api_key_here
+<span class="nv">AZURE_OPENAI_ENDPOINT</span><span class="o">=</span>https://your-resource.openai.azure.com/
+<span class="nv">AZURE_OPENAI_API_VERSION</span><span class="o">=</span><span class="m">2023</span>-12-01-preview
+
+<span class="c1"># Local/Custom Endpoints</span>
+<span class="nv">LOCAL_API_BASE_URL</span><span class="o">=</span>http://localhost:8000<span class="w">  </span><span class="c1"># For local models</span>
+<span class="nv">OLLAMA_BASE_URL</span><span class="o">=</span>http://localhost:11434<span class="w">    </span><span class="c1"># For Ollama</span>
+</pre></div>
+</div>
+<section id="required-api-keys">
+<h3>Required API Keys<a class="headerlink" href="#required-api-keys" title="Link to this heading"></a></h3>
+<p>Depending on which LLM providers you plan to use, you’ll need to obtain API keys:</p>
+<dl class="simple">
+<dt><strong>OpenAI</strong></dt><dd><p>Get your API key from the <a class="reference external" href="https://platform.openai.com/api-keys">OpenAI Dashboard</a></p>
+</dd>
+<dt><strong>Anthropic (Claude)</strong></dt><dd><p>Get your API key from the <a class="reference external" href="https://console.anthropic.com/">Anthropic Console</a></p>
+</dd>
+<dt><strong>Google AI (Gemini)</strong></dt><dd><p>Get your API key from <a class="reference external" href="https://aistudio.google.com/">Google AI Studio</a></p>
+</dd>
+<dt><strong>Groq</strong></dt><dd><p>Get your API key from the <a class="reference external" href="https://console.groq.com/">Groq Console</a></p>
+</dd>
+<dt><strong>Azure OpenAI</strong></dt><dd><p>Set up Azure OpenAI service and get keys from the Azure Portal</p>
+</dd>
+</dl>
+</section>
+</section>
+<section id="verification">
+<h2>Verification<a class="headerlink" href="#verification" title="Link to this heading"></a></h2>
+<p>Verify your installation by running a simple test:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">prompture</span>
+
+<span class="c1"># Check version</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Prompture version: </span><span class="si">{</span><span class="n">prompture</span><span class="o">.</span><span class="n">__version__</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+<span class="c1"># Test basic import</span>
+<span class="kn">from</span> <span class="nn">prompture</span> <span class="kn">import</span> <span class="n">extract_and_jsonify</span><span class="p">,</span> <span class="n">field_from_registry</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;✅ Prompture installed successfully!&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>If you have API keys configured, you can test a basic extraction:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">prompture</span> <span class="kn">import</span> <span class="n">extract_and_jsonify</span>
+
+<span class="c1"># Simple test (requires valid API key in .env)</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">result</span> <span class="o">=</span> <span class="n">extract_and_jsonify</span><span class="p">(</span>
+        <span class="n">prompt</span><span class="o">=</span><span class="s2">&quot;Extract info: John is 25 years old&quot;</span><span class="p">,</span>
+        <span class="n">fields</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;string&quot;</span><span class="p">,</span> <span class="s2">&quot;age&quot;</span><span class="p">:</span> <span class="s2">&quot;integer&quot;</span><span class="p">},</span>
+        <span class="n">model_name</span><span class="o">=</span><span class="s2">&quot;openai/gpt-3.5-turbo&quot;</span>  <span class="c1"># or your preferred model</span>
+    <span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;✅ API connection successful!&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Result: </span><span class="si">{</span><span class="n">result</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;⚠️  API test failed: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Make sure your API keys are properly configured in .env&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="troubleshooting">
+<h2>Troubleshooting<a class="headerlink" href="#troubleshooting" title="Link to this heading"></a></h2>
+<section id="common-installation-issues">
+<h3>Common Installation Issues<a class="headerlink" href="#common-installation-issues" title="Link to this heading"></a></h3>
+<dl>
+<dt><strong>ImportError: No module named ‘prompture’</strong></dt><dd><p>Make sure you’ve installed prompture in the correct Python environment.</p>
+</dd>
+<dt><strong>API Key Errors</strong></dt><dd><p>Ensure your <code class="docutils literal notranslate"><span class="pre">.env</span></code> file is in the correct location and contains valid API keys.</p>
+</dd>
+<dt><strong>Version Conflicts</strong></dt><dd><p>If you encounter dependency conflicts, try creating a fresh virtual environment.</p>
+</dd>
+<dt><strong>Network Issues</strong></dt><dd><p>If installation fails due to network issues, try:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>--upgrade<span class="w"> </span>pip
+pip<span class="w"> </span>install<span class="w"> </span>prompture<span class="w"> </span>--no-cache-dir
+</pre></div>
+</div>
+</dd>
+</dl>
+</section>
+<section id="development-installation">
+<h3>Development Installation<a class="headerlink" href="#development-installation" title="Link to this heading"></a></h3>
+<p>For development work, install with additional development dependencies:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># Clone and install in development mode</span>
+git<span class="w"> </span>clone<span class="w"> </span>https://github.com/your-org/prompture.git
+<span class="nb">cd</span><span class="w"> </span>prompture
+pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;.[dev]&quot;</span>
+
+<span class="c1"># Run tests to verify installation</span>
+pytest<span class="w"> </span>tests/
+</pre></div>
+</div>
+</section>
+<section id="docker-installation">
+<h3>Docker Installation<a class="headerlink" href="#docker-installation" title="Link to this heading"></a></h3>
+<p>You can also use Prompture in a Docker container:</p>
+<div class="highlight-dockerfile notranslate"><div class="highlight"><pre><span></span><span class="k">FROM</span><span class="w"> </span><span class="s">python:3.9-slim</span>
+
+<span class="k">WORKDIR</span><span class="w"> </span><span class="s">/app</span>
+<span class="k">COPY</span><span class="w"> </span>requirements.txt<span class="w"> </span>.
+<span class="k">RUN</span><span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>prompture
+
+<span class="k">COPY</span><span class="w"> </span>.<span class="w"> </span>.
+<span class="k">CMD</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;python&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;your_script.py&quot;</span><span class="p">]</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="next-steps">
+<h2>Next Steps<a class="headerlink" href="#next-steps" title="Link to this heading"></a></h2>
+<p>After installation, check out the <a class="reference internal" href="quickstart.html"><span class="doc">Quick Start Guide</span></a> guide to learn how to use Prompture’s core features, or browse the <a class="reference internal" href="examples.html"><span class="doc">Examples</span></a> for practical use cases.</p>
+<p>For detailed API documentation, see the <a class="reference internal" href="api/index.html"><span class="doc">API Reference</span></a> section.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="index.html" class="btn btn-neutral float-left" title="Prompture Documentation" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="quickstart.html" class="btn btn-neutral float-right" title="Quick Start Guide" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Juan Denis.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+  
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    var footerCopy = document.querySelector("footer .copyright");
+    if (footerCopy) {
+        footerCopy.innerHTML = footerCopy.innerHTML.replace(
+            "Juan Denis",
+            '<a href="https://juandenis.com">Juan Denis</a>'
+        );
+    }
+});
+</script>
+ 
+
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

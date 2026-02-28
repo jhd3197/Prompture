@@ -1,0 +1,343 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Core Module &mdash; Prompture 1.0.49 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=fa44fd50" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=0cbbaaf5" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=9c1456b3"></script>
+      <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Field Definitions Module" href="field_definitions.html" />
+    <link rel="prev" title="API Reference" href="index.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #048b41" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            Prompture
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../installation.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../quickstart.html">Quick Start Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../toon_input_guide.html">TOON Input Conversion Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../field_definitions_reference.html">Field Definitions Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples.html">Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../contributing.html">Contributing to Prompture</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Documentation:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="index.html">API Reference</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="index.html#overview">Overview</a></li>
+<li class="toctree-l2"><a class="reference internal" href="index.html#quick-reference">Quick Reference</a></li>
+<li class="toctree-l2"><a class="reference internal" href="index.html#core-functions">Core Functions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="index.html#field-registry-system">Field Registry System</a></li>
+<li class="toctree-l2"><a class="reference internal" href="index.html#built-in-field-types">Built-in Field Types</a></li>
+<li class="toctree-l2"><a class="reference internal" href="index.html#driver-system">Driver System</a></li>
+<li class="toctree-l2"><a class="reference internal" href="index.html#validation-and-utilities">Validation and Utilities</a></li>
+<li class="toctree-l2"><a class="reference internal" href="index.html#error-handling">Error Handling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="index.html#configuration">Configuration</a></li>
+<li class="toctree-l2 current"><a class="reference internal" href="index.html#module-reference">Module Reference</a><ul class="current">
+<li class="toctree-l3 current"><a class="current reference internal" href="#">Core Module</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#overview">Overview</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#main-functions">Main Functions</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#utility-functions">Utility Functions</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#error-handling">Error Handling</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#return-value-structure">Return Value Structure</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#integration-with-other-modules">Integration with Other Modules</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#best-practices">Best Practices</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="field_definitions.html">Field Definitions Module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="drivers.html">Drivers Module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="tools.html">Tools Module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="runner.html">Runner Module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="validator.html">Validator Module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="index.html#core-modules">Core Modules</a></li>
+<li class="toctree-l3"><a class="reference internal" href="index.html#utility-modules">Utility Modules</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #048b41" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">Prompture</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="index.html">API Reference</a></li>
+      <li class="breadcrumb-item active">Core Module</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/api/core.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="core-module">
+<h1>Core Module<a class="headerlink" href="#core-module" title="Link to this heading"></a></h1>
+<p>The core module provides the main extraction functions for converting unstructured text into structured JSON data using various LLM providers.</p>
+<section id="overview">
+<h2>Overview<a class="headerlink" href="#overview" title="Link to this heading"></a></h2>
+<p>The core module contains the primary extraction functions that handle the interaction between text input, field definitions, and LLM drivers to produce structured data output. These functions support multiple extraction strategies, from simple single-step extraction to advanced multi-step validation processes.</p>
+</section>
+<section id="main-functions">
+<h2>Main Functions<a class="headerlink" href="#main-functions" title="Link to this heading"></a></h2>
+<section id="extract-and-jsonify">
+<h3>extract_and_jsonify()<a class="headerlink" href="#extract-and-jsonify" title="Link to this heading"></a></h3>
+<p>The primary function for extracting structured data from text using field definitions and automatic driver selection.</p>
+<p><strong>Key Features:</strong></p>
+<ul class="simple">
+<li><p>Automatic driver selection based on model name format (<code class="docutils literal notranslate"><span class="pre">provider/model</span></code>)</p></li>
+<li><p>Support for custom JSON schemas</p></li>
+<li><p>Built-in error handling and validation</p></li>
+<li><p>Optional AI-powered cleanup for malformed JSON responses</p></li>
+</ul>
+<p><strong>Example:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">result</span> <span class="o">=</span> <span class="n">extract_and_jsonify</span><span class="p">(</span>
+    <span class="n">text</span><span class="o">=</span><span class="s2">&quot;John Smith is 25 years old and works at OpenAI&quot;</span><span class="p">,</span>
+    <span class="n">json_schema</span><span class="o">=</span><span class="p">{</span>
+        <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;object&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;properties&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;string&quot;</span><span class="p">},</span>
+            <span class="s2">&quot;age&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;integer&quot;</span><span class="p">},</span>
+            <span class="s2">&quot;company&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;string&quot;</span><span class="p">}</span>
+        <span class="p">}</span>
+    <span class="p">},</span>
+    <span class="n">model_name</span><span class="o">=</span><span class="s2">&quot;openai/gpt-4&quot;</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="extract-with-model">
+<h3>extract_with_model()<a class="headerlink" href="#extract-with-model" title="Link to this heading"></a></h3>
+<p>Extract structured data using Pydantic models with integration to the field registry system.</p>
+<p><strong>Key Features:</strong></p>
+<ul class="simple">
+<li><p>Automatic JSON schema generation from Pydantic models</p></li>
+<li><p>Integration with [<cite>field_from_registry()</cite>](../api/field_definitions.rst#field_from_registry) for enhanced field definitions</p></li>
+<li><p>Model validation and type conversion</p></li>
+<li><p>Backward compatibility with legacy function signatures</p></li>
+</ul>
+<p><strong>Example:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">pydantic</span> <span class="kn">import</span> <span class="n">BaseModel</span>
+<span class="kn">from</span> <span class="nn">prompture</span> <span class="kn">import</span> <span class="n">field_from_registry</span><span class="p">,</span> <span class="n">extract_with_model</span>
+
+<span class="k">class</span> <span class="nc">Person</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;name&quot;</span><span class="p">)</span>
+    <span class="n">age</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;age&quot;</span><span class="p">)</span>
+
+<span class="n">result</span> <span class="o">=</span> <span class="n">extract_with_model</span><span class="p">(</span>
+    <span class="n">model_cls</span><span class="o">=</span><span class="n">Person</span><span class="p">,</span>
+    <span class="n">text</span><span class="o">=</span><span class="s2">&quot;Alice Johnson, 32 years old&quot;</span><span class="p">,</span>
+    <span class="n">model_name</span><span class="o">=</span><span class="s2">&quot;openai/gpt-4&quot;</span>
+<span class="p">)</span>
+<span class="n">person</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">model</span>  <span class="c1"># Access the Pydantic model instance</span>
+</pre></div>
+</div>
+</section>
+<section id="stepwise-extract-with-model">
+<h3>stepwise_extract_with_model()<a class="headerlink" href="#stepwise-extract-with-model" title="Link to this heading"></a></h3>
+<p>Advanced multi-step extraction process that processes each model field individually with enhanced validation and error handling.</p>
+<p><strong>Key Features:</strong></p>
+<ul class="simple">
+<li><p>Field-by-field extraction for improved accuracy</p></li>
+<li><p>Graceful handling of partial failures with default values</p></li>
+<li><p>Detailed usage tracking per field</p></li>
+<li><p>Integration with global field registry for enhanced defaults</p></li>
+<li><p>Comprehensive logging and debugging support</p></li>
+</ul>
+<p><strong>Example:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">result</span> <span class="o">=</span> <span class="n">stepwise_extract_with_model</span><span class="p">(</span>
+    <span class="n">model_cls</span><span class="o">=</span><span class="n">Person</span><span class="p">,</span>
+    <span class="n">text</span><span class="o">=</span><span class="s2">&quot;Complex document with multiple data points...&quot;</span><span class="p">,</span>
+    <span class="n">model_name</span><span class="o">=</span><span class="s2">&quot;openai/gpt-4&quot;</span><span class="p">,</span>
+    <span class="n">instruction_template</span><span class="o">=</span><span class="s2">&quot;Extract the </span><span class="si">{field_name}</span><span class="s2"> from this document:&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">person</span> <span class="o">=</span> <span class="n">result</span><span class="p">[</span><span class="s2">&quot;model&quot;</span><span class="p">]</span>
+<span class="n">usage_info</span> <span class="o">=</span> <span class="n">result</span><span class="p">[</span><span class="s2">&quot;usage&quot;</span><span class="p">]</span>
+<span class="n">field_results</span> <span class="o">=</span> <span class="n">result</span><span class="p">[</span><span class="s2">&quot;field_results&quot;</span><span class="p">]</span>
+</pre></div>
+</div>
+</section>
+<section id="manual-extract-and-jsonify">
+<h3>manual_extract_and_jsonify()<a class="headerlink" href="#manual-extract-and-jsonify" title="Link to this heading"></a></h3>
+<p>Low-level extraction function that uses an explicitly provided driver instance for direct control over the LLM interaction.</p>
+<p><strong>Key Features:</strong></p>
+<ul class="simple">
+<li><p>Direct driver control (OpenAI, Claude, Ollama, etc.)</p></li>
+<li><p>Optional model override per call</p></li>
+<li><p>Detailed logging and debugging capabilities</p></li>
+<li><p>Full control over driver configuration and options</p></li>
+</ul>
+<p><strong>Example:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">prompture.drivers</span> <span class="kn">import</span> <span class="n">OpenAIDriver</span>
+
+<span class="n">driver</span> <span class="o">=</span> <span class="n">OpenAIDriver</span><span class="p">(</span><span class="n">api_key</span><span class="o">=</span><span class="s2">&quot;your-key&quot;</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="s2">&quot;gpt-4&quot;</span><span class="p">)</span>
+<span class="n">result</span> <span class="o">=</span> <span class="n">manual_extract_and_jsonify</span><span class="p">(</span>
+    <span class="n">driver</span><span class="o">=</span><span class="n">driver</span><span class="p">,</span>
+    <span class="n">text</span><span class="o">=</span><span class="s2">&quot;Extract from this text...&quot;</span><span class="p">,</span>
+    <span class="n">json_schema</span><span class="o">=</span><span class="n">schema</span><span class="p">,</span>
+    <span class="n">model_name</span><span class="o">=</span><span class="s2">&quot;gpt-4-turbo&quot;</span><span class="p">,</span>  <span class="c1"># Override driver&#39;s default model</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="utility-functions">
+<h2>Utility Functions<a class="headerlink" href="#utility-functions" title="Link to this heading"></a></h2>
+<section id="ask-for-json">
+<h3>ask_for_json()<a class="headerlink" href="#ask-for-json" title="Link to this heading"></a></h3>
+<p>Core function that handles the actual LLM communication and JSON parsing with robust error handling.</p>
+<p><strong>Key Features:</strong></p>
+<ul class="simple">
+<li><p>Schema-enforced LLM prompting</p></li>
+<li><p>Automatic JSON parsing and validation</p></li>
+<li><p>Usage tracking (tokens, cost, etc.)</p></li>
+<li><p>AI-powered cleanup for malformed JSON responses</p></li>
+</ul>
+</section>
+<section id="clean-json-text-with-ai">
+<h3>clean_json_text_with_ai()<a class="headerlink" href="#clean-json-text-with-ai" title="Link to this heading"></a></h3>
+<p>Uses an LLM to repair malformed JSON strings when standard parsing fails.</p>
+<p><strong>Features:</strong></p>
+<ul class="simple">
+<li><p>Intelligent JSON repair using AI</p></li>
+<li><p>Fallback mechanism for [<cite>ask_for_json()</cite>](#ask_for_json)</p></li>
+<li><p>Preserves data integrity while fixing syntax issues</p></li>
+</ul>
+</section>
+</section>
+<section id="error-handling">
+<h2>Error Handling<a class="headerlink" href="#error-handling" title="Link to this heading"></a></h2>
+<p>The core module implements comprehensive error handling:</p>
+<p><strong>ValueError</strong>: Raised for invalid inputs, empty text, or malformed model names
+<strong>ConnectionError</strong>: Raised for network issues (automatically skipped in pytest environments)
+<strong>json.JSONDecodeError</strong>: Raised when JSON parsing fails and AI cleanup is disabled</p>
+<p>All functions support graceful degradation and provide detailed error messages to help with debugging.</p>
+</section>
+<section id="return-value-structure">
+<h2>Return Value Structure<a class="headerlink" href="#return-value-structure" title="Link to this heading"></a></h2>
+<p>Most extraction functions return a dictionary with the following structure:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+    <span class="s2">&quot;json_string&quot;</span><span class="p">:</span> <span class="s2">&quot;Raw JSON string from LLM&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;json_object&quot;</span><span class="p">:</span> <span class="p">{</span><span class="o">...</span><span class="p">},</span>  <span class="c1"># Parsed JSON object</span>
+    <span class="s2">&quot;usage&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;prompt_tokens&quot;</span><span class="p">:</span> <span class="mi">150</span><span class="p">,</span>
+        <span class="s2">&quot;completion_tokens&quot;</span><span class="p">:</span> <span class="mi">80</span><span class="p">,</span>
+        <span class="s2">&quot;total_tokens&quot;</span><span class="p">:</span> <span class="mi">230</span><span class="p">,</span>
+        <span class="s2">&quot;cost&quot;</span><span class="p">:</span> <span class="mf">0.00046</span><span class="p">,</span>
+        <span class="s2">&quot;model_name&quot;</span><span class="p">:</span> <span class="s2">&quot;gpt-4&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;raw_response&quot;</span><span class="p">:</span> <span class="p">{</span><span class="o">...</span><span class="p">}</span>  <span class="c1"># Full driver response</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</section>
+<section id="integration-with-other-modules">
+<h2>Integration with Other Modules<a class="headerlink" href="#integration-with-other-modules" title="Link to this heading"></a></h2>
+<p>The core module integrates tightly with:</p>
+<ul class="simple">
+<li><p><strong>Field Definitions</strong>: Uses [<cite>get_registry_snapshot()</cite>](../api/field_definitions.rst#get_registry_snapshot) for field defaults</p></li>
+<li><p><strong>Drivers</strong>: Uses [<cite>get_driver_for_model()</cite>](../api/drivers.rst#get_driver_for_model) for automatic driver selection</p></li>
+<li><p><strong>Tools</strong>: Uses utility functions like [<cite>convert_value()</cite>](../api/tools.rst#convert_value) and [<cite>clean_json_text()</cite>](../api/tools.rst#clean_json_text)</p></li>
+</ul>
+</section>
+<section id="best-practices">
+<h2>Best Practices<a class="headerlink" href="#best-practices" title="Link to this heading"></a></h2>
+<ol class="arabic simple">
+<li><p><strong>Use extract_and_jsonify()</strong> for most simple extraction tasks</p></li>
+<li><p><strong>Use extract_with_model()</strong> when working with Pydantic models and field registry</p></li>
+<li><p><strong>Use stepwise_extract_with_model()</strong> for complex documents or when you need detailed per-field control</p></li>
+<li><p><strong>Use manual_extract_and_jsonify()</strong> when you need direct control over the driver configuration</p></li>
+<li><p><strong>Always handle ConnectionError</strong> in production code for network resilience</p></li>
+<li><p><strong>Enable ai_cleanup=True</strong> (default) for better handling of imperfect LLM responses</p></li>
+</ol>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="index.html" class="btn btn-neutral float-left" title="API Reference" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="field_definitions.html" class="btn btn-neutral float-right" title="Field Definitions Module" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Juan Denis.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+  
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    var footerCopy = document.querySelector("footer .copyright");
+    if (footerCopy) {
+        footerCopy.innerHTML = footerCopy.innerHTML.replace(
+            "Juan Denis",
+            '<a href="https://juandenis.com">Juan Denis</a>'
+        );
+    }
+});
+</script>
+ 
+
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

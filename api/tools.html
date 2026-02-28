@@ -1,0 +1,330 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tools Module &mdash; Prompture 1.0.49 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=fa44fd50" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=0cbbaaf5" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=9c1456b3"></script>
+      <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Runner Module" href="runner.html" />
+    <link rel="prev" title="Drivers Module" href="drivers.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #048b41" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            Prompture
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../installation.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../quickstart.html">Quick Start Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../toon_input_guide.html">TOON Input Conversion Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../field_definitions_reference.html">Field Definitions Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples.html">Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../contributing.html">Contributing to Prompture</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Documentation:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="index.html">API Reference</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="index.html#overview">Overview</a></li>
+<li class="toctree-l2"><a class="reference internal" href="index.html#quick-reference">Quick Reference</a></li>
+<li class="toctree-l2"><a class="reference internal" href="index.html#core-functions">Core Functions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="index.html#field-registry-system">Field Registry System</a></li>
+<li class="toctree-l2"><a class="reference internal" href="index.html#built-in-field-types">Built-in Field Types</a></li>
+<li class="toctree-l2"><a class="reference internal" href="index.html#driver-system">Driver System</a></li>
+<li class="toctree-l2"><a class="reference internal" href="index.html#validation-and-utilities">Validation and Utilities</a></li>
+<li class="toctree-l2"><a class="reference internal" href="index.html#error-handling">Error Handling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="index.html#configuration">Configuration</a></li>
+<li class="toctree-l2 current"><a class="reference internal" href="index.html#module-reference">Module Reference</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="core.html">Core Module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="field_definitions.html">Field Definitions Module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="drivers.html">Drivers Module</a></li>
+<li class="toctree-l3 current"><a class="current reference internal" href="#">Tools Module</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#overview">Overview</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#data-parsing-and-conversion">Data Parsing and Conversion</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#schema-generation-and-validation">Schema Generation and Validation</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#data-conversion-and-type-handling">Data Conversion and Type Handling</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#file-and-data-loading">File and Data Loading</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#default-value-management">Default Value Management</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#text-processing-utilities">Text Processing Utilities</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#best-practices">Best Practices</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="runner.html">Runner Module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="validator.html">Validator Module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="index.html#core-modules">Core Modules</a></li>
+<li class="toctree-l3"><a class="reference internal" href="index.html#utility-modules">Utility Modules</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #048b41" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">Prompture</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="index.html">API Reference</a></li>
+      <li class="breadcrumb-item active">Tools Module</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/api/tools.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="tools-module">
+<h1>Tools Module<a class="headerlink" href="#tools-module" title="Link to this heading"></a></h1>
+<p>The tools module provides utility functions for data conversion, validation, field schema generation, and text processing used throughout Prompture’s extraction pipeline.</p>
+<section id="overview">
+<h2>Overview<a class="headerlink" href="#overview" title="Link to this heading"></a></h2>
+<p>The tools module contains:</p>
+<ul class="simple">
+<li><p><strong>Data Conversion</strong>: Robust type conversion with fallback handling</p></li>
+<li><p><strong>Schema Generation</strong>: JSON schema creation from Python types and field definitions</p></li>
+<li><p><strong>Parsing Utilities</strong>: Specialized parsers for dates, numbers, and boolean values</p></li>
+<li><p><strong>Validation</strong>: Field definition validation and type checking</p></li>
+<li><p><strong>Text Processing</strong>: JSON cleanup and text manipulation utilities</p></li>
+</ul>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The custom <code class="docutils literal notranslate"><span class="pre">LogLevel</span></code> enum and <code class="docutils literal notranslate"><span class="pre">log_debug()</span></code> function have been removed.
+Prompture now uses Python’s standard <code class="docutils literal notranslate"><span class="pre">logging</span></code> module.  Use
+<code class="xref py py-func docutils literal notranslate"><span class="pre">prompture.configure_logging()</span></code> to enable library-level logging output.</p>
+</div>
+</section>
+<section id="data-parsing-and-conversion">
+<h2>Data Parsing and Conversion<a class="headerlink" href="#data-parsing-and-conversion" title="Link to this heading"></a></h2>
+<section id="parse-boolean">
+<h3>parse_boolean()<a class="headerlink" href="#parse-boolean" title="Link to this heading"></a></h3>
+<p>Robustly parse various boolean representations into Python boolean values.</p>
+<p><strong>Supported Formats:</strong></p>
+<ul class="simple">
+<li><p><strong>Strings</strong>: “true”, “false”, “yes”, “no”, “1”, “0”, “on”, “off”</p></li>
+<li><p><strong>Numbers</strong>: 1 (True), 0 (False), any non-zero number (True)</p></li>
+<li><p><strong>Booleans</strong>: Direct pass-through</p></li>
+<li><p><strong>Case-insensitive</strong>: “TRUE”, “True”, “tRuE” all work</p></li>
+</ul>
+<p><strong>Example:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">prompture.tools</span> <span class="kn">import</span> <span class="n">parse_boolean</span>
+
+<span class="k">assert</span> <span class="n">parse_boolean</span><span class="p">(</span><span class="s2">&quot;yes&quot;</span><span class="p">)</span> <span class="o">==</span> <span class="kc">True</span>
+<span class="k">assert</span> <span class="n">parse_boolean</span><span class="p">(</span><span class="s2">&quot;FALSE&quot;</span><span class="p">)</span> <span class="o">==</span> <span class="kc">False</span>
+<span class="k">assert</span> <span class="n">parse_boolean</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span> <span class="o">==</span> <span class="kc">True</span>
+<span class="k">assert</span> <span class="n">parse_boolean</span><span class="p">(</span><span class="s2">&quot;0&quot;</span><span class="p">)</span> <span class="o">==</span> <span class="kc">False</span>
+</pre></div>
+</div>
+</section>
+<section id="as-list">
+<h3>as_list()<a class="headerlink" href="#as-list" title="Link to this heading"></a></h3>
+<p>Convert various input types to lists with intelligent parsing.</p>
+<p><strong>Features:</strong></p>
+<ul class="simple">
+<li><p><strong>String splitting</strong>: Automatic delimiter detection or custom separators</p></li>
+<li><p><strong>Single values</strong>: Wrap non-list values in lists</p></li>
+<li><p><strong>List pass-through</strong>: Return lists unchanged</p></li>
+<li><p><strong>Empty handling</strong>: Proper handling of None and empty strings</p></li>
+</ul>
+<p><strong>Example:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">prompture.tools</span> <span class="kn">import</span> <span class="n">as_list</span>
+
+<span class="c1"># Automatic delimiter detection</span>
+<span class="k">assert</span> <span class="n">as_list</span><span class="p">(</span><span class="s2">&quot;apple,banana,cherry&quot;</span><span class="p">)</span> <span class="o">==</span> <span class="p">[</span><span class="s2">&quot;apple&quot;</span><span class="p">,</span> <span class="s2">&quot;banana&quot;</span><span class="p">,</span> <span class="s2">&quot;cherry&quot;</span><span class="p">]</span>
+<span class="k">assert</span> <span class="n">as_list</span><span class="p">(</span><span class="s2">&quot;red; blue; green&quot;</span><span class="p">)</span> <span class="o">==</span> <span class="p">[</span><span class="s2">&quot;red&quot;</span><span class="p">,</span> <span class="s2">&quot;blue&quot;</span><span class="p">,</span> <span class="s2">&quot;green&quot;</span><span class="p">]</span>
+
+<span class="c1"># Custom separator</span>
+<span class="k">assert</span> <span class="n">as_list</span><span class="p">(</span><span class="s2">&quot;a|b|c&quot;</span><span class="p">,</span> <span class="n">sep</span><span class="o">=</span><span class="s2">&quot;|&quot;</span><span class="p">)</span> <span class="o">==</span> <span class="p">[</span><span class="s2">&quot;a&quot;</span><span class="p">,</span> <span class="s2">&quot;b&quot;</span><span class="p">,</span> <span class="s2">&quot;c&quot;</span><span class="p">]</span>
+
+<span class="c1"># Single value wrapping</span>
+<span class="k">assert</span> <span class="n">as_list</span><span class="p">(</span><span class="s2">&quot;single&quot;</span><span class="p">)</span> <span class="o">==</span> <span class="p">[</span><span class="s2">&quot;single&quot;</span><span class="p">]</span>
+<span class="k">assert</span> <span class="n">as_list</span><span class="p">(</span><span class="mi">42</span><span class="p">)</span> <span class="o">==</span> <span class="p">[</span><span class="mi">42</span><span class="p">]</span>
+</pre></div>
+</div>
+</section>
+<section id="parse-datetime">
+<h3>parse_datetime()<a class="headerlink" href="#parse-datetime" title="Link to this heading"></a></h3>
+<p>Parse datetime strings in various formats into Python datetime objects.</p>
+<p><strong>Supported Formats:</strong></p>
+<ul class="simple">
+<li><p>ISO 8601: “2024-03-15T14:30:00Z”</p></li>
+<li><p>Date only: “2024-03-15”, “03/15/2024”</p></li>
+<li><p>Relative: “today”, “yesterday”, “tomorrow”</p></li>
+<li><p>Timestamps: Unix timestamps (integers)</p></li>
+</ul>
+<p><strong>Example:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">prompture.tools</span> <span class="kn">import</span> <span class="n">parse_datetime</span>
+
+<span class="n">dt1</span> <span class="o">=</span> <span class="n">parse_datetime</span><span class="p">(</span><span class="s2">&quot;2024-03-15T14:30:00&quot;</span><span class="p">)</span>
+<span class="n">dt2</span> <span class="o">=</span> <span class="n">parse_datetime</span><span class="p">(</span><span class="s2">&quot;03/15/2024&quot;</span><span class="p">)</span>
+<span class="n">dt3</span> <span class="o">=</span> <span class="n">parse_datetime</span><span class="p">(</span><span class="s2">&quot;today&quot;</span><span class="p">)</span>
+<span class="n">dt4</span> <span class="o">=</span> <span class="n">parse_datetime</span><span class="p">(</span><span class="mi">1710512400</span><span class="p">)</span>  <span class="c1"># Unix timestamp</span>
+</pre></div>
+</div>
+</section>
+<section id="parse-shorthand-number">
+<h3>parse_shorthand_number()<a class="headerlink" href="#parse-shorthand-number" title="Link to this heading"></a></h3>
+<p>Parse numbers with shorthand suffixes like “1K”, “2.5M”, “1.2B”.</p>
+<p><strong>Supported Suffixes:</strong></p>
+<ul class="simple">
+<li><p><strong>K/k</strong>: Thousands (x1,000)</p></li>
+<li><p><strong>M/m</strong>: Millions (x1,000,000)</p></li>
+<li><p><strong>B/b</strong>: Billions (x1,000,000,000)</p></li>
+<li><p><strong>T/t</strong>: Trillions (x1,000,000,000,000)</p></li>
+</ul>
+<p><strong>Example:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">prompture.tools</span> <span class="kn">import</span> <span class="n">parse_shorthand_number</span>
+
+<span class="k">assert</span> <span class="n">parse_shorthand_number</span><span class="p">(</span><span class="s2">&quot;1.5K&quot;</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1500</span>
+<span class="k">assert</span> <span class="n">parse_shorthand_number</span><span class="p">(</span><span class="s2">&quot;2M&quot;</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2000000</span>
+<span class="k">assert</span> <span class="n">parse_shorthand_number</span><span class="p">(</span><span class="s2">&quot;1.2B&quot;</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1200000000</span>
+<span class="k">assert</span> <span class="n">parse_shorthand_number</span><span class="p">(</span><span class="s2">&quot;500&quot;</span><span class="p">)</span> <span class="o">==</span> <span class="mi">500</span>  <span class="c1"># No suffix</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="schema-generation-and-validation">
+<h2>Schema Generation and Validation<a class="headerlink" href="#schema-generation-and-validation" title="Link to this heading"></a></h2>
+<section id="create-field-schema">
+<h3>create_field_schema()<a class="headerlink" href="#create-field-schema" title="Link to this heading"></a></h3>
+<p>Generate JSON schema definitions from field names, types, and field definitions.</p>
+</section>
+<section id="validate-field-definition">
+<h3>validate_field_definition()<a class="headerlink" href="#validate-field-definition" title="Link to this heading"></a></h3>
+<p>Validate that a field definition dictionary contains all required properties and valid values.</p>
+</section>
+</section>
+<section id="data-conversion-and-type-handling">
+<h2>Data Conversion and Type Handling<a class="headerlink" href="#data-conversion-and-type-handling" title="Link to this heading"></a></h2>
+<section id="convert-value">
+<h3>convert_value()<a class="headerlink" href="#convert-value" title="Link to this heading"></a></h3>
+<p>Robust value conversion with intelligent type coercion and fallback handling.</p>
+</section>
+<section id="extract-fields">
+<h3>extract_fields()<a class="headerlink" href="#extract-fields" title="Link to this heading"></a></h3>
+<p>Extract and validate specific fields from data dictionaries with type conversion and default value handling.</p>
+</section>
+</section>
+<section id="file-and-data-loading">
+<h2>File and Data Loading<a class="headerlink" href="#file-and-data-loading" title="Link to this heading"></a></h2>
+<section id="load-field-definitions">
+<h3>load_field_definitions()<a class="headerlink" href="#load-field-definitions" title="Link to this heading"></a></h3>
+<p>Load field definitions from JSON or YAML files with automatic format detection.</p>
+</section>
+</section>
+<section id="default-value-management">
+<h2>Default Value Management<a class="headerlink" href="#default-value-management" title="Link to this heading"></a></h2>
+<section id="get-type-default">
+<h3>get_type_default()<a class="headerlink" href="#get-type-default" title="Link to this heading"></a></h3>
+<p>Get appropriate default values for Python types.</p>
+</section>
+<section id="get-field-default">
+<h3>get_field_default()<a class="headerlink" href="#get-field-default" title="Link to this heading"></a></h3>
+<p>Get default values for fields using field definitions, Pydantic field info, or type defaults.</p>
+</section>
+</section>
+<section id="text-processing-utilities">
+<h2>Text Processing Utilities<a class="headerlink" href="#text-processing-utilities" title="Link to this heading"></a></h2>
+<section id="clean-json-text">
+<h3>clean_json_text()<a class="headerlink" href="#clean-json-text" title="Link to this heading"></a></h3>
+<p>Clean and normalize JSON text by removing markdown formatting, extra whitespace, and common text artifacts.</p>
+</section>
+</section>
+<section id="best-practices">
+<h2>Best Practices<a class="headerlink" href="#best-practices" title="Link to this heading"></a></h2>
+<ol class="arabic simple">
+<li><p><strong>Use configure_logging()</strong>: Call <code class="docutils literal notranslate"><span class="pre">configure_logging(logging.DEBUG)</span></code> to see internal debug output</p></li>
+<li><p><strong>Handle Conversion Failures</strong>: Always provide sensible fallback values</p></li>
+<li><p><strong>Validate Field Definitions</strong>: Use <code class="docutils literal notranslate"><span class="pre">validate_field_definition()</span></code> before registering custom fields</p></li>
+<li><p><strong>Leverage Smart Conversion</strong>: Use <code class="docutils literal notranslate"><span class="pre">convert_value()</span></code> for robust type handling</p></li>
+<li><p><strong>Clean External Data</strong>: Use parsing utilities for user input and external data sources</p></li>
+<li><p><strong>Load Definitions from Files</strong>: Use <code class="docutils literal notranslate"><span class="pre">load_field_definitions()</span></code> for maintainable configuration</p></li>
+</ol>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="drivers.html" class="btn btn-neutral float-left" title="Drivers Module" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="runner.html" class="btn btn-neutral float-right" title="Runner Module" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Juan Denis.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+  
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    var footerCopy = document.querySelector("footer .copyright");
+    if (footerCopy) {
+        footerCopy.innerHTML = footerCopy.innerHTML.replace(
+            "Juan Denis",
+            '<a href="https://juandenis.com">Juan Denis</a>'
+        );
+    }
+});
+</script>
+ 
+
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

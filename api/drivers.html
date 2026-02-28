@@ -1,0 +1,537 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Drivers Module &mdash; Prompture 1.0.49 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=fa44fd50" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=0cbbaaf5" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=9c1456b3"></script>
+      <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Tools Module" href="tools.html" />
+    <link rel="prev" title="Field Definitions Module" href="field_definitions.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #048b41" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            Prompture
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../installation.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../quickstart.html">Quick Start Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../toon_input_guide.html">TOON Input Conversion Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../field_definitions_reference.html">Field Definitions Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples.html">Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../contributing.html">Contributing to Prompture</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Documentation:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="index.html">API Reference</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="index.html#overview">Overview</a></li>
+<li class="toctree-l2"><a class="reference internal" href="index.html#quick-reference">Quick Reference</a></li>
+<li class="toctree-l2"><a class="reference internal" href="index.html#core-functions">Core Functions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="index.html#field-registry-system">Field Registry System</a></li>
+<li class="toctree-l2"><a class="reference internal" href="index.html#built-in-field-types">Built-in Field Types</a></li>
+<li class="toctree-l2"><a class="reference internal" href="index.html#driver-system">Driver System</a></li>
+<li class="toctree-l2"><a class="reference internal" href="index.html#validation-and-utilities">Validation and Utilities</a></li>
+<li class="toctree-l2"><a class="reference internal" href="index.html#error-handling">Error Handling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="index.html#configuration">Configuration</a></li>
+<li class="toctree-l2 current"><a class="reference internal" href="index.html#module-reference">Module Reference</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="core.html">Core Module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="field_definitions.html">Field Definitions Module</a></li>
+<li class="toctree-l3 current"><a class="current reference internal" href="#">Drivers Module</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#overview">Overview</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#driver-selection-functions">Driver Selection Functions</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#available-driver-classes">Available Driver Classes</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#local-and-custom-drivers">Local and Custom Drivers</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#driver-interface">Driver Interface</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#cost-tracking-and-pricing">Cost Tracking and Pricing</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#environment-variables">Environment Variables</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#error-handling">Error Handling</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#best-practices">Best Practices</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="tools.html">Tools Module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="runner.html">Runner Module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="validator.html">Validator Module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="index.html#core-modules">Core Modules</a></li>
+<li class="toctree-l3"><a class="reference internal" href="index.html#utility-modules">Utility Modules</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #048b41" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">Prompture</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="index.html">API Reference</a></li>
+      <li class="breadcrumb-item active">Drivers Module</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/api/drivers.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="drivers-module">
+<h1>Drivers Module<a class="headerlink" href="#drivers-module" title="Link to this heading"></a></h1>
+<p>The drivers module provides a unified interface for connecting to various Large Language Model (LLM) providers through a consistent API. Each driver implements the same interface while handling provider-specific authentication, request formatting, and response parsing.</p>
+<section id="overview">
+<h2>Overview<a class="headerlink" href="#overview" title="Link to this heading"></a></h2>
+<p>The drivers system enables Prompture to work with multiple LLM providers seamlessly:</p>
+<ul class="simple">
+<li><p><strong>Unified Interface</strong>: All drivers implement the same [<cite>Driver</cite>](../api/driver.rst) base class</p></li>
+<li><p><strong>Automatic Selection</strong>: Use [<cite>get_driver_for_model()</cite>](#get_driver_for_model) for automatic driver selection based on model strings</p></li>
+<li><p><strong>Manual Control</strong>: Use [<cite>get_driver()</cite>](#get_driver) for explicit driver instantiation</p></li>
+<li><p><strong>Provider Flexibility</strong>: Easy switching between providers without code changes</p></li>
+<li><p><strong>Cost Tracking</strong>: Built-in token usage and cost calculation for supported models</p></li>
+</ul>
+</section>
+<section id="driver-selection-functions">
+<h2>Driver Selection Functions<a class="headerlink" href="#driver-selection-functions" title="Link to this heading"></a></h2>
+<section id="get-driver-for-model">
+<h3>get_driver_for_model()<a class="headerlink" href="#get-driver-for-model" title="Link to this heading"></a></h3>
+<p>Automatically select and instantiate the appropriate driver based on a model string in the format <code class="docutils literal notranslate"><span class="pre">provider/model</span></code>.</p>
+<p><strong>Supported Model String Formats:</strong></p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">openai/gpt-4</span></code> → [<cite>OpenAIDriver</cite>](#openaiddriver)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">anthropic/claude-3-sonnet-20240229</span></code> → [<cite>ClaudeDriver</cite>](#claudedriver)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">google/gemini-pro</span></code> → [<cite>GoogleDriver</cite>](#googledriver)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">groq/llama2-70b-4096</span></code> → [<cite>GroqDriver</cite>](#groqdriver)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">ollama/llama3</span></code> → [<cite>OllamaDriver</cite>](#ollamadriver)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">azure/gpt-4</span></code> → [<cite>AzureDriver</cite>](#azuredriver)</p></li>
+</ul>
+<p><strong>Example:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">prompture.drivers</span> <span class="kn">import</span> <span class="n">get_driver_for_model</span>
+
+<span class="c1"># Automatic driver selection</span>
+<span class="n">driver</span> <span class="o">=</span> <span class="n">get_driver_for_model</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4&quot;</span><span class="p">)</span>
+
+<span class="c1"># Use in extraction</span>
+<span class="kn">from</span> <span class="nn">prompture.core</span> <span class="kn">import</span> <span class="n">manual_extract_and_jsonify</span>
+<span class="n">result</span> <span class="o">=</span> <span class="n">manual_extract_and_jsonify</span><span class="p">(</span>
+    <span class="n">driver</span><span class="o">=</span><span class="n">driver</span><span class="p">,</span>
+    <span class="n">text</span><span class="o">=</span><span class="s2">&quot;John is 25 years old&quot;</span><span class="p">,</span>
+    <span class="n">json_schema</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;object&quot;</span><span class="p">,</span> <span class="s2">&quot;properties&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;age&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;integer&quot;</span><span class="p">}}}</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="get-driver">
+<h3>get_driver()<a class="headerlink" href="#get-driver" title="Link to this heading"></a></h3>
+<p>Manually instantiate a specific driver by provider name with custom configuration.</p>
+<p><strong>Supported Provider Names:</strong></p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">openai</span></code> → [<cite>OpenAIDriver</cite>](#openaiddriver)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">anthropic</span></code> → [<cite>ClaudeDriver</cite>](#claudedriver)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">google</span></code> → [<cite>GoogleDriver</cite>](#googledriver)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">groq</span></code> → [<cite>GroqDriver</cite>](#groqdriver)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">ollama</span></code> → [<cite>OllamaDriver</cite>](#ollamadriver)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">azure</span></code> → [<cite>AzureDriver</cite>](#azuredriver)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">grok</span></code> → [<cite>GrokDriver</cite>](#grokdriver)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">openrouter</span></code> → [<cite>OpenRouterDriver</cite>](#openrouterdriver)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">lmstudio</span></code> → [<cite>LMStudioDriver</cite>](#lmstudiodriver)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">huggingface</span></code> → [<cite>HuggingFaceDriver</cite>](#huggingfacedriver)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">local</span></code> → [<cite>LocalHTTPDriver</cite>](#localhttpdriver)</p></li>
+</ul>
+<p><strong>Example:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">prompture.drivers</span> <span class="kn">import</span> <span class="n">get_driver</span>
+
+<span class="c1"># Manual driver instantiation with custom config</span>
+<span class="n">driver</span> <span class="o">=</span> <span class="n">get_driver</span><span class="p">(</span><span class="s2">&quot;openai&quot;</span><span class="p">)</span>
+<span class="n">driver</span><span class="o">.</span><span class="n">api_key</span> <span class="o">=</span> <span class="s2">&quot;custom-key&quot;</span>
+<span class="n">driver</span><span class="o">.</span><span class="n">model</span> <span class="o">=</span> <span class="s2">&quot;gpt-4-turbo&quot;</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="available-driver-classes">
+<h2>Available Driver Classes<a class="headerlink" href="#available-driver-classes" title="Link to this heading"></a></h2>
+<section id="openaidriver">
+<h3>OpenAIDriver<a class="headerlink" href="#openaidriver" title="Link to this heading"></a></h3>
+<p>Driver for OpenAI’s GPT models including GPT-4, GPT-3.5-turbo, and other OpenAI API-compatible models.</p>
+<p><strong>Supported Models:</strong></p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">gpt-4o</span></code> - Latest GPT-4 Omni model (recommended)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">gpt-4o-mini</span></code> - Smaller, faster GPT-4 variant</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">gpt-4-turbo</span></code> - GPT-4 Turbo with 128k context</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">gpt-4</span></code> - Standard GPT-4 model</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">gpt-3.5-turbo</span></code> - Fast and cost-effective model</p></li>
+</ul>
+<p><strong>Configuration:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">prompture.drivers</span> <span class="kn">import</span> <span class="n">OpenAIDriver</span>
+
+<span class="n">driver</span> <span class="o">=</span> <span class="n">OpenAIDriver</span><span class="p">(</span>
+    <span class="n">api_key</span><span class="o">=</span><span class="s2">&quot;your-openai-key&quot;</span><span class="p">,</span>  <span class="c1"># Or set OPENAI_API_KEY env var</span>
+    <span class="n">model</span><span class="o">=</span><span class="s2">&quot;gpt-4o&quot;</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="claudedriver">
+<h3>ClaudeDriver<a class="headerlink" href="#claudedriver" title="Link to this heading"></a></h3>
+<p>Driver for Anthropic’s Claude models with advanced reasoning capabilities.</p>
+<p><strong>Supported Models:</strong></p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">claude-opus-4-6</span></code> - Most capable Claude model</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">claude-sonnet-4-6</span></code> - Balanced performance model (recommended)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">claude-haiku-4-5-20251001</span></code> - Fast and efficient model</p></li>
+</ul>
+<p><strong>Configuration:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">prompture.drivers</span> <span class="kn">import</span> <span class="n">ClaudeDriver</span>
+
+<span class="n">driver</span> <span class="o">=</span> <span class="n">ClaudeDriver</span><span class="p">(</span>
+    <span class="n">api_key</span><span class="o">=</span><span class="s2">&quot;your-anthropic-key&quot;</span><span class="p">,</span>  <span class="c1"># Or set ANTHROPIC_API_KEY env var</span>
+    <span class="n">model</span><span class="o">=</span><span class="s2">&quot;claude-sonnet-4-6&quot;</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="googledriver">
+<h3>GoogleDriver<a class="headerlink" href="#googledriver" title="Link to this heading"></a></h3>
+<p>Driver for Google’s Gemini models with multimodal capabilities.</p>
+<p><strong>Supported Models:</strong></p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">gemini-1.5-pro</span></code> - Latest Gemini Pro model (recommended)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">gemini-1.5-flash</span></code> - Fast Gemini model</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">gemini-pro</span></code> - Standard Gemini Pro</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">gemini-pro-vision</span></code> - Gemini with vision capabilities</p></li>
+</ul>
+<p><strong>Configuration:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">prompture.drivers</span> <span class="kn">import</span> <span class="n">GoogleDriver</span>
+
+<span class="n">driver</span> <span class="o">=</span> <span class="n">GoogleDriver</span><span class="p">(</span>
+    <span class="n">api_key</span><span class="o">=</span><span class="s2">&quot;your-google-key&quot;</span><span class="p">,</span>  <span class="c1"># Or set GOOGLE_API_KEY env var</span>
+    <span class="n">model</span><span class="o">=</span><span class="s2">&quot;gemini-1.5-pro&quot;</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="groqdriver">
+<h3>GroqDriver<a class="headerlink" href="#groqdriver" title="Link to this heading"></a></h3>
+<p>Driver for Groq’s ultra-fast inference platform with open-source models.</p>
+<p><strong>Supported Models:</strong></p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">llama-3.1-70b-versatile</span></code> - Llama 3.1 70B (recommended)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">llama-3.1-8b-instant</span></code> - Fast Llama 3.1 8B</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">mixtral-8x7b-32768</span></code> - Mixtral 8x7B with large context</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">gemma2-9b-it</span></code> - Google’s Gemma 2 model</p></li>
+</ul>
+<p><strong>Configuration:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">prompture.drivers</span> <span class="kn">import</span> <span class="n">GroqDriver</span>
+
+<span class="n">driver</span> <span class="o">=</span> <span class="n">GroqDriver</span><span class="p">(</span>
+    <span class="n">api_key</span><span class="o">=</span><span class="s2">&quot;your-groq-key&quot;</span><span class="p">,</span>  <span class="c1"># Or set GROQ_API_KEY env var</span>
+    <span class="n">model</span><span class="o">=</span><span class="s2">&quot;llama-3.1-70b-versatile&quot;</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="ollamadriver">
+<h3>OllamaDriver<a class="headerlink" href="#ollamadriver" title="Link to this heading"></a></h3>
+<p>Driver for local models running through Ollama, enabling private and offline LLM usage.</p>
+<p><strong>Popular Models:</strong></p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">llama3</span></code> - Meta’s Llama 3 model</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">mistral</span></code> - Mistral 7B model</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">codellama</span></code> - Code-specialized Llama variant</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">qwen2.5</span></code> - Alibaba’s Qwen 2.5 model</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">deepseek-coder</span></code> - Code-focused model</p></li>
+</ul>
+<p><strong>Configuration:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">prompture.drivers</span> <span class="kn">import</span> <span class="n">OllamaDriver</span>
+
+<span class="n">driver</span> <span class="o">=</span> <span class="n">OllamaDriver</span><span class="p">(</span>
+    <span class="n">endpoint</span><span class="o">=</span><span class="s2">&quot;http://localhost:11434&quot;</span><span class="p">,</span>  <span class="c1"># Or set OLLAMA_BASE_URL env var</span>
+    <span class="n">model</span><span class="o">=</span><span class="s2">&quot;llama3&quot;</span>
+<span class="p">)</span>
+
+<span class="c1"># First pull the model if not already available</span>
+<span class="c1"># Run: ollama pull llama3</span>
+</pre></div>
+</div>
+</section>
+<section id="azuredriver">
+<h3>AzureDriver<a class="headerlink" href="#azuredriver" title="Link to this heading"></a></h3>
+<p>Driver for Azure OpenAI Service with enterprise-grade security and compliance.</p>
+<p><strong>Configuration:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">prompture.drivers</span> <span class="kn">import</span> <span class="n">AzureDriver</span>
+
+<span class="n">driver</span> <span class="o">=</span> <span class="n">AzureDriver</span><span class="p">(</span>
+    <span class="n">api_key</span><span class="o">=</span><span class="s2">&quot;your-azure-key&quot;</span><span class="p">,</span>
+    <span class="n">api_base</span><span class="o">=</span><span class="s2">&quot;https://your-resource.openai.azure.com/&quot;</span><span class="p">,</span>
+    <span class="n">api_version</span><span class="o">=</span><span class="s2">&quot;2024-02-15-preview&quot;</span><span class="p">,</span>
+    <span class="n">deployment_name</span><span class="o">=</span><span class="s2">&quot;gpt-4-deployment&quot;</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="grokdriver">
+<h3>GrokDriver<a class="headerlink" href="#grokdriver" title="Link to this heading"></a></h3>
+<p>Driver for xAI’s Grok models with real-time information access.</p>
+<p><strong>Supported Models:</strong></p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">grok-2-1212</span></code> - Latest Grok 2 model (recommended)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">grok-2-vision-1212</span></code> - Grok 2 with vision capabilities</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">grok-beta</span></code> - Beta version of Grok</p></li>
+</ul>
+<p><strong>Configuration:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">prompture.drivers</span> <span class="kn">import</span> <span class="n">GrokDriver</span>
+
+<span class="n">driver</span> <span class="o">=</span> <span class="n">GrokDriver</span><span class="p">(</span>
+    <span class="n">api_key</span><span class="o">=</span><span class="s2">&quot;your-xai-key&quot;</span><span class="p">,</span>  <span class="c1"># Or set XAI_API_KEY env var</span>
+    <span class="n">model</span><span class="o">=</span><span class="s2">&quot;grok-2-1212&quot;</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="openrouterdriver">
+<h3>OpenRouterDriver<a class="headerlink" href="#openrouterdriver" title="Link to this heading"></a></h3>
+<p>Driver for OpenRouter, providing access to multiple model providers through a single API.</p>
+<p><strong>Configuration:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">prompture.drivers</span> <span class="kn">import</span> <span class="n">OpenRouterDriver</span>
+
+<span class="n">driver</span> <span class="o">=</span> <span class="n">OpenRouterDriver</span><span class="p">(</span>
+    <span class="n">api_key</span><span class="o">=</span><span class="s2">&quot;your-openrouter-key&quot;</span><span class="p">,</span>  <span class="c1"># Or set OPENROUTER_API_KEY env var</span>
+    <span class="n">model</span><span class="o">=</span><span class="s2">&quot;openai/gpt-4-turbo&quot;</span>  <span class="c1"># Use OpenRouter model naming</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="local-and-custom-drivers">
+<h2>Local and Custom Drivers<a class="headerlink" href="#local-and-custom-drivers" title="Link to this heading"></a></h2>
+<section id="lmstudiodriver">
+<h3>LMStudioDriver<a class="headerlink" href="#lmstudiodriver" title="Link to this heading"></a></h3>
+<p>Driver for LM Studio, enabling local model hosting with OpenAI-compatible API.</p>
+<p><strong>Configuration:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">prompture.drivers</span> <span class="kn">import</span> <span class="n">LMStudioDriver</span>
+
+<span class="n">driver</span> <span class="o">=</span> <span class="n">LMStudioDriver</span><span class="p">(</span>
+    <span class="n">endpoint</span><span class="o">=</span><span class="s2">&quot;http://localhost:1234&quot;</span><span class="p">,</span>  <span class="c1"># Default LM Studio endpoint</span>
+    <span class="n">model</span><span class="o">=</span><span class="s2">&quot;local-model-name&quot;</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="huggingfacedriver">
+<h3>HuggingFaceDriver<a class="headerlink" href="#huggingfacedriver" title="Link to this heading"></a></h3>
+<p>Driver for Hugging Face Inference Endpoints and hosted models.</p>
+<p><strong>Configuration:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">prompture.drivers</span> <span class="kn">import</span> <span class="n">HuggingFaceDriver</span>
+
+<span class="n">driver</span> <span class="o">=</span> <span class="n">HuggingFaceDriver</span><span class="p">(</span>
+    <span class="n">endpoint</span><span class="o">=</span><span class="s2">&quot;https://api-inference.huggingface.co/models/model-name&quot;</span><span class="p">,</span>
+    <span class="n">token</span><span class="o">=</span><span class="s2">&quot;your-hf-token&quot;</span>  <span class="c1"># Or set HUGGINGFACE_TOKEN env var</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="localhttpdriver">
+<h3>LocalHTTPDriver<a class="headerlink" href="#localhttpdriver" title="Link to this heading"></a></h3>
+<p>Generic driver for custom local HTTP endpoints that implement a simple prompt-response API.</p>
+<p><strong>Configuration:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">prompture.drivers</span> <span class="kn">import</span> <span class="n">LocalHTTPDriver</span>
+
+<span class="n">driver</span> <span class="o">=</span> <span class="n">LocalHTTPDriver</span><span class="p">(</span>
+    <span class="n">endpoint</span><span class="o">=</span><span class="s2">&quot;http://localhost:8080/generate&quot;</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="driver-interface">
+<h2>Driver Interface<a class="headerlink" href="#driver-interface" title="Link to this heading"></a></h2>
+<p>All drivers implement the same interface defined by the base [<cite>Driver</cite>](../api/driver.rst) class:</p>
+<p><strong>Core Methods:</strong></p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">generate(prompt:</span> <span class="pre">str,</span> <span class="pre">options:</span> <span class="pre">Dict[str,</span> <span class="pre">Any])</span> <span class="pre">-&gt;</span> <span class="pre">Dict[str,</span> <span class="pre">Any]</span></code> - Send prompt and get response</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">__init__(**kwargs)</span></code> - Initialize with provider-specific configuration</p></li>
+</ul>
+<p><strong>Response Format:</strong></p>
+<p>All drivers return responses in this standardized format:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+    <span class="s2">&quot;text&quot;</span><span class="p">:</span> <span class="s2">&quot;Generated response text&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;meta&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;model&quot;</span><span class="p">:</span> <span class="s2">&quot;model-name&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;prompt_tokens&quot;</span><span class="p">:</span> <span class="mi">150</span><span class="p">,</span>
+        <span class="s2">&quot;completion_tokens&quot;</span><span class="p">:</span> <span class="mi">80</span><span class="p">,</span>
+        <span class="s2">&quot;total_tokens&quot;</span><span class="p">:</span> <span class="mi">230</span><span class="p">,</span>
+        <span class="s2">&quot;cost&quot;</span><span class="p">:</span> <span class="mf">0.00046</span><span class="p">,</span>  <span class="c1"># USD cost estimate</span>
+        <span class="s2">&quot;provider&quot;</span><span class="p">:</span> <span class="s2">&quot;openai&quot;</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</section>
+<section id="cost-tracking-and-pricing">
+<h2>Cost Tracking and Pricing<a class="headerlink" href="#cost-tracking-and-pricing" title="Link to this heading"></a></h2>
+<p>Drivers automatically calculate token usage and cost estimates based on current pricing:</p>
+<p><strong>Cost Calculation Example:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">driver</span> <span class="o">=</span> <span class="n">get_driver_for_model</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4&quot;</span><span class="p">)</span>
+<span class="n">result</span> <span class="o">=</span> <span class="n">driver</span><span class="o">.</span><span class="n">generate</span><span class="p">(</span><span class="s2">&quot;Hello, world!&quot;</span><span class="p">,</span> <span class="p">{})</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Tokens used: </span><span class="si">{</span><span class="n">result</span><span class="p">[</span><span class="s1">&#39;meta&#39;</span><span class="p">][</span><span class="s1">&#39;total_tokens&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Estimated cost: $</span><span class="si">{</span><span class="n">result</span><span class="p">[</span><span class="s1">&#39;meta&#39;</span><span class="p">][</span><span class="s1">&#39;cost&#39;</span><span class="p">]</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p><strong>Pricing Information:</strong></p>
+<p>Each driver includes MODEL_PRICING dictionaries with current rates:</p>
+<ul class="simple">
+<li><p><strong>Input tokens</strong>: Cost per 1K input tokens</p></li>
+<li><p><strong>Output tokens</strong>: Cost per 1K output tokens</p></li>
+<li><p><strong>Currency</strong>: All costs in USD</p></li>
+</ul>
+</section>
+<section id="environment-variables">
+<h2>Environment Variables<a class="headerlink" href="#environment-variables" title="Link to this heading"></a></h2>
+<p>Drivers support configuration through environment variables:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># API Keys</span>
+<span class="nb">export</span><span class="w"> </span><span class="nv">OPENAI_API_KEY</span><span class="o">=</span><span class="s2">&quot;your-openai-key&quot;</span>
+<span class="nb">export</span><span class="w"> </span><span class="nv">ANTHROPIC_API_KEY</span><span class="o">=</span><span class="s2">&quot;your-anthropic-key&quot;</span>
+<span class="nb">export</span><span class="w"> </span><span class="nv">GOOGLE_API_KEY</span><span class="o">=</span><span class="s2">&quot;your-google-key&quot;</span>
+<span class="nb">export</span><span class="w"> </span><span class="nv">GROQ_API_KEY</span><span class="o">=</span><span class="s2">&quot;your-groq-key&quot;</span>
+<span class="nb">export</span><span class="w"> </span><span class="nv">XAI_API_KEY</span><span class="o">=</span><span class="s2">&quot;your-xai-key&quot;</span>
+<span class="nb">export</span><span class="w"> </span><span class="nv">OPENROUTER_API_KEY</span><span class="o">=</span><span class="s2">&quot;your-openrouter-key&quot;</span>
+
+<span class="c1"># Custom Endpoints</span>
+<span class="nb">export</span><span class="w"> </span><span class="nv">OPENAI_BASE_URL</span><span class="o">=</span><span class="s2">&quot;https://api.openai.com/v1&quot;</span>
+<span class="nb">export</span><span class="w"> </span><span class="nv">OLLAMA_BASE_URL</span><span class="o">=</span><span class="s2">&quot;http://localhost:11434&quot;</span>
+<span class="nb">export</span><span class="w"> </span><span class="nv">AZURE_OPENAI_ENDPOINT</span><span class="o">=</span><span class="s2">&quot;https://your-resource.openai.azure.com/&quot;</span>
+
+<span class="c1"># Azure-specific</span>
+<span class="nb">export</span><span class="w"> </span><span class="nv">AZURE_OPENAI_API_KEY</span><span class="o">=</span><span class="s2">&quot;your-azure-key&quot;</span>
+<span class="nb">export</span><span class="w"> </span><span class="nv">AZURE_OPENAI_API_VERSION</span><span class="o">=</span><span class="s2">&quot;2024-02-15-preview&quot;</span>
+</pre></div>
+</div>
+</section>
+<section id="error-handling">
+<h2>Error Handling<a class="headerlink" href="#error-handling" title="Link to this heading"></a></h2>
+<p>Drivers implement consistent error handling:</p>
+<p><strong>Common Exceptions:</strong></p>
+<ul class="simple">
+<li><p><strong>ConnectionError</strong>: Network connectivity issues</p></li>
+<li><p><strong>AuthenticationError</strong>: Invalid API keys or credentials</p></li>
+<li><p><strong>RateLimitError</strong>: API rate limit exceeded</p></li>
+<li><p><strong>ModelNotFoundError</strong>: Specified model not available</p></li>
+<li><p><strong>ValidationError</strong>: Invalid request parameters</p></li>
+</ul>
+<p><strong>Error Handling Example:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">try</span><span class="p">:</span>
+    <span class="n">driver</span> <span class="o">=</span> <span class="n">get_driver_for_model</span><span class="p">(</span><span class="s2">&quot;openai/gpt-4&quot;</span><span class="p">)</span>
+    <span class="n">result</span> <span class="o">=</span> <span class="n">driver</span><span class="o">.</span><span class="n">generate</span><span class="p">(</span><span class="s2">&quot;Hello&quot;</span><span class="p">,</span> <span class="p">{})</span>
+<span class="k">except</span> <span class="ne">ConnectionError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Network error: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Driver error: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="best-practices">
+<h2>Best Practices<a class="headerlink" href="#best-practices" title="Link to this heading"></a></h2>
+<ol class="arabic simple">
+<li><p><strong>Use Environment Variables</strong> for API keys instead of hardcoding them</p></li>
+<li><p><strong>Handle Connection Errors</strong> gracefully in production applications</p></li>
+<li><p><strong>Monitor Token Usage</strong> to control costs, especially with expensive models</p></li>
+<li><p><strong>Choose Appropriate Models</strong> based on your speed/quality/cost requirements:</p>
+<ul class="simple">
+<li><p><strong>Speed</strong>: Groq, Ollama (local), GPT-3.5-turbo</p></li>
+<li><p><strong>Quality</strong>: GPT-4, Claude-3-opus, Gemini-1.5-pro</p></li>
+<li><p><strong>Cost</strong>: GPT-3.5-turbo, Claude-3-haiku, Ollama (local)</p></li>
+<li><p><strong>Privacy</strong>: Ollama, LM Studio (local models)</p></li>
+</ul>
+</li>
+<li><p><strong>Test Locally First</strong> with Ollama or LM Studio before using paid APIs</p></li>
+<li><p><strong>Use Model-specific Features</strong> like Claude’s large context or Gemini’s vision capabilities when needed</p></li>
+<li><p><strong>Implement Fallbacks</strong> between different providers for reliability</p></li>
+</ol>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="field_definitions.html" class="btn btn-neutral float-left" title="Field Definitions Module" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="tools.html" class="btn btn-neutral float-right" title="Tools Module" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Juan Denis.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+  
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    var footerCopy = document.querySelector("footer .copyright");
+    if (footerCopy) {
+        footerCopy.innerHTML = footerCopy.innerHTML.replace(
+            "Juan Denis",
+            '<a href="https://juandenis.com">Juan Denis</a>'
+        );
+    }
+});
+</script>
+ 
+
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

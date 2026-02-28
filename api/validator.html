@@ -1,0 +1,553 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Validator Module &mdash; Prompture 1.0.49 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=fa44fd50" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=0cbbaaf5" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=9c1456b3"></script>
+      <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="prev" title="Runner Module" href="runner.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #048b41" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            Prompture
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../installation.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../quickstart.html">Quick Start Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../toon_input_guide.html">TOON Input Conversion Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../field_definitions_reference.html">Field Definitions Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples.html">Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../contributing.html">Contributing to Prompture</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Documentation:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="index.html">API Reference</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="index.html#overview">Overview</a></li>
+<li class="toctree-l2"><a class="reference internal" href="index.html#quick-reference">Quick Reference</a></li>
+<li class="toctree-l2"><a class="reference internal" href="index.html#core-functions">Core Functions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="index.html#field-registry-system">Field Registry System</a></li>
+<li class="toctree-l2"><a class="reference internal" href="index.html#built-in-field-types">Built-in Field Types</a></li>
+<li class="toctree-l2"><a class="reference internal" href="index.html#driver-system">Driver System</a></li>
+<li class="toctree-l2"><a class="reference internal" href="index.html#validation-and-utilities">Validation and Utilities</a></li>
+<li class="toctree-l2"><a class="reference internal" href="index.html#error-handling">Error Handling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="index.html#configuration">Configuration</a></li>
+<li class="toctree-l2 current"><a class="reference internal" href="index.html#module-reference">Module Reference</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="core.html">Core Module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="field_definitions.html">Field Definitions Module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="drivers.html">Drivers Module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="tools.html">Tools Module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="runner.html">Runner Module</a></li>
+<li class="toctree-l3 current"><a class="current reference internal" href="#">Validator Module</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#overview">Overview</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#main-functions">Main Functions</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#supported-json-schema-features">Supported JSON Schema Features</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#advanced-schema-features">Advanced Schema Features</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#integration-with-prompture">Integration with Prompture</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#error-handling-and-debugging">Error Handling and Debugging</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#best-practices">Best Practices</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#dependencies">Dependencies</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="index.html#core-modules">Core Modules</a></li>
+<li class="toctree-l3"><a class="reference internal" href="index.html#utility-modules">Utility Modules</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #048b41" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">Prompture</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="index.html">API Reference</a></li>
+      <li class="breadcrumb-item active">Validator Module</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/api/validator.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="validator-module">
+<h1>Validator Module<a class="headerlink" href="#validator-module" title="Link to this heading"></a></h1>
+<p>The validator module provides JSON schema validation functionality for ensuring that extracted data conforms to expected structures and constraints.</p>
+<section id="overview">
+<h2>Overview<a class="headerlink" href="#overview" title="Link to this heading"></a></h2>
+<p>The validator module enables:</p>
+<ul class="simple">
+<li><p><strong>Schema Validation</strong>: Validate JSON data against JSON Schema specifications</p></li>
+<li><p><strong>Type Checking</strong>: Ensure extracted values match expected data types</p></li>
+<li><p><strong>Constraint Validation</strong>: Verify that data meets defined constraints (ranges, formats, etc.)</p></li>
+<li><p><strong>Error Reporting</strong>: Detailed validation error messages for debugging</p></li>
+</ul>
+</section>
+<section id="main-functions">
+<h2>Main Functions<a class="headerlink" href="#main-functions" title="Link to this heading"></a></h2>
+<section id="validate-against-schema">
+<h3>validate_against_schema()<a class="headerlink" href="#validate-against-schema" title="Link to this heading"></a></h3>
+<p>Validate a JSON string against a JSON Schema specification and return detailed validation results.</p>
+<p><strong>Features:</strong></p>
+<ul class="simple">
+<li><p><strong>JSON Schema Compliance</strong>: Full support for JSON Schema Draft 7 specification</p></li>
+<li><p><strong>Comprehensive Validation</strong>: Type checking, format validation, constraint verification</p></li>
+<li><p><strong>Detailed Error Reporting</strong>: Specific error messages with location information</p></li>
+<li><p><strong>Graceful Error Handling</strong>: Returns structured error information instead of raising exceptions</p></li>
+</ul>
+<p><strong>Parameters:</strong></p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">instance_json</span></code> (str): JSON string to validate</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">schema</span></code> (Dict[str, Any]): JSON Schema specification as a dictionary</p></li>
+</ul>
+<p><strong>Returns:</strong></p>
+<p>Dictionary containing validation results:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+    <span class="s2">&quot;valid&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>           <span class="c1"># Boolean indicating if validation passed</span>
+    <span class="s2">&quot;errors&quot;</span><span class="p">:</span> <span class="p">[],</span>            <span class="c1"># List of validation errors (empty if valid)</span>
+    <span class="s2">&quot;data&quot;</span><span class="p">:</span> <span class="p">{</span><span class="o">...</span><span class="p">},</span>          <span class="c1"># Parsed JSON data (if valid)</span>
+    <span class="s2">&quot;error_count&quot;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>        <span class="c1"># Number of validation errors</span>
+    <span class="s2">&quot;error_summary&quot;</span><span class="p">:</span> <span class="s2">&quot;...&quot;</span>   <span class="c1"># Human-readable error summary</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p><strong>Example Usage:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">prompture.validator</span> <span class="kn">import</span> <span class="n">validate_against_schema</span>
+
+<span class="c1"># Define JSON Schema</span>
+<span class="n">person_schema</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;object&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;properties&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;string&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;minLength&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
+            <span class="s2">&quot;maxLength&quot;</span><span class="p">:</span> <span class="mi">100</span>
+        <span class="p">},</span>
+        <span class="s2">&quot;age&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;integer&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;minimum&quot;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>
+            <span class="s2">&quot;maximum&quot;</span><span class="p">:</span> <span class="mi">150</span>
+        <span class="p">},</span>
+        <span class="s2">&quot;email&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;string&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;format&quot;</span><span class="p">:</span> <span class="s2">&quot;email&quot;</span>
+        <span class="p">}</span>
+    <span class="p">},</span>
+    <span class="s2">&quot;required&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;name&quot;</span><span class="p">,</span> <span class="s2">&quot;age&quot;</span><span class="p">],</span>
+    <span class="s2">&quot;additionalProperties&quot;</span><span class="p">:</span> <span class="kc">False</span>
+<span class="p">}</span>
+
+<span class="c1"># Valid JSON</span>
+<span class="n">valid_json</span> <span class="o">=</span> <span class="s1">&#39;{&quot;name&quot;: &quot;John Doe&quot;, &quot;age&quot;: 25, &quot;email&quot;: &quot;john@example.com&quot;}&#39;</span>
+<span class="n">result</span> <span class="o">=</span> <span class="n">validate_against_schema</span><span class="p">(</span><span class="n">valid_json</span><span class="p">,</span> <span class="n">person_schema</span><span class="p">)</span>
+
+<span class="k">if</span> <span class="n">result</span><span class="p">[</span><span class="s2">&quot;valid&quot;</span><span class="p">]:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Validation passed!&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Data: </span><span class="si">{</span><span class="n">result</span><span class="p">[</span><span class="s1">&#39;data&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="k">else</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Validation failed: </span><span class="si">{</span><span class="n">result</span><span class="p">[</span><span class="s1">&#39;error_summary&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">error</span> <span class="ow">in</span> <span class="n">result</span><span class="p">[</span><span class="s2">&quot;errors&quot;</span><span class="p">]:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;- </span><span class="si">{</span><span class="n">error</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p><strong>Validation Error Examples:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># Invalid JSON - missing required field</span>
+<span class="n">invalid_json</span> <span class="o">=</span> <span class="s1">&#39;{&quot;name&quot;: &quot;John Doe&quot;}&#39;</span>  <span class="c1"># Missing required &#39;age&#39; field</span>
+<span class="n">result</span> <span class="o">=</span> <span class="n">validate_against_schema</span><span class="p">(</span><span class="n">invalid_json</span><span class="p">,</span> <span class="n">person_schema</span><span class="p">)</span>
+<span class="c1"># result[&quot;valid&quot;] == False</span>
+<span class="c1"># result[&quot;errors&quot;] contains details about missing &#39;age&#39; field</span>
+
+<span class="c1"># Invalid JSON - type mismatch</span>
+<span class="n">invalid_json</span> <span class="o">=</span> <span class="s1">&#39;{&quot;name&quot;: &quot;John Doe&quot;, &quot;age&quot;: &quot;twenty-five&quot;}&#39;</span>  <span class="c1"># Age as string</span>
+<span class="n">result</span> <span class="o">=</span> <span class="n">validate_against_schema</span><span class="p">(</span><span class="n">invalid_json</span><span class="p">,</span> <span class="n">person_schema</span><span class="p">)</span>
+<span class="c1"># result[&quot;valid&quot;] == False</span>
+<span class="c1"># result[&quot;errors&quot;] contains type mismatch error for &#39;age&#39; field</span>
+
+<span class="c1"># Invalid JSON - constraint violation</span>
+<span class="n">invalid_json</span> <span class="o">=</span> <span class="s1">&#39;{&quot;name&quot;: &quot;&quot;, &quot;age&quot;: -5}&#39;</span>  <span class="c1"># Empty name, negative age</span>
+<span class="n">result</span> <span class="o">=</span> <span class="n">validate_against_schema</span><span class="p">(</span><span class="n">invalid_json</span><span class="p">,</span> <span class="n">person_schema</span><span class="p">)</span>
+<span class="c1"># result[&quot;valid&quot;] == False</span>
+<span class="c1"># result[&quot;errors&quot;] contains constraint violation errors</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="supported-json-schema-features">
+<h2>Supported JSON Schema Features<a class="headerlink" href="#supported-json-schema-features" title="Link to this heading"></a></h2>
+<p>The validator supports comprehensive JSON Schema Draft 7 features:</p>
+<section id="type-validation">
+<h3>Type Validation<a class="headerlink" href="#type-validation" title="Link to this heading"></a></h3>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Schema Type</p></th>
+<th class="head"><p>Python Type</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">string</span></code></p></td>
+<td><p>str</p></td>
+<td><p>Text values with optional format constraints</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">integer</span></code></p></td>
+<td><p>int</p></td>
+<td><p>Whole numbers with optional range constraints</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">number</span></code></p></td>
+<td><p>int, float</p></td>
+<td><p>Numeric values including decimals</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">boolean</span></code></p></td>
+<td><p>bool</p></td>
+<td><p>True/False values</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">array</span></code></p></td>
+<td><p>list</p></td>
+<td><p>Ordered collections with item type constraints</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">object</span></code></p></td>
+<td><p>dict</p></td>
+<td><p>Key-value structures with property constraints</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">null</span></code></p></td>
+<td><p>None</p></td>
+<td><p>Null/None values</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="string-constraints-and-formats">
+<h3>String Constraints and Formats<a class="headerlink" href="#string-constraints-and-formats" title="Link to this heading"></a></h3>
+<p><strong>Length Constraints:</strong></p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">minLength</span></code>: Minimum string length</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">maxLength</span></code>: Maximum string length</p></li>
+</ul>
+<p><strong>Pattern Matching:</strong></p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">pattern</span></code>: Regular expression pattern matching</p></li>
+</ul>
+<p><strong>Built-in Formats:</strong></p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">email</span></code>: Email address validation</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">date</span></code>: Date format (YYYY-MM-DD)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">date-time</span></code>: ISO 8601 datetime format</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">uri</span></code>: URI/URL format validation</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">uuid</span></code>: UUID format validation</p></li>
+</ul>
+<p><strong>Example:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">string_schema</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;string&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;minLength&quot;</span><span class="p">:</span> <span class="mi">3</span><span class="p">,</span>
+    <span class="s2">&quot;maxLength&quot;</span><span class="p">:</span> <span class="mi">50</span><span class="p">,</span>
+    <span class="s2">&quot;pattern&quot;</span><span class="p">:</span> <span class="s2">&quot;^[A-Za-z ]+$&quot;</span><span class="p">,</span>  <span class="c1"># Letters and spaces only</span>
+    <span class="s2">&quot;format&quot;</span><span class="p">:</span> <span class="s2">&quot;email&quot;</span>           <span class="c1"># Email format validation</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</section>
+<section id="numeric-constraints">
+<h3>Numeric Constraints<a class="headerlink" href="#numeric-constraints" title="Link to this heading"></a></h3>
+<p><strong>Range Constraints:</strong></p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">minimum</span></code>: Minimum value (inclusive)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">maximum</span></code>: Maximum value (inclusive)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">exclusiveMinimum</span></code>: Minimum value (exclusive)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">exclusiveMaximum</span></code>: Maximum value (exclusive)</p></li>
+</ul>
+<p><strong>Multiple Constraints:</strong></p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">multipleOf</span></code>: Value must be multiple of specified number</p></li>
+</ul>
+<p><strong>Example:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">numeric_schema</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;integer&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;minimum&quot;</span><span class="p">:</span> <span class="mi">18</span><span class="p">,</span>
+    <span class="s2">&quot;maximum&quot;</span><span class="p">:</span> <span class="mi">65</span><span class="p">,</span>
+    <span class="s2">&quot;multipleOf&quot;</span><span class="p">:</span> <span class="mi">5</span>  <span class="c1"># Age in 5-year increments</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</section>
+<section id="array-constraints">
+<h3>Array Constraints<a class="headerlink" href="#array-constraints" title="Link to this heading"></a></h3>
+<p><strong>Length Constraints:</strong></p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">minItems</span></code>: Minimum array length</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">maxItems</span></code>: Maximum array length</p></li>
+</ul>
+<p><strong>Item Constraints:</strong></p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">items</span></code>: Schema for array items</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">uniqueItems</span></code>: Require unique items</p></li>
+</ul>
+<p><strong>Example:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">array_schema</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;array&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;minItems&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
+    <span class="s2">&quot;maxItems&quot;</span><span class="p">:</span> <span class="mi">10</span><span class="p">,</span>
+    <span class="s2">&quot;uniqueItems&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+    <span class="s2">&quot;items&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;string&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;minLength&quot;</span><span class="p">:</span> <span class="mi">1</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</section>
+<section id="object-constraints">
+<h3>Object Constraints<a class="headerlink" href="#object-constraints" title="Link to this heading"></a></h3>
+<p><strong>Property Constraints:</strong></p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">properties</span></code>: Schema for specific properties</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">required</span></code>: List of required property names</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">additionalProperties</span></code>: Allow/disallow extra properties</p></li>
+</ul>
+<p><strong>Property Count:</strong></p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">minProperties</span></code>: Minimum number of properties</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">maxProperties</span></code>: Maximum number of properties</p></li>
+</ul>
+<p><strong>Example:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">object_schema</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;object&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;properties&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;string&quot;</span><span class="p">},</span>
+        <span class="s2">&quot;age&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;integer&quot;</span><span class="p">}</span>
+    <span class="p">},</span>
+    <span class="s2">&quot;required&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;name&quot;</span><span class="p">],</span>
+    <span class="s2">&quot;additionalProperties&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="s2">&quot;minProperties&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
+    <span class="s2">&quot;maxProperties&quot;</span><span class="p">:</span> <span class="mi">5</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="advanced-schema-features">
+<h2>Advanced Schema Features<a class="headerlink" href="#advanced-schema-features" title="Link to this heading"></a></h2>
+<section id="conditional-validation">
+<h3>Conditional Validation<a class="headerlink" href="#conditional-validation" title="Link to this heading"></a></h3>
+<p>Use <code class="docutils literal notranslate"><span class="pre">if</span></code>/<code class="docutils literal notranslate"><span class="pre">then</span></code>/<code class="docutils literal notranslate"><span class="pre">else</span></code> for conditional constraints:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">conditional_schema</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;object&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;properties&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;age&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;integer&quot;</span><span class="p">},</span>
+        <span class="s2">&quot;driver_license&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;boolean&quot;</span><span class="p">}</span>
+    <span class="p">},</span>
+    <span class="s2">&quot;if&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;properties&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;age&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;minimum&quot;</span><span class="p">:</span> <span class="mi">18</span><span class="p">}}</span>
+    <span class="p">},</span>
+    <span class="s2">&quot;then&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;properties&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;driver_license&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;boolean&quot;</span><span class="p">}}</span>
+    <span class="p">},</span>
+    <span class="s2">&quot;else&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;properties&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;driver_license&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;const&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">}}</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</section>
+<section id="composition-keywords">
+<h3>Composition Keywords<a class="headerlink" href="#composition-keywords" title="Link to this heading"></a></h3>
+<p>Combine schemas with logical operators:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">allOf</span></code>: Must match all sub-schemas</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">anyOf</span></code>: Must match at least one sub-schema</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">oneOf</span></code>: Must match exactly one sub-schema</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">not</span></code>: Must not match the sub-schema</p></li>
+</ul>
+<p><strong>Example:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">composition_schema</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;anyOf&quot;</span><span class="p">:</span> <span class="p">[</span>
+        <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;string&quot;</span><span class="p">,</span> <span class="s2">&quot;format&quot;</span><span class="p">:</span> <span class="s2">&quot;email&quot;</span><span class="p">},</span>
+        <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;string&quot;</span><span class="p">,</span> <span class="s2">&quot;pattern&quot;</span><span class="p">:</span> <span class="s2">&quot;^</span><span class="se">\\</span><span class="s2">+[1-9]</span><span class="se">\\</span><span class="s2">d{1,14}$&quot;</span><span class="p">}</span>  <span class="c1"># Phone number</span>
+    <span class="p">]</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="integration-with-prompture">
+<h2>Integration with Prompture<a class="headerlink" href="#integration-with-prompture" title="Link to this heading"></a></h2>
+<p>The validator integrates with core Prompture functionality:</p>
+<p><strong>Automatic Validation in Extraction:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">prompture.core</span> <span class="kn">import</span> <span class="n">extract_and_jsonify</span>
+<span class="kn">from</span> <span class="nn">prompture.validator</span> <span class="kn">import</span> <span class="n">validate_against_schema</span>
+
+<span class="c1"># Extract data</span>
+<span class="n">result</span> <span class="o">=</span> <span class="n">extract_and_jsonify</span><span class="p">(</span>
+    <span class="n">text</span><span class="o">=</span><span class="s2">&quot;John Doe is 25 years old&quot;</span><span class="p">,</span>
+    <span class="n">json_schema</span><span class="o">=</span><span class="n">person_schema</span><span class="p">,</span>
+    <span class="n">model_name</span><span class="o">=</span><span class="s2">&quot;openai/gpt-4&quot;</span>
+<span class="p">)</span>
+
+<span class="c1"># Validate extracted data</span>
+<span class="n">validation</span> <span class="o">=</span> <span class="n">validate_against_schema</span><span class="p">(</span><span class="n">result</span><span class="p">[</span><span class="s2">&quot;json_string&quot;</span><span class="p">],</span> <span class="n">person_schema</span><span class="p">)</span>
+
+<span class="k">if</span> <span class="n">validation</span><span class="p">[</span><span class="s2">&quot;valid&quot;</span><span class="p">]:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Extraction and validation successful!&quot;</span><span class="p">)</span>
+<span class="k">else</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Validation errors: </span><span class="si">{</span><span class="n">validation</span><span class="p">[</span><span class="s1">&#39;error_summary&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p><strong>Integration with Test Suites:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">prompture.runner</span> <span class="kn">import</span> <span class="n">run_suite_from_spec</span>
+
+<span class="c1"># Test specifications automatically use validation</span>
+<span class="n">test_spec</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;tests&quot;</span><span class="p">:</span> <span class="p">[{</span>
+        <span class="s2">&quot;schema&quot;</span><span class="p">:</span> <span class="n">person_schema</span><span class="p">,</span>  <span class="c1"># Automatically validated</span>
+        <span class="s2">&quot;expected&quot;</span><span class="p">:</span> <span class="p">{</span><span class="o">...</span><span class="p">}</span>
+    <span class="p">}]</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</section>
+<section id="error-handling-and-debugging">
+<h2>Error Handling and Debugging<a class="headerlink" href="#error-handling-and-debugging" title="Link to this heading"></a></h2>
+<p>The validator provides comprehensive error information:</p>
+<p><strong>Error Structure:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+    <span class="s2">&quot;message&quot;</span><span class="p">:</span> <span class="s2">&quot;Detailed error description&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;path&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;property&quot;</span><span class="p">,</span> <span class="s2">&quot;name&quot;</span><span class="p">],</span>  <span class="c1"># Location in data structure</span>
+    <span class="s2">&quot;schema_path&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;properties&quot;</span><span class="p">,</span> <span class="s2">&quot;name&quot;</span><span class="p">],</span>  <span class="c1"># Location in schema</span>
+    <span class="s2">&quot;instance&quot;</span><span class="p">:</span> <span class="s2">&quot;invalid_value&quot;</span><span class="p">,</span>  <span class="c1"># The invalid value</span>
+    <span class="s2">&quot;validator&quot;</span><span class="p">:</span> <span class="s2">&quot;minLength&quot;</span><span class="p">,</span>     <span class="c1"># Which validation rule failed</span>
+    <span class="s2">&quot;constraint&quot;</span><span class="p">:</span> <span class="mi">1</span>              <span class="c1"># The constraint value</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p><strong>Common Error Types:</strong></p>
+<ul class="simple">
+<li><p><strong>Type Errors</strong>: Data type doesn’t match schema expectation</p></li>
+<li><p><strong>Constraint Errors</strong>: Value violates defined constraints (min/max, length, etc.)</p></li>
+<li><p><strong>Format Errors</strong>: String doesn’t match required format (email, date, etc.)</p></li>
+<li><p><strong>Required Errors</strong>: Missing required properties in objects</p></li>
+<li><p><strong>Additional Property Errors</strong>: Extra properties when <code class="docutils literal notranslate"><span class="pre">additionalProperties</span></code> is False</p></li>
+</ul>
+<p><strong>Debugging Tips:</strong></p>
+<ol class="arabic simple">
+<li><p><strong>Check Error Paths</strong>: Use the <code class="docutils literal notranslate"><span class="pre">path</span></code> field to locate problematic data</p></li>
+<li><p><strong>Examine Constraints</strong>: Review the <code class="docutils literal notranslate"><span class="pre">constraint</span></code> field to understand requirements</p></li>
+<li><p><strong>Validate Incrementally</strong>: Test individual properties before complex schemas</p></li>
+<li><p><strong>Use Simple Schemas First</strong>: Start with basic validation and add complexity gradually</p></li>
+</ol>
+</section>
+<section id="best-practices">
+<h2>Best Practices<a class="headerlink" href="#best-practices" title="Link to this heading"></a></h2>
+<ol class="arabic simple">
+<li><p><strong>Define Comprehensive Schemas</strong>: Include all relevant constraints and formats</p></li>
+<li><p><strong>Use Appropriate Data Types</strong>: Choose the most specific type for each field</p></li>
+<li><p><strong>Validate Early</strong>: Validate data as soon as possible after extraction</p></li>
+<li><p><strong>Handle Validation Errors</strong>: Always check validation results before using data</p></li>
+<li><p><strong>Provide Clear Error Messages</strong>: Use schema descriptions for better error reporting</p></li>
+<li><p><strong>Test Edge Cases</strong>: Validate schemas with boundary values and invalid inputs</p></li>
+<li><p><strong>Version Your Schemas</strong>: Keep track of schema changes for backward compatibility</p></li>
+</ol>
+</section>
+<section id="dependencies">
+<h2>Dependencies<a class="headerlink" href="#dependencies" title="Link to this heading"></a></h2>
+<p>The validator module requires:</p>
+<ul class="simple">
+<li><p><strong>jsonschema</strong>: JSON Schema validation library (<code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">jsonschema</span></code>)</p></li>
+</ul>
+<p>If the jsonschema library is not available, validation functions will return appropriate error messages indicating the missing dependency.</p>
+<p><strong>Installation:</strong></p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>jsonschema
+</pre></div>
+</div>
+<p>The library is automatically included when installing Prompture with validation extras:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>prompture<span class="o">[</span>validation<span class="o">]</span>
+</pre></div>
+</div>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="runner.html" class="btn btn-neutral float-left" title="Runner Module" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Juan Denis.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+  
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    var footerCopy = document.querySelector("footer .copyright");
+    if (footerCopy) {
+        footerCopy.innerHTML = footerCopy.innerHTML.replace(
+            "Juan Denis",
+            '<a href="https://juandenis.com">Juan Denis</a>'
+        );
+    }
+});
+</script>
+ 
+
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

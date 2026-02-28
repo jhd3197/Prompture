@@ -1,0 +1,1369 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Field Definitions Reference &mdash; Prompture 1.0.49 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=fa44fd50" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/custom.css?v=0cbbaaf5" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=9c1456b3"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Examples" href="examples.html" />
+    <link rel="prev" title="TOON Input Conversion Guide" href="toon_input_guide.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #048b41" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            Prompture
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="quickstart.html">Quick Start Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="toon_input_guide.html">TOON Input Conversion Guide</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Field Definitions Reference</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#overview">Overview</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#quick-start">Quick Start</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#basic-usage-with-built-in-fields">Basic Usage with Built-in Fields</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#registering-custom-fields">Registering Custom Fields</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#built-in-field-definitions">Built-in Field Definitions</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#person-identity-fields">Person/Identity Fields</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#contact-information-fields">Contact Information Fields</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#professional-information-fields">Professional Information Fields</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#metadata-fields">Metadata Fields</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#location-fields">Location Fields</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#demographic-fields">Demographic Fields</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#education-fields">Education Fields</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#financial-fields">Financial Fields</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#social-media-fields">Social Media Fields</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#template-variable-system">Template Variable System</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#available-template-variables">Available Template Variables</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#using-template-variables">Using Template Variables</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#custom-template-variables">Custom Template Variables</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#custom-field-registration">Custom Field Registration</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#creating-custom-fields">Creating Custom Fields</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#field-definition-structure">Field Definition Structure</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#validation">Validation</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#integration-examples">Integration Examples</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#complete-extraction-workflow">Complete Extraction Workflow</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#multi-domain-field-sets">Multi-Domain Field Sets</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#external-configuration-files">External Configuration Files</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#registry-management">Registry Management</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#inspecting-the-registry">Inspecting the Registry</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#registry-maintenance">Registry Maintenance</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#best-practices">Best Practices</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#field-naming-conventions">Field Naming Conventions</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#type-selection-guidelines">Type Selection Guidelines</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#template-variable-usage">Template Variable Usage</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#validation-and-testing">Validation and Testing</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#performance-considerations">Performance Considerations</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#api-reference">API Reference</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#core-functions">Core Functions</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#field_from_registry"><code class="docutils literal notranslate"><span class="pre">field_from_registry()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#register_field"><code class="docutils literal notranslate"><span class="pre">register_field()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#get_field_definition"><code class="docutils literal notranslate"><span class="pre">get_field_definition()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#registry-management-functions">Registry Management Functions</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#get_field_names"><code class="docutils literal notranslate"><span class="pre">get_field_names()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#get_required_fields"><code class="docutils literal notranslate"><span class="pre">get_required_fields()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#add_field_definitions"><code class="docutils literal notranslate"><span class="pre">add_field_definitions()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#get_registry_snapshot"><code class="docutils literal notranslate"><span class="pre">get_registry_snapshot()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#reset_registry"><code class="docutils literal notranslate"><span class="pre">reset_registry()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#clear_registry"><code class="docutils literal notranslate"><span class="pre">clear_registry()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#see-also">See Also</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="contributing.html">Contributing to Prompture</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Documentation:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="api/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #048b41" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">Prompture</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Field Definitions Reference</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/field_definitions_reference.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="field-definitions-reference">
+<h1>Field Definitions Reference<a class="headerlink" href="#field-definitions-reference" title="Link to this heading"></a></h1>
+<section id="overview">
+<h2>Overview<a class="headerlink" href="#overview" title="Link to this heading"></a></h2>
+<p>The Prompture field definitions system provides a centralized registry of structured data extraction fields. Each field definition specifies the data type, description, extraction instructions, default values, and validation rules. This system enables consistent, reusable field configurations across your data extraction workflows.</p>
+<p><strong>Key Features:</strong></p>
+<ul class="simple">
+<li><p><strong>Centralized Registry</strong>: All field definitions stored in a global registry with thread-safe access</p></li>
+<li><p><strong>Template Variables</strong>: Dynamic defaults using <code class="docutils literal notranslate"><span class="pre">{{current_year}}</span></code>, <code class="docutils literal notranslate"><span class="pre">{{current_date}}</span></code>, etc.</p></li>
+<li><p><strong>Pydantic Integration</strong>: Seamless integration with Pydantic models via <a class="reference internal" href="#field_from_registry" title="field_from_registry"><code class="xref py py-func docutils literal notranslate"><span class="pre">field_from_registry()</span></code></a></p></li>
+<li><p><strong>Custom Fields</strong>: Easy registration of domain-specific fields with <a class="reference internal" href="#register_field" title="register_field"><code class="xref py py-func docutils literal notranslate"><span class="pre">register_field()</span></code></a></p></li>
+<li><p><strong>Type Safety</strong>: Full type hints and validation support</p></li>
+</ul>
+</section>
+<section id="quick-start">
+<h2>Quick Start<a class="headerlink" href="#quick-start" title="Link to this heading"></a></h2>
+<section id="basic-usage-with-built-in-fields">
+<h3>Basic Usage with Built-in Fields<a class="headerlink" href="#basic-usage-with-built-in-fields" title="Link to this heading"></a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">pydantic</span> <span class="kn">import</span> <span class="n">BaseModel</span>
+<span class="kn">from</span> <span class="nn">prompture</span> <span class="kn">import</span> <span class="n">field_from_registry</span><span class="p">,</span> <span class="n">stepwise_extract_with_model</span>
+
+<span class="k">class</span> <span class="nc">Person</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;name&quot;</span><span class="p">)</span>
+    <span class="n">age</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;age&quot;</span><span class="p">)</span>
+    <span class="n">email</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;email&quot;</span><span class="p">)</span>
+
+<span class="c1"># Use with extraction</span>
+<span class="n">result</span> <span class="o">=</span> <span class="n">stepwise_extract_with_model</span><span class="p">(</span>
+    <span class="n">Person</span><span class="p">,</span>
+    <span class="s2">&quot;John Smith is 25 years old, email: john@example.com&quot;</span><span class="p">,</span>
+    <span class="n">model_name</span><span class="o">=</span><span class="s2">&quot;openai/gpt-4&quot;</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="registering-custom-fields">
+<h3>Registering Custom Fields<a class="headerlink" href="#registering-custom-fields" title="Link to this heading"></a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">prompture</span> <span class="kn">import</span> <span class="n">register_field</span><span class="p">,</span> <span class="n">field_from_registry</span>
+
+<span class="c1"># Register a custom field with template variables</span>
+<span class="n">register_field</span><span class="p">(</span><span class="s2">&quot;document_date&quot;</span><span class="p">,</span> <span class="p">{</span>
+    <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;str&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;Document creation or processing date&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;instructions&quot;</span><span class="p">:</span> <span class="s2">&quot;Use {{current_date}} if not specified in document&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;default&quot;</span><span class="p">:</span> <span class="s2">&quot;{{current_date}}&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;nullable&quot;</span><span class="p">:</span> <span class="kc">False</span>
+<span class="p">})</span>
+
+<span class="c1"># Use in Pydantic model</span>
+<span class="k">class</span> <span class="nc">Document</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">title</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;name&quot;</span><span class="p">)</span>  <span class="c1"># Reuse built-in field</span>
+    <span class="n">created_date</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;document_date&quot;</span><span class="p">)</span>  <span class="c1"># Custom field</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="built-in-field-definitions">
+<h2>Built-in Field Definitions<a class="headerlink" href="#built-in-field-definitions" title="Link to this heading"></a></h2>
+<p>The following field definitions are available by default in the <code class="docutils literal notranslate"><span class="pre">BASE_FIELD_DEFINITIONS</span></code> registry:</p>
+<section id="person-identity-fields">
+<h3>Person/Identity Fields<a class="headerlink" href="#person-identity-fields" title="Link to this heading"></a></h3>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 12.5%" />
+<col style="width: 8.3%" />
+<col style="width: 25.0%" />
+<col style="width: 25.0%" />
+<col style="width: 8.3%" />
+<col style="width: 8.3%" />
+<col style="width: 12.5%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Field Name</p></th>
+<th class="head"><p>Type</p></th>
+<th class="head"><p>Description</p></th>
+<th class="head"><p>Instructions</p></th>
+<th class="head"><p>Default</p></th>
+<th class="head"><p>Nullable</p></th>
+<th class="head"><p>Notes</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">name</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">str</span></code></p></td>
+<td><p>Full legal name of the person</p></td>
+<td><p>Extract as-is, no modifications</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">False</span></code></p></td>
+<td><p>Required field</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">age</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">int</span></code></p></td>
+<td><p>The age of the person in number of years</p></td>
+<td><p>Calculate as <code class="docutils literal notranslate"><span class="pre">{{current_year}}</span> <span class="pre">-</span> <span class="pre">birth_year</span></code> if needed</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">0</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">False</span></code></p></td>
+<td><p>Uses <code class="docutils literal notranslate"><span class="pre">{{current_year}}</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">birth_year</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">int</span></code></p></td>
+<td><p>The year the person was born (YYYY)</p></td>
+<td><p>Extract as a 4-digit year number</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">None</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">True</span></code></p></td>
+<td><p>Optional field</p></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Usage Example:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">class</span> <span class="nc">Person</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;name&quot;</span><span class="p">)</span>
+    <span class="n">age</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;age&quot;</span><span class="p">)</span>
+    <span class="n">birth_year</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;birth_year&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="contact-information-fields">
+<h3>Contact Information Fields<a class="headerlink" href="#contact-information-fields" title="Link to this heading"></a></h3>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 12.5%" />
+<col style="width: 8.3%" />
+<col style="width: 25.0%" />
+<col style="width: 25.0%" />
+<col style="width: 8.3%" />
+<col style="width: 8.3%" />
+<col style="width: 12.5%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Field Name</p></th>
+<th class="head"><p>Type</p></th>
+<th class="head"><p>Description</p></th>
+<th class="head"><p>Instructions</p></th>
+<th class="head"><p>Default</p></th>
+<th class="head"><p>Nullable</p></th>
+<th class="head"><p>Notes</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">email</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">str</span></code></p></td>
+<td><p>Primary email address</p></td>
+<td><p>Extract in lowercase, verify basic email format</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">True</span></code></p></td>
+<td><p>Optional field</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">phone</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">str</span></code></p></td>
+<td><p>Primary phone number</p></td>
+<td><p>Extract digits only, standardize to E.164 format if possible</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">True</span></code></p></td>
+<td><p>Optional field</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">address</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">str</span></code></p></td>
+<td><p>Full mailing address</p></td>
+<td><p>Combine all address components into a single string</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">True</span></code></p></td>
+<td><p>Optional field</p></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Usage Example:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">class</span> <span class="nc">ContactInfo</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">email</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;email&quot;</span><span class="p">)</span>
+    <span class="n">phone</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;phone&quot;</span><span class="p">)</span>
+    <span class="n">address</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;address&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="professional-information-fields">
+<h3>Professional Information Fields<a class="headerlink" href="#professional-information-fields" title="Link to this heading"></a></h3>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 12.5%" />
+<col style="width: 8.3%" />
+<col style="width: 25.0%" />
+<col style="width: 25.0%" />
+<col style="width: 8.3%" />
+<col style="width: 8.3%" />
+<col style="width: 12.5%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Field Name</p></th>
+<th class="head"><p>Type</p></th>
+<th class="head"><p>Description</p></th>
+<th class="head"><p>Instructions</p></th>
+<th class="head"><p>Default</p></th>
+<th class="head"><p>Nullable</p></th>
+<th class="head"><p>Notes</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">occupation</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">str</span></code></p></td>
+<td><p>Current job title or profession</p></td>
+<td><p>Extract primary occupation, standardize common titles</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">True</span></code></p></td>
+<td><p>Optional field</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">company</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">str</span></code></p></td>
+<td><p>Current employer or company name</p></td>
+<td><p>Extract organization name, remove legal suffixes</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">True</span></code></p></td>
+<td><p>Optional field</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">experience_years</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">int</span></code></p></td>
+<td><p>Years of professional experience</p></td>
+<td><p>Calculate total years of relevant experience</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">0</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">True</span></code></p></td>
+<td><p>Optional field</p></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Usage Example:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">class</span> <span class="nc">Professional</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">occupation</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;occupation&quot;</span><span class="p">)</span>
+    <span class="n">company</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;company&quot;</span><span class="p">)</span>
+    <span class="n">experience_years</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;experience_years&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="metadata-fields">
+<h3>Metadata Fields<a class="headerlink" href="#metadata-fields" title="Link to this heading"></a></h3>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 12.5%" />
+<col style="width: 8.3%" />
+<col style="width: 25.0%" />
+<col style="width: 25.0%" />
+<col style="width: 8.3%" />
+<col style="width: 8.3%" />
+<col style="width: 12.5%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Field Name</p></th>
+<th class="head"><p>Type</p></th>
+<th class="head"><p>Description</p></th>
+<th class="head"><p>Instructions</p></th>
+<th class="head"><p>Default</p></th>
+<th class="head"><p>Nullable</p></th>
+<th class="head"><p>Notes</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">source</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">str</span></code></p></td>
+<td><p>Source of the extracted information</p></td>
+<td><p>Record origin of data (e.g., ‘resume’, ‘linkedin’)</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;unknown&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">False</span></code></p></td>
+<td><p>Required field</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">last_updated</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">str</span></code></p></td>
+<td><p>Last update timestamp (ISO format)</p></td>
+<td><p>Use ISO 8601 format (YYYY-MM-DDTHH:MM:SSZ), default to <code class="docutils literal notranslate"><span class="pre">{{current_datetime}}</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;{{current_datetime}}&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">False</span></code></p></td>
+<td><p>Uses <code class="docutils literal notranslate"><span class="pre">{{current_datetime}}</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">confidence_score</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">float</span></code></p></td>
+<td><p>Confidence score of extraction (0.0-1.0)</p></td>
+<td><p>Calculate based on extraction certainty</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">0.0</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">False</span></code></p></td>
+<td><p>Required field</p></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Usage Example:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">class</span> <span class="nc">DataRecord</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">source</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;source&quot;</span><span class="p">)</span>
+    <span class="n">last_updated</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;last_updated&quot;</span><span class="p">)</span>
+    <span class="n">confidence_score</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;confidence_score&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="location-fields">
+<h3>Location Fields<a class="headerlink" href="#location-fields" title="Link to this heading"></a></h3>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 12.5%" />
+<col style="width: 8.3%" />
+<col style="width: 25.0%" />
+<col style="width: 25.0%" />
+<col style="width: 8.3%" />
+<col style="width: 8.3%" />
+<col style="width: 12.5%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Field Name</p></th>
+<th class="head"><p>Type</p></th>
+<th class="head"><p>Description</p></th>
+<th class="head"><p>Instructions</p></th>
+<th class="head"><p>Default</p></th>
+<th class="head"><p>Nullable</p></th>
+<th class="head"><p>Notes</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">city</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">str</span></code></p></td>
+<td><p>City name</p></td>
+<td><p>Extract city name, standardize capitalization</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">True</span></code></p></td>
+<td><p>Optional field</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">state</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">str</span></code></p></td>
+<td><p>State or province name</p></td>
+<td><p>Extract state/province, use full name or abbreviation</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">True</span></code></p></td>
+<td><p>Optional field</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">postal_code</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">str</span></code></p></td>
+<td><p>Postal or ZIP code</p></td>
+<td><p>Extract postal code, maintain original format</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">True</span></code></p></td>
+<td><p>Optional field</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">country</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">str</span></code></p></td>
+<td><p>Country name</p></td>
+<td><p>Extract country name, use full English name</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">True</span></code></p></td>
+<td><p>Optional field</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">coordinates</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">str</span></code></p></td>
+<td><p>Geographic coordinates (lat, long)</p></td>
+<td><p>Extract as ‘latitude,longitude’ format if available</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">True</span></code></p></td>
+<td><p>Optional field</p></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Usage Example:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">class</span> <span class="nc">LocationData</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">city</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;city&quot;</span><span class="p">)</span>
+    <span class="n">country</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;country&quot;</span><span class="p">)</span>
+    <span class="n">postal_code</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;postal_code&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="demographic-fields">
+<h3>Demographic Fields<a class="headerlink" href="#demographic-fields" title="Link to this heading"></a></h3>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 12.5%" />
+<col style="width: 8.3%" />
+<col style="width: 25.0%" />
+<col style="width: 25.0%" />
+<col style="width: 8.3%" />
+<col style="width: 8.3%" />
+<col style="width: 12.5%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Field Name</p></th>
+<th class="head"><p>Type</p></th>
+<th class="head"><p>Description</p></th>
+<th class="head"><p>Instructions</p></th>
+<th class="head"><p>Default</p></th>
+<th class="head"><p>Nullable</p></th>
+<th class="head"><p>Notes</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">gender</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">str</span></code></p></td>
+<td><p>Gender identification</p></td>
+<td><p>Extract gender if explicitly stated, otherwise leave empty</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">True</span></code></p></td>
+<td><p>Optional field</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">nationality</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">str</span></code></p></td>
+<td><p>Nationality or citizenship</p></td>
+<td><p>Extract nationality, use country demonym</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">True</span></code></p></td>
+<td><p>Optional field</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">marital_status</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">str</span></code></p></td>
+<td><p>Marital status</p></td>
+<td><p>Extract marital status (single, married, divorced, etc.)</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">True</span></code></p></td>
+<td><p>Optional field</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">language</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">str</span></code></p></td>
+<td><p>Primary language spoken</p></td>
+<td><p>Extract primary or native language</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">True</span></code></p></td>
+<td><p>Optional field</p></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Usage Example:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">class</span> <span class="nc">DemographicData</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">nationality</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;nationality&quot;</span><span class="p">)</span>
+    <span class="n">language</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;language&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="education-fields">
+<h3>Education Fields<a class="headerlink" href="#education-fields" title="Link to this heading"></a></h3>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 12.5%" />
+<col style="width: 8.3%" />
+<col style="width: 25.0%" />
+<col style="width: 25.0%" />
+<col style="width: 8.3%" />
+<col style="width: 8.3%" />
+<col style="width: 12.5%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Field Name</p></th>
+<th class="head"><p>Type</p></th>
+<th class="head"><p>Description</p></th>
+<th class="head"><p>Instructions</p></th>
+<th class="head"><p>Default</p></th>
+<th class="head"><p>Nullable</p></th>
+<th class="head"><p>Notes</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">education_level</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">str</span></code></p></td>
+<td><p>Highest education level</p></td>
+<td><p>Extract highest degree (High School, Bachelor’s, Master’s, PhD, etc.)</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">True</span></code></p></td>
+<td><p>Optional field</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">graduation_year</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">int</span></code></p></td>
+<td><p>Year of graduation</p></td>
+<td><p>Extract graduation year as 4-digit number</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">None</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">True</span></code></p></td>
+<td><p>Optional field</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">gpa</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">float</span></code></p></td>
+<td><p>Grade point average</p></td>
+<td><p>Extract GPA, convert to 4.0 scale if needed</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">None</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">True</span></code></p></td>
+<td><p>Optional field</p></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Usage Example:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">class</span> <span class="nc">EducationData</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">education_level</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;education_level&quot;</span><span class="p">)</span>
+    <span class="n">graduation_year</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;graduation_year&quot;</span><span class="p">)</span>
+    <span class="n">gpa</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;gpa&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="financial-fields">
+<h3>Financial Fields<a class="headerlink" href="#financial-fields" title="Link to this heading"></a></h3>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 12.5%" />
+<col style="width: 8.3%" />
+<col style="width: 25.0%" />
+<col style="width: 25.0%" />
+<col style="width: 8.3%" />
+<col style="width: 8.3%" />
+<col style="width: 12.5%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Field Name</p></th>
+<th class="head"><p>Type</p></th>
+<th class="head"><p>Description</p></th>
+<th class="head"><p>Instructions</p></th>
+<th class="head"><p>Default</p></th>
+<th class="head"><p>Nullable</p></th>
+<th class="head"><p>Notes</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">salary</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">float</span></code></p></td>
+<td><p>Annual salary amount</p></td>
+<td><p>Extract salary as numeric value, remove currency symbols</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">None</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">True</span></code></p></td>
+<td><p>Optional field</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">currency</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">str</span></code></p></td>
+<td><p>Currency code</p></td>
+<td><p>Extract or infer currency code (USD, EUR, GBP, etc.)</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;USD&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">True</span></code></p></td>
+<td><p>Optional field</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">bonus</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">float</span></code></p></td>
+<td><p>Bonus amount</p></td>
+<td><p>Extract bonus as numeric value</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">None</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">True</span></code></p></td>
+<td><p>Optional field</p></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Usage Example:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">class</span> <span class="nc">FinancialData</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">salary</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;salary&quot;</span><span class="p">)</span>
+    <span class="n">currency</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;currency&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="social-media-fields">
+<h3>Social Media Fields<a class="headerlink" href="#social-media-fields" title="Link to this heading"></a></h3>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 12.5%" />
+<col style="width: 8.3%" />
+<col style="width: 25.0%" />
+<col style="width: 25.0%" />
+<col style="width: 8.3%" />
+<col style="width: 8.3%" />
+<col style="width: 12.5%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Field Name</p></th>
+<th class="head"><p>Type</p></th>
+<th class="head"><p>Description</p></th>
+<th class="head"><p>Instructions</p></th>
+<th class="head"><p>Default</p></th>
+<th class="head"><p>Nullable</p></th>
+<th class="head"><p>Notes</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">sentiment</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">str</span></code></p></td>
+<td><p>Sentiment classification</p></td>
+<td><p>Classify as positive, negative, or neutral</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;neutral&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">True</span></code></p></td>
+<td><p>Optional field</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">hashtags</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">str</span></code></p></td>
+<td><p>Hashtags from content</p></td>
+<td><p>Extract all hashtags as comma-separated list</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">True</span></code></p></td>
+<td><p>Optional field</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">mentions</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">str</span></code></p></td>
+<td><p>User mentions from content</p></td>
+<td><p>Extract all &#64;mentions as comma-separated list</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">True</span></code></p></td>
+<td><p>Optional field</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">topic</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">str</span></code></p></td>
+<td><p>Main topic or subject</p></td>
+<td><p>Identify primary topic or theme of content</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">True</span></code></p></td>
+<td><p>Optional field</p></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Usage Example:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">class</span> <span class="nc">SocialMediaData</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">sentiment</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;sentiment&quot;</span><span class="p">)</span>
+    <span class="n">hashtags</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;hashtags&quot;</span><span class="p">)</span>
+    <span class="n">topic</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;topic&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="template-variable-system">
+<h2>Template Variable System<a class="headerlink" href="#template-variable-system" title="Link to this heading"></a></h2>
+<p>Template variables provide dynamic default values that are resolved at runtime. They’re especially useful for timestamps, dates, and calculated values.</p>
+<section id="available-template-variables">
+<h3>Available Template Variables<a class="headerlink" href="#available-template-variables" title="Link to this heading"></a></h3>
+<p>The following template variables are available for use in field definitions:</p>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">{{current_year}}</span></code></dt><dd><p>Current year as 4-digit integer (e.g., 2024)</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">{{current_date}}</span></code></dt><dd><p>Current date in ISO format (YYYY-MM-DD)</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">{{current_datetime}}</span></code></dt><dd><p>Current datetime in ISO 8601 format (YYYY-MM-DDTHH:MM:SSZ)</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">{{current_timestamp}}</span></code></dt><dd><p>Current Unix timestamp as integer</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">{{current_month}}</span></code></dt><dd><p>Current month as integer (1-12)</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">{{current_day}}</span></code></dt><dd><p>Current day of month as integer (1-31)</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">{{current_weekday}}</span></code></dt><dd><p>Current day name as string (e.g., “Monday”, “Tuesday”)</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">{{current_iso_week}}</span></code></dt><dd><p>Current ISO week number as integer (1-53)</p>
+</dd>
+</dl>
+</section>
+<section id="using-template-variables">
+<h3>Using Template Variables<a class="headerlink" href="#using-template-variables" title="Link to this heading"></a></h3>
+<p>Template variables can be used in any string field within a field definition:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">register_field</span><span class="p">(</span><span class="s2">&quot;processing_date&quot;</span><span class="p">,</span> <span class="p">{</span>
+    <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;str&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;Date when document was processed&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;instructions&quot;</span><span class="p">:</span> <span class="s2">&quot;Use {{current_date}} if processing date not available&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;default&quot;</span><span class="p">:</span> <span class="s2">&quot;{{current_date}}&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;nullable&quot;</span><span class="p">:</span> <span class="kc">False</span>
+<span class="p">})</span>
+
+<span class="n">register_field</span><span class="p">(</span><span class="s2">&quot;academic_year&quot;</span><span class="p">,</span> <span class="p">{</span>
+    <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;str&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;Academic year for enrollment&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;instructions&quot;</span><span class="p">:</span> <span class="s2">&quot;Use {{current_year}} for current enrollment&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;default&quot;</span><span class="p">:</span> <span class="s2">&quot;{{current_year}}-{{current_year}}&quot;</span><span class="p">,</span>  <span class="c1"># e.g. &quot;2024-2024&quot;</span>
+    <span class="s2">&quot;nullable&quot;</span><span class="p">:</span> <span class="kc">True</span>
+<span class="p">})</span>
+</pre></div>
+</div>
+</section>
+<section id="custom-template-variables">
+<h3>Custom Template Variables<a class="headerlink" href="#custom-template-variables" title="Link to this heading"></a></h3>
+<p>You can provide custom template variables when retrieving field definitions:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">prompture</span> <span class="kn">import</span> <span class="n">get_field_definition</span>
+
+<span class="c1"># Custom variables for specific use cases</span>
+<span class="n">custom_vars</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;report_year&quot;</span><span class="p">:</span> <span class="mi">2023</span><span class="p">,</span>
+    <span class="s2">&quot;department&quot;</span><span class="p">:</span> <span class="s2">&quot;Engineering&quot;</span>
+<span class="p">}</span>
+
+<span class="c1"># Register field with custom template</span>
+<span class="n">register_field</span><span class="p">(</span><span class="s2">&quot;report_title&quot;</span><span class="p">,</span> <span class="p">{</span>
+    <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;str&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;Report title&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;instructions&quot;</span><span class="p">:</span> <span class="s2">&quot;Use format: {{department}} Report {{report_year}}&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;default&quot;</span><span class="p">:</span> <span class="s2">&quot;{{department}} Report {{report_year}}&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;nullable&quot;</span><span class="p">:</span> <span class="kc">False</span>
+<span class="p">})</span>
+
+<span class="c1"># Retrieve with custom variables</span>
+<span class="n">field_def</span> <span class="o">=</span> <span class="n">get_field_definition</span><span class="p">(</span><span class="s2">&quot;report_title&quot;</span><span class="p">,</span>
+                               <span class="n">apply_templates</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                               <span class="n">custom_template_vars</span><span class="o">=</span><span class="n">custom_vars</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="custom-field-registration">
+<h2>Custom Field Registration<a class="headerlink" href="#custom-field-registration" title="Link to this heading"></a></h2>
+<section id="creating-custom-fields">
+<h3>Creating Custom Fields<a class="headerlink" href="#creating-custom-fields" title="Link to this heading"></a></h3>
+<p>Register custom fields using <a class="reference internal" href="#register_field" title="register_field"><code class="xref py py-func docutils literal notranslate"><span class="pre">register_field()</span></code></a> to extend the built-in definitions:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">prompture</span> <span class="kn">import</span> <span class="n">register_field</span><span class="p">,</span> <span class="n">field_from_registry</span>
+
+<span class="c1"># Define field structure</span>
+<span class="n">register_field</span><span class="p">(</span><span class="s2">&quot;product_price&quot;</span><span class="p">,</span> <span class="p">{</span>
+    <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;str&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;Product price with currency symbol&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;instructions&quot;</span><span class="p">:</span> <span class="s2">&quot;Extract price including currency, handle ranges like $10-$15&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;default&quot;</span><span class="p">:</span> <span class="s2">&quot;Price not available&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;nullable&quot;</span><span class="p">:</span> <span class="kc">True</span>
+<span class="p">})</span>
+
+<span class="n">register_field</span><span class="p">(</span><span class="s2">&quot;skills&quot;</span><span class="p">,</span> <span class="p">{</span>
+    <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;list&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;List of professional skills&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;instructions&quot;</span><span class="p">:</span> <span class="s2">&quot;Extract skills as comma-separated list, normalize tech names&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;default&quot;</span><span class="p">:</span> <span class="p">[],</span>
+    <span class="s2">&quot;nullable&quot;</span><span class="p">:</span> <span class="kc">True</span>
+<span class="p">})</span>
+</pre></div>
+</div>
+</section>
+<section id="field-definition-structure">
+<h3>Field Definition Structure<a class="headerlink" href="#field-definition-structure" title="Link to this heading"></a></h3>
+<p>Each field definition must include these required properties:</p>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">type</span></code> (required)</dt><dd><p>Python type or string representation (<code class="docutils literal notranslate"><span class="pre">str</span></code>, <code class="docutils literal notranslate"><span class="pre">int</span></code>, <code class="docutils literal notranslate"><span class="pre">float</span></code>, <code class="docutils literal notranslate"><span class="pre">bool</span></code>, <code class="docutils literal notranslate"><span class="pre">list</span></code>, <code class="docutils literal notranslate"><span class="pre">dict</span></code>)</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">description</span></code> (required)</dt><dd><p>Human-readable description of the field purpose</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">instructions</span></code> (required)</dt><dd><p>Specific extraction instructions for LLM processing</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">default</span></code> (required)</dt><dd><p>Default value when field is not extracted (supports template variables)</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">nullable</span></code> (required)</dt><dd><p>Boolean indicating if field accepts None/null values</p>
+</dd>
+</dl>
+<p><strong>Example:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">field_definition</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;str&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;Product category classification&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;instructions&quot;</span><span class="p">:</span> <span class="s2">&quot;Classify into: Electronics, Clothing, Books, Home, Other&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;default&quot;</span><span class="p">:</span> <span class="s2">&quot;Other&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;nullable&quot;</span><span class="p">:</span> <span class="kc">True</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</section>
+<section id="validation">
+<h3>Validation<a class="headerlink" href="#validation" title="Link to this heading"></a></h3>
+<p>Field definitions are automatically validated when registered:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">prompture.tools</span> <span class="kn">import</span> <span class="n">validate_field_definition</span>
+
+<span class="c1"># Validate before registering</span>
+<span class="n">field_def</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;str&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;Valid field&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;instructions&quot;</span><span class="p">:</span> <span class="s2">&quot;Extract text value&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;default&quot;</span><span class="p">:</span> <span class="s2">&quot;&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;nullable&quot;</span><span class="p">:</span> <span class="kc">True</span>
+<span class="p">}</span>
+
+<span class="k">if</span> <span class="n">validate_field_definition</span><span class="p">(</span><span class="n">field_def</span><span class="p">):</span>
+    <span class="n">register_field</span><span class="p">(</span><span class="s2">&quot;my_field&quot;</span><span class="p">,</span> <span class="n">field_def</span><span class="p">)</span>
+<span class="k">else</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Invalid field definition&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="integration-examples">
+<h2>Integration Examples<a class="headerlink" href="#integration-examples" title="Link to this heading"></a></h2>
+<section id="complete-extraction-workflow">
+<h3>Complete Extraction Workflow<a class="headerlink" href="#complete-extraction-workflow" title="Link to this heading"></a></h3>
+<p>Here’s a complete example showing field definitions in a real extraction scenario:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">pydantic</span> <span class="kn">import</span> <span class="n">BaseModel</span>
+<span class="kn">from</span> <span class="nn">prompture</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">field_from_registry</span><span class="p">,</span>
+    <span class="n">register_field</span><span class="p">,</span>
+    <span class="n">stepwise_extract_with_model</span>
+<span class="p">)</span>
+
+<span class="c1"># Register custom business fields</span>
+<span class="n">register_field</span><span class="p">(</span><span class="s2">&quot;industry&quot;</span><span class="p">,</span> <span class="p">{</span>
+    <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;str&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;Business industry classification&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;instructions&quot;</span><span class="p">:</span> <span class="s2">&quot;Classify into standard industry categories&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;default&quot;</span><span class="p">:</span> <span class="s2">&quot;Unknown&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;nullable&quot;</span><span class="p">:</span> <span class="kc">True</span>
+<span class="p">})</span>
+
+<span class="n">register_field</span><span class="p">(</span><span class="s2">&quot;founded_year&quot;</span><span class="p">,</span> <span class="p">{</span>
+    <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;int&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;Year company was founded&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;instructions&quot;</span><span class="p">:</span> <span class="s2">&quot;Extract founding year, use {{current_year}} if recent&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;default&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="s2">&quot;nullable&quot;</span><span class="p">:</span> <span class="kc">True</span>
+<span class="p">})</span>
+
+<span class="c1"># Create comprehensive model</span>
+<span class="k">class</span> <span class="nc">BusinessProfile</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="c1"># Built-in fields</span>
+    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;name&quot;</span><span class="p">)</span>
+    <span class="n">email</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;email&quot;</span><span class="p">)</span>
+    <span class="n">phone</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;phone&quot;</span><span class="p">)</span>
+    <span class="n">address</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;address&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Professional fields</span>
+    <span class="n">company</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;company&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Custom fields</span>
+    <span class="n">industry</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;industry&quot;</span><span class="p">)</span>
+    <span class="n">founded_year</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;founded_year&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Metadata</span>
+    <span class="n">source</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;source&quot;</span><span class="p">)</span>
+    <span class="n">last_updated</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;last_updated&quot;</span><span class="p">)</span>
+    <span class="n">confidence_score</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;confidence_score&quot;</span><span class="p">)</span>
+
+<span class="c1"># Sample business text</span>
+<span class="n">business_text</span> <span class="o">=</span> <span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">TechStart Solutions is a cloud computing company founded in 2019.</span>
+<span class="s2">Contact: Sarah Johnson, CEO</span>
+<span class="s2">Email: sarah@techstart.com</span>
+<span class="s2">Phone: (555) 123-4567</span>
+<span class="s2">Address: 123 Innovation Drive, San Francisco, CA 94105</span>
+<span class="s2">Industry: Software as a Service (SaaS)</span>
+<span class="s2">&quot;&quot;&quot;</span>
+
+<span class="c1"># Extract structured data</span>
+<span class="n">result</span> <span class="o">=</span> <span class="n">stepwise_extract_with_model</span><span class="p">(</span>
+    <span class="n">BusinessProfile</span><span class="p">,</span>
+    <span class="n">business_text</span><span class="p">,</span>
+    <span class="n">model_name</span><span class="o">=</span><span class="s2">&quot;openai/gpt-4&quot;</span>
+<span class="p">)</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">model_dump</span><span class="p">())</span>
+</pre></div>
+</div>
+</section>
+<section id="multi-domain-field-sets">
+<h3>Multi-Domain Field Sets<a class="headerlink" href="#multi-domain-field-sets" title="Link to this heading"></a></h3>
+<p>Organize fields by domain for better maintainability:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># E-commerce fields</span>
+<span class="n">ecommerce_fields</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;product_name&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;str&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;Product name or title&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;instructions&quot;</span><span class="p">:</span> <span class="s2">&quot;Extract main product name, exclude brand&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;default&quot;</span><span class="p">:</span> <span class="s2">&quot;Unknown Product&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;nullable&quot;</span><span class="p">:</span> <span class="kc">False</span>
+    <span class="p">},</span>
+    <span class="s2">&quot;sku&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;str&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;Product SKU or model number&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;instructions&quot;</span><span class="p">:</span> <span class="s2">&quot;Extract alphanumeric SKU code&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;default&quot;</span><span class="p">:</span> <span class="s2">&quot;&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;nullable&quot;</span><span class="p">:</span> <span class="kc">True</span>
+    <span class="p">},</span>
+    <span class="s2">&quot;category&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;str&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;Product category&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;instructions&quot;</span><span class="p">:</span> <span class="s2">&quot;Classify into Electronics, Clothing, Books, etc.&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;default&quot;</span><span class="p">:</span> <span class="s2">&quot;Other&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;nullable&quot;</span><span class="p">:</span> <span class="kc">True</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="c1"># Medical fields</span>
+<span class="n">medical_fields</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;patient_id&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;str&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;Patient identification number&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;instructions&quot;</span><span class="p">:</span> <span class="s2">&quot;Extract patient ID, mask if sensitive&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;default&quot;</span><span class="p">:</span> <span class="s2">&quot;&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;nullable&quot;</span><span class="p">:</span> <span class="kc">True</span>
+    <span class="p">},</span>
+    <span class="s2">&quot;diagnosis&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;str&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;Primary diagnosis or condition&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;instructions&quot;</span><span class="p">:</span> <span class="s2">&quot;Extract main diagnosis, use medical terminology&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;default&quot;</span><span class="p">:</span> <span class="s2">&quot;&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;nullable&quot;</span><span class="p">:</span> <span class="kc">True</span>
+    <span class="p">},</span>
+    <span class="s2">&quot;treatment_date&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;str&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;Date of treatment or visit&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;instructions&quot;</span><span class="p">:</span> <span class="s2">&quot;Extract date, use {{current_date}} if not specified&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;default&quot;</span><span class="p">:</span> <span class="s2">&quot;{{current_date}}&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;nullable&quot;</span><span class="p">:</span> <span class="kc">False</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="c1"># Register field sets</span>
+<span class="kn">from</span> <span class="nn">prompture</span> <span class="kn">import</span> <span class="n">add_field_definitions</span>
+
+<span class="n">add_field_definitions</span><span class="p">(</span><span class="n">ecommerce_fields</span><span class="p">)</span>
+<span class="n">add_field_definitions</span><span class="p">(</span><span class="n">medical_fields</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="external-configuration-files">
+<h3>External Configuration Files<a class="headerlink" href="#external-configuration-files" title="Link to this heading"></a></h3>
+<p>Load field definitions from external YAML or JSON files:</p>
+<p><strong>field_definitions.yaml:</strong></p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">document_fields</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">title</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">str</span>
+<span class="w">    </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Document</span><span class="nv"> </span><span class="s">title</span><span class="nv"> </span><span class="s">or</span><span class="nv"> </span><span class="s">heading&quot;</span>
+<span class="w">    </span><span class="nt">instructions</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Extract</span><span class="nv"> </span><span class="s">main</span><span class="nv"> </span><span class="s">document</span><span class="nv"> </span><span class="s">title&quot;</span>
+<span class="w">    </span><span class="nt">default</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Untitled</span><span class="nv"> </span><span class="s">Document&quot;</span>
+<span class="w">    </span><span class="nt">nullable</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span>
+
+<span class="w">  </span><span class="nt">author</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">str</span>
+<span class="w">    </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Document</span><span class="nv"> </span><span class="s">author</span><span class="nv"> </span><span class="s">or</span><span class="nv"> </span><span class="s">creator&quot;</span>
+<span class="w">    </span><span class="nt">instructions</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Extract</span><span class="nv"> </span><span class="s">author</span><span class="nv"> </span><span class="s">name,</span><span class="nv"> </span><span class="s">handle</span><span class="nv"> </span><span class="s">multiple</span><span class="nv"> </span><span class="s">authors&quot;</span>
+<span class="w">    </span><span class="nt">default</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Unknown</span><span class="nv"> </span><span class="s">Author&quot;</span>
+<span class="w">    </span><span class="nt">nullable</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+
+<span class="w">  </span><span class="nt">created_date</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">str</span>
+<span class="w">    </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Document</span><span class="nv"> </span><span class="s">creation</span><span class="nv"> </span><span class="s">date&quot;</span>
+<span class="w">    </span><span class="nt">instructions</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Use</span><span class="nv"> </span><span class="s">{{current_date}}</span><span class="nv"> </span><span class="s">if</span><span class="nv"> </span><span class="s">date</span><span class="nv"> </span><span class="s">not</span><span class="nv"> </span><span class="s">found&quot;</span>
+<span class="w">    </span><span class="nt">default</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;{{current_date}}&quot;</span>
+<span class="w">    </span><span class="nt">nullable</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span>
+</pre></div>
+</div>
+<p><strong>Python integration:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">prompture.tools</span> <span class="kn">import</span> <span class="n">load_field_definitions</span>
+<span class="kn">from</span> <span class="nn">prompture</span> <span class="kn">import</span> <span class="n">add_field_definitions</span>
+
+<span class="c1"># Load from external file</span>
+<span class="n">external_fields</span> <span class="o">=</span> <span class="n">load_field_definitions</span><span class="p">(</span><span class="s2">&quot;field_definitions.yaml&quot;</span><span class="p">)</span>
+
+<span class="c1"># Register all fields from the file</span>
+<span class="n">add_field_definitions</span><span class="p">(</span><span class="n">external_fields</span><span class="p">)</span>
+
+<span class="c1"># Use in models</span>
+<span class="k">class</span> <span class="nc">Document</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">title</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;title&quot;</span><span class="p">)</span>
+    <span class="n">author</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;author&quot;</span><span class="p">)</span>
+    <span class="n">created_date</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="s2">&quot;created_date&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="registry-management">
+<h2>Registry Management<a class="headerlink" href="#registry-management" title="Link to this heading"></a></h2>
+<p>The field definitions registry provides several utility functions for managing field definitions:</p>
+<section id="inspecting-the-registry">
+<h3>Inspecting the Registry<a class="headerlink" href="#inspecting-the-registry" title="Link to this heading"></a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">prompture</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">get_field_names</span><span class="p">,</span>
+    <span class="n">get_required_fields</span><span class="p">,</span>
+    <span class="n">get_field_definition</span><span class="p">,</span>
+    <span class="n">get_registry_snapshot</span>
+<span class="p">)</span>
+
+<span class="c1"># List all available fields</span>
+<span class="n">all_fields</span> <span class="o">=</span> <span class="n">get_field_names</span><span class="p">()</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Available fields: </span><span class="si">{</span><span class="n">all_fields</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+<span class="c1"># Get required fields only</span>
+<span class="n">required_fields</span> <span class="o">=</span> <span class="n">get_required_fields</span><span class="p">()</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Required fields: </span><span class="si">{</span><span class="n">required_fields</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+<span class="c1"># Inspect specific field</span>
+<span class="n">name_field</span> <span class="o">=</span> <span class="n">get_field_definition</span><span class="p">(</span><span class="s2">&quot;name&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Name field: </span><span class="si">{</span><span class="n">name_field</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+<span class="c1"># Get full registry snapshot</span>
+<span class="n">registry</span> <span class="o">=</span> <span class="n">get_registry_snapshot</span><span class="p">()</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Registry contains </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">registry</span><span class="p">)</span><span class="si">}</span><span class="s2"> fields&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="registry-maintenance">
+<h3>Registry Maintenance<a class="headerlink" href="#registry-maintenance" title="Link to this heading"></a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">prompture</span> <span class="kn">import</span> <span class="n">reset_registry</span><span class="p">,</span> <span class="n">clear_registry</span>
+
+<span class="c1"># Reset to base definitions only</span>
+<span class="n">reset_registry</span><span class="p">()</span>  <span class="c1"># Keeps built-in fields, removes custom ones</span>
+
+<span class="c1"># Clear everything (use with caution)</span>
+<span class="n">clear_registry</span><span class="p">()</span>  <span class="c1"># Removes ALL fields including built-ins</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="best-practices">
+<h2>Best Practices<a class="headerlink" href="#best-practices" title="Link to this heading"></a></h2>
+<section id="field-naming-conventions">
+<h3>Field Naming Conventions<a class="headerlink" href="#field-naming-conventions" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p>Use descriptive, lowercase names with underscores: <code class="docutils literal notranslate"><span class="pre">first_name</span></code>, <code class="docutils literal notranslate"><span class="pre">created_date</span></code></p></li>
+<li><p>Group related fields with prefixes: <code class="docutils literal notranslate"><span class="pre">contact_email</span></code>, <code class="docutils literal notranslate"><span class="pre">contact_phone</span></code></p></li>
+<li><p>Avoid abbreviations: use <code class="docutils literal notranslate"><span class="pre">experience_years</span></code> not <code class="docutils literal notranslate"><span class="pre">exp_yrs</span></code></p></li>
+<li><p>Be consistent across your domain</p></li>
+</ul>
+</section>
+<section id="type-selection-guidelines">
+<h3>Type Selection Guidelines<a class="headerlink" href="#type-selection-guidelines" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p>Use <code class="docutils literal notranslate"><span class="pre">str</span></code> for text, IDs, formatted data (dates, phone numbers)</p></li>
+<li><p>Use <code class="docutils literal notranslate"><span class="pre">int</span></code> for counts, years, numeric IDs</p></li>
+<li><p>Use <code class="docutils literal notranslate"><span class="pre">float</span></code> for scores, percentages, monetary values</p></li>
+<li><p>Use <code class="docutils literal notranslate"><span class="pre">list</span></code> for multiple values of same type</p></li>
+<li><p>Use <code class="docutils literal notranslate"><span class="pre">dict</span></code> for nested structured data</p></li>
+</ul>
+</section>
+<section id="template-variable-usage">
+<h3>Template Variable Usage<a class="headerlink" href="#template-variable-usage" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p>Use <code class="docutils literal notranslate"><span class="pre">{{current_date}}</span></code> for document dates and timestamps</p></li>
+<li><p>Use <code class="docutils literal notranslate"><span class="pre">{{current_year}}</span></code> for age calculations and academic years</p></li>
+<li><p>Use <code class="docutils literal notranslate"><span class="pre">{{current_datetime}}</span></code> for precise processing timestamps</p></li>
+<li><p>Provide fallback values when templates might not resolve</p></li>
+</ul>
+</section>
+<section id="validation-and-testing">
+<h3>Validation and Testing<a class="headerlink" href="#validation-and-testing" title="Link to this heading"></a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">prompture.tools</span> <span class="kn">import</span> <span class="n">validate_field_definition</span>
+
+<span class="c1"># Always validate custom fields</span>
+<span class="k">def</span> <span class="nf">create_safe_field</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">definition</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">validate_field_definition</span><span class="p">(</span><span class="n">definition</span><span class="p">):</span>
+        <span class="n">register_field</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">definition</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">True</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Invalid field definition for &#39;</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">&#39;&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">False</span>
+
+<span class="c1"># Test field definitions with sample data</span>
+<span class="k">def</span> <span class="nf">test_field_extraction</span><span class="p">(</span><span class="n">field_name</span><span class="p">,</span> <span class="n">sample_text</span><span class="p">):</span>
+    <span class="k">class</span> <span class="nc">TestModel</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+        <span class="n">test_field</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">field_from_registry</span><span class="p">(</span><span class="n">field_name</span><span class="p">)</span>
+
+    <span class="c1"># Test extraction (requires API key)</span>
+    <span class="c1"># result = stepwise_extract_with_model(TestModel, sample_text)</span>
+    <span class="c1"># return result.test_field</span>
+</pre></div>
+</div>
+</section>
+<section id="performance-considerations">
+<h3>Performance Considerations<a class="headerlink" href="#performance-considerations" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p>Register fields once at application startup</p></li>
+<li><p>Use <a class="reference internal" href="#get_registry_snapshot" title="get_registry_snapshot"><code class="xref py py-func docutils literal notranslate"><span class="pre">get_registry_snapshot()</span></code></a> for bulk operations</p></li>
+<li><p>Cache field definitions for frequently used fields</p></li>
+<li><p>Validate definitions before registration to avoid runtime errors</p></li>
+</ul>
+</section>
+</section>
+<section id="api-reference">
+<h2>API Reference<a class="headerlink" href="#api-reference" title="Link to this heading"></a></h2>
+<section id="core-functions">
+<h3>Core Functions<a class="headerlink" href="#core-functions" title="Link to this heading"></a></h3>
+<dl class="py function">
+<dt class="sig sig-object py" id="field_from_registry">
+<span class="sig-name descname"><span class="pre">field_from_registry</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">field_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">apply_templates</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">custom_template_vars</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Field</span></span></span><a class="headerlink" href="#field_from_registry" title="Link to this definition"></a></dt>
+<dd><p>Create a Pydantic Field from a registered field definition.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>field_name</strong> – Name of field in the registry</p></li>
+<li><p><strong>apply_templates</strong> – Whether to apply template variable substitution</p></li>
+<li><p><strong>custom_template_vars</strong> – Custom template variables for substitution</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Configured Pydantic Field object</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#KeyError" title="(in Python v3.14)"><strong>KeyError</strong></a> – If field_name not found in registry</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="register_field">
+<span class="sig-name descname"><span class="pre">register_field</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">field_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">field_definition</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">FieldDefinition</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span></span><a class="headerlink" href="#register_field" title="Link to this definition"></a></dt>
+<dd><p>Register a single field definition in the global registry.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>field_name</strong> – Name of the field</p></li>
+<li><p><strong>field_definition</strong> – Dictionary containing field configuration</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If field definition is invalid</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="get_field_definition">
+<span class="sig-name descname"><span class="pre">get_field_definition</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">field_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">apply_templates</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">custom_template_vars</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">FieldDefinition</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span></span><a class="headerlink" href="#get_field_definition" title="Link to this definition"></a></dt>
+<dd><p>Retrieve a field definition from the registry.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>field_name</strong> – Name of field to retrieve</p></li>
+<li><p><strong>apply_templates</strong> – Whether to apply template substitution</p></li>
+<li><p><strong>custom_template_vars</strong> – Custom variables for templates</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Field definition dictionary or None if not found</p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+<section id="registry-management-functions">
+<h3>Registry Management Functions<a class="headerlink" href="#registry-management-functions" title="Link to this heading"></a></h3>
+<dl class="py function">
+<dt class="sig sig-object py" id="get_field_names">
+<span class="sig-name descname"><span class="pre">get_field_names</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#get_field_names" title="Link to this definition"></a></dt>
+<dd><p>Get list of all registered field names.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>List of field names in the registry</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="get_required_fields">
+<span class="sig-name descname"><span class="pre">get_required_fields</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#get_required_fields" title="Link to this definition"></a></dt>
+<dd><p>Get list of required (non-nullable) field names.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>List of required field names</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="add_field_definitions">
+<span class="sig-name descname"><span class="pre">add_field_definitions</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">field_definitions</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">FieldDefinition</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span></span><a class="headerlink" href="#add_field_definitions" title="Link to this definition"></a></dt>
+<dd><p>Register multiple field definitions at once.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>field_definitions</strong> – Dictionary mapping field names to definitions</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="get_registry_snapshot">
+<span class="sig-name descname"><span class="pre">get_registry_snapshot</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">FieldDefinition</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#get_registry_snapshot" title="Link to this definition"></a></dt>
+<dd><p>Get a copy of the current registry state.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Dictionary of all registered field definitions</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="reset_registry">
+<span class="sig-name descname"><span class="pre">reset_registry</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span></span><a class="headerlink" href="#reset_registry" title="Link to this definition"></a></dt>
+<dd><p>Reset registry to contain only base field definitions.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="clear_registry">
+<span class="sig-name descname"><span class="pre">clear_registry</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span></span><a class="headerlink" href="#clear_registry" title="Link to this definition"></a></dt>
+<dd><p>Remove all field definitions from registry.</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>This removes all fields including built-in definitions.</p>
+</div>
+</dd></dl>
+
+</section>
+</section>
+<section id="see-also">
+<h2>See Also<a class="headerlink" href="#see-also" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p><a class="reference internal" href="api/field_definitions.html"><span class="doc">Field Definitions Module</span></a> - API documentation for field definitions module</p></li>
+<li><p><a class="reference internal" href="examples.html"><span class="doc">Examples</span></a> - Usage examples and tutorials</p></li>
+<li><p><a class="reference internal" href="quickstart.html"><span class="doc">Quick Start Guide</span></a> - Getting started guide</p></li>
+<li><p><a class="reference internal" href="api/core.html"><span class="doc">Core Module</span></a> - Core extraction functions</p></li>
+</ul>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="toon_input_guide.html" class="btn btn-neutral float-left" title="TOON Input Conversion Guide" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="examples.html" class="btn btn-neutral float-right" title="Examples" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Juan Denis.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+  
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    var footerCopy = document.querySelector("footer .copyright");
+    if (footerCopy) {
+        footerCopy.innerHTML = footerCopy.innerHTML.replace(
+            "Juan Denis",
+            '<a href="https://juandenis.com">Juan Denis</a>'
+        );
+    }
+});
+</script>
+ 
+
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -1,0 +1,551 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TOON Input Conversion Guide &mdash; Prompture 1.0.49 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=fa44fd50" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/custom.css?v=0cbbaaf5" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=9c1456b3"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Field Definitions Reference" href="field_definitions_reference.html" />
+    <link rel="prev" title="Quick Start Guide" href="quickstart.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #048b41" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            Prompture
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="quickstart.html">Quick Start Guide</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">TOON Input Conversion Guide</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#overview">Overview</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#quick-start">Quick Start</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#installation">Installation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#basic-usage">Basic Usage</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#analyze-json-array-data">Analyze JSON Array Data</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#analyze-pandas-dataframes">Analyze Pandas DataFrames</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#advanced-usage">Advanced Usage</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#working-with-nested-data">Working with Nested Data</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#custom-instructions-and-options">Custom Instructions and Options</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#token-savings-analysis">Token Savings Analysis</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#understanding-the-efficiency-gains">Understanding the Efficiency Gains</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#preview-savings-without-llm-calls">Preview Savings Without LLM Calls</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#best-practices">Best Practices</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#when-toon-is-most-effective">When TOON is Most Effective</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#data-structure-requirements">Data Structure Requirements</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#performance-considerations">Performance Considerations</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#error-handling">Error Handling</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#common-issues-and-solutions">Common Issues and Solutions</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#migration-from-existing-code">Migration from Existing Code</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#easy-upgrade-path">Easy Upgrade Path</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#api-reference">API Reference</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#extract-from-data">extract_from_data()</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#extract-from-pandas">extract_from_pandas()</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#examples-and-use-cases">Examples and Use Cases</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#e-commerce-analysis">E-commerce Analysis</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#financial-data-analysis">Financial Data Analysis</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#user-behavior-analysis">User Behavior Analysis</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#troubleshooting">Troubleshooting</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#installation-issues">Installation Issues</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#performance-optimization">Performance Optimization</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#conclusion">Conclusion</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="field_definitions_reference.html">Field Definitions Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="contributing.html">Contributing to Prompture</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Documentation:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="api/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #048b41" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">Prompture</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">TOON Input Conversion Guide</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/toon_input_guide.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="toon-input-conversion-guide">
+<h1>TOON Input Conversion Guide<a class="headerlink" href="#toon-input-conversion-guide" title="Link to this heading"></a></h1>
+<p>Prompture now supports <strong>TOON input conversion</strong> for structured data, allowing you to achieve significant token savings (typically 45-60%) when analyzing JSON arrays or Pandas DataFrames with LLMs.</p>
+<section id="overview">
+<h2>Overview<a class="headerlink" href="#overview" title="Link to this heading"></a></h2>
+<p>TOON (Tabular Object Oriented Notation) is a compact format for representing uniform data structures. When you have structured data like product catalogs, user lists, or transaction records, converting to TOON format before sending to the LLM can dramatically reduce token usage while maintaining the same analytical capabilities.</p>
+<p><strong>Key Benefits:</strong></p>
+<ul class="simple">
+<li><p><strong>45-60% token reduction</strong> for uniform data arrays</p></li>
+<li><p><strong>Automatic conversion</strong> from JSON/DataFrames to TOON</p></li>
+<li><p><strong>JSON responses</strong> for easy consumption</p></li>
+<li><p><strong>Token usage tracking</strong> with savings analysis</p></li>
+<li><p><strong>No changes to existing code</strong> - new functions complement existing API</p></li>
+</ul>
+</section>
+<section id="quick-start">
+<h2>Quick Start<a class="headerlink" href="#quick-start" title="Link to this heading"></a></h2>
+<section id="installation">
+<h3>Installation<a class="headerlink" href="#installation" title="Link to this heading"></a></h3>
+<p>TOON functionality is included by default when you install Prompture:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>prompture
+</pre></div>
+</div>
+<p>Both <code class="docutils literal notranslate"><span class="pre">python-toon</span></code> and <code class="docutils literal notranslate"><span class="pre">pandas</span></code> are now installed automatically - no extra steps needed!</p>
+</section>
+<section id="basic-usage">
+<h3>Basic Usage<a class="headerlink" href="#basic-usage" title="Link to this heading"></a></h3>
+<section id="analyze-json-array-data">
+<h4>Analyze JSON Array Data<a class="headerlink" href="#analyze-json-array-data" title="Link to this heading"></a></h4>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">prompture</span> <span class="kn">import</span> <span class="n">extract_from_data</span>
+
+<span class="c1"># Your structured data</span>
+<span class="n">products</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="p">{</span><span class="s2">&quot;id&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;Laptop&quot;</span><span class="p">,</span> <span class="s2">&quot;price&quot;</span><span class="p">:</span> <span class="mf">999.99</span><span class="p">,</span> <span class="s2">&quot;rating&quot;</span><span class="p">:</span> <span class="mf">4.5</span><span class="p">},</span>
+    <span class="p">{</span><span class="s2">&quot;id&quot;</span><span class="p">:</span> <span class="mi">2</span><span class="p">,</span> <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;Book&quot;</span><span class="p">,</span> <span class="s2">&quot;price&quot;</span><span class="p">:</span> <span class="mf">19.99</span><span class="p">,</span> <span class="s2">&quot;rating&quot;</span><span class="p">:</span> <span class="mf">4.2</span><span class="p">},</span>
+    <span class="p">{</span><span class="s2">&quot;id&quot;</span><span class="p">:</span> <span class="mi">3</span><span class="p">,</span> <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;Headphones&quot;</span><span class="p">,</span> <span class="s2">&quot;price&quot;</span><span class="p">:</span> <span class="mf">149.99</span><span class="p">,</span> <span class="s2">&quot;rating&quot;</span><span class="p">:</span> <span class="mf">4.7</span><span class="p">}</span>
+<span class="p">]</span>
+
+<span class="c1"># Define what you want to extract</span>
+<span class="n">schema</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;object&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;properties&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;average_price&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;number&quot;</span><span class="p">},</span>
+        <span class="s2">&quot;highest_rated&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;string&quot;</span><span class="p">},</span>
+        <span class="s2">&quot;total_items&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;integer&quot;</span><span class="p">}</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="c1"># Ask questions about your data</span>
+<span class="n">result</span> <span class="o">=</span> <span class="n">extract_from_data</span><span class="p">(</span>
+    <span class="n">data</span><span class="o">=</span><span class="n">products</span><span class="p">,</span>
+    <span class="n">question</span><span class="o">=</span><span class="s2">&quot;What is the average price, highest rated product, and total count?&quot;</span><span class="p">,</span>
+    <span class="n">json_schema</span><span class="o">=</span><span class="n">schema</span><span class="p">,</span>
+    <span class="n">model_name</span><span class="o">=</span><span class="s2">&quot;openai/gpt-4&quot;</span>
+<span class="p">)</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="p">[</span><span class="s2">&quot;json_object&quot;</span><span class="p">])</span>
+<span class="c1"># {&quot;average_price&quot;: 389.96, &quot;highest_rated&quot;: &quot;Headphones&quot;, &quot;total_items&quot;: 3}</span>
+
+<span class="c1"># Check token savings</span>
+<span class="n">savings</span> <span class="o">=</span> <span class="n">result</span><span class="p">[</span><span class="s2">&quot;token_savings&quot;</span><span class="p">]</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Token savings: </span><span class="si">{</span><span class="n">savings</span><span class="p">[</span><span class="s1">&#39;percentage_saved&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">%&quot;</span><span class="p">)</span>
+<span class="c1"># Token savings: 62.3%</span>
+</pre></div>
+</div>
+</section>
+<section id="analyze-pandas-dataframes">
+<h4>Analyze Pandas DataFrames<a class="headerlink" href="#analyze-pandas-dataframes" title="Link to this heading"></a></h4>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">prompture</span> <span class="kn">import</span> <span class="n">extract_from_pandas</span>
+<span class="kn">import</span> <span class="nn">pandas</span> <span class="k">as</span> <span class="nn">pd</span>
+
+<span class="c1"># Load your DataFrame</span>
+<span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_csv</span><span class="p">(</span><span class="s2">&quot;sales_data.csv&quot;</span><span class="p">)</span>
+<span class="c1"># or create from existing data</span>
+<span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">products</span><span class="p">)</span>
+
+<span class="n">schema</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;object&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;properties&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;top_category&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;string&quot;</span><span class="p">},</span>
+        <span class="s2">&quot;price_trend&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;string&quot;</span><span class="p">},</span>
+        <span class="s2">&quot;outliers&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;array&quot;</span><span class="p">,</span> <span class="s2">&quot;items&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;string&quot;</span><span class="p">}}</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="n">result</span> <span class="o">=</span> <span class="n">extract_from_pandas</span><span class="p">(</span>
+    <span class="n">df</span><span class="o">=</span><span class="n">df</span><span class="p">,</span>
+    <span class="n">question</span><span class="o">=</span><span class="s2">&quot;What category has the highest average price? Any pricing outliers?&quot;</span><span class="p">,</span>
+    <span class="n">json_schema</span><span class="o">=</span><span class="n">schema</span><span class="p">,</span>
+    <span class="n">model_name</span><span class="o">=</span><span class="s2">&quot;openai/gpt-4&quot;</span>
+<span class="p">)</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="p">[</span><span class="s2">&quot;json_object&quot;</span><span class="p">])</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;DataFrame shape: </span><span class="si">{</span><span class="n">result</span><span class="p">[</span><span class="s1">&#39;dataframe_info&#39;</span><span class="p">][</span><span class="s1">&#39;shape&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+</section>
+</section>
+<section id="advanced-usage">
+<h2>Advanced Usage<a class="headerlink" href="#advanced-usage" title="Link to this heading"></a></h2>
+<section id="working-with-nested-data">
+<h3>Working with Nested Data<a class="headerlink" href="#working-with-nested-data" title="Link to this heading"></a></h3>
+<p>When your data is nested in an API response or larger structure:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">api_response</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;status&quot;</span><span class="p">:</span> <span class="s2">&quot;success&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;page&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
+    <span class="s2">&quot;results&quot;</span><span class="p">:</span> <span class="p">[</span>
+        <span class="p">{</span><span class="s2">&quot;user_id&quot;</span><span class="p">:</span> <span class="mi">101</span><span class="p">,</span> <span class="s2">&quot;score&quot;</span><span class="p">:</span> <span class="mi">85</span><span class="p">,</span> <span class="s2">&quot;level&quot;</span><span class="p">:</span> <span class="s2">&quot;advanced&quot;</span><span class="p">},</span>
+        <span class="p">{</span><span class="s2">&quot;user_id&quot;</span><span class="p">:</span> <span class="mi">102</span><span class="p">,</span> <span class="s2">&quot;score&quot;</span><span class="p">:</span> <span class="mi">72</span><span class="p">,</span> <span class="s2">&quot;level&quot;</span><span class="p">:</span> <span class="s2">&quot;intermediate&quot;</span><span class="p">}</span>
+    <span class="p">]</span>
+<span class="p">}</span>
+
+<span class="n">result</span> <span class="o">=</span> <span class="n">extract_from_data</span><span class="p">(</span>
+    <span class="n">data</span><span class="o">=</span><span class="n">api_response</span><span class="p">,</span>
+    <span class="n">data_key</span><span class="o">=</span><span class="s2">&quot;results&quot;</span><span class="p">,</span>  <span class="c1"># Specify which key contains the array</span>
+    <span class="n">question</span><span class="o">=</span><span class="s2">&quot;What is the average score?&quot;</span><span class="p">,</span>
+    <span class="n">json_schema</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;object&quot;</span><span class="p">,</span> <span class="s2">&quot;properties&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;avg_score&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;number&quot;</span><span class="p">}}},</span>
+    <span class="n">model_name</span><span class="o">=</span><span class="s2">&quot;openai/gpt-4&quot;</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="custom-instructions-and-options">
+<h3>Custom Instructions and Options<a class="headerlink" href="#custom-instructions-and-options" title="Link to this heading"></a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">result</span> <span class="o">=</span> <span class="n">extract_from_data</span><span class="p">(</span>
+    <span class="n">data</span><span class="o">=</span><span class="n">products</span><span class="p">,</span>
+    <span class="n">question</span><span class="o">=</span><span class="s2">&quot;Find products under $100&quot;</span><span class="p">,</span>
+    <span class="n">json_schema</span><span class="o">=</span><span class="n">schema</span><span class="p">,</span>
+    <span class="n">model_name</span><span class="o">=</span><span class="s2">&quot;openai/gpt-4&quot;</span><span class="p">,</span>
+    <span class="n">instruction_template</span><span class="o">=</span><span class="s2">&quot;Analyze this product data carefully and answer: </span><span class="si">{question}</span><span class="s2">&quot;</span><span class="p">,</span>
+    <span class="n">ai_cleanup</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="n">options</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;temperature&quot;</span><span class="p">:</span> <span class="mf">0.1</span><span class="p">,</span> <span class="s2">&quot;max_tokens&quot;</span><span class="p">:</span> <span class="mi">500</span><span class="p">}</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="token-savings-analysis">
+<h2>Token Savings Analysis<a class="headerlink" href="#token-savings-analysis" title="Link to this heading"></a></h2>
+<section id="understanding-the-efficiency-gains">
+<h3>Understanding the Efficiency Gains<a class="headerlink" href="#understanding-the-efficiency-gains" title="Link to this heading"></a></h3>
+<p>The functions provide detailed token usage analysis:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">result</span> <span class="o">=</span> <span class="n">extract_from_data</span><span class="p">(</span><span class="n">data</span><span class="o">=</span><span class="n">products</span><span class="p">,</span> <span class="n">question</span><span class="o">=</span><span class="n">question</span><span class="p">,</span> <span class="n">json_schema</span><span class="o">=</span><span class="n">schema</span><span class="p">,</span> <span class="n">model_name</span><span class="o">=</span><span class="n">model</span><span class="p">)</span>
+
+<span class="c1"># Token savings breakdown</span>
+<span class="n">savings</span> <span class="o">=</span> <span class="n">result</span><span class="p">[</span><span class="s2">&quot;token_savings&quot;</span><span class="p">]</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;JSON characters: </span><span class="si">{</span><span class="n">savings</span><span class="p">[</span><span class="s1">&#39;json_characters&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;TOON characters: </span><span class="si">{</span><span class="n">savings</span><span class="p">[</span><span class="s1">&#39;toon_characters&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Character reduction: </span><span class="si">{</span><span class="n">savings</span><span class="p">[</span><span class="s1">&#39;saved_characters&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2"> (</span><span class="si">{</span><span class="n">savings</span><span class="p">[</span><span class="s1">&#39;percentage_saved&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">%)&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Estimated token savings: ~</span><span class="si">{</span><span class="n">savings</span><span class="p">[</span><span class="s1">&#39;estimated_saved_tokens&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2"> tokens&quot;</span><span class="p">)</span>
+
+<span class="c1"># The TOON data that was sent to the LLM</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;TOON format used:&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="p">[</span><span class="s2">&quot;toon_data&quot;</span><span class="p">])</span>
+</pre></div>
+</div>
+</section>
+<section id="preview-savings-without-llm-calls">
+<h3>Preview Savings Without LLM Calls<a class="headerlink" href="#preview-savings-without-llm-calls" title="Link to this heading"></a></h3>
+<p>Use the token comparison utility to analyze your data structure efficiency:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>examples/token_comparison_utility.py
+</pre></div>
+</div>
+<p>Or programmatically:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">examples.token_comparison_utility</span> <span class="kn">import</span> <span class="n">compare_formats</span><span class="p">,</span> <span class="n">print_comparison_report</span>
+
+<span class="n">stats</span> <span class="o">=</span> <span class="n">compare_formats</span><span class="p">(</span><span class="n">your_data</span><span class="p">)</span>
+<span class="n">print_comparison_report</span><span class="p">(</span><span class="n">stats</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="best-practices">
+<h2>Best Practices<a class="headerlink" href="#best-practices" title="Link to this heading"></a></h2>
+<section id="when-toon-is-most-effective">
+<h3>When TOON is Most Effective<a class="headerlink" href="#when-toon-is-most-effective" title="Link to this heading"></a></h3>
+<p><strong>✅ Ideal for TOON:</strong></p>
+<ul class="simple">
+<li><p><strong>Uniform data structures</strong> (all objects have same keys)</p></li>
+<li><p><strong>Tabular data</strong> from databases, CSVs, APIs</p></li>
+<li><p><strong>Product catalogs, user lists, transaction records</strong></p></li>
+<li><p><strong>Arrays with 3+ objects</strong></p></li>
+</ul>
+<p><strong>⚠️ Less effective:</strong></p>
+<ul class="simple">
+<li><p>Non-uniform objects (different key sets)</p></li>
+<li><p>Deeply nested structures</p></li>
+<li><p>Very small arrays (1-2 items)</p></li>
+<li><p>Already compact data</p></li>
+</ul>
+</section>
+<section id="data-structure-requirements">
+<h3>Data Structure Requirements<a class="headerlink" href="#data-structure-requirements" title="Link to this heading"></a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># ✅ Perfect for TOON - uniform structure</span>
+<span class="n">good_data</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="p">{</span><span class="s2">&quot;id&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;A&quot;</span><span class="p">,</span> <span class="s2">&quot;price&quot;</span><span class="p">:</span> <span class="mf">10.0</span><span class="p">},</span>
+    <span class="p">{</span><span class="s2">&quot;id&quot;</span><span class="p">:</span> <span class="mi">2</span><span class="p">,</span> <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;B&quot;</span><span class="p">,</span> <span class="s2">&quot;price&quot;</span><span class="p">:</span> <span class="mf">20.0</span><span class="p">},</span>
+    <span class="p">{</span><span class="s2">&quot;id&quot;</span><span class="p">:</span> <span class="mi">3</span><span class="p">,</span> <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;C&quot;</span><span class="p">,</span> <span class="s2">&quot;price&quot;</span><span class="p">:</span> <span class="mf">30.0</span><span class="p">}</span>
+<span class="p">]</span>
+
+<span class="c1"># ⚠️ Less efficient - non-uniform structure</span>
+<span class="n">mixed_data</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="p">{</span><span class="s2">&quot;id&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;A&quot;</span><span class="p">,</span> <span class="s2">&quot;price&quot;</span><span class="p">:</span> <span class="mf">10.0</span><span class="p">},</span>
+    <span class="p">{</span><span class="s2">&quot;id&quot;</span><span class="p">:</span> <span class="mi">2</span><span class="p">,</span> <span class="s2">&quot;title&quot;</span><span class="p">:</span> <span class="s2">&quot;B&quot;</span><span class="p">,</span> <span class="s2">&quot;cost&quot;</span><span class="p">:</span> <span class="mf">20.0</span><span class="p">,</span> <span class="s2">&quot;extra&quot;</span><span class="p">:</span> <span class="s2">&quot;data&quot;</span><span class="p">},</span>
+    <span class="p">{</span><span class="s2">&quot;user&quot;</span><span class="p">:</span> <span class="mi">3</span><span class="p">,</span> <span class="s2">&quot;label&quot;</span><span class="p">:</span> <span class="s2">&quot;C&quot;</span><span class="p">}</span>
+<span class="p">]</span>
+</pre></div>
+</div>
+</section>
+<section id="performance-considerations">
+<h3>Performance Considerations<a class="headerlink" href="#performance-considerations" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p><strong>Large datasets</strong>: TOON conversion is fast, but consider chunking very large DataFrames</p></li>
+<li><p><strong>Model compatibility</strong>: All models work with TOON input (it’s converted automatically)</p></li>
+<li><p><strong>Cost optimization</strong>: Higher token savings = lower API costs</p></li>
+</ul>
+</section>
+</section>
+<section id="error-handling">
+<h2>Error Handling<a class="headerlink" href="#error-handling" title="Link to this heading"></a></h2>
+<section id="common-issues-and-solutions">
+<h3>Common Issues and Solutions<a class="headerlink" href="#common-issues-and-solutions" title="Link to this heading"></a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">try</span><span class="p">:</span>
+    <span class="n">result</span> <span class="o">=</span> <span class="n">extract_from_data</span><span class="p">(</span><span class="n">data</span><span class="o">=</span><span class="n">data</span><span class="p">,</span> <span class="n">question</span><span class="o">=</span><span class="n">question</span><span class="p">,</span> <span class="n">json_schema</span><span class="o">=</span><span class="n">schema</span><span class="p">,</span> <span class="n">model_name</span><span class="o">=</span><span class="n">model</span><span class="p">)</span>
+<span class="k">except</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="k">if</span> <span class="s2">&quot;empty&quot;</span> <span class="ow">in</span> <span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="p">):</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Data array is empty&quot;</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="s2">&quot;dictionaries&quot;</span> <span class="ow">in</span> <span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="p">):</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;All array items must be dictionaries&quot;</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="s2">&quot;python-toon&quot;</span> <span class="ow">in</span> <span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="p">):</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Install python-toon: pip install python-toon&quot;</span><span class="p">)</span>
+<span class="k">except</span> <span class="ne">RuntimeError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="k">if</span> <span class="s2">&quot;pandas&quot;</span> <span class="ow">in</span> <span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="p">):</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Install pandas: pip install pandas&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="migration-from-existing-code">
+<h2>Migration from Existing Code<a class="headerlink" href="#migration-from-existing-code" title="Link to this heading"></a></h2>
+<section id="easy-upgrade-path">
+<h3>Easy Upgrade Path<a class="headerlink" href="#easy-upgrade-path" title="Link to this heading"></a></h3>
+<p>Replace existing extraction calls to get automatic token savings:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># Before: Using extract_and_jsonify with JSON text</span>
+<span class="n">json_text</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">products</span><span class="p">)</span>
+<span class="n">result</span> <span class="o">=</span> <span class="n">extract_and_jsonify</span><span class="p">(</span>
+    <span class="n">text</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;Analyze this data: </span><span class="si">{</span><span class="n">json_text</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+    <span class="n">json_schema</span><span class="o">=</span><span class="n">schema</span><span class="p">,</span>
+    <span class="n">model_name</span><span class="o">=</span><span class="n">model_name</span>
+<span class="p">)</span>
+
+<span class="c1"># After: Using extract_from_data with automatic TOON conversion</span>
+<span class="n">result</span> <span class="o">=</span> <span class="n">extract_from_data</span><span class="p">(</span>
+    <span class="n">data</span><span class="o">=</span><span class="n">products</span><span class="p">,</span>  <span class="c1"># Pass data directly</span>
+    <span class="n">question</span><span class="o">=</span><span class="s2">&quot;Analyze this data comprehensively&quot;</span><span class="p">,</span>
+    <span class="n">json_schema</span><span class="o">=</span><span class="n">schema</span><span class="p">,</span>
+    <span class="n">model_name</span><span class="o">=</span><span class="n">model_name</span>
+<span class="p">)</span>
+<span class="c1"># Automatic 45-60% token savings!</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="api-reference">
+<h2>API Reference<a class="headerlink" href="#api-reference" title="Link to this heading"></a></h2>
+<section id="extract-from-data">
+<h3>extract_from_data()<a class="headerlink" href="#extract-from-data" title="Link to this heading"></a></h3>
+</section>
+<section id="extract-from-pandas">
+<h3>extract_from_pandas()<a class="headerlink" href="#extract-from-pandas" title="Link to this heading"></a></h3>
+</section>
+</section>
+<section id="examples-and-use-cases">
+<h2>Examples and Use Cases<a class="headerlink" href="#examples-and-use-cases" title="Link to this heading"></a></h2>
+<section id="e-commerce-analysis">
+<h3>E-commerce Analysis<a class="headerlink" href="#e-commerce-analysis" title="Link to this heading"></a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">products</span> <span class="o">=</span> <span class="n">load_product_catalog</span><span class="p">()</span>
+
+<span class="n">result</span> <span class="o">=</span> <span class="n">extract_from_data</span><span class="p">(</span>
+    <span class="n">data</span><span class="o">=</span><span class="n">products</span><span class="p">,</span>
+    <span class="n">question</span><span class="o">=</span><span class="s2">&quot;Which products are underperforming? Consider price, rating, and sales.&quot;</span><span class="p">,</span>
+    <span class="n">json_schema</span><span class="o">=</span><span class="p">{</span>
+        <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;object&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;properties&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;underperforming_products&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;array&quot;</span><span class="p">,</span> <span class="s2">&quot;items&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;string&quot;</span><span class="p">}},</span>
+            <span class="s2">&quot;recommended_actions&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;array&quot;</span><span class="p">,</span> <span class="s2">&quot;items&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;string&quot;</span><span class="p">}},</span>
+            <span class="s2">&quot;price_optimization&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;object&quot;</span><span class="p">}</span>
+        <span class="p">}</span>
+    <span class="p">},</span>
+    <span class="n">model_name</span><span class="o">=</span><span class="s2">&quot;openai/gpt-4&quot;</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="financial-data-analysis">
+<h3>Financial Data Analysis<a class="headerlink" href="#financial-data-analysis" title="Link to this heading"></a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">pandas</span> <span class="k">as</span> <span class="nn">pd</span>
+
+<span class="n">transactions_df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_csv</span><span class="p">(</span><span class="s2">&quot;transactions.csv&quot;</span><span class="p">)</span>
+
+<span class="n">result</span> <span class="o">=</span> <span class="n">extract_from_pandas</span><span class="p">(</span>
+    <span class="n">df</span><span class="o">=</span><span class="n">transactions_df</span><span class="p">,</span>
+    <span class="n">question</span><span class="o">=</span><span class="s2">&quot;Identify spending patterns and categorize expenses by priority&quot;</span><span class="p">,</span>
+    <span class="n">json_schema</span><span class="o">=</span><span class="n">expense_analysis_schema</span><span class="p">,</span>
+    <span class="n">model_name</span><span class="o">=</span><span class="s2">&quot;anthropic/claude-3-sonnet&quot;</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="user-behavior-analysis">
+<h3>User Behavior Analysis<a class="headerlink" href="#user-behavior-analysis" title="Link to this heading"></a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">user_activity</span> <span class="o">=</span> <span class="n">fetch_user_data_from_api</span><span class="p">()[</span><span class="s2">&quot;users&quot;</span><span class="p">]</span>
+
+<span class="n">result</span> <span class="o">=</span> <span class="n">extract_from_data</span><span class="p">(</span>
+    <span class="n">data</span><span class="o">=</span><span class="n">user_activity</span><span class="p">,</span>
+    <span class="n">question</span><span class="o">=</span><span class="s2">&quot;Segment users by engagement level and recommend retention strategies&quot;</span><span class="p">,</span>
+    <span class="n">json_schema</span><span class="o">=</span><span class="n">user_segmentation_schema</span><span class="p">,</span>
+    <span class="n">model_name</span><span class="o">=</span><span class="s2">&quot;openai/gpt-4&quot;</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="troubleshooting">
+<h2>Troubleshooting<a class="headerlink" href="#troubleshooting" title="Link to this heading"></a></h2>
+<section id="installation-issues">
+<h3>Installation Issues<a class="headerlink" href="#installation-issues" title="Link to this heading"></a></h3>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># If TOON conversion fails</span>
+pip<span class="w"> </span>install<span class="w"> </span>--upgrade<span class="w"> </span>python-toon
+
+<span class="c1"># If pandas functions fail</span>
+pip<span class="w"> </span>install<span class="w"> </span>--upgrade<span class="w"> </span>pandas
+
+<span class="c1"># Or install with optional dependencies</span>
+pip<span class="w"> </span>install<span class="w"> </span>prompture<span class="o">[</span>pandas<span class="o">]</span>
+</pre></div>
+</div>
+</section>
+<section id="performance-optimization">
+<h3>Performance Optimization<a class="headerlink" href="#performance-optimization" title="Link to this heading"></a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># For large DataFrames, consider sampling</span>
+<span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">df</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1000</span><span class="p">:</span>
+    <span class="n">sample_df</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">sample</span><span class="p">(</span><span class="n">n</span><span class="o">=</span><span class="mi">500</span><span class="p">,</span> <span class="n">random_state</span><span class="o">=</span><span class="mi">42</span><span class="p">)</span>
+    <span class="n">result</span> <span class="o">=</span> <span class="n">extract_from_pandas</span><span class="p">(</span><span class="n">df</span><span class="o">=</span><span class="n">sample_df</span><span class="p">,</span> <span class="o">...</span><span class="p">)</span>
+
+<span class="c1"># Or chunk processing</span>
+<span class="n">chunk_size</span> <span class="o">=</span> <span class="mi">100</span>
+<span class="n">results</span> <span class="o">=</span> <span class="p">[]</span>
+<span class="k">for</span> <span class="n">chunk</span> <span class="ow">in</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_csv</span><span class="p">(</span><span class="s2">&quot;large_file.csv&quot;</span><span class="p">,</span> <span class="n">chunksize</span><span class="o">=</span><span class="n">chunk_size</span><span class="p">):</span>
+    <span class="n">result</span> <span class="o">=</span> <span class="n">extract_from_pandas</span><span class="p">(</span><span class="n">df</span><span class="o">=</span><span class="n">chunk</span><span class="p">,</span> <span class="o">...</span><span class="p">)</span>
+    <span class="n">results</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">result</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="conclusion">
+<h2>Conclusion<a class="headerlink" href="#conclusion" title="Link to this heading"></a></h2>
+<p>TOON input conversion represents a significant advancement in LLM efficiency for structured data analysis. By automatically converting your JSON arrays and DataFrames to TOON format, you can achieve substantial token savings while maintaining full analytical capabilities.</p>
+<p><strong>Key takeaways:</strong></p>
+<ul class="simple">
+<li><p><strong>45-60% token reduction</strong> for uniform data structures</p></li>
+<li><p><strong>Drop-in replacement</strong> for existing extraction workflows</p></li>
+<li><p><strong>Comprehensive analysis capabilities</strong> with automatic optimization</p></li>
+<li><p><strong>Cost reduction</strong> through more efficient token usage</p></li>
+</ul>
+<p>Try the token comparison utility to see how much you can save with your own data!</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="quickstart.html" class="btn btn-neutral float-left" title="Quick Start Guide" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="field_definitions_reference.html" class="btn btn-neutral float-right" title="Field Definitions Reference" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Juan Denis.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+  
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    var footerCopy = document.querySelector("footer .copyright");
+    if (footerCopy) {
+        footerCopy.innerHTML = footerCopy.innerHTML.replace(
+            "Juan Denis",
+            '<a href="https://juandenis.com">Juan Denis</a>'
+        );
+    }
+});
+</script>
+ 
+
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
