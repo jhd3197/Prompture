@@ -114,7 +114,7 @@ class TestModelConfig:
         """gpt-5.1/5.2 must resolve a config via _get_model_config."""
         from prompture.drivers.openai_driver import OpenAIDriver
 
-        driver = OpenAIDriver(model=model_id)
+        driver = OpenAIDriver(model=model_id, api_key="test-key")
         config = driver._get_model_config("openai", model_id)
         assert config is not None, f"{model_id} config is None"
         assert "tokens_param" in config
@@ -125,7 +125,7 @@ class TestModelConfig:
         """GPT-5 models need max_completion_tokens, not max_tokens."""
         from prompture.drivers.openai_driver import OpenAIDriver
 
-        driver = OpenAIDriver(model=model_id)
+        driver = OpenAIDriver(model=model_id, api_key="test-key")
         config = driver._get_model_config("openai", model_id)
         tokens_param = config["tokens_param"]
         print(f"\n  {model_id}: tokens_param = {tokens_param}")
@@ -138,7 +138,7 @@ class TestModelConfig:
         """Check temperature support resolution from capabilities KB."""
         from prompture.drivers.openai_driver import OpenAIDriver
 
-        driver = OpenAIDriver(model=model_id)
+        driver = OpenAIDriver(model=model_id, api_key="test-key")
         config = driver._get_model_config("openai", model_id)
         print(f"\n  {model_id}: supports_temperature={config['supports_temperature']}")
         # gpt-5.1/5.2 are NOT reasoning models — they support temperature
@@ -148,7 +148,7 @@ class TestModelConfig:
         """gpt-5-mini config is correct via _get_model_config."""
         from prompture.drivers.openai_driver import OpenAIDriver
 
-        driver = OpenAIDriver(model="gpt-5-mini")
+        driver = OpenAIDriver(model="gpt-5-mini", api_key="test-key")
         config = driver._get_model_config("openai", "gpt-5-mini")
         assert config["tokens_param"] == "max_completion_tokens"
         assert config["supports_temperature"] is False
