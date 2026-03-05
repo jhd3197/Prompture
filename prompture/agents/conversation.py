@@ -16,6 +16,7 @@ from pydantic import BaseModel
 
 from ..drivers import get_driver_for_model
 from ..drivers.base import Driver
+from ..extraction.core import ExtractResult
 from ..extraction.fields import get_registry_snapshot
 from ..extraction.tools import (
     clean_json_text,
@@ -774,21 +775,22 @@ class Conversation:
     # Streaming
     # ------------------------------------------------------------------
 
-    def ask_stream(
+    def _ask_stream_raw(
         self,
         content: str,
         options: dict[str, Any] | None = None,
         images: list[ImageInput] | None = None,
-    ) -> Iterator[str]:
-        """Send a message and yield text chunks as they arrive.
+    ) -> Iterator[dict[str, Any]]:
+        """Stream raw driver chunks as dicts with type/text keys.
 
-        Falls back to non-streaming :meth:`ask` if the driver doesn't
-        support streaming. After iteration completes, the full response
-        is recorded in history.
+        Yields ``{"type": "delta", "text": ...}`` for text,
+        ``{"type": "thinking_delta", "text": ...}`` for reasoning, and
+        handles ``done`` chunks internally (usage, callbacks, history).
         """
         self._check_budget()
         if not getattr(self._driver, "supports_streaming", False):
-            yield self.ask(content, options, images=images)
+            text = self.ask(content, options, images=images)
+            yield {"type": "delta", "text": text}
             return
 
         merged = {**self._options, **(options or {})}
@@ -809,18 +811,19 @@ class Conversation:
         full_text = ""
         try:
             for chunk in self._driver.generate_messages_stream(messages, merged):
-                if chunk["type"] == "delta":
+                chunk_type = chunk["type"]
+                if chunk_type == "delta":
                     full_text += chunk["text"]
-                    # Fire stream delta callback
                     self._driver._fire_callback(
                         "on_stream_delta",
                         {"text": chunk["text"], "driver": driver_name},
                     )
-                    yield chunk["text"]
-                elif chunk["type"] == "done":
+                    yield chunk
+                elif chunk_type == "thinking_delta":
+                    yield chunk
+                elif chunk_type == "done":
                     meta = chunk.get("meta", {})
                     elapsed_ms = (time.perf_counter() - t0) * 1000
-                    # Fire on_response callback with usage metadata
                     self._driver._fire_callback(
                         "on_response",
                         {
@@ -831,6 +834,8 @@ class Conversation:
                         },
                     )
                     self._accumulate_usage(meta)
+                    if chunk.get("reasoning_content"):
+                        self._last_reasoning = chunk["reasoning_content"]
         except Exception as exc:
             elapsed_ms = (time.perf_counter() - t0) * 1000
             self._driver._fire_callback(
@@ -840,6 +845,22 @@ class Conversation:
             raise
 
         self._messages.append({"role": "assistant", "content": full_text})
+
+    def ask_stream(
+        self,
+        content: str,
+        options: dict[str, Any] | None = None,
+        images: list[ImageInput] | None = None,
+    ) -> Iterator[str]:
+        """Send a message and yield text chunks as they arrive.
+
+        Falls back to non-streaming :meth:`ask` if the driver doesn't
+        support streaming. After iteration completes, the full response
+        is recorded in history.
+        """
+        for chunk in self._ask_stream_raw(content, options, images=images):
+            if chunk["type"] == "delta":
+                yield chunk["text"]
 
     def ask_for_json(
         self,
@@ -1029,14 +1050,7 @@ class Conversation:
         }
         result_dict["model"] = model_instance
 
-        return type(  # type: ignore[no-any-return]
-            "ExtractResult",
-            (dict,),
-            {
-                "__getattr__": lambda self, key: self.get(key),
-                "__call__": lambda self: self["model"],
-            },
-        )(result_dict)
+        return ExtractResult(result_dict)
 
     # ------------------------------------------------------------------
     # Internal: stepwise with shared context
@@ -1192,11 +1206,7 @@ class Conversation:
                 "field_results": field_results,
             }
             result["model"] = model_instance
-            return type(  # type: ignore[no-any-return]
-                "ExtractResult",
-                (dict,),
-                {"__getattr__": lambda self, key: self.get(key), "__call__": lambda self: self["model"]},
-            )(result)
+            return ExtractResult(result)
         except Exception as e:
             error_msg = f"Model validation error: {e!s}"
             if "validation_errors" not in accumulated_usage:
@@ -1210,11 +1220,7 @@ class Conversation:
                 "field_results": field_results,
                 "error": error_msg,
             }
-            return type(  # type: ignore[no-any-return]
-                "ExtractResult",
-                (dict,),
-                {"__getattr__": lambda self, key: self.get(key), "__call__": lambda self: None},
-            )(error_result)
+            return ExtractResult(error_result)
 
 
 def _has_default(field_name: str, field_info: Any, field_definitions: dict[str, Any] | None) -> bool:

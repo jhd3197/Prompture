@@ -6,9 +6,6 @@ import requests
 
 from prompture.drivers import get_driver_for_model
 
-# Default to running integration tests unless the env var explicitly disables them.
-os.environ.setdefault("RUN_INTEGRATION_TESTS", "1")
-
 # Default model configuration for all tests
 DEFAULT_MODEL = "ollama/gpt-oss:20b"  # Change this to use a different model
 

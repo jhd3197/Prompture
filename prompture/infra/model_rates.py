@@ -16,19 +16,20 @@ from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
-# Maps prompture provider names to models.dev provider names
-PROVIDER_MAP: dict[str, str] = {
-    "openai": "openai",
-    "claude": "anthropic",
-    "google": "google",
-    "groq": "groq",
-    "grok": "xai",
-    "azure": "azure",
-    "openrouter": "openrouter",
-    "moonshot": "moonshotai",
-    "zai": "zai",
-    "elevenlabs": "elevenlabs",
-}
+
+# Maps prompture provider names to models.dev provider names.
+# Derived from ProviderDescriptor.models_dev_name so there is a single source of truth.
+def _build_provider_map() -> dict[str, str]:
+    from ..drivers.provider_descriptors import PROVIDER_DESCRIPTOR_MAP
+
+    return {
+        name: desc.models_dev_name
+        for name, desc in PROVIDER_DESCRIPTOR_MAP.items()
+        if desc.models_dev_name and not desc.alias_for
+    }
+
+
+PROVIDER_MAP: dict[str, str] = _build_provider_map()
 
 # Proxy providers that re-expose models from other providers.  Used by
 # _lookup_model() to trigger a cross-provider search when the proxy's own

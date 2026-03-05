@@ -2,11 +2,11 @@
 #
 # Usage:
 #   .\dev.ps1              # run all checks once (default)
-#   .\dev.ps1 watch-lint   # watch Python files and lint on changes
+#   .\dev.ps1 validate   # watch Python files and lint on changes
 #   .\dev.ps1 check        # run all checks once (alias)
 
 param(
-    [ValidateSet("check", "watch-lint")]
+    [ValidateSet("check", "validate")]
     [string]$Mode = "check"
 )
 
@@ -95,7 +95,7 @@ if ($Mode -eq "check") {
     return
 }
 
-# --- watch-lint mode ---
+# --- validate mode ---
 Write-Host "[dev] Watching for lint + type + test errors" -ForegroundColor Cyan
 Write-Host "[dev]   Source: $pyPath" -ForegroundColor DarkGray
 Write-Host "[dev] Press Ctrl+C to stop." -ForegroundColor DarkGray

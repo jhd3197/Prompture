@@ -33,6 +33,7 @@ from ..extraction.async_core import (
     extract_from_data,
     extract_from_pandas,
     extract_with_model,
+    extract_with_models,
     gather_extract,
     manual_extract_and_jsonify,
     render_output,
@@ -64,6 +65,7 @@ __all__ = [
     "extract_from_data",
     "extract_from_pandas",
     "extract_with_model",
+    "extract_with_models",
     "gather_extract",
     # Async driver factories
     "get_async_driver",

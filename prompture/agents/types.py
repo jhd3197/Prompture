@@ -253,6 +253,7 @@ class StreamEventType(str, enum.Enum):
     """Classification for events emitted during streaming agent execution."""
 
     text_delta = "text_delta"
+    thinking_delta = "thinking_delta"
     tool_call = "tool_call"
     tool_result = "tool_result"
     output = "output"

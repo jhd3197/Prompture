@@ -1,7 +1,8 @@
-"""Image generation driver registration and factory functions.
+"""Image generation driver factory functions.
 
-Registers built-in image gen drivers (OpenAI, Google, Stability, Grok) and provides
-high-level factory functions for instantiating image gen drivers by model string.
+Provides high-level factory functions for instantiating image gen drivers
+by model string.  Built-in driver registration is handled centrally by
+``provider_descriptors.register_all_builtin_drivers()``.
 
 Usage:
     from prompture.drivers.img_gen_registry import get_img_gen_driver_for_model
@@ -12,159 +13,12 @@ Usage:
 
 from typing import cast
 
-from ..infra.settings import settings
-from .async_google_img_gen_driver import AsyncGoogleImageGenDriver
-from .async_grok_img_gen_driver import AsyncGrokImageGenDriver
 from .async_img_gen_base import AsyncImageGenDriver
-from .async_openai_img_gen_driver import AsyncOpenAIImageGenDriver
-from .async_stability_img_gen_driver import AsyncStabilityImageGenDriver
-from .google_img_gen_driver import GoogleImageGenDriver
-from .grok_img_gen_driver import GrokImageGenDriver
 from .img_gen_base import ImageGenDriver
-from .openai_img_gen_driver import OpenAIImageGenDriver
 from .registry import (
     get_async_img_gen_driver_factory,
     get_img_gen_driver_factory,
-    register_async_img_gen_driver,
-    register_img_gen_driver,
 )
-from .stability_img_gen_driver import StabilityImageGenDriver
-
-# ── Register built-in OpenAI image gen drivers ────────────────────────────
-
-register_img_gen_driver(
-    "openai",
-    lambda model=None: OpenAIImageGenDriver(  # type: ignore[misc]
-        api_key=settings.openai_api_key,
-        model=model or "dall-e-3",
-    ),
-    overwrite=True,
-)
-
-register_async_img_gen_driver(
-    "openai",
-    lambda model=None: AsyncOpenAIImageGenDriver(  # type: ignore[misc]
-        api_key=settings.openai_api_key,
-        model=model or "dall-e-3",
-    ),
-    overwrite=True,
-)
-
-# ── Register built-in Google image gen drivers ────────────────────────────
-
-register_img_gen_driver(
-    "google",
-    lambda model=None: GoogleImageGenDriver(  # type: ignore[misc]
-        api_key=settings.google_api_key,
-        model=model or "imagen-3.0-generate-002",
-    ),
-    overwrite=True,
-)
-
-register_async_img_gen_driver(
-    "google",
-    lambda model=None: AsyncGoogleImageGenDriver(  # type: ignore[misc]
-        api_key=settings.google_api_key,
-        model=model or "imagen-3.0-generate-002",
-    ),
-    overwrite=True,
-)
-
-# ── Register built-in Stability AI image gen drivers ──────────────────────
-
-_stability_api_key = getattr(settings, "stability_api_key", None)
-_stability_endpoint = getattr(settings, "stability_endpoint", None)
-
-register_img_gen_driver(
-    "stability",
-    lambda model=None: StabilityImageGenDriver(  # type: ignore[misc]
-        api_key=_stability_api_key,
-        model=model or "stable-image-core",
-        endpoint=_stability_endpoint,
-    ),
-    overwrite=True,
-)
-
-register_async_img_gen_driver(
-    "stability",
-    lambda model=None: AsyncStabilityImageGenDriver(  # type: ignore[misc]
-        api_key=_stability_api_key,
-        model=model or "stable-image-core",
-        endpoint=_stability_endpoint,
-    ),
-    overwrite=True,
-)
-
-# ── Register built-in Grok/xAI image gen drivers ─────────────────────────
-
-register_img_gen_driver(
-    "grok",
-    lambda model=None: GrokImageGenDriver(  # type: ignore[misc]
-        api_key=settings.grok_api_key,
-        model=model or "grok-2-image",
-    ),
-    overwrite=True,
-)
-
-register_async_img_gen_driver(
-    "grok",
-    lambda model=None: AsyncGrokImageGenDriver(  # type: ignore[misc]
-        api_key=settings.grok_api_key,
-        model=model or "grok-2-image",
-    ),
-    overwrite=True,
-)
-
-# ── Aliases ────────────────────────────────────────────────────────────────
-register_img_gen_driver(
-    "gemini",
-    lambda model=None: GoogleImageGenDriver(  # type: ignore[misc]
-        api_key=settings.google_api_key,
-        model=model or "imagen-3.0-generate-002",
-    ),
-    overwrite=True,
-)
-register_async_img_gen_driver(
-    "gemini",
-    lambda model=None: AsyncGoogleImageGenDriver(  # type: ignore[misc]
-        api_key=settings.google_api_key,
-        model=model or "imagen-3.0-generate-002",
-    ),
-    overwrite=True,
-)
-register_img_gen_driver(
-    "xai",
-    lambda model=None: GrokImageGenDriver(  # type: ignore[misc]
-        api_key=settings.grok_api_key,
-        model=model or "grok-2-image",
-    ),
-    overwrite=True,
-)
-register_async_img_gen_driver(
-    "xai",
-    lambda model=None: AsyncGrokImageGenDriver(  # type: ignore[misc]
-        api_key=settings.grok_api_key,
-        model=model or "grok-2-image",
-    ),
-    overwrite=True,
-)
-register_img_gen_driver(
-    "dalle",
-    lambda model=None: OpenAIImageGenDriver(  # type: ignore[misc]
-        api_key=settings.openai_api_key,
-        model=model or "dall-e-3",
-    ),
-    overwrite=True,
-)
-register_async_img_gen_driver(
-    "dalle",
-    lambda model=None: AsyncOpenAIImageGenDriver(  # type: ignore[misc]
-        api_key=settings.openai_api_key,
-        model=model or "dall-e-3",
-    ),
-    overwrite=True,
-)
-
 
 # ── Factory functions ─────────────────────────────────────────────────────
 

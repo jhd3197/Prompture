@@ -362,7 +362,7 @@ class SkillPipeline:
                     continue
 
             # Handle TukuyChainStep directly (no LLM call needed)
-            from ..integrations.tukuy_bridge import TukuyChainStep
+            from ..extraction.tukuy_bridge import TukuyChainStep
 
             if isinstance(step.skill, TukuyChainStep):
                 if step.input_template:
