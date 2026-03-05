@@ -2,7 +2,8 @@ import json
 
 import click
 
-from ..drivers import OllamaDriver
+from ..drivers import OllamaDriver, get_driver
+from .formatters import format_table
 from .runner import run_suite_from_spec
 
 
@@ -25,6 +26,77 @@ def run(specfile: str, outfile: str) -> None:
     with open(outfile, "w", encoding="utf-8") as fh:
         json.dump(report, fh, indent=2, ensure_ascii=False)
     click.echo(f"Report saved to {outfile}")
+
+
+def _build_drivers(providers: list[str]) -> dict[str, object]:
+    """Instantiate a driver for each requested provider."""
+    drivers: dict[str, object] = {}
+    for name in providers:
+        try:
+            drivers[name] = get_driver(name)
+        except Exception as exc:
+            click.echo(f"Warning: could not load driver for '{name}': {exc}", err=True)
+    return drivers
+
+
+@cli.command("test-suite")
+@click.argument("specfile", type=click.Path(exists=True))
+@click.option("--providers", default=None, help="Comma-separated provider names (e.g., openai,ollama,groq).")
+@click.option("--models", default=None, help="Comma-separated model strings to override spec models.")
+@click.option("--format", "fmt", type=click.Choice(["json", "table"]), default="table", help="Output format.")
+@click.option("-o", "--output", "outfile", default=None, type=click.Path(), help="Save JSON report to file.")
+def test_suite(specfile: str, providers: str | None, models: str | None, fmt: str, outfile: str | None) -> None:
+    """Run a cross-model test suite from a spec file.
+
+    Uses the driver registry to auto-detect configured providers.
+    Override spec models with --providers or --models.
+
+    Examples:
+
+      prompture test-suite specs/basic_extraction.json
+
+      prompture test-suite specs/basic_extraction.json --providers openai,groq
+
+      prompture test-suite specs/basic_extraction.json --models openai/gpt-4o-mini,ollama/llama3.1:8b --format json -o report.json
+    """
+    with open(specfile, encoding="utf-8") as fh:
+        spec = json.load(fh)
+
+    # Override spec models if --models is provided
+    if models:
+        model_list = [m.strip() for m in models.split(",")]
+        spec["models"] = []
+        for model_str in model_list:
+            provider = model_str.split("/")[0] if "/" in model_str else model_str
+            spec["models"].append({"id": model_str, "driver": provider, "options": {}})
+
+    # Determine which providers we need drivers for
+    needed_providers = {m["driver"] for m in spec.get("models", [])}
+
+    if providers:
+        # User explicitly requested specific providers — filter to those
+        requested = {p.strip() for p in providers.split(",")}
+        needed_providers = needed_providers & requested
+
+    drivers = _build_drivers(list(needed_providers))
+
+    if not drivers:
+        click.echo("Error: no drivers could be loaded. Check your provider configuration.", err=True)
+        raise SystemExit(1)
+
+    click.echo(f"Running suite with drivers: {', '.join(sorted(drivers.keys()))}")
+    report = run_suite_from_spec(spec, drivers)  # type: ignore[arg-type]
+
+    if outfile:
+        with open(outfile, "w", encoding="utf-8") as fh:
+            json.dump(report, fh, indent=2, ensure_ascii=False)
+        click.echo(f"JSON report saved to {outfile}")
+
+    if fmt == "table":
+        click.echo("")
+        click.echo(format_table(report))
+    elif fmt == "json" and not outfile:
+        click.echo(json.dumps(report, indent=2, ensure_ascii=False))
 
 
 @cli.command()

@@ -409,6 +409,30 @@ class ToolRegistry:
     # Tukuy integration
     # ------------------------------------------------------------------
 
+    @classmethod
+    def from_tukuy_skills(
+        cls,
+        skills: list[Any],
+        *,
+        config: dict[str, Any] | None = None,
+    ) -> ToolRegistry:
+        """Create a :class:`ToolRegistry` from a list of tukuy skills.
+
+        Convenience factory that converts each tukuy ``Skill`` or
+        ``@skill``-decorated function into a :class:`ToolDefinition`
+        and registers it.
+
+        Args:
+            skills: List of tukuy ``Skill`` instances or ``@skill``-decorated functions.
+            config: Optional config dict passed to each skill.
+
+        Returns:
+            A populated :class:`ToolRegistry`.
+        """
+        registry = cls()
+        registry.add_tukuy_skills(skills, config=config)
+        return registry
+
     def add_tukuy_skill(
         self,
         skill_or_fn: Any,

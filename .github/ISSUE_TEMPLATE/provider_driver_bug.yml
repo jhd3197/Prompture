@@ -1,0 +1,98 @@
+name: Provider / Driver Bug
+description: Report a bug with a specific LLM provider driver
+labels: ["bug", "driver"]
+body:
+  - type: dropdown
+    id: provider
+    attributes:
+      label: Provider
+      options:
+        - openai
+        - claude (Anthropic)
+        - google (Gemini)
+        - groq
+        - grok (xAI)
+        - azure
+        - ollama
+        - lmstudio
+        - openrouter
+        - huggingface
+        - airllm
+        - local_http
+        - moonshot
+        - zai
+        - other
+    validations:
+      required: true
+
+  - type: input
+    id: model_string
+    attributes:
+      label: Model string
+      description: "The full model string you used (e.g., openai/gpt-4o-mini)"
+      placeholder: "provider/model-name"
+    validations:
+      required: true
+
+  - type: input
+    id: prompture_version
+    attributes:
+      label: Prompture version
+      placeholder: "1.0.49"
+    validations:
+      required: true
+
+  - type: input
+    id: python_version
+    attributes:
+      label: Python version
+      placeholder: "3.11.5"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows
+        - macOS
+        - Linux
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What happened and what did you expect?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Minimal code to reproduce the issue.
+      render: python
+    validations:
+      required: true
+
+  - type: textarea
+    id: traceback
+    attributes:
+      label: Full traceback
+      description: Paste the complete error output.
+      render: text
+    validations:
+      required: false
+
+  - type: textarea
+    id: env_config
+    attributes:
+      label: Environment configuration
+      description: "Relevant env vars (redact API keys). E.g.: OPENAI_API_KEY=sk-...redacted"
+      render: text
+    validations:
+      required: false

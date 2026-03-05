@@ -1,0 +1,107 @@
+{
+  "meta": {
+    "project": "prompture-validation",
+    "suite": "schema_validation",
+    "version": "1.0",
+    "description": "Tests with intentionally tricky schemas: nested objects, enums, arrays, optional fields."
+  },
+  "models": [
+    {"id": "openai/gpt-4o-mini", "driver": "openai", "options": {}},
+    {"id": "ollama/llama3.1:8b", "driver": "ollama", "options": {}}
+  ],
+  "tests": [
+    {
+      "id": "nested-address",
+      "prompt_template": "Extract the person and their address from: {text}",
+      "inputs": [
+        {"text": "Jane Doe lives at 742 Evergreen Terrace, Springfield, IL 62704, United States."}
+      ],
+      "schema": {
+        "type": "object",
+        "properties": {
+          "name": {"type": "string"},
+          "address": {
+            "type": "object",
+            "properties": {
+              "street": {"type": "string"},
+              "city": {"type": "string"},
+              "state": {"type": "string"},
+              "zip": {"type": "string"},
+              "country": {"type": "string"}
+            },
+            "required": ["street", "city", "state"]
+          }
+        },
+        "required": ["name", "address"]
+      }
+    },
+    {
+      "id": "enum-sentiment",
+      "prompt_template": "Analyze the sentiment of this review: {text}",
+      "inputs": [
+        {"text": "Absolutely loved this product! Best purchase I've made all year."},
+        {"text": "Terrible quality. Broke after two days. Complete waste of money."},
+        {"text": "It's okay. Nothing special but gets the job done."}
+      ],
+      "schema": {
+        "type": "object",
+        "properties": {
+          "sentiment": {
+            "type": "string",
+            "enum": ["positive", "negative", "neutral"]
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "summary": {"type": "string"}
+        },
+        "required": ["sentiment", "confidence"]
+      }
+    },
+    {
+      "id": "array-skills",
+      "prompt_template": "Extract the person's skills from their bio: {text}",
+      "inputs": [
+        {"text": "Sarah is a full-stack developer proficient in Python, TypeScript, React, PostgreSQL, and Docker. She also speaks French and Japanese."},
+        {"text": "Tom has 10 years of experience with Java and Spring Boot. He's also certified in AWS and Kubernetes."}
+      ],
+      "schema": {
+        "type": "object",
+        "properties": {
+          "name": {"type": "string"},
+          "technical_skills": {
+            "type": "array",
+            "items": {"type": "string"}
+          },
+          "other_skills": {
+            "type": "array",
+            "items": {"type": "string"}
+          },
+          "years_experience": {"type": "integer"}
+        },
+        "required": ["name", "technical_skills"]
+      }
+    },
+    {
+      "id": "nullable-fields",
+      "prompt_template": "Extract event details from: {text}",
+      "inputs": [
+        {"text": "Tech Conference 2026 will be held on March 15th at the Convention Center. Tickets are $299."},
+        {"text": "Free community meetup next Saturday at the public library. No registration required."}
+      ],
+      "schema": {
+        "type": "object",
+        "properties": {
+          "event_name": {"type": "string"},
+          "date": {"type": ["string", "null"]},
+          "venue": {"type": ["string", "null"]},
+          "price": {"type": ["number", "null"]},
+          "registration_required": {"type": "boolean"}
+        },
+        "required": ["event_name"]
+      }
+    }
+  ]
+}

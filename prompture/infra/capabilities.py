@@ -170,6 +170,7 @@ def _resolve_driver_class(spec: Any) -> type | None:
     try:
         module_path, cls_name = cls_path.rsplit(".", 1)
         import importlib
+
         mod = importlib.import_module(f"prompture.drivers.{module_path}")
         return getattr(mod, cls_name, None)
     except Exception:
@@ -203,5 +204,61 @@ def _populate_from_descriptors() -> None:
         logger.debug("Failed to auto-populate capabilities from descriptors", exc_info=True)
 
 
+def get_compatibility_matrix() -> str:
+    """Return an RST-formatted provider compatibility table.
+
+    Reads from the provider-level registry populated by
+    ``_populate_from_descriptors()``.
+    """
+    header = (
+        ".. list-table:: Provider Compatibility Matrix\n"
+        "   :header-rows: 1\n"
+        "   :widths: 20 12 12 12 12 12 20\n"
+        "\n"
+        "   * - Provider\n"
+        "     - JSON Mode\n"
+        "     - JSON Schema\n"
+        "     - Tool Use\n"
+        "     - Streaming\n"
+        "     - Vision\n"
+        "     - Best Strategy\n"
+    )
+
+    def _yn(val: bool | None) -> str:
+        if val is True:
+            return "Yes"
+        if val is False:
+            return "No"
+        return "?"
+
+    rows: list[str] = []
+    with _lock:
+        for name in sorted(_provider_caps):
+            caps = _provider_caps[name]
+            rows.append(
+                f"   * - ``{name}``\n"
+                f"     - {_yn(caps.json_mode)}\n"
+                f"     - {_yn(caps.json_schema)}\n"
+                f"     - {_yn(caps.tool_use)}\n"
+                f"     - {_yn(caps.streaming)}\n"
+                f"     - {_yn(caps.vision)}\n"
+                f"     - ``{caps.best_strategy()}``\n"
+            )
+
+    if not rows:
+        return header + "   * - *(no providers registered)*\n     -\n     -\n     -\n     -\n     -\n     -\n"
+    return header + "".join(rows)
+
+
 # Auto-populate on import
 _populate_from_descriptors()
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Prompture provider capabilities")
+    parser.add_argument("--matrix", action="store_true", help="Print RST compatibility matrix")
+    args = parser.parse_args()
+    if args.matrix:
+        print(get_compatibility_matrix())
