@@ -9,6 +9,7 @@ from prompture.drivers.ollama_driver import OllamaDriver
 from prompture.infra.discovery import (
     _discovery_cache,
     clear_discovery_cache,
+    display_available_models,
     get_available_audio_models,
     get_available_models,
 )
@@ -180,9 +181,7 @@ class TestElevenLabsTTSListModels:
         mock_resp = mock_httpx.get.return_value
         mock_resp.status_code = 200
         mock_resp.json.return_value = []
-        ElevenLabsTTSDriver.list_models(
-            api_key="k", endpoint="http://localhost:8080/v1"
-        )
+        ElevenLabsTTSDriver.list_models(api_key="k", endpoint="http://localhost:8080/v1")
         url = mock_httpx.get.call_args.args[0]
         assert url == "http://localhost:8080/v1/models"
 
@@ -284,9 +283,7 @@ class TestProvenanceTracking:
             mock_settings.grok_api_key = "xai-test"
             # Remove MODEL_PRICING so static path doesn't fire
             with patch.object(
-                type(
-                    __import__("prompture.drivers.grok_driver", fromlist=["GrokDriver"]).GrokDriver
-                ),
+                type(__import__("prompture.drivers.grok_driver", fromlist=["GrokDriver"]).GrokDriver),
                 "MODEL_PRICING",
                 {},
                 create=True,
@@ -381,3 +378,133 @@ class TestDiscoveryCache:
         # They should be different types
         assert isinstance(plain[0], str) if plain else True
         assert isinstance(enriched[0], dict) if enriched else True
+
+
+class TestGroupedDiscovery:
+    """Tests for grouped mode, include_source, and display_available_models."""
+
+    def _mock_settings(self, mock_settings):
+        """Configure mock_settings so only ollama is 'configured'."""
+        mock_settings.openai_api_key = None
+        mock_settings.azure_api_key = None
+        mock_settings.claude_api_key = None
+        mock_settings.google_api_key = None
+        mock_settings.groq_api_key = None
+        mock_settings.openrouter_api_key = None
+        mock_settings.grok_api_key = None
+        mock_settings.moonshot_api_key = None
+        mock_settings.zhipu_api_key = None
+        mock_settings.modelscope_api_key = None
+        mock_settings.cachibot_api_key = None
+        mock_settings.ollama_endpoint = "http://localhost:11434/api/generate"
+        mock_settings.lmstudio_endpoint = None
+        mock_settings.lmstudio_api_key = None
+
+    @patch.object(OllamaDriver, "list_models", return_value=["llama3:latest", "mistral:latest"])
+    def test_grouped_returns_dict(self, mock_list):
+        """grouped=True returns a dict keyed by provider with expected structure."""
+        with (
+            patch("prompture.infra.discovery.settings") as mock_settings,
+            patch("prompture.infra.model_rates.PROVIDER_MAP", {}),
+        ):
+            self._mock_settings(mock_settings)
+            result = get_available_models(grouped=True)
+
+        assert isinstance(result, dict)
+        assert "ollama" in result
+        info = result["ollama"]
+        assert "display_name" in info
+        assert "source" in info
+        assert "config_via" in info
+        assert "models" in info
+        assert info["display_name"] == "Ollama"
+        assert isinstance(info["models"], list)
+        assert "llama3:latest" in info["models"]
+        assert "mistral:latest" in info["models"]
+
+    @patch.object(OllamaDriver, "list_models", return_value=["llama3:latest"])
+    def test_grouped_source_labels(self, mock_list):
+        """Internal 'api' source maps to 'live' label in grouped mode."""
+        with (
+            patch("prompture.infra.discovery.settings") as mock_settings,
+            patch("prompture.infra.model_rates.PROVIDER_MAP", {}),
+        ):
+            self._mock_settings(mock_settings)
+            result = get_available_models(grouped=True)
+
+        assert result["ollama"]["source"] == "live"
+
+    @patch.object(OllamaDriver, "list_models", return_value=["llama3:latest"])
+    def test_grouped_config_via(self, mock_list):
+        """Always-available providers get config_via='local'."""
+        with (
+            patch("prompture.infra.discovery.settings") as mock_settings,
+            patch("prompture.infra.model_rates.PROVIDER_MAP", {}),
+        ):
+            self._mock_settings(mock_settings)
+            result = get_available_models(grouped=True)
+
+        assert result["ollama"]["config_via"] == "local"
+
+    @patch.object(OllamaDriver, "list_models", return_value=["llama3:latest"])
+    def test_grouped_config_via_api_key(self, mock_list):
+        """API-key providers get the uppercased settings attr as config_via."""
+        with (
+            patch("prompture.infra.discovery.settings") as mock_settings,
+            patch("prompture.infra.model_rates.PROVIDER_MAP", {}),
+        ):
+            self._mock_settings(mock_settings)
+            mock_settings.openai_api_key = "sk-test"
+            result = get_available_models(grouped=True)
+
+        if "openai" in result:
+            assert result["openai"]["config_via"] == "OPENAI_API_KEY"
+
+    @patch.object(OllamaDriver, "list_models", return_value=["llama3:latest"])
+    def test_include_source_returns_dicts(self, mock_list):
+        """include_source=True returns list of dicts with model and source fields."""
+        with (
+            patch("prompture.infra.discovery.settings") as mock_settings,
+            patch("prompture.infra.model_rates.PROVIDER_MAP", {}),
+        ):
+            self._mock_settings(mock_settings)
+            result = get_available_models(include_source=True)
+
+        assert isinstance(result, list)
+        assert len(result) > 0
+        for entry in result:
+            assert isinstance(entry, dict)
+            assert "model" in entry
+            assert "source" in entry
+            assert entry["source"] in ("live", "known", "catalog")
+
+    @patch.object(OllamaDriver, "list_models", return_value=["llama3:latest"])
+    def test_include_source_api_maps_to_live(self, mock_list):
+        """API-discovered models show source='live' in include_source mode."""
+        with (
+            patch("prompture.infra.discovery.settings") as mock_settings,
+            patch("prompture.infra.model_rates.PROVIDER_MAP", {}),
+        ):
+            self._mock_settings(mock_settings)
+            result = get_available_models(include_source=True)
+
+        ollama_entries = [e for e in result if e["model"] == "ollama/llama3:latest"]
+        assert len(ollama_entries) == 1
+        assert ollama_entries[0]["source"] == "live"
+
+    @patch.object(OllamaDriver, "list_models", return_value=["llama3:latest"])
+    def test_display_available_models(self, mock_list):
+        """display_available_models(return_string=True) returns a formatted string."""
+        with (
+            patch("prompture.infra.discovery.settings") as mock_settings,
+            patch("prompture.infra.model_rates.PROVIDER_MAP", {}),
+        ):
+            self._mock_settings(mock_settings)
+            output = display_available_models(return_string=True)
+
+        assert isinstance(output, str)
+        assert "Available Models" in output
+        assert "Ollama" in output
+        assert "llama3:latest" in output
+        assert "Legend:" in output
+        assert "live" in output

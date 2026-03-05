@@ -1173,9 +1173,12 @@ class AsyncAgent(Generic[DepsType]):
                             yield StreamEvent(event_type=StreamEventType.text_delta, data=event["text"])
                 else:
                     response_text = ""
-                    async for chunk in conv.ask_stream(effective_prompt, images=images):
-                        response_text += chunk
-                        yield StreamEvent(event_type=StreamEventType.text_delta, data=chunk)
+                    async for chunk in conv._ask_stream_raw(effective_prompt, images=images):
+                        if chunk["type"] == "delta":
+                            response_text += chunk["text"]
+                            yield StreamEvent(event_type=StreamEventType.text_delta, data=chunk["text"])
+                        elif chunk["type"] == "thinking_delta":
+                            yield StreamEvent(event_type=StreamEventType.thinking_delta, data=chunk["text"])
             finally:
                 if security_token is not None:
                     from tukuy.safety import reset_security_context

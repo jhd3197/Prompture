@@ -32,12 +32,21 @@ from typing import (
 
 import dateutil.parser
 from pydantic import BaseModel
-from tukuy import TukuyTransformer
 
 logger = logging.getLogger("prompture.tools")
 
-# Initialize Tukuy transformer
-TUKUY = TukuyTransformer()
+# Lazy Tukuy transformer — tukuy is an optional dependency ([toon] extra).
+_TUKUY = None
+
+
+def _get_tukuy() -> Any:
+    global _TUKUY
+    if _TUKUY is None:
+        from tukuy import TukuyTransformer
+
+        _TUKUY = TukuyTransformer()
+    return _TUKUY
+
 
 __all__ = [
     "as_list",
@@ -96,7 +105,7 @@ def parse_boolean(value: Any) -> bool:
 
     # Use Tukuy for more complex cases
     try:
-        return TUKUY.transform(s, ["bool"])  # type: ignore[no-any-return]
+        return _get_tukuy().transform(s, ["bool"])  # type: ignore[no-any-return]
     except Exception:
         # Fallback for unrecognized values - try to be reasonable
         # If it looks like a number, convert to bool
@@ -217,7 +226,7 @@ def parse_shorthand_number(
 
     # Use appropriate Tukuy transformer based on as_decimal
     transformer = ["shorthand_decimal"] if as_decimal else ["shorthand_number"]
-    num = TUKUY.transform(s, transformer)
+    num = _get_tukuy().transform(s, transformer)
 
     # Handle percent if needed
     if is_percent:
@@ -1006,16 +1015,15 @@ def clean_json_text(text: str) -> str:
     """
     text = strip_think_tags(text).strip()
 
-    if text.startswith("```"):
-        start_fence = text.find("```")
-        if start_fence != -1:
-            start_content = text.find("\n", start_fence)
-            if start_content != -1:
-                end_fence = text.find("```", start_content)
-                if end_fence != -1:
-                    return text[start_content + 1 : end_fence].strip()
-                else:
-                    return text[start_content + 1 :].strip()
+    start_fence = text.find("```")
+    if start_fence != -1:
+        start_content = text.find("\n", start_fence)
+        if start_content != -1:
+            end_fence = text.find("```", start_content)
+            if end_fence != -1:
+                return text[start_content + 1 : end_fence].strip()
+            else:
+                return text[start_content + 1 :].strip()
 
     start = text.find("{")
     end = text.rfind("}")

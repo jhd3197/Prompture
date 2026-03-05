@@ -144,9 +144,8 @@ class TestModelRouter:
             {"type": "object", "properties": {"name": {"type": "string"}}},
         )
 
-        # Should select a budget tier model
-        budget_indicators = ["mini", "haiku", "flash", "instant", "8b", "3b", "lite"]
-        assert any(ind in model.lower() for ind in budget_indicators), f"Expected budget model, got {model}"
+        # Should select a budget tier model (verified by tier classification, not name)
+        assert router._get_model_tier(model) == "budget", f"Expected budget model, got {model}"
         assert result.strategy == "cost_optimized"
 
     def test_quality_first_selects_premium(self):
@@ -413,43 +412,46 @@ class TestSelectModelForPydantic:
 class TestModelTierClassification:
     """Tests for model tier classification."""
 
-    def test_budget_tier_models(self):
-        """Budget tier models should be classified correctly."""
+    def test_pricing_based_classification(self):
+        """Models with pricing data should be classified by input cost."""
         router = ModelRouter()
 
-        budget_models = [
-            "openai/gpt-4o-mini",
-            "groq/llama-3.1-8b-instant",
-            "claude/claude-haiku-4-5-20251001",
-        ]
+        # Budget: input cost < $0.30/M
+        assert router._get_model_tier("openai/gpt-4o-mini") == "budget"
+        assert router._get_model_tier("groq/llama-3.1-8b-instant") == "budget"
 
-        for model in budget_models:
-            tier = router._get_model_tier(model)
-            assert tier == "budget", f"{model} should be budget tier, got {tier}"
+        # Standard: $0.30-$5/M
+        assert router._get_model_tier("openai/gpt-4o") == "standard"
+        assert router._get_model_tier("claude/claude-sonnet-4-6") == "standard"
 
-    def test_premium_tier_models(self):
-        """Premium tier models should be classified correctly."""
+        # Premium: >= $5/M
+        assert router._get_model_tier("claude/claude-opus-4-6") == "premium"
+
+    def test_pattern_fallback_for_unknown_models(self):
+        """Models without pricing data should use pattern-based fallback."""
         router = ModelRouter()
 
-        premium_models = [
-            "openai/gpt-4.1",
-            "openai/o3-mini",
-            "claude/claude-opus-4-20250514",
-        ]
+        # "mini" pattern → budget
+        assert router._get_model_tier("unknown/test-mini") == "budget"
+        # "opus" pattern → premium
+        assert router._get_model_tier("unknown/test-opus") == "premium"
+        # No matching pattern → standard
+        assert router._get_model_tier("unknown/test-model") == "standard"
 
-        for model in premium_models:
-            tier = router._get_model_tier(model)
-            assert tier == "premium", f"{model} should be premium tier, got {tier}"
-
-    def test_standard_tier_models(self):
-        """Standard tier models should be classified correctly."""
+    def test_reasoning_models_premium_by_pattern(self):
+        """Reasoning model patterns should be classified as premium."""
         router = ModelRouter()
 
-        standard_models = [
-            "openai/gpt-4o",
-            "claude/claude-sonnet-4-20250514",
-        ]
+        # Premium patterns checked before budget patterns, so "o3-mini"
+        # hits "o3" → premium (not "mini" → budget).
+        assert router._get_model_tier("unknown/o3-mini") == "premium"
+        assert router._get_model_tier("unknown/o1-mini") == "premium"
 
-        for model in standard_models:
-            tier = router._get_model_tier(model)
-            assert tier == "standard", f"{model} should be standard tier, got {tier}"
+    def test_tier_cache(self):
+        """Repeated lookups should return cached results."""
+        router = ModelRouter()
+
+        tier1 = router._get_model_tier("openai/gpt-4o")
+        tier2 = router._get_model_tier("openai/gpt-4o")
+        assert tier1 == tier2
+        assert "openai/gpt-4o" in router._tier_cache

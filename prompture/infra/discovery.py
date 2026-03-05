@@ -6,32 +6,10 @@ import dataclasses
 import hashlib
 import logging
 import os
+import sys
 from typing import Any, Literal, overload
 
-from ..drivers.airllm_driver import AirLLMDriver
-from ..drivers.azure_driver import AzureDriver
-from ..drivers.cachibot_driver import CachiBotDriver
-from ..drivers.claude_driver import ClaudeDriver
-from ..drivers.elevenlabs_stt_driver import ElevenLabsSTTDriver
-from ..drivers.elevenlabs_tts_driver import ElevenLabsTTSDriver
-from ..drivers.google_driver import GoogleDriver
-from ..drivers.google_img_gen_driver import GoogleImageGenDriver
-from ..drivers.grok_driver import GrokDriver
-from ..drivers.grok_img_gen_driver import GrokImageGenDriver
-from ..drivers.groq_driver import GroqDriver
-from ..drivers.lmstudio_driver import LMStudioDriver
-from ..drivers.local_http_driver import LocalHTTPDriver
-from ..drivers.modelscope_driver import ModelScopeDriver
-from ..drivers.moonshot_driver import MoonshotDriver
-from ..drivers.ollama_driver import OllamaDriver
-from ..drivers.openai_driver import OpenAIDriver
-from ..drivers.openai_embedding_driver import OpenAIEmbeddingDriver
-from ..drivers.openai_img_gen_driver import OpenAIImageGenDriver
-from ..drivers.openai_stt_driver import OpenAISTTDriver
-from ..drivers.openai_tts_driver import OpenAITTSDriver
-from ..drivers.openrouter_driver import OpenRouterDriver
-from ..drivers.stability_img_gen_driver import StabilityImageGenDriver
-from ..drivers.zai_driver import ZaiDriver
+from ..drivers.provider_descriptors import PROVIDER_DESCRIPTOR_MAP, ProviderDescriptor, _resolve_cls
 from .cache import MemoryCacheBackend
 from .provider_env import ProviderEnvironment
 from .settings import settings
@@ -51,7 +29,7 @@ def _cfg_value(
     attr: str,
     env_var: str | None = None,
 ) -> str | None:
-    """Resolve a config value: env → settings → os.getenv.
+    """Resolve a config value: env -> settings -> os.getenv.
 
     When *env* is provided, checks ``env.<attr>`` first, then ``settings.<attr>``.
     When *env* is ``None``, checks ``settings.<attr>`` then ``os.getenv(env_var)``.
@@ -61,36 +39,71 @@ def _cfg_value(
     return getattr(settings, attr, None) or (os.getenv(env_var) if env_var else None)
 
 
+def _is_provider_configured(provider_name: str, env: ProviderEnvironment | None = None) -> bool:
+    """Determine if a provider is configured, using its ProviderDescriptor metadata."""
+    desc = PROVIDER_DESCRIPTOR_MAP.get(provider_name)
+    if desc is None:
+        return False
+
+    # Skip aliases — only check canonical providers.
+    if desc.alias_for is not None:
+        return False
+
+    # Always-available providers (ollama, lmstudio, airllm).
+    if desc.always_available:
+        # local_http is special: only available if LOCAL_HTTP_ENDPOINT is set.
+        return not (provider_name == "local_http" and not os.getenv("LOCAL_HTTP_ENDPOINT"))
+
+    # Complex check (e.g. Azure).
+    if desc.is_configured_fn is not None:
+        return desc.is_configured_fn(env=env)
+
+    # Simple check: a settings attribute must be truthy.
+    if desc.is_configured_check:
+        env_var = desc.is_configured_check.upper()
+        return bool(_cfg_value(env, desc.is_configured_check, env_var))
+
+    return False
+
+
 def _get_list_models_kwargs(
     provider: str,
     env: ProviderEnvironment | None = None,
 ) -> dict[str, Any]:
     """Return keyword arguments for ``driver_cls.list_models()`` based on provider config."""
+    desc = PROVIDER_DESCRIPTOR_MAP.get(provider)
+    if desc is None:
+        return {}
+
     kw: dict[str, Any] = {}
-    if provider == "openai":
-        kw["api_key"] = _cfg_value(env, "openai_api_key", "OPENAI_API_KEY")
-    elif provider == "claude":
-        kw["api_key"] = _cfg_value(env, "claude_api_key", "CLAUDE_API_KEY")
-    elif provider == "google":
-        kw["api_key"] = _cfg_value(env, "google_api_key", "GOOGLE_API_KEY")
-    elif provider == "groq":
-        kw["api_key"] = _cfg_value(env, "groq_api_key", "GROQ_API_KEY")
-    elif provider == "grok":
-        kw["api_key"] = _cfg_value(env, "grok_api_key", "GROK_API_KEY")
-    elif provider == "openrouter":
-        kw["api_key"] = _cfg_value(env, "openrouter_api_key", "OPENROUTER_API_KEY")
-    elif provider == "moonshot":
-        kw["api_key"] = _cfg_value(env, "moonshot_api_key", "MOONSHOT_API_KEY")
-        kw["endpoint"] = _cfg_value(env, "moonshot_endpoint", "MOONSHOT_ENDPOINT")
-    elif provider == "cachibot":
-        kw["api_key"] = _cfg_value(env, "cachibot_api_key", "CACHIBOT_API_KEY")
-        kw["endpoint"] = _cfg_value(env, "cachibot_endpoint", "CACHIBOT_ENDPOINT")
-    elif provider == "ollama":
-        kw["endpoint"] = _cfg_value(env, "ollama_endpoint", "OLLAMA_ENDPOINT")
-    elif provider == "lmstudio":
-        kw["endpoint"] = _cfg_value(env, "lmstudio_endpoint", "LMSTUDIO_ENDPOINT")
-        kw["api_key"] = _cfg_value(env, "lmstudio_api_key", "LMSTUDIO_API_KEY")
+    for ctor_kwarg, settings_attr, env_var in desc.list_models_kwargs:
+        kw[ctor_kwarg] = _cfg_value(env, settings_attr, env_var)
     return kw
+
+
+_SOURCE_LABELS: dict[str, str] = {
+    "api": "live",
+    "static": "known",
+    "catalog": "catalog",
+}
+
+
+def _config_via(desc: ProviderDescriptor) -> str:
+    """Derive the env var or label that provides access for this provider."""
+    if desc.always_available:
+        return "local"
+    if desc.is_configured_check:
+        return desc.is_configured_check.upper()
+    # Complex providers (Azure) — use name-based convention.
+    return f"{desc.name.upper()}_API_KEY"
+
+
+def _get_driver_class(provider_name: str) -> type | None:
+    """Resolve the sync LLM driver class for a provider from its descriptor."""
+    desc = PROVIDER_DESCRIPTOR_MAP.get(provider_name)
+    if desc is None or desc.llm_sync is None:
+        return None
+    return _resolve_cls(desc.llm_sync.cls_path)
 
 
 @overload
@@ -98,6 +111,8 @@ def get_available_models(
     *,
     env: ProviderEnvironment | None = None,
     include_capabilities: Literal[False] = False,
+    include_source: Literal[False] = False,
+    grouped: Literal[False] = False,
     verified_only: bool = False,
     force_refresh: bool = False,
     cache_ttl: int | None = None,
@@ -105,24 +120,54 @@ def get_available_models(
 
 
 @overload
-def get_available_models(
+def get_available_models(  # type: ignore[overload-overlap]
     *,
     env: ProviderEnvironment | None = None,
     include_capabilities: Literal[True],
+    include_source: bool = False,
+    grouped: Literal[False] = False,
     verified_only: bool = False,
     force_refresh: bool = False,
     cache_ttl: int | None = None,
 ) -> list[dict[str, Any]]: ...
 
 
+@overload
+def get_available_models(
+    *,
+    env: ProviderEnvironment | None = None,
+    include_capabilities: Literal[False] = False,
+    include_source: Literal[True] = ...,
+    grouped: Literal[False] = False,
+    verified_only: bool = False,
+    force_refresh: bool = False,
+    cache_ttl: int | None = None,
+) -> list[dict[str, str]]: ...
+
+
+@overload
 def get_available_models(
     *,
     env: ProviderEnvironment | None = None,
     include_capabilities: bool = False,
+    include_source: bool = False,
+    grouped: Literal[True] = ...,
     verified_only: bool = False,
     force_refresh: bool = False,
     cache_ttl: int | None = None,
-) -> list[str] | list[dict[str, Any]]:
+) -> dict[str, dict[str, Any]]: ...
+
+
+def get_available_models(
+    *,
+    env: ProviderEnvironment | None = None,
+    include_capabilities: bool = False,
+    include_source: bool = False,
+    grouped: bool = False,
+    verified_only: bool = False,
+    force_refresh: bool = False,
+    cache_ttl: int | None = None,
+) -> list[str] | list[dict[str, Any]] | list[dict[str, str]] | dict[str, dict[str, Any]]:
     """Auto-detect available models based on configured drivers and environment variables.
 
     Iterates through supported providers and checks if they are configured
@@ -139,6 +184,13 @@ def get_available_models(
         include_capabilities: When ``True``, return enriched dicts with
             ``model``, ``provider``, ``model_id``, and ``capabilities``
             fields instead of plain ``"provider/model_id"`` strings.
+        include_source: When ``True`` (and ``grouped=False`` and
+            ``include_capabilities=False``), return ``list[dict]`` with
+            ``{"model": ..., "source": "live"|"known"|"catalog"}`` instead
+            of plain strings.
+        grouped: When ``True``, return a ``dict`` keyed by provider name
+            with ``display_name``, ``source``, ``config_via``, and
+            ``models`` fields.
         verified_only: When ``True``, only return models that have been
             successfully used (as recorded by the usage ledger).
         force_refresh: When ``True``, bypass the cache and re-query all
@@ -147,17 +199,19 @@ def get_available_models(
             ``_DISCOVERY_CACHE_TTL`` (300 s / 5 min).
 
     Returns:
-        A sorted list of unique model strings (default) or enriched dicts.
+        A sorted list of unique model strings (default), enriched dicts,
+        source-annotated dicts, or a grouped dict by provider.
     """
     ttl = cache_ttl if cache_ttl is not None else _DISCOVERY_CACHE_TTL
 
     # Build cache key — include a hash of env-provided fields to avoid cross-bot pollution
+    mode = "grouped" if grouped else ("source" if include_source else str(include_capabilities))
     if env is not None:
         env_sig = tuple(sorted(k for k, v in vars(env).items() if v is not None))
         env_hash = hashlib.md5(str(env_sig).encode(), usedforsecurity=False).hexdigest()[:8]
-        cache_key = f"models:{include_capabilities}:{verified_only}:env={env_hash}"
+        cache_key = f"models:{mode}:{verified_only}:env={env_hash}"
     else:
-        cache_key = f"models:{include_capabilities}:{verified_only}"
+        cache_key = f"models:{mode}:{verified_only}"
 
     if not force_refresh:
         cached = _discovery_cache.get(cache_key)
@@ -166,111 +220,44 @@ def get_available_models(
             return cached  # type: ignore[no-any-return]
 
     logger.debug("Discovery cache miss for key=%s — querying providers", cache_key)
-    # Maps model string → source ("api", "static", "catalog"). First source wins.
+    # Maps model string -> source ("api", "static", "catalog"). First source wins.
     model_sources: dict[str, str] = {}
     configured_providers: set[str] = set()
     # Providers where list_models() returned an authoritative model list.
     # For these, we trust the API response and skip MODEL_PRICING / models.dev additions.
     api_authoritative_providers: set[str] = set()
 
-    # Map of provider name to driver class
-    provider_classes = {
-        "openai": OpenAIDriver,
-        "azure": AzureDriver,
-        "claude": ClaudeDriver,
-        "google": GoogleDriver,
-        "groq": GroqDriver,
-        "openrouter": OpenRouterDriver,
-        "grok": GrokDriver,
-        "ollama": OllamaDriver,
-        "lmstudio": LMStudioDriver,
-        "local_http": LocalHTTPDriver,
-        "moonshot": MoonshotDriver,
-        "zai": ZaiDriver,
-        "modelscope": ModelScopeDriver,
-        "airllm": AirLLMDriver,
-        "cachibot": CachiBotDriver,
-    }
+    # Iterate canonical providers from descriptors (skip aliases).
+    for provider_name, desc in PROVIDER_DESCRIPTOR_MAP.items():
+        if desc.alias_for is not None:
+            continue
 
-    for provider, driver_cls in provider_classes.items():
         try:
-            is_configured = False
-
-            if provider == "openai":
-                if _cfg_value(env, "openai_api_key", "OPENAI_API_KEY"):
-                    is_configured = True
-            elif provider == "azure":
-                from ..drivers.azure_config import has_azure_config_resolver, has_registered_configs
-
-                if (
-                    (
-                        _cfg_value(env, "azure_api_key", "AZURE_API_KEY")
-                        and _cfg_value(env, "azure_api_endpoint", "AZURE_API_ENDPOINT")
-                    )
-                    or (settings.azure_claude_api_key or os.getenv("AZURE_CLAUDE_API_KEY"))
-                    or (settings.azure_mistral_api_key or os.getenv("AZURE_MISTRAL_API_KEY"))
-                    or has_registered_configs()
-                    or has_azure_config_resolver()
-                ):
-                    is_configured = True
-            elif provider == "claude":
-                if _cfg_value(env, "claude_api_key", "CLAUDE_API_KEY"):
-                    is_configured = True
-            elif provider == "google":
-                if _cfg_value(env, "google_api_key", "GOOGLE_API_KEY"):
-                    is_configured = True
-            elif provider == "groq":
-                if _cfg_value(env, "groq_api_key", "GROQ_API_KEY"):
-                    is_configured = True
-            elif provider == "openrouter":
-                if _cfg_value(env, "openrouter_api_key", "OPENROUTER_API_KEY"):
-                    is_configured = True
-            elif provider == "grok":
-                if _cfg_value(env, "grok_api_key", "GROK_API_KEY"):
-                    is_configured = True
-            elif provider == "moonshot":
-                if _cfg_value(env, "moonshot_api_key", "MOONSHOT_API_KEY"):
-                    is_configured = True
-            elif provider == "zai":
-                if _cfg_value(env, "zhipu_api_key", "ZHIPU_API_KEY"):
-                    is_configured = True
-            elif provider == "modelscope":
-                if _cfg_value(env, "modelscope_api_key", "MODELSCOPE_API_KEY"):
-                    is_configured = True
-            elif provider == "cachibot":
-                if _cfg_value(env, "cachibot_api_key", "CACHIBOT_API_KEY"):
-                    is_configured = True
-            elif provider == "airllm":
-                # AirLLM runs locally, always considered configured
-                is_configured = True
-            elif (
-                provider == "ollama"
-                or provider == "lmstudio"
-                or (provider == "local_http" and os.getenv("LOCAL_HTTP_ENDPOINT"))
-            ):
-                is_configured = True
-
-            if not is_configured:
+            if not _is_provider_configured(provider_name, env):
                 continue
 
-            configured_providers.add(provider)
+            configured_providers.add(provider_name)
+
+            driver_cls = _get_driver_class(provider_name)
+            if driver_cls is None:
+                continue
 
             # API-based Detection: call driver's list_models() classmethod.
             # When this succeeds, the API response is authoritative — it reflects
             # exactly which models the API key has access to.
-            api_kwargs = _get_list_models_kwargs(provider, env=env)
+            api_kwargs = _get_list_models_kwargs(provider_name, env=env)
             api_succeeded = False
             try:
                 api_models = driver_cls.list_models(**api_kwargs)  # type: ignore[attr-defined]
                 if api_models is not None:
                     api_succeeded = True
-                    api_authoritative_providers.add(provider)
+                    api_authoritative_providers.add(provider_name)
                     for model_id in api_models:
-                        model_str = f"{provider}/{model_id}"
+                        model_str = f"{provider_name}/{model_id}"
                         if model_str not in model_sources:
                             model_sources[model_str] = "api"
             except Exception as e:
-                logger.warning("list_models() failed for %s: %s", provider, e)
+                logger.warning("list_models() failed for %s: %s", provider_name, e)
 
             # Static Detection: Get models from the capabilities knowledge base
             # (JSON rate files) when the API didn't return an authoritative list
@@ -278,13 +265,13 @@ def get_available_models(
             if not api_succeeded:
                 from .model_rates import get_kb_models_for_provider
 
-                for model_id in get_kb_models_for_provider(provider):
-                    model_str = f"{provider}/{model_id}"
+                for model_id in get_kb_models_for_provider(provider_name):
+                    model_str = f"{provider_name}/{model_id}"
                     if model_str not in model_sources:
                         model_sources[model_str] = "static"
 
         except Exception as e:
-            logger.warning(f"Error detecting models for provider {provider}: {e}")
+            logger.warning(f"Error detecting models for provider {provider_name}: {e}")
             continue
 
     # Enrich with live model list from models.dev cache — but only for providers
@@ -317,6 +304,37 @@ def get_available_models(
 
     if verified_only and verified_set is not None:
         sorted_models = [m for m in sorted_models if m in verified_set]
+
+    # ── grouped mode ────────────────────────────────────────────────────
+    if grouped:
+        groups: dict[str, dict[str, Any]] = {}
+        for model_str in sorted_models:
+            provider = model_str.split("/", 1)[0]
+            model_id = model_str.split("/", 1)[1] if "/" in model_str else model_str
+            if provider not in groups:
+                prov_desc = PROVIDER_DESCRIPTOR_MAP.get(provider)
+                source_raw = model_sources.get(model_str, "static")
+                groups[provider] = {
+                    "display_name": prov_desc.display_name if prov_desc else provider,
+                    "source": _SOURCE_LABELS.get(source_raw, source_raw),
+                    "config_via": _config_via(prov_desc) if prov_desc else "unknown",
+                    "models": [],
+                }
+            groups[provider]["models"].append(model_id)
+        _discovery_cache.set(cache_key, groups, ttl=ttl)
+        return groups
+
+    # ── include_source mode ───────────────────────────────────────────
+    if include_source and not include_capabilities:
+        source_list: list[dict[str, str]] = [
+            {
+                "model": m,
+                "source": _SOURCE_LABELS.get(model_sources.get(m, "static"), model_sources.get(m, "static")),
+            }
+            for m in sorted_models
+        ]
+        _discovery_cache.set(cache_key, source_list, ttl=ttl)
+        return source_list
 
     if not include_capabilities:
         _discovery_cache.set(cache_key, sorted_models, ttl=ttl)
@@ -384,6 +402,62 @@ def get_available_models(
     return enriched
 
 
+def display_available_models(
+    *,
+    env: ProviderEnvironment | None = None,
+    force_refresh: bool = False,
+    return_string: bool = False,
+) -> str | None:
+    """Print a human-friendly grouped view of available models.
+
+    Args:
+        env: Optional per-consumer environment for isolated API keys.
+        force_refresh: Bypass cache and re-query providers.
+        return_string: When ``True``, return the formatted string instead
+            of printing it.
+
+    Returns:
+        The formatted string when *return_string* is ``True``, else ``None``.
+    """
+    grouped = get_available_models(grouped=True, env=env, force_refresh=force_refresh)
+
+    lines: list[str] = []
+    lines.append("Available Models")
+    lines.append("=" * 60)
+    lines.append("")
+
+    for provider, info in sorted(grouped.items()):
+        display = info.get("display_name") or provider
+        config = info.get("config_via", "unknown")
+        source = info.get("source", "unknown")
+        models: list[str] = info.get("models", [])
+        count = len(models)
+
+        if config == "local":
+            header = f"{display} (local)  [{source} - {count} model{'s' if count != 1 else ''}]"
+        else:
+            header = f"{display} (via {config})  [{source} - {count} model{'s' if count != 1 else ''}]"
+        lines.append(header)
+
+        # 3-column layout
+        col_width = 24
+        for i in range(0, len(models), 3):
+            row = models[i : i + 3]
+            lines.append("  " + "".join(m.ljust(col_width) for m in row).rstrip())
+
+        lines.append("")
+
+    lines.append("Legend: live = confirmed by API | known = from rate files | catalog = from models.dev")
+
+    output = "\n".join(lines)
+
+    if return_string:
+        return output
+
+    print(output, file=sys.stdout)
+    return None
+
+
 def clear_discovery_cache() -> None:
     """Clear the in-memory discovery cache, forcing the next call to re-query providers."""
     _discovery_cache.clear()
@@ -406,6 +480,9 @@ def get_available_audio_models(
     Returns:
         A sorted list of unique model strings (e.g. ``"openai/whisper-1"``).
     """
+    from ..drivers.openai_stt_driver import OpenAISTTDriver
+    from ..drivers.openai_tts_driver import OpenAITTSDriver
+
     available: set[str] = set()
 
     # OpenAI audio models (requires same openai_api_key as LLM)
@@ -421,6 +498,9 @@ def get_available_audio_models(
     elevenlabs_key = _cfg_value(env, "elevenlabs_api_key", "ELEVENLABS_API_KEY")
     elevenlabs_endpoint = getattr(settings, "elevenlabs_endpoint", None) or "https://api.elevenlabs.io/v1"
     if elevenlabs_key:
+        from ..drivers.elevenlabs_stt_driver import ElevenLabsSTTDriver
+        from ..drivers.elevenlabs_tts_driver import ElevenLabsTTSDriver
+
         if modality is None or modality == "stt":
             # STT: static list (no API listing endpoint for STT models)
             stt_models = ElevenLabsSTTDriver.list_models(api_key=elevenlabs_key, endpoint=elevenlabs_endpoint)
@@ -469,6 +549,11 @@ def get_available_image_gen_models(
     Returns:
         A sorted list of unique model strings (e.g. ``"openai/dall-e-3"``).
     """
+    from ..drivers.google_img_gen_driver import GoogleImageGenDriver
+    from ..drivers.grok_img_gen_driver import GrokImageGenDriver
+    from ..drivers.openai_img_gen_driver import OpenAIImageGenDriver
+    from ..drivers.stability_img_gen_driver import StabilityImageGenDriver
+
     available: set[str] = set()
 
     # OpenAI image gen models (requires openai_api_key)
@@ -523,6 +608,8 @@ def get_available_embedding_models(
     Returns:
         A sorted list of unique model strings (e.g. ``"openai/text-embedding-3-small"``).
     """
+    from ..drivers.openai_embedding_driver import OpenAIEmbeddingDriver
+
     available: set[str] = set()
 
     # OpenAI embedding models (requires openai_api_key)

@@ -24,6 +24,12 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("prompture.routing")
 
+# Tier cost thresholds (USD per 1M input tokens from models.dev).
+# Models above _PREMIUM are "premium", between _STANDARD and _PREMIUM are
+# "standard", and below _STANDARD are "budget".
+_TIER_THRESHOLD_PREMIUM = 5.0
+_TIER_THRESHOLD_STANDARD = 0.30
+
 # Type alias for routing strategies
 RoutingStrategy = Literal["cost_optimized", "quality_first", "balanced", "fast"]
 
@@ -132,10 +138,12 @@ class ModelRouter:
 
     def __init__(self, config: RoutingConfig | None = None) -> None:
         self.config = config or RoutingConfig()
-        self._model_tiers = self._build_model_tiers()
+        self._tier_cache: dict[str, str] = {}
+        self._fallback_models = self._build_fallback_models()
 
-    def _build_model_tiers(self) -> dict[str, list[str]]:
-        """Build model tiers: budget, standard, premium based on capabilities/cost.
+    @staticmethod
+    def _build_fallback_models() -> dict[str, list[str]]:
+        """Static fallback models used when discovery is unavailable.
 
         Returns:
             Dict mapping tier name to list of model strings.
@@ -144,23 +152,46 @@ class ModelRouter:
             "budget": [
                 "openai/gpt-4o-mini",
                 "groq/llama-3.1-8b-instant",
-                "groq/llama-3.2-3b-preview",
-                "claude/claude-haiku-4-5-20251001",
-                "google/gemini-2.0-flash-lite",
             ],
             "standard": [
                 "openai/gpt-4o",
                 "claude/claude-sonnet-4-6",
-                "google/gemini-2.0-flash",
-                "groq/llama-3.3-70b-versatile",
             ],
             "premium": [
-                "openai/gpt-4.1",
-                "openai/o3-mini",
+                "openai/o3",
                 "claude/claude-opus-4-6",
-                "google/gemini-2.5-pro-preview-06-05",
             ],
         }
+
+    def _classify_by_pricing(self, model: str) -> str | None:
+        """Classify a model into a tier using live pricing data.
+
+        Looks up the model's input cost from models.dev (via model_rates)
+        and assigns a tier based on cost thresholds.
+
+        Args:
+            model: Model string in ``provider/model_id`` format.
+
+        Returns:
+            Tier name or ``None`` if pricing data is unavailable.
+        """
+        if "/" not in model:
+            return None
+        provider, model_id = model.split("/", 1)
+        try:
+            from ..infra.model_rates import get_model_rates
+
+            rates = get_model_rates(provider, model_id)
+        except Exception:
+            return None
+        if not rates or "input" not in rates:
+            return None
+        input_cost = rates["input"]
+        if input_cost >= _TIER_THRESHOLD_PREMIUM:
+            return "premium"
+        if input_cost > _TIER_THRESHOLD_STANDARD:
+            return "standard"
+        return "budget"
 
     def _count_schema_fields(self, schema: dict[str, Any], depth: int = 0) -> tuple[int, int]:
         """Count fields and max nesting depth in a JSON schema.
@@ -368,9 +399,9 @@ class ModelRouter:
 
             available = get_available_models()
         except Exception:
-            logger.debug("Could not fetch available models, using tier defaults")
+            logger.debug("Could not fetch available models, using fallback defaults")
             available = []
-            for tier_models in self._model_tiers.values():
+            for tier_models in self._fallback_models.values():
                 available.extend(tier_models)
 
         # Apply provider preferences
@@ -394,22 +425,47 @@ class ModelRouter:
     def _get_model_tier(self, model: str) -> str:
         """Determine which tier a model belongs to.
 
+        Resolution order:
+        1. In-memory cache from previous classifications.
+        2. Live pricing data from models.dev (via ``_classify_by_pricing``).
+        3. Static fallback list (small set of well-known models).
+        4. Pattern-based heuristic on the model name.
+
         Args:
             model: Model string to classify.
 
         Returns:
-            Tier name ("budget", "standard", "premium", or "unknown").
+            Tier name ("budget", "standard", or "premium").
         """
-        for tier, models in self._model_tiers.items():
+        if model in self._tier_cache:
+            return self._tier_cache[model]
+
+        # Try pricing-based classification
+        tier = self._classify_by_pricing(model)
+        if tier is not None:
+            self._tier_cache[model] = tier
+            return tier
+
+        # Check static fallback list
+        for t, models in self._fallback_models.items():
             if model in models:
-                return tier
-        # Default classification based on model name patterns
+                self._tier_cache[model] = t
+                return t
+
+        # Pattern-based fallback — check premium first so reasoning
+        # models like "o3-mini" aren't misclassified as budget.
         model_lower = model.lower()
-        if any(x in model_lower for x in ["mini", "flash", "instant", "8b", "3b", "haiku"]):
-            return "budget"
-        if any(x in model_lower for x in ["opus", "pro", "o1", "o3", "4.1"]):
-            return "premium"
-        return "standard"
+        if any(x in model_lower for x in ["opus", "o1", "o3", "4.1"]):
+            tier = "premium"
+        elif any(x in model_lower for x in ["mini", "flash", "instant", "8b", "3b", "haiku", "lite"]):
+            tier = "budget"
+        elif "pro" in model_lower:
+            tier = "premium"
+        else:
+            tier = "standard"
+
+        self._tier_cache[model] = tier
+        return tier
 
     def _select_cheapest_capable(self, analysis: ComplexityAnalysis, available: list[str]) -> str:
         """Select cheapest model that can handle the task complexity.

@@ -20,6 +20,7 @@ from .callbacks import DriverCallbacks
 from .cost_mixin import AudioCostMixin, EmbeddingCostMixin
 from .discovery import (
     clear_discovery_cache,
+    display_available_models,
     get_available_audio_models,
     get_available_embedding_models,
     get_available_image_gen_models,
@@ -36,6 +37,12 @@ from .model_rates import (
     refresh_rates_cache,
 )
 from .provider_env import ProviderEnvironment
+
+try:
+    from .tukuy_backend import TukuyLLMBackend, create_tukuy_backend
+except ImportError:  # tukuy not installed
+    TukuyLLMBackend = None  # type: ignore[assignment,misc]
+    create_tukuy_backend = None  # type: ignore[assignment]
 from .session import UsageSession
 from .settings import settings
 from .tracker import configure_tracker, get_tracker
@@ -55,11 +62,14 @@ __all__ = [
     "RedisCacheBackend",
     "ResponseCache",
     "SQLiteCacheBackend",
+    "TukuyLLMBackend",
     "UsageSession",
     "clear_discovery_cache",
     "configure_cache",
     "configure_logging",
     "configure_tracker",
+    "create_tukuy_backend",
+    "display_available_models",
     "enforce_budget",
     "estimate_cost",
     "estimate_tokens",

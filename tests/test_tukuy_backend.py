@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from prompture.bridges.tukuy_backend import TukuyLLMBackend, create_tukuy_backend
+from prompture.infra.tukuy_backend import TukuyLLMBackend, create_tukuy_backend
 from prompture.exceptions import ConfigurationError, DriverError
 
 # ---------------------------------------------------------------------------
@@ -452,8 +452,8 @@ class TestCreateFactory:
             return mock_driver
 
         monkeypatch.setattr(
-            "prompture.bridges.tukuy_backend.create_tukuy_backend.__module__",
-            "prompture.bridges.tukuy_backend",
+            "prompture.infra.tukuy_backend.create_tukuy_backend.__module__",
+            "prompture.infra.tukuy_backend",
         )
         # Patch the import inside create_tukuy_backend
         import prompture.drivers as drivers_mod
@@ -710,7 +710,12 @@ class TestStream:
 # ---------------------------------------------------------------------------
 
 class TestExports:
-    def test_importable_from_bridges(self):
+    def test_importable_from_infra(self):
+        from prompture.infra.tukuy_backend import TukuyLLMBackend, create_tukuy_backend
+        assert TukuyLLMBackend is not None
+        assert create_tukuy_backend is not None
+
+    def test_importable_from_bridges_compat(self):
         from prompture.bridges import TukuyLLMBackend, create_tukuy_backend
         assert TukuyLLMBackend is not None
         assert create_tukuy_backend is not None

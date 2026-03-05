@@ -20,9 +20,12 @@ from pydantic import BaseModel
 from ..drivers.async_base import AsyncDriver
 from ..drivers.async_registry import get_async_driver_for_model
 from .core import (
+    ExtractResult,
+    _build_usage,
     _calculate_token_savings,
     _dataframe_to_toon,
     _json_to_toon,
+    _merge_usage,
     normalize_field_value,
 )
 from .fields import get_registry_snapshot
@@ -119,15 +122,7 @@ async def render_output(
                 cleaned = "\n".join(lines[1:-1])
         raw = cleaned
 
-    usage = {
-        **resp.get("meta", {}),
-        "raw_response": resp,
-        "total_tokens": resp.get("meta", {}).get("total_tokens", 0),
-        "prompt_tokens": resp.get("meta", {}).get("prompt_tokens", 0),
-        "completion_tokens": resp.get("meta", {}).get("completion_tokens", 0),
-        "cost": resp.get("meta", {}).get("cost", 0.0),
-        "model_name": model_name or getattr(driver, "model", ""),
-    }
+    usage = _build_usage(resp, model_name or getattr(driver, "model", ""))
 
     return {"text": raw, "usage": usage, "output_format": output_format}
 
@@ -230,15 +225,7 @@ async def ask_for_json(
         if output_format == "toon":
             toon_string = toon.encode(json_obj)
 
-        usage = {
-            **resp.get("meta", {}),
-            "raw_response": resp,
-            "total_tokens": resp.get("meta", {}).get("total_tokens", 0),
-            "prompt_tokens": resp.get("meta", {}).get("prompt_tokens", 0),
-            "completion_tokens": resp.get("meta", {}).get("completion_tokens", 0),
-            "cost": resp.get("meta", {}).get("cost", 0.0),
-            "model_name": model_name or getattr(driver, "model", ""),
-        }
+        usage = _build_usage(resp, model_name or getattr(driver, "model", ""))
         result = {"json_string": json_string, "json_object": json_obj, "usage": usage}
         if toon_string is not None:
             result["toon_string"] = toon_string
@@ -261,16 +248,12 @@ async def ask_for_json(
 
                 # Combine usage from original call and cleanup call
                 original_meta = resp.get("meta", {})
-                combined_usage = {
-                    "prompt_tokens": original_meta.get("prompt_tokens", 0) + cleanup_meta.get("prompt_tokens", 0),
-                    "completion_tokens": original_meta.get("completion_tokens", 0)
-                    + cleanup_meta.get("completion_tokens", 0),
-                    "total_tokens": original_meta.get("total_tokens", 0) + cleanup_meta.get("total_tokens", 0),
-                    "cost": original_meta.get("cost", 0.0) + cleanup_meta.get("cost", 0.0),
-                    "model_name": model_name or options.get("model", getattr(driver, "model", "")),
-                    "raw_response": resp,
-                    "ai_cleanup_used": True,
-                }
+                combined_usage = _merge_usage(
+                    original_meta,
+                    cleanup_meta,
+                    model_name or options.get("model", getattr(driver, "model", "")),
+                    resp,
+                )
 
                 result = {
                     "json_string": cleaned_fixed,
@@ -499,11 +482,7 @@ async def _async_chunked_extract(
         "model": model_instance,
     }
 
-    return type(  # type: ignore[no-any-return]
-        "ExtractResult",
-        (dict,),
-        {"__getattr__": lambda self, key: self.get(key), "__call__": lambda self: self["model"]},
-    )(result_dict)
+    return ExtractResult(result_dict)
 
 
 async def extract_with_model(
@@ -590,11 +569,7 @@ async def extract_with_model(
         if cached is not None:
             cached["usage"]["cache_hit"] = True
             cached["model"] = model_cls(**cached["json_object"])
-            return type(  # type: ignore[no-any-return]
-                "ExtractResult",
-                (dict,),
-                {"__getattr__": lambda self, key: self.get(key), "__call__": lambda self: self["model"]},
-            )(cached)
+            return ExtractResult(cached)
 
     logger.info("[async-extract] Starting async extract_with_model")
 
@@ -649,11 +624,7 @@ async def extract_with_model(
 
     result_dict["model"] = model_instance
 
-    return type(  # type: ignore[no-any-return]
-        "ExtractResult",
-        (dict,),
-        {"__getattr__": lambda self, key: self.get(key), "__call__": lambda self: self["model"]},
-    )(result_dict)
+    return ExtractResult(result_dict)
 
 
 async def stepwise_extract_with_model(
@@ -822,11 +793,7 @@ async def stepwise_extract_with_model(
             "field_results": field_results,
         }
         result["model"] = model_instance
-        return type(  # type: ignore[no-any-return]
-            "ExtractResult",
-            (dict,),
-            {"__getattr__": lambda self, key: self.get(key), "__call__": lambda self: self["model"]},
-        )(result)
+        return ExtractResult(result)
     except Exception as e:
         error_msg = f"Model validation error: {e!s}"
         if "validation_errors" not in accumulated_usage:
@@ -840,11 +807,197 @@ async def stepwise_extract_with_model(
             "field_results": field_results,
             "error": error_msg,
         }
-        return type(  # type: ignore[no-any-return]
-            "ExtractResult",
-            (dict,),
-            {"__getattr__": lambda self, key: self.get(key), "__call__": lambda self: None},
-        )(error_result)
+        return ExtractResult(error_result)
+
+
+async def extract_with_models(
+    model_cls: type[BaseModel],
+    text: str,
+    *,
+    models: list[str],
+    instruction_template: str = "Extract information from the following text:",
+    ai_cleanup: bool = True,
+    output_format: Literal["json", "toon"] = "json",
+    options: dict[str, Any] | None = None,
+    cache: bool | None = None,
+    json_mode: Literal["auto", "on", "off"] = "auto",
+    system_prompt: str | None = None,
+    fallback: BaseModel | None = None,
+    reasoning_strategy: str | ReasoningStrategyProtocol | None = None,
+) -> dict[str, Any]:
+    """Async version of :func:`extract_with_models`.
+
+    Tries each model in priority order, auto-selecting the extraction
+    strategy based on driver capabilities.  Full attempt tracking is
+    included in the result.
+
+    See the sync version for complete documentation.
+    """
+    import time
+
+    if not models:
+        raise ValueError("models list cannot be empty")
+    if not isinstance(text, str) or not text.strip():
+        raise ValueError("Text input cannot be empty")
+    if options is None:
+        options = {}
+
+    attempts: list[dict[str, Any]] = []
+    total_cost = 0.0
+    total_tokens = 0
+
+    for model_name in models:
+        # --- Resolve driver and detect capabilities ---
+        try:
+            driver = get_async_driver_for_model(model_name)
+        except Exception as exc:
+            attempts.append(
+                {
+                    "model": model_name,
+                    "status": "skipped",
+                    "reason": f"Driver error: {exc}",
+                    "strategy": None,
+                    "cost": 0.0,
+                    "prompt_tokens": 0,
+                    "completion_tokens": 0,
+                    "duration_ms": 0.0,
+                    "capabilities": {},
+                }
+            )
+            continue
+
+        has_json_mode = getattr(driver, "supports_json_mode", False)
+        has_json_schema = getattr(driver, "supports_json_schema", False)
+        capabilities = {"json_mode": has_json_mode, "json_schema": has_json_schema}
+
+        use_stepwise = not has_json_mode and not has_json_schema
+        strategy = "stepwise" if use_stepwise else "single"
+
+        t0 = time.perf_counter()
+        try:
+            raw_result: dict[str, Any]
+            if use_stepwise:
+                raw_result = await stepwise_extract_with_model(
+                    model_cls,
+                    text,
+                    model_name=model_name,
+                    instruction_template=instruction_template,
+                    ai_cleanup=ai_cleanup,
+                    options=options,
+                    json_mode=json_mode,
+                    system_prompt=system_prompt,
+                    reasoning_strategy=reasoning_strategy,
+                )
+            else:
+                raw_result = await extract_with_model(
+                    model_cls,
+                    text,
+                    model_name=model_name,
+                    instruction_template=instruction_template,
+                    ai_cleanup=ai_cleanup,
+                    output_format=output_format,
+                    options=options,
+                    cache=cache,
+                    json_mode=json_mode,
+                    system_prompt=system_prompt,
+                    reasoning_strategy=reasoning_strategy,
+                )
+            elapsed_ms = (time.perf_counter() - t0) * 1000
+
+            usage: dict[str, Any] = raw_result.get("usage", {})  # type: ignore[assignment]
+            attempt_cost: float = usage.get("cost", 0.0)
+            attempt_tokens: int = usage.get("total_tokens", 0)
+            total_cost += attempt_cost
+            total_tokens += attempt_tokens
+
+            attempts.append(
+                {
+                    "model": model_name,
+                    "status": "success",
+                    "reason": None,
+                    "strategy": strategy,
+                    "cost": attempt_cost,
+                    "prompt_tokens": usage.get("prompt_tokens", 0),
+                    "completion_tokens": usage.get("completion_tokens", 0),
+                    "duration_ms": round(elapsed_ms, 1),
+                    "capabilities": capabilities,
+                }
+            )
+
+            out: dict[str, Any] = {
+                "json_string": raw_result.get("json_string", ""),
+                "json_object": raw_result.get("json_object", {}),
+                "model": raw_result.get("model"),
+                "selected_model": model_name,
+                "strategy_used": strategy,
+                "attempts": attempts,
+                "total_cost": total_cost,
+                "total_tokens": total_tokens,
+                "total_attempts": sum(1 for a in attempts if a["status"] != "skipped"),
+                "usage": usage,
+            }
+            if "field_results" in raw_result:
+                out["field_results"] = raw_result["field_results"]
+            return ExtractResult(out)
+
+        except Exception as exc:
+            elapsed_ms = (time.perf_counter() - t0) * 1000
+            attempts.append(
+                {
+                    "model": model_name,
+                    "status": "failed",
+                    "reason": str(exc),
+                    "strategy": strategy,
+                    "cost": 0.0,
+                    "prompt_tokens": 0,
+                    "completion_tokens": 0,
+                    "duration_ms": round(elapsed_ms, 1),
+                    "capabilities": capabilities,
+                }
+            )
+            logger.warning(
+                "[extract_with_models] %s failed: %s, trying next model...",
+                model_name,
+                exc,
+            )
+            continue
+
+    # All models exhausted
+    if fallback is not None:
+        fallback_dict = fallback.model_dump()
+        fallback_json = json.dumps(fallback_dict)
+        return ExtractResult(
+            {
+                "json_string": fallback_json,
+                "json_object": json.loads(fallback_json),
+                "model": fallback,
+                "selected_model": None,
+                "strategy_used": None,
+                "attempts": attempts,
+                "total_cost": total_cost,
+                "total_tokens": total_tokens,
+                "total_attempts": sum(1 for a in attempts if a["status"] != "skipped"),
+                "usage": {
+                    "prompt_tokens": 0,
+                    "completion_tokens": 0,
+                    "total_tokens": 0,
+                    "cost": 0.0,
+                    "fallback_used": True,
+                },
+            }
+        )
+
+    from ..exceptions import ExtractionError
+
+    err = ExtractionError(
+        f"All {len(models)} models failed extraction. "
+        f"Tried: {', '.join(m for m in models)}. "
+        f"Total cost incurred: ${total_cost:.6f}"
+    )
+    err.attempts = attempts  # type: ignore[attr-defined]
+    err.total_cost = total_cost  # type: ignore[attr-defined]
+    err.total_tokens = total_tokens  # type: ignore[attr-defined]
+    raise err
 
 
 async def extract_from_data(

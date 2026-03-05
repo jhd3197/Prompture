@@ -25,39 +25,30 @@ For entry point discovery, add to your package's pyproject.toml:
 
 from __future__ import annotations
 
-import logging
-import sys
-from typing import Callable
+from .driver_registry import DriverFactory, DriverRegistry
 
-logger = logging.getLogger("prompture.drivers.registry")
+# Re-export the type alias so existing ``from .registry import DriverFactory`` keeps working.
+__all__ = ["DriverFactory"]
 
-# Type alias for driver factory functions
-# A factory takes an optional model name and returns a driver instance
-DriverFactory = Callable[[str | None], object]
+# ── Registry instances ─────────────────────────────────────────────────────
 
-# Internal registries - populated by built-in drivers and plugins
-_SYNC_REGISTRY: dict[str, DriverFactory] = {}
-_ASYNC_REGISTRY: dict[str, DriverFactory] = {}
+_llm_sync = DriverRegistry("LLM sync", "prompture.drivers", error_prefix="")
+_llm_async = DriverRegistry("LLM async", "prompture.async_drivers", error_prefix="")
 
-# Audio driver registries (STT and TTS)
-_STT_REGISTRY: dict[str, DriverFactory] = {}
-_ASYNC_STT_REGISTRY: dict[str, DriverFactory] = {}
-_TTS_REGISTRY: dict[str, DriverFactory] = {}
-_ASYNC_TTS_REGISTRY: dict[str, DriverFactory] = {}
+_stt_sync = DriverRegistry("STT sync", "prompture.stt_drivers", error_prefix="STT ")
+_stt_async = DriverRegistry("STT async", "prompture.async_stt_drivers", error_prefix="async STT ")
+_tts_sync = DriverRegistry("TTS sync", "prompture.tts_drivers", error_prefix="TTS ")
+_tts_async = DriverRegistry("TTS async", "prompture.async_tts_drivers", error_prefix="async TTS ")
 
-# Image generation driver registries
-_IMG_GEN_REGISTRY: dict[str, DriverFactory] = {}
-_ASYNC_IMG_GEN_REGISTRY: dict[str, DriverFactory] = {}
+_img_gen_sync = DriverRegistry("image gen sync", "prompture.img_gen_drivers", error_prefix="image gen ")
+_img_gen_async = DriverRegistry("image gen async", "prompture.async_img_gen_drivers", error_prefix="async image gen ")
 
-# Embedding driver registries
-_EMBEDDING_REGISTRY: dict[str, DriverFactory] = {}
-_ASYNC_EMBEDDING_REGISTRY: dict[str, DriverFactory] = {}
+_embedding_sync = DriverRegistry("embedding sync", "prompture.embedding_drivers", error_prefix="embedding ")
+_embedding_async = DriverRegistry(
+    "embedding async", "prompture.async_embedding_drivers", error_prefix="async embedding "
+)
 
-# Track whether entry points have been loaded
-_entry_points_loaded = False
-_audio_entry_points_loaded = False
-_img_gen_entry_points_loaded = False
-_embedding_entry_points_loaded = False
+# ── LLM sync ───────────────────────────────────────────────────────────────
 
 
 def register_driver(name: str, factory: DriverFactory, *, overwrite: bool = False) -> None:
@@ -81,11 +72,7 @@ def register_driver(name: str, factory: DriverFactory, *, overwrite: bool = Fals
         >>> register_driver("my_provider", my_factory)
         >>> driver = get_driver_for_model("my_provider/custom-model")
     """
-    name = name.lower()
-    if name in _SYNC_REGISTRY and not overwrite:
-        raise ValueError(f"Driver '{name}' is already registered. Use overwrite=True to replace it.")
-    _SYNC_REGISTRY[name] = factory
-    logger.debug("Registered sync driver: %s", name)
+    _llm_sync.register(name, factory, overwrite=overwrite)
 
 
 def register_async_driver(name: str, factory: DriverFactory, *, overwrite: bool = False) -> None:
@@ -109,11 +96,7 @@ def register_async_driver(name: str, factory: DriverFactory, *, overwrite: bool 
         >>> register_async_driver("my_provider", my_async_factory)
         >>> driver = get_async_driver_for_model("my_provider/custom-model")
     """
-    name = name.lower()
-    if name in _ASYNC_REGISTRY and not overwrite:
-        raise ValueError(f"Async driver '{name}' is already registered. Use overwrite=True to replace it.")
-    _ASYNC_REGISTRY[name] = factory
-    logger.debug("Registered async driver: %s", name)
+    _llm_async.register(name, factory, overwrite=overwrite)
 
 
 def unregister_driver(name: str) -> bool:
@@ -125,12 +108,7 @@ def unregister_driver(name: str) -> bool:
     Returns:
         True if the driver was unregistered, False if it wasn't registered.
     """
-    name = name.lower()
-    if name in _SYNC_REGISTRY:
-        del _SYNC_REGISTRY[name]
-        logger.debug("Unregistered sync driver: %s", name)
-        return True
-    return False
+    return _llm_sync.unregister(name)
 
 
 def unregister_async_driver(name: str) -> bool:
@@ -142,50 +120,27 @@ def unregister_async_driver(name: str) -> bool:
     Returns:
         True if the driver was unregistered, False if it wasn't registered.
     """
-    name = name.lower()
-    if name in _ASYNC_REGISTRY:
-        del _ASYNC_REGISTRY[name]
-        logger.debug("Unregistered async driver: %s", name)
-        return True
-    return False
+    return _llm_async.unregister(name)
 
 
 def list_registered_drivers() -> list[str]:
     """Return a sorted list of registered sync driver names."""
-    _ensure_entry_points_loaded()
-    return sorted(_SYNC_REGISTRY.keys())
+    return _llm_sync.list_names()
 
 
 def list_registered_async_drivers() -> list[str]:
     """Return a sorted list of registered async driver names."""
-    _ensure_entry_points_loaded()
-    return sorted(_ASYNC_REGISTRY.keys())
+    return _llm_async.list_names()
 
 
 def is_driver_registered(name: str) -> bool:
-    """Check if a sync driver is registered.
-
-    Args:
-        name: Provider name to check.
-
-    Returns:
-        True if the driver is registered.
-    """
-    _ensure_entry_points_loaded()
-    return name.lower() in _SYNC_REGISTRY
+    """Check if a sync driver is registered."""
+    return _llm_sync.is_registered(name)
 
 
 def is_async_driver_registered(name: str) -> bool:
-    """Check if an async driver is registered.
-
-    Args:
-        name: Provider name to check.
-
-    Returns:
-        True if the async driver is registered.
-    """
-    _ensure_entry_points_loaded()
-    return name.lower() in _ASYNC_REGISTRY
+    """Check if an async driver is registered."""
+    return _llm_async.is_registered(name)
 
 
 def get_driver_factory(name: str) -> DriverFactory:
@@ -200,11 +155,7 @@ def get_driver_factory(name: str) -> DriverFactory:
     Raises:
         ValueError: If the driver is not registered.
     """
-    _ensure_entry_points_loaded()
-    name = name.lower()
-    if name not in _SYNC_REGISTRY:
-        raise ValueError(f"Unsupported provider '{name}'")
-    return _SYNC_REGISTRY[name]
+    return _llm_sync.get_factory(name)
 
 
 def get_async_driver_factory(name: str) -> DriverFactory:
@@ -219,696 +170,336 @@ def get_async_driver_factory(name: str) -> DriverFactory:
     Raises:
         ValueError: If the async driver is not registered.
     """
-    _ensure_entry_points_loaded()
-    name = name.lower()
-    if name not in _ASYNC_REGISTRY:
-        raise ValueError(f"Unsupported provider '{name}'")
-    return _ASYNC_REGISTRY[name]
+    return _llm_async.get_factory(name)
 
 
 def load_entry_point_drivers() -> tuple[int, int]:
     """Load drivers from installed packages via entry points.
 
-    This function scans for packages that define entry points in the
-    ``prompture.drivers`` and ``prompture.async_drivers`` groups.
-
     Returns:
         A tuple of (sync_count, async_count) indicating how many drivers
         were loaded from entry points.
-
-    Example pyproject.toml for a plugin package:
-        [project.entry-points."prompture.drivers"]
-        my_provider = "my_package.drivers:create_my_driver"
-
-        [project.entry-points."prompture.async_drivers"]
-        my_provider = "my_package.drivers:create_my_async_driver"
     """
-    global _entry_points_loaded
-
-    sync_count = 0
-    async_count = 0
-
-    # Python 3.9+ has importlib.metadata in stdlib
-    # Python 3.8 needs importlib_metadata backport
-    if sys.version_info >= (3, 10):
-        from importlib.metadata import entry_points
-
-        sync_eps = entry_points(group="prompture.drivers")
-        async_eps = entry_points(group="prompture.async_drivers")
-    else:
-        from importlib.metadata import entry_points
-
-        all_eps = entry_points()
-        sync_eps = all_eps.get("prompture.drivers", [])
-        async_eps = all_eps.get("prompture.async_drivers", [])
-
-    # Load sync drivers
-    for ep in sync_eps:
-        try:
-            # Skip if already registered (built-in drivers take precedence)
-            if ep.name.lower() in _SYNC_REGISTRY:
-                logger.debug("Skipping entry point driver '%s' (already registered)", ep.name)
-                continue
-
-            factory = ep.load()
-            _SYNC_REGISTRY[ep.name.lower()] = factory
-            sync_count += 1
-            logger.info("Loaded sync driver from entry point: %s", ep.name)
-        except Exception:
-            logger.exception("Failed to load sync driver entry point: %s", ep.name)
-
-    # Load async drivers
-    for ep in async_eps:
-        try:
-            # Skip if already registered (built-in drivers take precedence)
-            if ep.name.lower() in _ASYNC_REGISTRY:
-                logger.debug("Skipping entry point async driver '%s' (already registered)", ep.name)
-                continue
-
-            factory = ep.load()
-            _ASYNC_REGISTRY[ep.name.lower()] = factory
-            async_count += 1
-            logger.info("Loaded async driver from entry point: %s", ep.name)
-        except Exception:
-            logger.exception("Failed to load async driver entry point: %s", ep.name)
-
-    _entry_points_loaded = True
-    return (sync_count, async_count)
+    return (_llm_sync.load_entry_points(), _llm_async.load_entry_points())
 
 
-def _ensure_entry_points_loaded() -> None:
-    """Ensure entry points have been loaded (lazy initialization)."""
-    global _entry_points_loaded
-    if not _entry_points_loaded:
-        load_entry_point_drivers()
-
-
-def _get_sync_registry() -> dict[str, DriverFactory]:
-    """Get the internal sync registry dict (for internal use by drivers/__init__.py)."""
-    _ensure_entry_points_loaded()
-    return _SYNC_REGISTRY
-
-
-def _get_async_registry() -> dict[str, DriverFactory]:
-    """Get the internal async registry dict (for internal use by drivers/async_registry.py)."""
-    _ensure_entry_points_loaded()
-    return _ASYNC_REGISTRY
-
-
-def _reset_registries() -> None:
-    """Reset registries to empty state (for testing only)."""
-    global \
-        _entry_points_loaded, \
-        _audio_entry_points_loaded, \
-        _img_gen_entry_points_loaded, \
-        _embedding_entry_points_loaded
-    _SYNC_REGISTRY.clear()
-    _ASYNC_REGISTRY.clear()
-    _STT_REGISTRY.clear()
-    _ASYNC_STT_REGISTRY.clear()
-    _TTS_REGISTRY.clear()
-    _ASYNC_TTS_REGISTRY.clear()
-    _IMG_GEN_REGISTRY.clear()
-    _ASYNC_IMG_GEN_REGISTRY.clear()
-    _EMBEDDING_REGISTRY.clear()
-    _ASYNC_EMBEDDING_REGISTRY.clear()
-    _entry_points_loaded = False
-    _audio_entry_points_loaded = False
-    _img_gen_entry_points_loaded = False
-    _embedding_entry_points_loaded = False
-
-
-# ── STT Driver Registration ───────────────────────────────────────────────
+# ── STT ────────────────────────────────────────────────────────────────────
 
 
 def register_stt_driver(name: str, factory: DriverFactory, *, overwrite: bool = False) -> None:
-    """Register a sync STT driver factory for a provider name.
-
-    Args:
-        name: Provider name (e.g., "openai"). Will be lowercased.
-        factory: Callable that takes an optional model name and returns an STT driver.
-        overwrite: If True, allow overwriting an existing registration.
-    """
-    name = name.lower()
-    if name in _STT_REGISTRY and not overwrite:
-        raise ValueError(f"STT driver '{name}' is already registered. Use overwrite=True to replace it.")
-    _STT_REGISTRY[name] = factory
-    logger.debug("Registered sync STT driver: %s", name)
+    """Register a sync STT driver factory for a provider name."""
+    _stt_sync.register(name, factory, overwrite=overwrite)
 
 
 def register_async_stt_driver(name: str, factory: DriverFactory, *, overwrite: bool = False) -> None:
     """Register an async STT driver factory for a provider name."""
-    name = name.lower()
-    if name in _ASYNC_STT_REGISTRY and not overwrite:
-        raise ValueError(f"Async STT driver '{name}' is already registered. Use overwrite=True to replace it.")
-    _ASYNC_STT_REGISTRY[name] = factory
-    logger.debug("Registered async STT driver: %s", name)
+    _stt_async.register(name, factory, overwrite=overwrite)
 
 
 def unregister_stt_driver(name: str) -> bool:
     """Unregister a sync STT driver by name."""
-    name = name.lower()
-    if name in _STT_REGISTRY:
-        del _STT_REGISTRY[name]
-        return True
-    return False
+    return _stt_sync.unregister(name)
 
 
 def unregister_async_stt_driver(name: str) -> bool:
     """Unregister an async STT driver by name."""
-    name = name.lower()
-    if name in _ASYNC_STT_REGISTRY:
-        del _ASYNC_STT_REGISTRY[name]
-        return True
-    return False
+    return _stt_async.unregister(name)
 
 
 def list_registered_stt_drivers() -> list[str]:
     """Return a sorted list of registered sync STT driver names."""
-    _ensure_audio_entry_points_loaded()
-    return sorted(_STT_REGISTRY.keys())
+    return _stt_sync.list_names()
 
 
 def list_registered_async_stt_drivers() -> list[str]:
     """Return a sorted list of registered async STT driver names."""
-    _ensure_audio_entry_points_loaded()
-    return sorted(_ASYNC_STT_REGISTRY.keys())
+    return _stt_async.list_names()
 
 
 def is_stt_driver_registered(name: str) -> bool:
     """Check if a sync STT driver is registered."""
-    _ensure_audio_entry_points_loaded()
-    return name.lower() in _STT_REGISTRY
+    return _stt_sync.is_registered(name)
 
 
 def is_async_stt_driver_registered(name: str) -> bool:
     """Check if an async STT driver is registered."""
-    _ensure_audio_entry_points_loaded()
-    return name.lower() in _ASYNC_STT_REGISTRY
+    return _stt_async.is_registered(name)
 
 
 def get_stt_driver_factory(name: str) -> DriverFactory:
     """Get a registered sync STT driver factory by name."""
-    _ensure_audio_entry_points_loaded()
-    name = name.lower()
-    if name not in _STT_REGISTRY:
-        raise ValueError(f"Unsupported STT provider '{name}'")
-    return _STT_REGISTRY[name]
+    return _stt_sync.get_factory(name)
 
 
 def get_async_stt_driver_factory(name: str) -> DriverFactory:
     """Get a registered async STT driver factory by name."""
-    _ensure_audio_entry_points_loaded()
-    name = name.lower()
-    if name not in _ASYNC_STT_REGISTRY:
-        raise ValueError(f"Unsupported async STT provider '{name}'")
-    return _ASYNC_STT_REGISTRY[name]
+    return _stt_async.get_factory(name)
 
 
-# ── TTS Driver Registration ───────────────────────────────────────────────
+# ── TTS ────────────────────────────────────────────────────────────────────
 
 
 def register_tts_driver(name: str, factory: DriverFactory, *, overwrite: bool = False) -> None:
-    """Register a sync TTS driver factory for a provider name.
-
-    Args:
-        name: Provider name (e.g., "openai"). Will be lowercased.
-        factory: Callable that takes an optional model name and returns a TTS driver.
-        overwrite: If True, allow overwriting an existing registration.
-    """
-    name = name.lower()
-    if name in _TTS_REGISTRY and not overwrite:
-        raise ValueError(f"TTS driver '{name}' is already registered. Use overwrite=True to replace it.")
-    _TTS_REGISTRY[name] = factory
-    logger.debug("Registered sync TTS driver: %s", name)
+    """Register a sync TTS driver factory for a provider name."""
+    _tts_sync.register(name, factory, overwrite=overwrite)
 
 
 def register_async_tts_driver(name: str, factory: DriverFactory, *, overwrite: bool = False) -> None:
     """Register an async TTS driver factory for a provider name."""
-    name = name.lower()
-    if name in _ASYNC_TTS_REGISTRY and not overwrite:
-        raise ValueError(f"Async TTS driver '{name}' is already registered. Use overwrite=True to replace it.")
-    _ASYNC_TTS_REGISTRY[name] = factory
-    logger.debug("Registered async TTS driver: %s", name)
+    _tts_async.register(name, factory, overwrite=overwrite)
 
 
 def unregister_tts_driver(name: str) -> bool:
     """Unregister a sync TTS driver by name."""
-    name = name.lower()
-    if name in _TTS_REGISTRY:
-        del _TTS_REGISTRY[name]
-        return True
-    return False
+    return _tts_sync.unregister(name)
 
 
 def unregister_async_tts_driver(name: str) -> bool:
     """Unregister an async TTS driver by name."""
-    name = name.lower()
-    if name in _ASYNC_TTS_REGISTRY:
-        del _ASYNC_TTS_REGISTRY[name]
-        return True
-    return False
+    return _tts_async.unregister(name)
 
 
 def list_registered_tts_drivers() -> list[str]:
     """Return a sorted list of registered sync TTS driver names."""
-    _ensure_audio_entry_points_loaded()
-    return sorted(_TTS_REGISTRY.keys())
+    return _tts_sync.list_names()
 
 
 def list_registered_async_tts_drivers() -> list[str]:
     """Return a sorted list of registered async TTS driver names."""
-    _ensure_audio_entry_points_loaded()
-    return sorted(_ASYNC_TTS_REGISTRY.keys())
+    return _tts_async.list_names()
 
 
 def is_tts_driver_registered(name: str) -> bool:
     """Check if a sync TTS driver is registered."""
-    _ensure_audio_entry_points_loaded()
-    return name.lower() in _TTS_REGISTRY
+    return _tts_sync.is_registered(name)
 
 
 def is_async_tts_driver_registered(name: str) -> bool:
     """Check if an async TTS driver is registered."""
-    _ensure_audio_entry_points_loaded()
-    return name.lower() in _ASYNC_TTS_REGISTRY
+    return _tts_async.is_registered(name)
 
 
 def get_tts_driver_factory(name: str) -> DriverFactory:
     """Get a registered sync TTS driver factory by name."""
-    _ensure_audio_entry_points_loaded()
-    name = name.lower()
-    if name not in _TTS_REGISTRY:
-        raise ValueError(f"Unsupported TTS provider '{name}'")
-    return _TTS_REGISTRY[name]
+    return _tts_sync.get_factory(name)
 
 
 def get_async_tts_driver_factory(name: str) -> DriverFactory:
     """Get a registered async TTS driver factory by name."""
-    _ensure_audio_entry_points_loaded()
-    name = name.lower()
-    if name not in _ASYNC_TTS_REGISTRY:
-        raise ValueError(f"Unsupported async TTS provider '{name}'")
-    return _ASYNC_TTS_REGISTRY[name]
+    return _tts_async.get_factory(name)
 
 
-# ── Audio Registry Internals ──────────────────────────────────────────────
-
-
-def _get_stt_registry() -> dict[str, DriverFactory]:
-    """Get the internal sync STT registry dict."""
-    _ensure_audio_entry_points_loaded()
-    return _STT_REGISTRY
-
-
-def _get_async_stt_registry() -> dict[str, DriverFactory]:
-    """Get the internal async STT registry dict."""
-    _ensure_audio_entry_points_loaded()
-    return _ASYNC_STT_REGISTRY
-
-
-def _get_tts_registry() -> dict[str, DriverFactory]:
-    """Get the internal sync TTS registry dict."""
-    _ensure_audio_entry_points_loaded()
-    return _TTS_REGISTRY
-
-
-def _get_async_tts_registry() -> dict[str, DriverFactory]:
-    """Get the internal async TTS registry dict."""
-    _ensure_audio_entry_points_loaded()
-    return _ASYNC_TTS_REGISTRY
+# ── Audio entry points ─────────────────────────────────────────────────────
 
 
 def load_audio_entry_point_drivers() -> tuple[int, int, int, int]:
     """Load audio drivers from installed packages via entry points.
 
-    Scans for ``prompture.stt_drivers``, ``prompture.async_stt_drivers``,
-    ``prompture.tts_drivers``, and ``prompture.async_tts_drivers`` groups.
-
     Returns:
         A tuple of (stt_sync, stt_async, tts_sync, tts_async) counts.
     """
-    global _audio_entry_points_loaded
-
-    counts = [0, 0, 0, 0]
-    groups = [
-        ("prompture.stt_drivers", _STT_REGISTRY, 0),
-        ("prompture.async_stt_drivers", _ASYNC_STT_REGISTRY, 1),
-        ("prompture.tts_drivers", _TTS_REGISTRY, 2),
-        ("prompture.async_tts_drivers", _ASYNC_TTS_REGISTRY, 3),
-    ]
-
-    if sys.version_info >= (3, 10):
-        from importlib.metadata import entry_points as _ep_func
-
-        for group_name, registry, idx in groups:
-            for ep in _ep_func(group=group_name):
-                try:
-                    if ep.name.lower() in registry:
-                        continue
-                    factory = ep.load()
-                    registry[ep.name.lower()] = factory
-                    counts[idx] += 1
-                    logger.info("Loaded audio driver from entry point: %s (%s)", ep.name, group_name)
-                except Exception:
-                    logger.exception("Failed to load audio driver entry point: %s", ep.name)
-    else:
-        from importlib.metadata import entry_points as _ep_func
-
-        all_eps = _ep_func()
-        for group_name, registry, idx in groups:
-            for ep in all_eps.get(group_name, []):
-                try:
-                    if ep.name.lower() in registry:
-                        continue
-                    factory = ep.load()
-                    registry[ep.name.lower()] = factory
-                    counts[idx] += 1
-                except Exception:
-                    logger.exception("Failed to load audio driver entry point: %s", ep.name)
-
-    _audio_entry_points_loaded = True
-    return (counts[0], counts[1], counts[2], counts[3])
+    return (
+        _stt_sync.load_entry_points(),
+        _stt_async.load_entry_points(),
+        _tts_sync.load_entry_points(),
+        _tts_async.load_entry_points(),
+    )
 
 
-def _ensure_audio_entry_points_loaded() -> None:
-    """Ensure audio entry points have been loaded (lazy initialization)."""
-    global _audio_entry_points_loaded
-    if not _audio_entry_points_loaded:
-        load_audio_entry_point_drivers()
-
-
-# ── Image Gen Driver Registration ─────────────────────────────────────────
+# ── Image Gen ──────────────────────────────────────────────────────────────
 
 
 def register_img_gen_driver(name: str, factory: DriverFactory, *, overwrite: bool = False) -> None:
-    """Register a sync image generation driver factory for a provider name.
-
-    Args:
-        name: Provider name (e.g., "openai"). Will be lowercased.
-        factory: Callable that takes an optional model name and returns an image gen driver.
-        overwrite: If True, allow overwriting an existing registration.
-    """
-    name = name.lower()
-    if name in _IMG_GEN_REGISTRY and not overwrite:
-        raise ValueError(f"Image gen driver '{name}' is already registered. Use overwrite=True to replace it.")
-    _IMG_GEN_REGISTRY[name] = factory
-    logger.debug("Registered sync image gen driver: %s", name)
+    """Register a sync image generation driver factory for a provider name."""
+    _img_gen_sync.register(name, factory, overwrite=overwrite)
 
 
 def register_async_img_gen_driver(name: str, factory: DriverFactory, *, overwrite: bool = False) -> None:
     """Register an async image generation driver factory for a provider name."""
-    name = name.lower()
-    if name in _ASYNC_IMG_GEN_REGISTRY and not overwrite:
-        raise ValueError(f"Async image gen driver '{name}' is already registered. Use overwrite=True to replace it.")
-    _ASYNC_IMG_GEN_REGISTRY[name] = factory
-    logger.debug("Registered async image gen driver: %s", name)
+    _img_gen_async.register(name, factory, overwrite=overwrite)
 
 
 def unregister_img_gen_driver(name: str) -> bool:
     """Unregister a sync image gen driver by name."""
-    name = name.lower()
-    if name in _IMG_GEN_REGISTRY:
-        del _IMG_GEN_REGISTRY[name]
-        return True
-    return False
+    return _img_gen_sync.unregister(name)
 
 
 def unregister_async_img_gen_driver(name: str) -> bool:
     """Unregister an async image gen driver by name."""
-    name = name.lower()
-    if name in _ASYNC_IMG_GEN_REGISTRY:
-        del _ASYNC_IMG_GEN_REGISTRY[name]
-        return True
-    return False
+    return _img_gen_async.unregister(name)
 
 
 def list_registered_img_gen_drivers() -> list[str]:
     """Return a sorted list of registered sync image gen driver names."""
-    _ensure_img_gen_entry_points_loaded()
-    return sorted(_IMG_GEN_REGISTRY.keys())
+    return _img_gen_sync.list_names()
 
 
 def list_registered_async_img_gen_drivers() -> list[str]:
     """Return a sorted list of registered async image gen driver names."""
-    _ensure_img_gen_entry_points_loaded()
-    return sorted(_ASYNC_IMG_GEN_REGISTRY.keys())
+    return _img_gen_async.list_names()
 
 
 def is_img_gen_driver_registered(name: str) -> bool:
     """Check if a sync image gen driver is registered."""
-    _ensure_img_gen_entry_points_loaded()
-    return name.lower() in _IMG_GEN_REGISTRY
+    return _img_gen_sync.is_registered(name)
 
 
 def is_async_img_gen_driver_registered(name: str) -> bool:
     """Check if an async image gen driver is registered."""
-    _ensure_img_gen_entry_points_loaded()
-    return name.lower() in _ASYNC_IMG_GEN_REGISTRY
+    return _img_gen_async.is_registered(name)
 
 
 def get_img_gen_driver_factory(name: str) -> DriverFactory:
     """Get a registered sync image gen driver factory by name."""
-    _ensure_img_gen_entry_points_loaded()
-    name = name.lower()
-    if name not in _IMG_GEN_REGISTRY:
-        raise ValueError(f"Unsupported image gen provider '{name}'")
-    return _IMG_GEN_REGISTRY[name]
+    return _img_gen_sync.get_factory(name)
 
 
 def get_async_img_gen_driver_factory(name: str) -> DriverFactory:
     """Get a registered async image gen driver factory by name."""
-    _ensure_img_gen_entry_points_loaded()
-    name = name.lower()
-    if name not in _ASYNC_IMG_GEN_REGISTRY:
-        raise ValueError(f"Unsupported async image gen provider '{name}'")
-    return _ASYNC_IMG_GEN_REGISTRY[name]
-
-
-# ── Image Gen Registry Internals ──────────────────────────────────────────
-
-
-def _get_img_gen_registry() -> dict[str, DriverFactory]:
-    """Get the internal sync image gen registry dict."""
-    _ensure_img_gen_entry_points_loaded()
-    return _IMG_GEN_REGISTRY
-
-
-def _get_async_img_gen_registry() -> dict[str, DriverFactory]:
-    """Get the internal async image gen registry dict."""
-    _ensure_img_gen_entry_points_loaded()
-    return _ASYNC_IMG_GEN_REGISTRY
+    return _img_gen_async.get_factory(name)
 
 
 def load_img_gen_entry_point_drivers() -> tuple[int, int]:
     """Load image gen drivers from installed packages via entry points.
 
-    Scans for ``prompture.img_gen_drivers`` and ``prompture.async_img_gen_drivers`` groups.
-
     Returns:
         A tuple of (sync_count, async_count) counts.
     """
-    global _img_gen_entry_points_loaded
-
-    counts = [0, 0]
-    groups = [
-        ("prompture.img_gen_drivers", _IMG_GEN_REGISTRY, 0),
-        ("prompture.async_img_gen_drivers", _ASYNC_IMG_GEN_REGISTRY, 1),
-    ]
-
-    if sys.version_info >= (3, 10):
-        from importlib.metadata import entry_points as _ep_func
-
-        for group_name, registry, idx in groups:
-            for ep in _ep_func(group=group_name):
-                try:
-                    if ep.name.lower() in registry:
-                        continue
-                    factory = ep.load()
-                    registry[ep.name.lower()] = factory
-                    counts[idx] += 1
-                    logger.info("Loaded image gen driver from entry point: %s (%s)", ep.name, group_name)
-                except Exception:
-                    logger.exception("Failed to load image gen driver entry point: %s", ep.name)
-    else:
-        from importlib.metadata import entry_points as _ep_func
-
-        all_eps = _ep_func()
-        for group_name, registry, idx in groups:
-            for ep in all_eps.get(group_name, []):
-                try:
-                    if ep.name.lower() in registry:
-                        continue
-                    factory = ep.load()
-                    registry[ep.name.lower()] = factory
-                    counts[idx] += 1
-                except Exception:
-                    logger.exception("Failed to load image gen driver entry point: %s", ep.name)
-
-    _img_gen_entry_points_loaded = True
-    return (counts[0], counts[1])
+    return (_img_gen_sync.load_entry_points(), _img_gen_async.load_entry_points())
 
 
-def _ensure_img_gen_entry_points_loaded() -> None:
-    """Ensure image gen entry points have been loaded (lazy initialization)."""
-    global _img_gen_entry_points_loaded
-    if not _img_gen_entry_points_loaded:
-        load_img_gen_entry_point_drivers()
-
-
-# ── Embedding Driver Registration ──────────────────────────────────────────
+# ── Embedding ──────────────────────────────────────────────────────────────
 
 
 def register_embedding_driver(name: str, factory: DriverFactory, *, overwrite: bool = False) -> None:
-    """Register a sync embedding driver factory for a provider name.
-
-    Args:
-        name: Provider name (e.g., "openai"). Will be lowercased.
-        factory: Callable that takes an optional model name and returns an embedding driver.
-        overwrite: If True, allow overwriting an existing registration.
-    """
-    name = name.lower()
-    if name in _EMBEDDING_REGISTRY and not overwrite:
-        raise ValueError(f"Embedding driver '{name}' is already registered. Use overwrite=True to replace it.")
-    _EMBEDDING_REGISTRY[name] = factory
-    logger.debug("Registered sync embedding driver: %s", name)
+    """Register a sync embedding driver factory for a provider name."""
+    _embedding_sync.register(name, factory, overwrite=overwrite)
 
 
 def register_async_embedding_driver(name: str, factory: DriverFactory, *, overwrite: bool = False) -> None:
     """Register an async embedding driver factory for a provider name."""
-    name = name.lower()
-    if name in _ASYNC_EMBEDDING_REGISTRY and not overwrite:
-        raise ValueError(f"Async embedding driver '{name}' is already registered. Use overwrite=True to replace it.")
-    _ASYNC_EMBEDDING_REGISTRY[name] = factory
-    logger.debug("Registered async embedding driver: %s", name)
+    _embedding_async.register(name, factory, overwrite=overwrite)
 
 
 def unregister_embedding_driver(name: str) -> bool:
     """Unregister a sync embedding driver by name."""
-    name = name.lower()
-    if name in _EMBEDDING_REGISTRY:
-        del _EMBEDDING_REGISTRY[name]
-        return True
-    return False
+    return _embedding_sync.unregister(name)
 
 
 def unregister_async_embedding_driver(name: str) -> bool:
     """Unregister an async embedding driver by name."""
-    name = name.lower()
-    if name in _ASYNC_EMBEDDING_REGISTRY:
-        del _ASYNC_EMBEDDING_REGISTRY[name]
-        return True
-    return False
+    return _embedding_async.unregister(name)
 
 
 def list_registered_embedding_drivers() -> list[str]:
     """Return a sorted list of registered sync embedding driver names."""
-    _ensure_embedding_entry_points_loaded()
-    return sorted(_EMBEDDING_REGISTRY.keys())
+    return _embedding_sync.list_names()
 
 
 def list_registered_async_embedding_drivers() -> list[str]:
     """Return a sorted list of registered async embedding driver names."""
-    _ensure_embedding_entry_points_loaded()
-    return sorted(_ASYNC_EMBEDDING_REGISTRY.keys())
+    return _embedding_async.list_names()
 
 
 def is_embedding_driver_registered(name: str) -> bool:
     """Check if a sync embedding driver is registered."""
-    _ensure_embedding_entry_points_loaded()
-    return name.lower() in _EMBEDDING_REGISTRY
+    return _embedding_sync.is_registered(name)
 
 
 def is_async_embedding_driver_registered(name: str) -> bool:
     """Check if an async embedding driver is registered."""
-    _ensure_embedding_entry_points_loaded()
-    return name.lower() in _ASYNC_EMBEDDING_REGISTRY
+    return _embedding_async.is_registered(name)
 
 
 def get_embedding_driver_factory(name: str) -> DriverFactory:
     """Get a registered sync embedding driver factory by name."""
-    _ensure_embedding_entry_points_loaded()
-    name = name.lower()
-    if name not in _EMBEDDING_REGISTRY:
-        raise ValueError(f"Unsupported embedding provider '{name}'")
-    return _EMBEDDING_REGISTRY[name]
+    return _embedding_sync.get_factory(name)
 
 
 def get_async_embedding_driver_factory(name: str) -> DriverFactory:
     """Get a registered async embedding driver factory by name."""
-    _ensure_embedding_entry_points_loaded()
-    name = name.lower()
-    if name not in _ASYNC_EMBEDDING_REGISTRY:
-        raise ValueError(f"Unsupported async embedding provider '{name}'")
-    return _ASYNC_EMBEDDING_REGISTRY[name]
-
-
-# ── Embedding Registry Internals ───────────────────────────────────────────
-
-
-def _get_embedding_registry() -> dict[str, DriverFactory]:
-    """Get the internal sync embedding registry dict."""
-    _ensure_embedding_entry_points_loaded()
-    return _EMBEDDING_REGISTRY
-
-
-def _get_async_embedding_registry() -> dict[str, DriverFactory]:
-    """Get the internal async embedding registry dict."""
-    _ensure_embedding_entry_points_loaded()
-    return _ASYNC_EMBEDDING_REGISTRY
+    return _embedding_async.get_factory(name)
 
 
 def load_embedding_entry_point_drivers() -> tuple[int, int]:
     """Load embedding drivers from installed packages via entry points.
 
-    Scans for ``prompture.embedding_drivers`` and ``prompture.async_embedding_drivers`` groups.
-
     Returns:
         A tuple of (sync_count, async_count) counts.
     """
-    global _embedding_entry_points_loaded
-
-    counts = [0, 0]
-    groups = [
-        ("prompture.embedding_drivers", _EMBEDDING_REGISTRY, 0),
-        ("prompture.async_embedding_drivers", _ASYNC_EMBEDDING_REGISTRY, 1),
-    ]
-
-    if sys.version_info >= (3, 10):
-        from importlib.metadata import entry_points as _ep_func
-
-        for group_name, registry, idx in groups:
-            for ep in _ep_func(group=group_name):
-                try:
-                    if ep.name.lower() in registry:
-                        continue
-                    factory = ep.load()
-                    registry[ep.name.lower()] = factory
-                    counts[idx] += 1
-                    logger.info("Loaded embedding driver from entry point: %s (%s)", ep.name, group_name)
-                except Exception:
-                    logger.exception("Failed to load embedding driver entry point: %s", ep.name)
-    else:
-        from importlib.metadata import entry_points as _ep_func
-
-        all_eps = _ep_func()
-        for group_name, registry, idx in groups:
-            for ep in all_eps.get(group_name, []):
-                try:
-                    if ep.name.lower() in registry:
-                        continue
-                    factory = ep.load()
-                    registry[ep.name.lower()] = factory
-                    counts[idx] += 1
-                except Exception:
-                    logger.exception("Failed to load embedding driver entry point: %s", ep.name)
-
-    _embedding_entry_points_loaded = True
-    return (counts[0], counts[1])
+    return (_embedding_sync.load_entry_points(), _embedding_async.load_entry_points())
 
 
-def _ensure_embedding_entry_points_loaded() -> None:
-    """Ensure embedding entry points have been loaded (lazy initialization)."""
-    global _embedding_entry_points_loaded
-    if not _embedding_entry_points_loaded:
-        load_embedding_entry_point_drivers()
+# ── Internal helpers (used by __init__.py and async_registry.py) ───────────
+
+
+def _get_sync_registry() -> dict[str, DriverFactory]:
+    """Get the internal sync registry dict (for internal use by drivers/__init__.py)."""
+    return _llm_sync.dict
+
+
+def _get_async_registry() -> dict[str, DriverFactory]:
+    """Get the internal async registry dict (for internal use by drivers/async_registry.py)."""
+    return _llm_async.dict
+
+
+def _get_stt_registry() -> dict[str, DriverFactory]:
+    return _stt_sync.dict
+
+
+def _get_async_stt_registry() -> dict[str, DriverFactory]:
+    return _stt_async.dict
+
+
+def _get_tts_registry() -> dict[str, DriverFactory]:
+    return _tts_sync.dict
+
+
+def _get_async_tts_registry() -> dict[str, DriverFactory]:
+    return _tts_async.dict
+
+
+def _get_img_gen_registry() -> dict[str, DriverFactory]:
+    return _img_gen_sync.dict
+
+
+def _get_async_img_gen_registry() -> dict[str, DriverFactory]:
+    return _img_gen_async.dict
+
+
+def _get_embedding_registry() -> dict[str, DriverFactory]:
+    return _embedding_sync.dict
+
+
+def _get_async_embedding_registry() -> dict[str, DriverFactory]:
+    return _embedding_async.dict
+
+
+def _reset_registries() -> None:
+    """Reset registries to empty state (for testing only)."""
+    _llm_sync.reset()
+    _llm_async.reset()
+    _stt_sync.reset()
+    _stt_async.reset()
+    _tts_sync.reset()
+    _tts_async.reset()
+    _img_gen_sync.reset()
+    _img_gen_async.reset()
+    _embedding_sync.reset()
+    _embedding_async.reset()
+
+
+# ── Backwards-compat aliases for internal dicts (used by tests) ────────────
+# These are live references to the underlying dicts so that test fixtures
+# which do ``_IMG_GEN_REGISTRY.clear()`` / ``.update()`` still work.
+
+_SYNC_REGISTRY = _llm_sync._registry
+_ASYNC_REGISTRY = _llm_async._registry
+_STT_REGISTRY = _stt_sync._registry
+_ASYNC_STT_REGISTRY = _stt_async._registry
+_TTS_REGISTRY = _tts_sync._registry
+_ASYNC_TTS_REGISTRY = _tts_async._registry
+_IMG_GEN_REGISTRY = _img_gen_sync._registry
+_ASYNC_IMG_GEN_REGISTRY = _img_gen_async._registry
+_EMBEDDING_REGISTRY = _embedding_sync._registry
+_ASYNC_EMBEDDING_REGISTRY = _embedding_async._registry

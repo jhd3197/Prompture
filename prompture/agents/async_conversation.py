@@ -16,6 +16,7 @@ from pydantic import BaseModel
 
 from ..drivers.async_base import AsyncDriver
 from ..drivers.async_registry import get_async_driver_for_model
+from ..extraction.core import ExtractResult
 from ..extraction.fields import get_registry_snapshot
 from ..extraction.tools import (
     clean_json_text,
@@ -504,7 +505,7 @@ class AsyncConversation:
             msgs.append(assistant_msg)
 
             for tc in tool_calls:
-                from ..integrations.tukuy_bridge import current_tool_call_id as _ask_tc_id
+                from ..extraction.tukuy_bridge import current_tool_call_id as _ask_tc_id
 
                 _ask_token = _ask_tc_id.set(tc["id"])
                 try:
@@ -603,7 +604,7 @@ class AsyncConversation:
                 # Set the current tool_call_id so downstream code (e.g. the
                 # tukuy bridge instruction wrapper) can associate streaming
                 # deltas with the correct tool call.
-                from ..integrations.tukuy_bridge import current_tool_call_id
+                from ..extraction.tukuy_bridge import current_tool_call_id
 
                 _tc_token = current_tool_call_id.set(tc["id"])
                 try:
@@ -682,7 +683,7 @@ class AsyncConversation:
 
             yield {"type": "tool_call", "name": tool_name, "arguments": tool_args, "id": ""}
 
-            from ..integrations.tukuy_bridge import current_tool_call_id as _sim_tc_id
+            from ..extraction.tukuy_bridge import current_tool_call_id as _sim_tc_id
 
             _sim_token = _sim_tc_id.set("")
             try:
@@ -769,20 +770,22 @@ class AsyncConversation:
     # Streaming
     # ------------------------------------------------------------------
 
-    async def ask_stream(
+    async def _ask_stream_raw(
         self,
         content: str,
         options: dict[str, Any] | None = None,
         images: list[ImageInput] | None = None,
-    ) -> AsyncIterator[str]:
-        """Send a message and yield text chunks as they arrive (async).
+    ) -> AsyncIterator[dict[str, Any]]:
+        """Stream raw driver chunks as dicts with type/text keys (async).
 
-        Falls back to non-streaming :meth:`ask` if the driver doesn't
-        support streaming.
+        Yields ``{"type": "delta", "text": ...}`` for text,
+        ``{"type": "thinking_delta", "text": ...}`` for reasoning, and
+        handles ``done`` chunks internally (usage, callbacks, history).
         """
         self._check_budget()
         if not getattr(self._driver, "supports_streaming", False):
-            yield await self.ask(content, options, images=images)
+            text = await self.ask(content, options, images=images)
+            yield {"type": "delta", "text": text}
             return
 
         merged = {**self._options, **(options or {})}
@@ -803,17 +806,19 @@ class AsyncConversation:
         full_text = ""
         try:
             async for chunk in self._driver.generate_messages_stream(messages, merged):
-                if chunk["type"] == "delta":
+                chunk_type = chunk["type"]
+                if chunk_type == "delta":
                     full_text += chunk["text"]
                     self._driver._fire_callback(
                         "on_stream_delta",
                         {"text": chunk["text"], "driver": driver_name},
                     )
-                    yield chunk["text"]
-                elif chunk["type"] == "done":
+                    yield chunk
+                elif chunk_type == "thinking_delta":
+                    yield chunk
+                elif chunk_type == "done":
                     meta = chunk.get("meta", {})
                     elapsed_ms = (time.perf_counter() - t0) * 1000
-                    # Fire on_response callback with usage metadata
                     self._driver._fire_callback(
                         "on_response",
                         {
@@ -824,6 +829,8 @@ class AsyncConversation:
                         },
                     )
                     self._accumulate_usage(meta)
+                    if chunk.get("reasoning_content"):
+                        self._last_reasoning = chunk["reasoning_content"]
         except Exception as exc:
             elapsed_ms = (time.perf_counter() - t0) * 1000
             self._driver._fire_callback(
@@ -833,6 +840,21 @@ class AsyncConversation:
             raise
 
         self._messages.append({"role": "assistant", "content": full_text})
+
+    async def ask_stream(
+        self,
+        content: str,
+        options: dict[str, Any] | None = None,
+        images: list[ImageInput] | None = None,
+    ) -> AsyncIterator[str]:
+        """Send a message and yield text chunks as they arrive (async).
+
+        Falls back to non-streaming :meth:`ask` if the driver doesn't
+        support streaming.
+        """
+        async for chunk in self._ask_stream_raw(content, options, images=images):
+            if chunk["type"] == "delta":
+                yield chunk["text"]
 
     async def ask_for_json(
         self,
@@ -1007,14 +1029,7 @@ class AsyncConversation:
         }
         result_dict["model"] = model_instance
 
-        return type(  # type: ignore[no-any-return]
-            "ExtractResult",
-            (dict,),
-            {
-                "__getattr__": lambda self, key: self.get(key),
-                "__call__": lambda self: self["model"],
-            },
-        )(result_dict)
+        return ExtractResult(result_dict)
 
     # ------------------------------------------------------------------
     # Internal: stepwise with shared context
@@ -1169,11 +1184,7 @@ class AsyncConversation:
                 "field_results": field_results,
             }
             result["model"] = model_instance
-            return type(  # type: ignore[no-any-return]
-                "ExtractResult",
-                (dict,),
-                {"__getattr__": lambda self, key: self.get(key), "__call__": lambda self: self["model"]},
-            )(result)
+            return ExtractResult(result)
         except Exception as e:
             error_msg = f"Model validation error: {e!s}"
             if "validation_errors" not in accumulated_usage:
@@ -1187,11 +1198,7 @@ class AsyncConversation:
                 "field_results": field_results,
                 "error": error_msg,
             }
-            return type(  # type: ignore[no-any-return]
-                "ExtractResult",
-                (dict,),
-                {"__getattr__": lambda self, key: self.get(key), "__call__": lambda self: None},
-            )(error_result)
+            return ExtractResult(error_result)
 
 
 def _has_default(field_name: str, field_info: Any, field_definitions: dict[str, Any] | None) -> bool:

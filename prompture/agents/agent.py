@@ -32,7 +32,7 @@ import json
 import logging
 import time
 import typing
-from collections.abc import Callable, Generator, Iterator
+from collections.abc import Callable, Generator
 from typing import Any, Generic
 
 from pydantic import BaseModel
@@ -1150,13 +1150,18 @@ class Agent(Generic[DepsType]):
                 else:
                     # No tools: use streaming if available
                     response_text = ""
-                    stream_iter: Iterator[str] = conv.ask_stream(effective_prompt)
-                    for chunk in stream_iter:
-                        response_text += chunk
-                        yield StreamEvent(
-                            event_type=StreamEventType.text_delta,
-                            data=chunk,
-                        )
+                    for chunk in conv._ask_stream_raw(effective_prompt):
+                        if chunk["type"] == "delta":
+                            response_text += chunk["text"]
+                            yield StreamEvent(
+                                event_type=StreamEventType.text_delta,
+                                data=chunk["text"],
+                            )
+                        elif chunk["type"] == "thinking_delta":
+                            yield StreamEvent(
+                                event_type=StreamEventType.thinking_delta,
+                                data=chunk["text"],
+                            )
             finally:
                 if security_token is not None:
                     from tukuy.safety import reset_security_context

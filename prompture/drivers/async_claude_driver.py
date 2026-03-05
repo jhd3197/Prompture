@@ -277,6 +277,7 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
                             thinking_text = getattr(event.delta, "thinking", "")
                             if thinking_text:
                                 full_reasoning += thinking_text
+                                yield {"type": "thinking_delta", "text": thinking_text}
                         else:
                             delta_text = getattr(event.delta, "text", "")
                             if delta_text:

@@ -537,3 +537,83 @@ class TestRenderOutput:
 
         with pytest.raises(ValueError, match="Unsupported output_format"):
             render_output(mock_driver, "prompt", output_format="xml")
+
+
+class TestCleanJsonTextPreamble:
+    """Tests for clean_json_text handling preamble text before code fences."""
+
+    def test_preamble_before_json_fence(self):
+        """Preamble text before ```json fence should be stripped via fence path."""
+        input_text = 'Sure! Here you go:\n```json\n{"name": "Juan"}\n```'
+        result = clean_json_text(input_text)
+        assert result == '{"name": "Juan"}'
+
+    def test_preamble_before_plain_fence(self):
+        """Preamble text before plain ``` fence should be stripped."""
+        input_text = 'Here is the result:\n```\n{"age": 30}\n```'
+        result = clean_json_text(input_text)
+        assert result == '{"age": 30}'
+
+    def test_multiline_preamble_before_fence(self):
+        """Multiple lines of preamble before fence."""
+        input_text = (
+            "I extracted the following information.\n"
+            "Please review:\n\n"
+            '```json\n{"name": "Juan", "age": 28}\n```'
+        )
+        result = clean_json_text(input_text)
+        assert result == '{"name": "Juan", "age": 28}'
+
+    def test_preamble_and_postamble_around_fence(self):
+        """Both preamble and postamble around fence."""
+        input_text = (
+            "Here is the extracted data:\n"
+            '```json\n{"key": "value"}\n```\n'
+            "Hope this helps!"
+        )
+        result = clean_json_text(input_text)
+        assert result == '{"key": "value"}'
+
+    def test_preamble_with_braces_prefers_fence(self):
+        """When preamble contains braces, fence extraction should win over brace fallback."""
+        input_text = (
+            'The object {foo} was found.\n'
+            '```json\n{"actual": "data"}\n```'
+        )
+        result = clean_json_text(input_text)
+        assert result == '{"actual": "data"}'
+
+    def test_fence_without_closing_with_preamble(self):
+        """Unclosed fence with preamble should still extract content."""
+        input_text = 'Result:\n```json\n{"name": "Juan"}'
+        result = clean_json_text(input_text)
+        assert result == '{"name": "Juan"}'
+
+
+class TestStepwiseBasic:
+    """Basic tests for stepwise_extract_with_model."""
+
+    def test_sync_stepwise_rejects_empty_text(self):
+        from prompture.extraction.core import stepwise_extract_with_model
+
+        with pytest.raises(ValueError, match="Text input cannot be empty"):
+            stepwise_extract_with_model(
+                model_cls=type("M", (), {"model_fields": {}}),
+                text="",
+                model_name="openai/gpt-4",
+            )
+
+    def test_async_stepwise_rejects_empty_text(self):
+        import asyncio
+
+        from prompture.extraction.async_core import stepwise_extract_with_model as async_stepwise
+
+        async def _run():
+            with pytest.raises(ValueError, match="Text input cannot be empty"):
+                await async_stepwise(
+                    model_cls=type("M", (), {"model_fields": {}}),
+                    text="",
+                    model_name="openai/gpt-4",
+                )
+
+        asyncio.run(_run())

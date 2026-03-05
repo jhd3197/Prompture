@@ -21,7 +21,7 @@ from prompture import ToolDefinition, ToolRegistry, apply_security_context
 from prompture.agents.agent import Agent
 from prompture.agents.async_agent import AsyncAgent
 from prompture.drivers.base import Driver
-from prompture.integrations.tukuy_bridge import skill_to_tool_definition, skills_to_registry
+from prompture.extraction.tukuy_bridge import skill_to_tool_definition, skills_to_registry
 
 # ------------------------------------------------------------------
 # Helpers: mock drivers & tukuy skills

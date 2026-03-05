@@ -56,12 +56,6 @@ from .async_openai_img_gen_driver import AsyncOpenAIImageGenDriver
 from .async_openai_stt_driver import AsyncOpenAISTTDriver
 from .async_openai_tts_driver import AsyncOpenAITTSDriver
 from .async_openrouter_driver import AsyncOpenRouterDriver
-from .async_registry import (
-    ASYNC_DRIVER_REGISTRY,
-    ASYNC_PROVIDER_DRIVER_MAP,
-    get_async_driver,
-    get_async_driver_for_model,
-)
 from .async_stability_img_gen_driver import AsyncStabilityImageGenDriver
 from .async_stt_base import AsyncSTTDriver
 from .async_tts_base import AsyncTTSDriver
@@ -97,6 +91,12 @@ from .openai_img_gen_driver import OpenAIImageGenDriver
 from .openai_stt_driver import OpenAISTTDriver
 from .openai_tts_driver import OpenAITTSDriver
 from .openrouter_driver import OpenRouterDriver
+from .provider_descriptors import (
+    PROVIDER_DESCRIPTOR_MAP,
+    PROVIDER_DESCRIPTORS,
+    build_provider_driver_map,
+    register_all_builtin_drivers,
+)
 from .registry import (
     _get_sync_registry,
     get_async_driver_factory,
@@ -156,199 +156,31 @@ from .stt_base import STTDriver
 from .tts_base import TTSDriver
 from .zai_driver import ZaiDriver
 
-# Register built-in sync drivers
-register_driver(
-    "openai",
-    lambda model=None: OpenAIDriver(api_key=settings.openai_api_key, model=model or settings.openai_model),  # type: ignore[misc]
-    overwrite=True,
-)
-register_driver(
-    "ollama",
-    lambda model=None: OllamaDriver(endpoint=settings.ollama_endpoint, model=model or settings.ollama_model),  # type: ignore[misc]
-    overwrite=True,
-)
-register_driver(
-    "claude",
-    lambda model=None: ClaudeDriver(api_key=settings.claude_api_key, model=model or settings.claude_model),  # type: ignore[misc]
-    overwrite=True,
-)
-# Alias: "anthropic" maps to the same Claude driver for compatibility
-register_driver(
-    "anthropic",
-    lambda model=None: ClaudeDriver(api_key=settings.claude_api_key, model=model or settings.claude_model),  # type: ignore[misc]
-    overwrite=True,
-)
-register_driver(
-    "lmstudio",
-    lambda model=None: LMStudioDriver(  # type: ignore[misc]
-        endpoint=settings.lmstudio_endpoint,
-        model=model or settings.lmstudio_model,
-        api_key=settings.lmstudio_api_key,
-    ),
-    overwrite=True,
-)
-register_driver(
-    "azure",
-    lambda model=None: AzureDriver(  # type: ignore[misc]
-        api_key=settings.azure_api_key,
-        endpoint=settings.azure_api_endpoint,
-        deployment_id=settings.azure_deployment_id,
-        model=model or "gpt-4o-mini",
-        claude_api_key=settings.azure_claude_api_key,
-        claude_endpoint=settings.azure_claude_endpoint,
-        mistral_api_key=settings.azure_mistral_api_key,
-        mistral_endpoint=settings.azure_mistral_endpoint,
-    ),
-    overwrite=True,
-)
-register_driver(
-    "local_http",
-    lambda model=None: LocalHTTPDriver(endpoint=getattr(settings, "local_http_endpoint", None), model=model),  # type: ignore[misc]
-    overwrite=True,
-)
-register_driver(
-    "google",
-    lambda model=None: GoogleDriver(api_key=settings.google_api_key, model=model or settings.google_model),  # type: ignore[misc]
-    overwrite=True,
-)
-register_driver(
-    "groq",
-    lambda model=None: GroqDriver(api_key=settings.groq_api_key, model=model or settings.groq_model),  # type: ignore[misc]
-    overwrite=True,
-)
-register_driver(
-    "openrouter",
-    lambda model=None: OpenRouterDriver(api_key=settings.openrouter_api_key, model=model or settings.openrouter_model),  # type: ignore[misc]
-    overwrite=True,
-)
-register_driver(
-    "grok",
-    lambda model=None: GrokDriver(api_key=settings.grok_api_key, model=model or settings.grok_model),  # type: ignore[misc]
-    overwrite=True,
-)
-register_driver(
-    "moonshot",
-    lambda model=None: MoonshotDriver(  # type: ignore[misc]
-        api_key=settings.moonshot_api_key,
-        model=model or settings.moonshot_model,
-        endpoint=settings.moonshot_endpoint,
-    ),
-    overwrite=True,
-)
-register_driver(
-    "modelscope",
-    lambda model=None: ModelScopeDriver(  # type: ignore[misc]
-        api_key=settings.modelscope_api_key,
-        model=model or settings.modelscope_model,
-        endpoint=settings.modelscope_endpoint,
-    ),
-    overwrite=True,
-)
-register_driver(
-    "zai",
-    lambda model=None: ZaiDriver(  # type: ignore[misc]
-        api_key=settings.zhipu_api_key,
-        model=model or settings.zhipu_model,
-        endpoint=settings.zhipu_endpoint,
-    ),
-    overwrite=True,
-)
-register_driver(
-    "cachibot",
-    lambda model=None: CachiBotDriver(  # type: ignore[misc]
-        api_key=settings.cachibot_api_key,
-        model=model or "openai/gpt-4o-mini",
-        endpoint=settings.cachibot_endpoint,
-    ),
-    overwrite=True,
-)
-register_driver(
-    "airllm",
-    lambda model=None: AirLLMDriver(  # type: ignore[misc]
-        model=model or settings.airllm_model,
-        compression=settings.airllm_compression,
-    ),
-    overwrite=True,
-)
-register_driver(
-    "huggingface",
-    lambda model=None: HuggingFaceDriver(  # type: ignore[misc]
-        endpoint=settings.hf_endpoint,
-        token=settings.hf_token,
-        model=model or "bert-base-uncased",
-    ),
-    overwrite=True,
+# Register all built-in drivers (LLM sync/async, STT, TTS, img_gen, embedding)
+# from the unified ProviderDescriptor list — replaces ~200 lines of individual
+# register_*() calls that were previously scattered across this file,
+# async_registry.py, audio_registry.py, embedding_registry.py, and img_gen_registry.py.
+register_all_builtin_drivers()
+
+# Import the async factory functions (they no longer register drivers themselves).
+from .async_registry import (
+    ASYNC_DRIVER_REGISTRY,
+    ASYNC_PROVIDER_DRIVER_MAP,
+    get_async_driver,
+    get_async_driver_for_model,
 )
 
-# ── Aliases ────────────────────────────────────────────────────────────────
-# Common alternative names so users can write e.g. "gemini/..." or "chatgpt/..."
-register_driver(
-    "gemini",
-    lambda model=None: GoogleDriver(api_key=settings.google_api_key, model=model or settings.google_model),  # type: ignore[misc]
-    overwrite=True,
-)
-register_driver(
-    "chatgpt",
-    lambda model=None: OpenAIDriver(api_key=settings.openai_api_key, model=model or settings.openai_model),  # type: ignore[misc]
-    overwrite=True,
-)
-register_driver(
-    "xai",
-    lambda model=None: GrokDriver(api_key=settings.grok_api_key, model=model or settings.grok_model),  # type: ignore[misc]
-    overwrite=True,
-)
-register_driver(
-    "lm_studio",
-    lambda model=None: LMStudioDriver(  # type: ignore[misc]
-        endpoint=settings.lmstudio_endpoint,
-        model=model or settings.lmstudio_model,
-        api_key=settings.lmstudio_api_key,
-    ),
-    overwrite=True,
-)
-register_driver(
-    "lm-studio",
-    lambda model=None: LMStudioDriver(  # type: ignore[misc]
-        endpoint=settings.lmstudio_endpoint,
-        model=model or settings.lmstudio_model,
-        api_key=settings.lmstudio_api_key,
-    ),
-    overwrite=True,
-)
-register_driver(
-    "zhipu",
-    lambda model=None: ZaiDriver(  # type: ignore[misc]
-        api_key=settings.zhipu_api_key,
-        model=model or settings.zhipu_model,
-        endpoint=settings.zhipu_endpoint,
-    ),
-    overwrite=True,
-)
-register_driver(
-    "hf",
-    lambda model=None: HuggingFaceDriver(  # type: ignore[misc]
-        endpoint=settings.hf_endpoint,
-        token=settings.hf_token,
-        model=model or "bert-base-uncased",
-    ),
-    overwrite=True,
-)
-
-# Trigger audio driver registration
+# Import the modality factory functions (they no longer register drivers themselves).
 from .audio_registry import (
     get_async_stt_driver_for_model,
     get_async_tts_driver_for_model,
     get_stt_driver_for_model,
     get_tts_driver_for_model,
 )
-
-# Trigger embedding driver registration
 from .embedding_registry import (
     get_async_embedding_driver_for_model,
     get_embedding_driver_for_model,
 )
-
-# Trigger image gen driver registration
 from .img_gen_registry import (
     get_async_img_gen_driver_for_model,
     get_img_gen_driver_for_model,
@@ -358,70 +190,8 @@ from .img_gen_registry import (
 DRIVER_REGISTRY = _get_sync_registry()
 
 # ── Per-environment driver construction ────────────────────────────────────
-# Maps provider name → (DriverClass, {ctor_kwarg: env/settings_attr}, default_model_attr)
-# default_model_attr is either a settings attribute name (e.g. "openai_model") or a
-# literal string (e.g. "gpt-4o-mini").  getattr(settings, x, x) resolves both.
-
-PROVIDER_DRIVER_MAP: dict[str, tuple[type, dict[str, str], str]] = {
-    "openai": (OpenAIDriver, {"api_key": "openai_api_key"}, "openai_model"),
-    "chatgpt": (OpenAIDriver, {"api_key": "openai_api_key"}, "openai_model"),
-    "claude": (ClaudeDriver, {"api_key": "claude_api_key"}, "claude_model"),
-    "anthropic": (ClaudeDriver, {"api_key": "claude_api_key"}, "claude_model"),
-    "google": (GoogleDriver, {"api_key": "google_api_key"}, "google_model"),
-    "gemini": (GoogleDriver, {"api_key": "google_api_key"}, "google_model"),
-    "groq": (GroqDriver, {"api_key": "groq_api_key"}, "groq_model"),
-    "grok": (GrokDriver, {"api_key": "grok_api_key"}, "grok_model"),
-    "xai": (GrokDriver, {"api_key": "grok_api_key"}, "grok_model"),
-    "openrouter": (OpenRouterDriver, {"api_key": "openrouter_api_key"}, "openrouter_model"),
-    "moonshot": (
-        MoonshotDriver,
-        {"api_key": "moonshot_api_key", "endpoint": "moonshot_endpoint"},
-        "moonshot_model",
-    ),
-    "modelscope": (
-        ModelScopeDriver,
-        {"api_key": "modelscope_api_key", "endpoint": "modelscope_endpoint"},
-        "modelscope_model",
-    ),
-    "zai": (ZaiDriver, {"api_key": "zhipu_api_key", "endpoint": "zhipu_endpoint"}, "zhipu_model"),
-    "zhipu": (ZaiDriver, {"api_key": "zhipu_api_key", "endpoint": "zhipu_endpoint"}, "zhipu_model"),
-    "ollama": (OllamaDriver, {"endpoint": "ollama_endpoint"}, "ollama_model"),
-    "lmstudio": (
-        LMStudioDriver,
-        {"endpoint": "lmstudio_endpoint", "api_key": "lmstudio_api_key"},
-        "lmstudio_model",
-    ),
-    "lm_studio": (
-        LMStudioDriver,
-        {"endpoint": "lmstudio_endpoint", "api_key": "lmstudio_api_key"},
-        "lmstudio_model",
-    ),
-    "lm-studio": (
-        LMStudioDriver,
-        {"endpoint": "lmstudio_endpoint", "api_key": "lmstudio_api_key"},
-        "lmstudio_model",
-    ),
-    "cachibot": (
-        CachiBotDriver,
-        {"api_key": "cachibot_api_key", "endpoint": "cachibot_endpoint"},
-        "openai/gpt-4o-mini",
-    ),
-    "azure": (
-        AzureDriver,
-        {
-            "api_key": "azure_api_key",
-            "endpoint": "azure_api_endpoint",
-            "deployment_id": "azure_deployment_id",
-            "claude_api_key": "azure_claude_api_key",
-            "claude_endpoint": "azure_claude_endpoint",
-            "mistral_api_key": "azure_mistral_api_key",
-            "mistral_endpoint": "azure_mistral_endpoint",
-        },
-        "gpt-4o-mini",
-    ),
-    "huggingface": (HuggingFaceDriver, {"endpoint": "hf_endpoint", "token": "hf_token"}, "bert-base-uncased"),  # nosec B105
-    "hf": (HuggingFaceDriver, {"endpoint": "hf_endpoint", "token": "hf_token"}, "bert-base-uncased"),  # nosec B105
-}
+# Derived from ProviderDescriptor — replaces a ~60-line hardcoded dict.
+PROVIDER_DRIVER_MAP: dict[str, tuple[type, dict[str, str], str]] = build_provider_driver_map(is_async=False)
 
 
 def _find_credential_kwarg(kwarg_map: dict[str, str]) -> str | None:
@@ -601,6 +371,9 @@ __all__ = [
     "DRIVER_REGISTRY",
     # Embedding model dimension metadata
     "EMBEDDING_MODEL_DIMENSIONS",
+    "PROVIDER_DESCRIPTORS",
+    # Provider descriptors
+    "PROVIDER_DESCRIPTOR_MAP",
     # Provider driver maps (for explicit-credential construction)
     "PROVIDER_DRIVER_MAP",
     # Sync LLM drivers
@@ -727,6 +500,7 @@ __all__ = [
     "list_registered_stt_drivers",
     "list_registered_tts_drivers",
     "load_entry_point_drivers",
+    "register_all_builtin_drivers",
     "register_async_driver",
     "register_async_embedding_driver",
     "register_async_img_gen_driver",

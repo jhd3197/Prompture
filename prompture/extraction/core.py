@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import sys
+import warnings
 from datetime import date, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any, Literal, Union
@@ -43,6 +44,48 @@ from .tools import (
 logger = logging.getLogger("prompture.core")
 
 
+class ExtractResult(dict[str, Any]):
+    """Extraction result with attribute access, .model property, and callable interface."""
+
+    def __getattr__(self, key: str) -> Any:
+        try:
+            return self[key]
+        except KeyError:
+            raise AttributeError(key) from None
+
+    def __call__(self) -> Any:
+        return self.get("model")
+
+
+def _build_usage(resp: dict[str, Any], model_name: str) -> dict[str, Any]:
+    """Build standardized usage metadata from a driver response."""
+    meta = resp.get("meta", {})
+    return {
+        **meta,
+        "raw_response": resp,
+        "total_tokens": meta.get("total_tokens", 0),
+        "prompt_tokens": meta.get("prompt_tokens", 0),
+        "completion_tokens": meta.get("completion_tokens", 0),
+        "cost": meta.get("cost", 0.0),
+        "model_name": model_name,
+    }
+
+
+def _merge_usage(
+    original: dict[str, Any], cleanup: dict[str, Any], model_name: str, resp: dict[str, Any]
+) -> dict[str, Any]:
+    """Merge usage from original + cleanup pass."""
+    return {
+        "prompt_tokens": original.get("prompt_tokens", 0) + cleanup.get("prompt_tokens", 0),
+        "completion_tokens": original.get("completion_tokens", 0) + cleanup.get("completion_tokens", 0),
+        "total_tokens": original.get("total_tokens", 0) + cleanup.get("total_tokens", 0),
+        "cost": original.get("cost", 0.0) + cleanup.get("cost", 0.0),
+        "model_name": model_name,
+        "raw_response": resp,
+        "ai_cleanup_used": True,
+    }
+
+
 def _build_content_with_images(text: str, images: list[ImageInput] | None = None) -> str | list[dict[str, Any]]:
     """Return plain string when no images, or a list of content blocks."""
     if not images:
@@ -60,6 +103,9 @@ def normalize_field_value(value: Any, field_type: type, field_def: dict[str, Any
     This function handles post-processing of extracted values BEFORE Pydantic validation,
     converting invalid values (like empty strings for booleans) to proper defaults.
 
+    Delegates type coercion to :func:`~prompture.extraction.tools.convert_value` and
+    adds nullable/default awareness on top.
+
     Args:
         value: The extracted value from the LLM
         field_type: The expected Python type for this field
@@ -68,59 +114,44 @@ def normalize_field_value(value: Any, field_type: type, field_def: dict[str, Any
     Returns:
         A normalized value suitable for the field type
     """
+    from .tools import convert_value, get_type_default
+
     nullable = field_def.get("nullable", True)
     default_value = field_def.get("default")
-
-    # Special handling for boolean fields
-    if field_type is bool or (hasattr(field_type, "__origin__") and field_type.__origin__ is bool):
-        # If value is already a boolean, return it as-is
-        if isinstance(value, bool):
-            return value
-
-        # For non-nullable booleans
-        if not nullable:
-            # Any non-empty string should be True, empty/None should be default
-            if isinstance(value, str):
-                return bool(value.strip()) if value.strip() else (default_value if default_value is not None else False)
-            if value in (None, [], {}):
-                return default_value if default_value is not None else False
-            # Try to coerce other types
-            return bool(value) if value else (default_value if default_value is not None else False)
-        else:
-            # For nullable booleans, preserve None
-            if value is None:
-                return None
-            if isinstance(value, str):
-                return bool(value.strip()) if value.strip() else None
-            return bool(value) if value else None
 
     # If the field is nullable and value is None, that's acceptable
     if nullable and value is None:
         return value
 
-    # For non-nullable fields with invalid values, use the default
-    if not nullable:
-        # Check for invalid values that should be replaced
-        invalid_values: tuple[None, str, list[Any], dict[str, Any]] = (None, "", [], {})
+    # Detect "empty" values that should be replaced for non-nullable fields
+    _empty = value is None or (isinstance(value, str) and not value.strip()) or value == [] or value == {}
 
-        if value in invalid_values or (isinstance(value, str) and not value.strip()):
-            # Use the default value if provided, otherwise use type-appropriate default
-            if default_value is not None:
-                return default_value
+    if not nullable and _empty:
+        # Use the explicit default if provided
+        if default_value is not None:
+            return default_value
+        # Otherwise fall back to a type-appropriate default
+        return get_type_default(field_type)
 
-            # Type-specific defaults for non-nullable fields
-            if field_type is int or (hasattr(field_type, "__origin__") and field_type.__origin__ is int):
-                return 0
-            elif field_type is float or (hasattr(field_type, "__origin__") and field_type.__origin__ is float):
-                return 0.0
-            elif field_type is str or (hasattr(field_type, "__origin__") and field_type.__origin__ is str):
-                return ""
-            elif field_type is list or (hasattr(field_type, "__origin__") and field_type.__origin__ is list):
-                return []
-            elif field_type is dict or (hasattr(field_type, "__origin__") and field_type.__origin__ is dict):
-                return {}
+    # For nullable fields with empty values, return None
+    if nullable and _empty:
+        return None
 
-    return value
+    # Value is non-empty — delegate actual type coercion to convert_value
+    try:
+        return convert_value(
+            value,
+            field_type,
+            allow_shorthand=True,
+            use_defaults_on_failure=not nullable,
+        )
+    except (ValueError, TypeError):
+        # Conversion failed — use default or None based on nullability
+        if default_value is not None:
+            return default_value
+        if nullable:
+            return None
+        return get_type_default(field_type)
 
 
 def clean_json_text_with_ai(
@@ -236,15 +267,7 @@ def render_output(
                 cleaned = "\n".join(lines[1:-1])
         raw = cleaned
 
-    usage = {
-        **resp.get("meta", {}),
-        "raw_response": resp,
-        "total_tokens": resp.get("meta", {}).get("total_tokens", 0),
-        "prompt_tokens": resp.get("meta", {}).get("prompt_tokens", 0),
-        "completion_tokens": resp.get("meta", {}).get("completion_tokens", 0),
-        "cost": resp.get("meta", {}).get("cost", 0.0),
-        "model_name": model_name or getattr(driver, "model", ""),
-    }
+    usage = _build_usage(resp, model_name or getattr(driver, "model", ""))
 
     return {"text": raw, "usage": usage, "output_format": output_format}
 
@@ -375,15 +398,7 @@ def ask_for_json(
         if output_format == "toon":
             toon_string = toon.encode(json_obj)
 
-        usage = {
-            **resp.get("meta", {}),
-            "raw_response": resp,
-            "total_tokens": resp.get("meta", {}).get("total_tokens", 0),
-            "prompt_tokens": resp.get("meta", {}).get("prompt_tokens", 0),
-            "completion_tokens": resp.get("meta", {}).get("completion_tokens", 0),
-            "cost": resp.get("meta", {}).get("cost", 0.0),
-            "model_name": model_name or getattr(driver, "model", ""),
-        }
+        usage = _build_usage(resp, model_name or getattr(driver, "model", ""))
         result = {"json_string": json_string, "json_object": json_obj, "usage": usage}
         if toon_string is not None:
             result["toon_string"] = toon_string
@@ -406,16 +421,12 @@ def ask_for_json(
 
                 # Combine usage from original call and cleanup call
                 original_meta = resp.get("meta", {})
-                combined_usage = {
-                    "prompt_tokens": original_meta.get("prompt_tokens", 0) + cleanup_meta.get("prompt_tokens", 0),
-                    "completion_tokens": original_meta.get("completion_tokens", 0)
-                    + cleanup_meta.get("completion_tokens", 0),
-                    "total_tokens": original_meta.get("total_tokens", 0) + cleanup_meta.get("total_tokens", 0),
-                    "cost": original_meta.get("cost", 0.0) + cleanup_meta.get("cost", 0.0),
-                    "model_name": model_name or options.get("model", getattr(driver, "model", "")),
-                    "raw_response": resp,
-                    "ai_cleanup_used": True,
-                }
+                combined_usage = _merge_usage(
+                    original_meta,
+                    cleanup_meta,
+                    model_name or options.get("model", getattr(driver, "model", "")),
+                    resp,
+                )
 
                 result = {
                     "json_string": cleaned_fixed,
@@ -447,6 +458,7 @@ def extract_and_jsonify(
     json_schema: dict[str, Any],
     *,  # Force keyword arguments for remaining params
     model_name: Union[str, dict[str, Any]] = "",  # Can be schema (old) or model name (new)
+    driver: Driver | None = None,
     instruction_template: str = "Extract information from the following text:",
     ai_cleanup: bool = True,
     output_format: Literal["json", "toon"] = "json",
@@ -456,12 +468,13 @@ def extract_and_jsonify(
     images: list[ImageInput] | None = None,
     reasoning_strategy: str | ReasoningStrategyProtocol | None = None,
 ) -> dict[str, Any]:
-    """Extracts structured information using automatic driver selection based on model name.
+    """Extracts structured information using automatic driver selection or an explicit driver.
 
     Args:
         text: The raw text to extract information from.
         json_schema: JSON schema dictionary defining the expected structure.
         model_name: Model identifier in format "provider/model" (e.g., "openai/gpt-4-turbo-preview").
+        driver: Optional driver instance to use directly instead of auto-resolving from model_name.
         instruction_template: Instructional text to prepend to the content.
         ai_cleanup: Whether to attempt AI-based cleanup if JSON parsing fails.
         output_format: Response serialization format ("json" or "toon").
@@ -489,6 +502,13 @@ def extract_and_jsonify(
     actual_schema: Any
     actual_model: Any
     if isinstance(text, Driver):
+        import warnings
+
+        warnings.warn(
+            "Passing Driver as first arg is deprecated. Use driver= kwarg instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         driver = text
         actual_text = json_schema
         actual_schema = model_name
@@ -503,7 +523,18 @@ def extract_and_jsonify(
         actual_text = text
         actual_schema = json_schema
         actual_model = model_name or options.get("model", "")
-        driver = options.pop("driver", None)
+        if driver is None:
+            driver = options.pop("driver", None)
+
+    # Log when explicit driver is provided
+    if driver is not None and not isinstance(text, Driver):
+        logger.info("[extract] Starting extraction with explicit driver")
+        logger.debug(
+            "[extract] text_length=%d model_name=%s schema_keys=%s",
+            len(actual_text),
+            actual_model,
+            list(actual_schema.keys()) if actual_schema else [],
+        )
 
     # Get driver if not provided
     if driver is None:
@@ -515,7 +546,7 @@ def extract_and_jsonify(
             raise ValueError("Invalid model string format. Expected format: 'provider/model'")
 
         try:
-            driver = get_driver_for_model(actual_model)
+            driver = get_driver_for_model(actual_model)  # type: ignore[assignment]
         except ValueError as e:
             if "Unsupported provider" in str(e):
                 raise ValueError(f"Unsupported provider in model name: {actual_model}") from e
@@ -565,83 +596,20 @@ def manual_extract_and_jsonify(
     text: str,
     json_schema: dict[str, Any],
     model_name: str = "",
-    instruction_template: str = "Extract information from the following text:",
-    ai_cleanup: bool = True,
-    output_format: Literal["json", "toon"] = "json",
-    options: dict[str, Any] | None = None,
-    json_mode: Literal["auto", "on", "off"] = "auto",
-    system_prompt: str | None = None,
-    reasoning_strategy: str | ReasoningStrategyProtocol | None = None,
+    **kwargs: Any,
 ) -> dict[str, Any]:
     """Extracts structured information using an explicitly provided driver.
 
-    This variant is useful when you want to directly control which driver
-    is used (e.g., OpenAI, Azure, Ollama, LocalHTTP) and optionally override
-    the model per call.
-
-    Args:
-        driver: The LLM driver instance to use.
-        text: The raw text to extract information from.
-        json_schema: JSON schema dictionary defining the expected structure.
-        model_name: Optional override of the model name.
-        instruction_template: Instructional text to prepend to the content.
-        ai_cleanup: Whether to attempt AI-based cleanup if JSON parsing fails.
-        output_format: Response serialization format ("json" or "toon").
-        options: Additional options to pass to the driver.
-        reasoning_strategy: Optional reasoning strategy name or instance to augment the prompt.
-
-    Returns:
-        A dictionary containing:
-        - json_string: the JSON string output.
-        - json_object: the parsed JSON object.
-        - usage: token usage and cost information from the driver's meta object.
-
-    Raises:
-        ValueError: If text is empty or None.
-        json.JSONDecodeError: If the response cannot be parsed as JSON and ai_cleanup is False.
+    .. deprecated::
+        Use ``extract_and_jsonify(text, schema, driver=driver)`` instead.
     """
-    if options is None:
-        options = {}
-    if not isinstance(text, str):
-        raise ValueError("Text input must be a string")
 
-    if not text or not text.strip():
-        raise ValueError("Text input cannot be empty")
-
-    logger.info("[manual] Starting manual extraction")
-    logger.debug(
-        "[manual] text_length=%d model_name=%s schema_keys=%s",
-        len(text),
-        model_name,
-        list(json_schema.keys()) if json_schema else [],
+    warnings.warn(
+        "manual_extract_and_jsonify() is deprecated. Use extract_and_jsonify(text, schema, driver=driver) instead.",
+        DeprecationWarning,
+        stacklevel=2,
     )
-
-    opts = dict(options)
-    if model_name:
-        opts["model"] = model_name
-
-    content_prompt = f"{instruction_template} {text}"
-    if reasoning_strategy == "auto":
-        reasoning_strategy = auto_select_reasoning_strategy(text, json_schema)
-    content_prompt = apply_reasoning_strategy(content_prompt, reasoning_strategy)
-
-    logger.debug("[manual] Generated prompt for extraction")
-
-    result = ask_for_json(
-        driver,
-        content_prompt,
-        json_schema,
-        ai_cleanup,
-        model_name,
-        opts,
-        output_format=output_format,
-        json_mode=json_mode,
-        system_prompt=system_prompt,
-    )
-    result["usage"]["reasoning_strategy"] = _strategy_name(reasoning_strategy)
-    logger.debug("[manual] Manual extraction completed successfully")
-
-    return result
+    return extract_and_jsonify(text, json_schema, model_name=model_name, driver=driver, **kwargs)
 
 
 def _chunked_extract(
@@ -748,11 +716,7 @@ def _chunked_extract(
         "model": model_instance,
     }
 
-    return type(  # type: ignore[no-any-return]
-        "ExtractResult",
-        (dict,),
-        {"__getattr__": lambda self, key: self.get(key), "__call__": lambda self: self["model"]},
-    )(result_dict)
+    return ExtractResult(result_dict)
 
 
 def extract_with_model(
@@ -833,6 +797,14 @@ def extract_with_model(
         actual_model = model_name
     else:
         # New format where first arg is model name
+        import warnings
+
+        warnings.warn(
+            "Old positional argument order (model_name, model_cls, text) is deprecated. "
+            "Use extract_with_model(model_cls, text, model_name) instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         actual_model = model_cls
         actual_cls = text
         actual_text = model_name
@@ -919,11 +891,7 @@ def extract_with_model(
             cached["usage"]["cache_hit"] = True
             # Reconstruct Pydantic model instance from cached JSON
             cached["model"] = actual_cls(**cached["json_object"])
-            return type(  # type: ignore[no-any-return]
-                "ExtractResult",
-                (dict,),
-                {"__getattr__": lambda self, key: self.get(key), "__call__": lambda self: self["model"]},
-            )(cached)
+            return ExtractResult(cached)
 
     logger.info("[extract] Starting extract_with_model")
     logger.debug(
@@ -1017,11 +985,7 @@ def extract_with_model(
             result_dict["model"] = model_instance
 
             # Return value can be used both as a dict and accessed as model directly
-            return type(  # type: ignore[no-any-return]
-                "ExtractResult",
-                (dict,),
-                {"__getattr__": lambda self, key: self.get(key), "__call__": lambda self: self["model"]},
-            )(result_dict)
+            return ExtractResult(result_dict)
 
         except Exception as exc:
             last_error = exc
@@ -1052,11 +1016,7 @@ def extract_with_model(
         }
         if routing_result is not None:
             fallback_result["routing"] = routing_result.to_dict()
-        return type(  # type: ignore[no-any-return]
-            "ExtractResult",
-            (dict,),
-            {"__getattr__": lambda self, key: self.get(key), "__call__": lambda self: self["model"]},
-        )(fallback_result)
+        return ExtractResult(fallback_result)
 
     raise last_error  # type: ignore[misc]
 
@@ -1351,11 +1311,7 @@ def stepwise_extract_with_model(
 
         # Add model instance as property and make callable
         result["model"] = model_instance
-        return type(  # type: ignore[no-any-return]
-            "ExtractResult",
-            (dict,),
-            {"__getattr__": lambda self, key: self.get(key), "__call__": lambda self: self["model"]},
-        )(result)
+        return ExtractResult(result)
     except Exception as e:
         error_msg = f"Model validation error: {e!s}"
         # Add validation error to accumulated usage
@@ -1373,14 +1329,261 @@ def stepwise_extract_with_model(
             "field_results": field_results,
             "error": error_msg,
         }
-        return type(  # type: ignore[no-any-return]
-            "ExtractResult",
-            (dict,),
+        return ExtractResult(error_result)
+
+
+def extract_with_models(
+    model_cls: type[BaseModel],
+    text: str,
+    *,
+    models: list[str],
+    instruction_template: str = "Extract information from the following text:",
+    ai_cleanup: bool = True,
+    output_format: Literal["json", "toon"] = "json",
+    options: dict[str, Any] | None = None,
+    cache: bool | None = None,
+    json_mode: Literal["auto", "on", "off"] = "auto",
+    system_prompt: str | None = None,
+    images: list[ImageInput] | None = None,
+    max_retries: int = 1,
+    fallback: BaseModel | None = None,
+    reasoning_strategy: str | ReasoningStrategyProtocol | None = None,
+) -> dict[str, Any]:
+    """Extract structured data by trying multiple models in priority order.
+
+    Iterates through the model list, auto-selecting the best extraction
+    strategy for each model based on its driver capabilities.  Every attempt
+    (including failures and skips) is recorded so callers get full cost and
+    operational transparency.
+
+    Args:
+        model_cls: The Pydantic BaseModel class to extract into.
+        text: The raw text to extract information from.
+        models: Ordered list of model strings (``"provider/model"``).
+            Tried left-to-right; first success wins.
+        instruction_template: Instructional text to prepend to the content.
+        ai_cleanup: Whether to attempt AI-based cleanup if JSON parsing fails.
+        output_format: Response serialization format (``"json"`` or ``"toon"``).
+        options: Additional options to pass to the driver.
+        cache: Override for response caching.
+        json_mode: JSON mode override (``"auto"`` checks driver capabilities).
+        system_prompt: Optional system prompt.
+        images: Optional images to include in the prompt.
+        max_retries: Retries *per model* before moving to the next.
+        fallback: Optional Pydantic instance returned when every model fails.
+        reasoning_strategy: Optional reasoning strategy name or instance.
+
+    Returns:
+        An :class:`ExtractResult` dict containing:
+
+        - **model** -- validated Pydantic instance from the winning model.
+        - **selected_model** -- the model string that succeeded.
+        - **strategy_used** -- ``"single"`` or ``"stepwise"``.
+        - **attempts** -- list of dicts, one per model tried::
+
+              {
+                  "model": str,
+                  "status": "success" | "failed" | "skipped",
+                  "reason": str | None,
+                  "strategy": "single" | "stepwise",
+                  "cost": float,
+                  "prompt_tokens": int,
+                  "completion_tokens": int,
+                  "duration_ms": float,
+                  "capabilities": {"json_mode": bool, "json_schema": bool},
+              }
+
+        - **total_cost** -- sum of costs across *all* attempts.
+        - **total_tokens** -- sum of tokens across *all* attempts.
+        - **total_attempts** -- number of models actually called.
+        - **usage** -- the winning attempt's usage (backward compatible).
+
+    Raises:
+        ValueError: If *models* is empty or *text* is empty.
+        ExtractionError: If every model fails and no *fallback* is provided.
+            The exception carries an ``attempts`` attribute with full tracking.
+    """
+    import time
+
+    if not models:
+        raise ValueError("models list cannot be empty")
+    if not isinstance(text, str) or not text.strip():
+        raise ValueError("Text input cannot be empty")
+    if options is None:
+        options = {}
+
+    attempts: list[dict[str, Any]] = []
+    total_cost = 0.0
+    total_tokens = 0
+
+    for model_name in models:
+        # --- Resolve driver and detect capabilities ---
+        try:
+            driver = get_driver_for_model(model_name)
+        except Exception as exc:
+            attempts.append(
+                {
+                    "model": model_name,
+                    "status": "skipped",
+                    "reason": f"Driver error: {exc}",
+                    "strategy": None,
+                    "cost": 0.0,
+                    "prompt_tokens": 0,
+                    "completion_tokens": 0,
+                    "duration_ms": 0.0,
+                    "capabilities": {},
+                }
+            )
+            continue
+
+        has_json_mode = getattr(driver, "supports_json_mode", False)
+        has_json_schema = getattr(driver, "supports_json_schema", False)
+        capabilities = {"json_mode": has_json_mode, "json_schema": has_json_schema}
+
+        # Pick strategy: stepwise for models with no JSON support at all
+        use_stepwise = not has_json_mode and not has_json_schema
+        strategy = "stepwise" if use_stepwise else "single"
+
+        t0 = time.perf_counter()
+        try:
+            raw_result: dict[str, Any]
+            if use_stepwise:
+                raw_result = stepwise_extract_with_model(
+                    model_cls,
+                    text,
+                    model_name=model_name,
+                    instruction_template=instruction_template,
+                    ai_cleanup=ai_cleanup,
+                    options=options,
+                    json_mode=json_mode,
+                    system_prompt=system_prompt,
+                    reasoning_strategy=reasoning_strategy,
+                )
+            else:
+                raw_result = extract_with_model(
+                    model_cls,
+                    text,
+                    model_name=model_name,
+                    instruction_template=instruction_template,
+                    ai_cleanup=ai_cleanup,
+                    output_format=output_format,
+                    options=options,
+                    cache=cache,
+                    json_mode=json_mode,
+                    system_prompt=system_prompt,
+                    images=images,
+                    max_retries=max_retries,
+                    reasoning_strategy=reasoning_strategy,
+                )
+            elapsed_ms = (time.perf_counter() - t0) * 1000
+
+            usage: dict[str, Any] = raw_result.get("usage", {})  # type: ignore[assignment]
+            attempt_cost: float = usage.get("cost", 0.0)
+            attempt_tokens: int = usage.get("total_tokens", 0)
+            total_cost += attempt_cost
+            total_tokens += attempt_tokens
+
+            attempts.append(
+                {
+                    "model": model_name,
+                    "status": "success",
+                    "reason": None,
+                    "strategy": strategy,
+                    "cost": attempt_cost,
+                    "prompt_tokens": usage.get("prompt_tokens", 0),
+                    "completion_tokens": usage.get("completion_tokens", 0),
+                    "duration_ms": round(elapsed_ms, 1),
+                    "capabilities": capabilities,
+                }
+            )
+
+            # Build final result with full tracking
+            out: dict[str, Any] = {
+                "json_string": raw_result.get("json_string", ""),
+                "json_object": raw_result.get("json_object", {}),
+                "model": raw_result.get("model"),
+                "selected_model": model_name,
+                "strategy_used": strategy,
+                "attempts": attempts,
+                "total_cost": total_cost,
+                "total_tokens": total_tokens,
+                "total_attempts": sum(1 for a in attempts if a["status"] != "skipped"),
+                "usage": usage,
+            }
+            if "field_results" in raw_result:
+                out["field_results"] = raw_result["field_results"]
+            return ExtractResult(out)
+
+        except Exception as exc:
+            elapsed_ms = (time.perf_counter() - t0) * 1000
+
+            # Try to extract partial usage from the exception context
+            attempt_cost = 0.0
+            attempt_prompt = 0
+            attempt_completion = 0
+            attempt_total = 0
+
+            attempts.append(
+                {
+                    "model": model_name,
+                    "status": "failed",
+                    "reason": str(exc),
+                    "strategy": strategy,
+                    "cost": attempt_cost,
+                    "prompt_tokens": attempt_prompt,
+                    "completion_tokens": attempt_completion,
+                    "duration_ms": round(elapsed_ms, 1),
+                    "capabilities": capabilities,
+                }
+            )
+            total_cost += attempt_cost
+            total_tokens += attempt_total
+
+            logger.warning(
+                "[extract_with_models] %s failed: %s, trying next model...",
+                model_name,
+                exc,
+            )
+            continue
+
+    # All models exhausted
+    if fallback is not None:
+        logger.info("[extract_with_models] All %d models failed, using fallback", len(models))
+        fallback_dict = fallback.model_dump()
+        fallback_json = json.dumps(fallback_dict)
+        return ExtractResult(
             {
-                "__getattr__": lambda self, key: self.get(key),
-                "__call__": lambda self: None,  # Return None when called if validation failed
-            },
-        )(error_result)
+                "json_string": fallback_json,
+                "json_object": json.loads(fallback_json),
+                "model": fallback,
+                "selected_model": None,
+                "strategy_used": None,
+                "attempts": attempts,
+                "total_cost": total_cost,
+                "total_tokens": total_tokens,
+                "total_attempts": sum(1 for a in attempts if a["status"] != "skipped"),
+                "usage": {
+                    "prompt_tokens": 0,
+                    "completion_tokens": 0,
+                    "total_tokens": 0,
+                    "cost": 0.0,
+                    "fallback_used": True,
+                },
+            }
+        )
+
+    # No fallback — raise with full tracking attached
+    from ..exceptions import ExtractionError
+
+    err = ExtractionError(
+        f"All {len(models)} models failed extraction. "
+        f"Tried: {', '.join(m for m in models)}. "
+        f"Total cost incurred: ${total_cost:.6f}"
+    )
+    err.attempts = attempts  # type: ignore[attr-defined]
+    err.total_cost = total_cost  # type: ignore[attr-defined]
+    err.total_tokens = total_tokens  # type: ignore[attr-defined]
+    raise err
 
 
 def _json_to_toon(data: Union[list[dict[str, Any]], dict[str, Any]], data_key: str | None = None) -> str:
