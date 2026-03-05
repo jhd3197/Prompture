@@ -317,7 +317,7 @@ def get_available_models(
                 groups[provider] = {
                     "display_name": prov_desc.display_name if prov_desc else provider,
                     "source": _SOURCE_LABELS.get(source_raw, source_raw),
-                    "config_via": _config_via(desc) if desc else "unknown",
+                    "config_via": _config_via(prov_desc) if prov_desc else "unknown",
                     "models": [],
                 }
             groups[provider]["models"].append(model_id)
