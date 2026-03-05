@@ -35,6 +35,7 @@ from .reasoning import (
     apply_reasoning_strategy,
     auto_select_reasoning_strategy,
 )
+from .strategy import StructuredOutputStrategy, resolve_strategy
 from .tools import (
     clean_json_text,
     convert_value,
@@ -272,6 +273,73 @@ def render_output(
     return {"text": raw, "usage": usage, "output_format": output_format}
 
 
+def _schema_to_tool(json_schema: dict[str, Any]) -> dict[str, Any]:
+    """Convert a JSON schema into an OpenAI-compatible tool definition.
+
+    The tool is named ``extract_data`` with the user's schema as its
+    parameters.  This trick makes models that support function calling
+    return structured JSON even when they lack native JSON mode.
+    """
+    return {
+        "type": "function",
+        "function": {
+            "name": "extract_data",
+            "description": "Extract structured data matching the requested schema.",
+            "parameters": json_schema,
+        },
+    }
+
+
+def _extract_via_tool_call(
+    driver: Driver,
+    content_prompt: str,
+    json_schema: dict[str, Any],
+    model_name: str = "",
+    options: dict[str, Any] | None = None,
+    system_prompt: str | None = None,
+    images: list[ImageInput] | None = None,
+) -> dict[str, Any] | None:
+    """Attempt extraction via a tool/function call.
+
+    Wraps *json_schema* as a tool definition and asks the driver to
+    return data via a tool call.  Returns a result dict on success or
+    ``None`` if the driver doesn't support tool use or the model didn't
+    call the tool.
+    """
+    if not getattr(driver, "supports_tool_use", False):
+        return None
+
+    if options is None:
+        options = {}
+
+    tool = _schema_to_tool(json_schema)
+    user_content = _build_content_with_images(content_prompt, images)
+    messages: list[dict[str, Any]] = [{"role": "user", "content": user_content}]
+    if system_prompt is not None:
+        messages.insert(0, {"role": "system", "content": system_prompt})
+
+    try:
+        resp = driver.generate_messages_with_tools_with_hooks(messages, [tool], options)
+    except (NotImplementedError, TypeError):
+        return None
+
+    tool_calls = resp.get("tool_calls", [])
+    if not tool_calls:
+        return None
+
+    # Use the first tool call's arguments as extracted JSON
+    args = tool_calls[0].get("arguments", {})
+    if not isinstance(args, dict) or not args:
+        return None
+
+    json_string = json.dumps(args, ensure_ascii=False)
+    return {
+        "json_string": json_string,
+        "json_object": args,
+        "usage": _build_usage(resp, model_name or getattr(driver, "model", "")),
+    }
+
+
 def ask_for_json(
     driver: Driver,
     content_prompt: str,
@@ -284,6 +352,7 @@ def ask_for_json(
     json_mode: Literal["auto", "on", "off"] = "auto",
     system_prompt: str | None = None,
     images: list[ImageInput] | None = None,
+    strategy: str | StructuredOutputStrategy | None = None,
 ) -> dict[str, Any]:
     """Sends a prompt to the driver and returns structured output plus usage metadata.
 
@@ -344,12 +413,44 @@ def ask_for_json(
             "TOON requested but 'python-toon' is not installed. Install it with 'pip install python-toon'."
         )
 
+    # --- Resolve structured-output strategy ---
+    resolved_strategy = resolve_strategy(strategy, model_name or getattr(driver, "model", ""), driver=driver)
+    logger.debug("[ask_for_json] strategy=%s model=%s", resolved_strategy.value, model_name)
+
+    # --- TOOL_CALL strategy: try extracting via function calling ---
+    if resolved_strategy == StructuredOutputStrategy.TOOL_CALL:
+        tool_result = _extract_via_tool_call(
+            driver, content_prompt, json_schema, model_name, options, system_prompt, images
+        )
+        if tool_result is not None:
+            tool_result["usage"]["strategy"] = resolved_strategy.value
+            # Handle TOON conversion
+            if output_format == "toon":
+                tool_result["toon_string"] = toon.encode(tool_result["json_object"])
+                tool_result["output_format"] = "toon"
+            else:
+                tool_result["output_format"] = "json"
+            # Cache store
+            if use_cache and cache_key is not None:
+                cached_copy = {**tool_result, "usage": {**tool_result["usage"], "raw_response": {}}}
+                _cache.set(cache_key, cached_copy, force=_force)
+            return tool_result
+        # Tool call didn't produce a result — fall through to prompted approach
+        logger.debug("[ask_for_json] tool_call strategy produced no result, falling back to prompted")
+        resolved_strategy = StructuredOutputStrategy.PROMPTED_REPAIR
+
     # Determine whether to use native JSON mode
     use_json_mode = False
-    if json_mode == "on":
+    if resolved_strategy == StructuredOutputStrategy.PROVIDER_NATIVE:
+        if json_mode == "on":
+            use_json_mode = True
+        elif json_mode == "auto":
+            use_json_mode = getattr(driver, "supports_json_mode", False)
+        elif json_mode == "off":
+            use_json_mode = False
+    elif json_mode == "on":
+        # User explicitly forced json_mode even with prompted_repair strategy
         use_json_mode = True
-    elif json_mode == "auto":
-        use_json_mode = getattr(driver, "supports_json_mode", False)
 
     if use_json_mode:
         options = {**options, "json_mode": True}
@@ -399,6 +500,7 @@ def ask_for_json(
             toon_string = toon.encode(json_obj)
 
         usage = _build_usage(resp, model_name or getattr(driver, "model", ""))
+        usage["strategy"] = resolved_strategy.value
         result = {"json_string": json_string, "json_object": json_obj, "usage": usage}
         if toon_string is not None:
             result["toon_string"] = toon_string
@@ -428,6 +530,7 @@ def ask_for_json(
                     resp,
                 )
 
+                combined_usage["strategy"] = resolved_strategy.value
                 result = {
                     "json_string": cleaned_fixed,
                     "json_object": json_obj,
@@ -467,6 +570,7 @@ def extract_and_jsonify(
     system_prompt: str | None = None,
     images: list[ImageInput] | None = None,
     reasoning_strategy: str | ReasoningStrategyProtocol | None = None,
+    strategy: str | StructuredOutputStrategy | None = None,
 ) -> dict[str, Any]:
     """Extracts structured information using automatic driver selection or an explicit driver.
 
@@ -480,6 +584,10 @@ def extract_and_jsonify(
         output_format: Response serialization format ("json" or "toon").
         options: Additional options to pass to the driver.
         reasoning_strategy: Optional reasoning strategy name or instance to augment the prompt.
+        strategy: Structured output strategy.  ``"auto"`` (default) picks the
+            best approach based on driver capabilities.  Can be ``"provider_native"``,
+            ``"tool_call"``, ``"prompted_repair"``, or a
+            :class:`~prompture.extraction.strategy.StructuredOutputStrategy` enum.
 
     Returns:
         A dictionary containing:
@@ -580,6 +688,7 @@ def extract_and_jsonify(
             json_mode=json_mode,
             system_prompt=system_prompt,
             images=images,
+            strategy=strategy,
         )
         result["usage"]["reasoning_strategy"] = _strategy_name(reasoning_strategy)
         return result
@@ -737,6 +846,7 @@ def extract_with_model(
     reasoning_strategy: str | ReasoningStrategyProtocol | None = None,
     source: Any = None,
     chunking: Any = None,
+    strategy: str | StructuredOutputStrategy | None = None,
 ) -> dict[str, Any]:
     """Extracts structured information into a Pydantic model instance.
 
@@ -930,6 +1040,7 @@ def extract_with_model(
                 system_prompt=system_prompt,
                 images=images,
                 reasoning_strategy=reasoning_strategy,
+                strategy=strategy,
             )
             logger.debug("[extract] Extraction completed successfully")
 
@@ -1348,6 +1459,7 @@ def extract_with_models(
     max_retries: int = 1,
     fallback: BaseModel | None = None,
     reasoning_strategy: str | ReasoningStrategyProtocol | None = None,
+    strategy: str | StructuredOutputStrategy | None = None,
 ) -> dict[str, Any]:
     """Extract structured data by trying multiple models in priority order.
 
@@ -1440,9 +1552,9 @@ def extract_with_models(
         has_json_schema = getattr(driver, "supports_json_schema", False)
         capabilities = {"json_mode": has_json_mode, "json_schema": has_json_schema}
 
-        # Pick strategy: stepwise for models with no JSON support at all
+        # Pick extraction approach: stepwise for models with no JSON support at all
         use_stepwise = not has_json_mode and not has_json_schema
-        strategy = "stepwise" if use_stepwise else "single"
+        extraction_approach = "stepwise" if use_stepwise else "single"
 
         t0 = time.perf_counter()
         try:
@@ -1474,6 +1586,7 @@ def extract_with_models(
                     images=images,
                     max_retries=max_retries,
                     reasoning_strategy=reasoning_strategy,
+                    strategy=strategy,
                 )
             elapsed_ms = (time.perf_counter() - t0) * 1000
 
@@ -1488,7 +1601,7 @@ def extract_with_models(
                     "model": model_name,
                     "status": "success",
                     "reason": None,
-                    "strategy": strategy,
+                    "strategy": extraction_approach,
                     "cost": attempt_cost,
                     "prompt_tokens": usage.get("prompt_tokens", 0),
                     "completion_tokens": usage.get("completion_tokens", 0),
@@ -1503,7 +1616,7 @@ def extract_with_models(
                 "json_object": raw_result.get("json_object", {}),
                 "model": raw_result.get("model"),
                 "selected_model": model_name,
-                "strategy_used": strategy,
+                "strategy_used": extraction_approach,
                 "attempts": attempts,
                 "total_cost": total_cost,
                 "total_tokens": total_tokens,
@@ -1528,7 +1641,7 @@ def extract_with_models(
                     "model": model_name,
                     "status": "failed",
                     "reason": str(exc),
-                    "strategy": strategy,
+                    "strategy": extraction_approach,
                     "cost": attempt_cost,
                     "prompt_tokens": attempt_prompt,
                     "completion_tokens": attempt_completion,

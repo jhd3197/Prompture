@@ -17,6 +17,14 @@ from .cache import (
     get_cache,
 )
 from .callbacks import DriverCallbacks
+from .capabilities import (
+    ProviderCapabilities,
+    clear_overrides,
+    get_capabilities,
+    override_capabilities,
+    register_model,
+    register_provider,
+)
 from .cost_mixin import AudioCostMixin, EmbeddingCostMixin
 from .discovery import (
     clear_discovery_cache,
@@ -53,6 +61,7 @@ __all__ = [
     "BudgetState",
     "CacheBackend",
     "DriverCallbacks",
+    "ProviderCapabilities",
     "EmbeddingCostMixin",
     "JSONFormatter",
     "MemoryCacheBackend",
@@ -77,12 +86,17 @@ __all__ = [
     "get_available_embedding_models",
     "get_available_image_gen_models",
     "get_available_models",
+    "clear_overrides",
     "get_cache",
+    "get_capabilities",
     "get_model_capabilities",
     "get_model_info",
     "get_model_lifecycle",
     "get_model_rates",
     "get_recently_used_models",
+    "override_capabilities",
+    "register_model",
+    "register_provider",
     "get_tracker",
     "refresh_rates_cache",
     "settings",

@@ -35,6 +35,7 @@ from .reasoning import (
     apply_reasoning_strategy,
     auto_select_reasoning_strategy,
 )
+from .strategy import StructuredOutputStrategy, resolve_strategy
 from .tools import (
     clean_json_text,
     convert_value,
@@ -127,6 +128,59 @@ async def render_output(
     return {"text": raw, "usage": usage, "output_format": output_format}
 
 
+def _schema_to_tool(json_schema: dict[str, Any]) -> dict[str, Any]:
+    """Convert a JSON schema into an OpenAI-compatible tool definition."""
+    return {
+        "type": "function",
+        "function": {
+            "name": "extract_data",
+            "description": "Extract structured data matching the requested schema.",
+            "parameters": json_schema,
+        },
+    }
+
+
+async def _extract_via_tool_call(
+    driver: AsyncDriver,
+    content_prompt: str,
+    json_schema: dict[str, Any],
+    model_name: str = "",
+    options: dict[str, Any] | None = None,
+    system_prompt: str | None = None,
+) -> dict[str, Any] | None:
+    """Attempt extraction via a tool/function call (async version)."""
+    if not getattr(driver, "supports_tool_use", False):
+        return None
+
+    if options is None:
+        options = {}
+
+    tool = _schema_to_tool(json_schema)
+    messages: list[dict[str, Any]] = [{"role": "user", "content": content_prompt}]
+    if system_prompt is not None:
+        messages.insert(0, {"role": "system", "content": system_prompt})
+
+    try:
+        resp = await driver.generate_messages_with_tools_with_hooks(messages, [tool], options)
+    except (NotImplementedError, TypeError):
+        return None
+
+    tool_calls = resp.get("tool_calls", [])
+    if not tool_calls:
+        return None
+
+    args = tool_calls[0].get("arguments", {})
+    if not isinstance(args, dict) or not args:
+        return None
+
+    json_string = json.dumps(args, ensure_ascii=False)
+    return {
+        "json_string": json_string,
+        "json_object": args,
+        "usage": _build_usage(resp, model_name or getattr(driver, "model", "")),
+    }
+
+
 async def ask_for_json(
     driver: AsyncDriver,
     content_prompt: str,
@@ -138,6 +192,7 @@ async def ask_for_json(
     cache: bool | None = None,
     json_mode: Literal["auto", "on", "off"] = "auto",
     system_prompt: str | None = None,
+    strategy: str | StructuredOutputStrategy | None = None,
 ) -> dict[str, Any]:
     """Send a prompt and return structured JSON output plus usage metadata (async version)."""
     if options is None:
@@ -171,12 +226,40 @@ async def ask_for_json(
             "TOON requested but 'python-toon' is not installed. Install it with 'pip install python-toon'."
         )
 
+    # --- Resolve structured-output strategy ---
+    resolved_strategy = resolve_strategy(strategy, model_name or getattr(driver, "model", ""), driver=driver)
+    logger.debug("[ask_for_json] strategy=%s model=%s", resolved_strategy.value, model_name)
+
+    # --- TOOL_CALL strategy: try extracting via function calling ---
+    if resolved_strategy == StructuredOutputStrategy.TOOL_CALL:
+        tool_result = await _extract_via_tool_call(
+            driver, content_prompt, json_schema, model_name, options, system_prompt
+        )
+        if tool_result is not None:
+            tool_result["usage"]["strategy"] = resolved_strategy.value
+            if output_format == "toon":
+                tool_result["toon_string"] = toon.encode(tool_result["json_object"])
+                tool_result["output_format"] = "toon"
+            else:
+                tool_result["output_format"] = "json"
+            if use_cache and cache_key is not None:
+                cached_copy = {**tool_result, "usage": {**tool_result["usage"], "raw_response": {}}}
+                _cache.set(cache_key, cached_copy, force=_force)
+            return tool_result
+        logger.debug("[ask_for_json] tool_call strategy produced no result, falling back to prompted")
+        resolved_strategy = StructuredOutputStrategy.PROMPTED_REPAIR
+
     # Determine whether to use native JSON mode
     use_json_mode = False
-    if json_mode == "on":
+    if resolved_strategy == StructuredOutputStrategy.PROVIDER_NATIVE:
+        if json_mode == "on":
+            use_json_mode = True
+        elif json_mode == "auto":
+            use_json_mode = getattr(driver, "supports_json_mode", False)
+        elif json_mode == "off":
+            use_json_mode = False
+    elif json_mode == "on":
         use_json_mode = True
-    elif json_mode == "auto":
-        use_json_mode = getattr(driver, "supports_json_mode", False)
 
     if use_json_mode:
         options = {**options, "json_mode": True}
@@ -185,17 +268,14 @@ async def ask_for_json(
 
     # Adjust instruction prompt based on JSON mode capabilities
     if use_json_mode and getattr(driver, "supports_json_schema", False):
-        # Schema enforced by API — minimal instruction
         instruct = "Extract data matching the requested schema.\nIf a value is unknown use null."
     elif use_json_mode:
-        # JSON guaranteed but schema not enforced by API
         instruct = (
             "Return a JSON object that validates against this schema:\n"
             f"{schema_string}\n\n"
             "If a value is unknown use null."
         )
     else:
-        # Existing prompt-based enforcement
         instruct = (
             "Return only a single JSON object (no markdown, no extra text) that validates against this JSON schema:\n"
             f"{schema_string}\n\n"
@@ -226,6 +306,7 @@ async def ask_for_json(
             toon_string = toon.encode(json_obj)
 
         usage = _build_usage(resp, model_name or getattr(driver, "model", ""))
+        usage["strategy"] = resolved_strategy.value
         result = {"json_string": json_string, "json_object": json_obj, "usage": usage}
         if toon_string is not None:
             result["toon_string"] = toon_string
@@ -254,6 +335,7 @@ async def ask_for_json(
                     model_name or options.get("model", getattr(driver, "model", "")),
                     resp,
                 )
+                combined_usage["strategy"] = resolved_strategy.value
 
                 result = {
                     "json_string": cleaned_fixed,
@@ -288,6 +370,7 @@ async def extract_and_jsonify(
     json_mode: Literal["auto", "on", "off"] = "auto",
     system_prompt: str | None = None,
     reasoning_strategy: str | ReasoningStrategyProtocol | None = None,
+    strategy: str | StructuredOutputStrategy | None = None,
 ) -> dict[str, Any]:
     """Extract structured information using automatic async driver selection (async version)."""
     if options is None:
@@ -336,6 +419,7 @@ async def extract_and_jsonify(
             output_format=output_format,
             json_mode=json_mode,
             system_prompt=system_prompt,
+            strategy=strategy,
         )
         result["usage"]["reasoning_strategy"] = _strategy_name(reasoning_strategy)
         return result
@@ -499,6 +583,7 @@ async def extract_with_model(
     reasoning_strategy: str | ReasoningStrategyProtocol | None = None,
     source: Any = None,
     chunking: Any = None,
+    strategy: str | StructuredOutputStrategy | None = None,
 ) -> dict[str, Any]:
     """Extract structured information into a Pydantic model instance (async version).
 
@@ -586,6 +671,7 @@ async def extract_with_model(
         json_mode=json_mode,
         system_prompt=system_prompt,
         reasoning_strategy=reasoning_strategy,
+        strategy=strategy,
     )
 
     json_object = result["json_object"]
