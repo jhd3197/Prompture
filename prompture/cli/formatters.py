@@ -49,12 +49,7 @@ def format_table(report: dict[str, Any]) -> str:
         col_tokens = max(len("Tokens"), 6)
         col_cost = max(len("Cost"), 8)
 
-        header = (
-            f"  {'Model':<{col_model}}  "
-            f"{'Pass':>{col_pass}}  "
-            f"{'Tokens':>{col_tokens}}  "
-            f"{'Cost':>{col_cost}}"
-        )
+        header = f"  {'Model':<{col_model}}  {'Pass':>{col_pass}}  {'Tokens':>{col_tokens}}  {'Cost':>{col_cost}}"
         sep = f"  {'-' * col_model}  {'-' * col_pass}  {'-' * col_tokens}  {'-' * col_cost}"
 
         lines.append(header)
@@ -64,24 +59,15 @@ def format_table(report: dict[str, Any]) -> str:
             pass_str = f"{stats['passed']}/{stats['total']}"
             cost_str = f"${stats['cost']:.4f}"
             lines.append(
-                f"  {mid:<{col_model}}  "
-                f"{pass_str:>{col_pass}}  "
-                f"{stats['tokens']:>{col_tokens}}  "
-                f"{cost_str:>{col_cost}}"
+                f"  {mid:<{col_model}}  {pass_str:>{col_pass}}  {stats['tokens']:>{col_tokens}}  {cost_str:>{col_cost}}"
             )
 
         lines.append("")
 
     # Summary
-    total_pass = sum(
-        s["passed"] for m in tests.values() for s in m.values()
-    )
-    total_tests = sum(
-        s["total"] for m in tests.values() for s in m.values()
-    )
-    total_cost = sum(
-        s["cost"] for m in tests.values() for s in m.values()
-    )
+    total_pass = sum(s["passed"] for m in tests.values() for s in m.values())
+    total_tests = sum(s["total"] for m in tests.values() for s in m.values())
+    total_cost = sum(s["cost"] for m in tests.values() for s in m.values())
     lines.append(f"Overall: {total_pass}/{total_tests} passed, total cost: ${total_cost:.4f}")
 
     return "\n".join(lines)
