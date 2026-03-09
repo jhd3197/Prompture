@@ -73,6 +73,7 @@ COMPLEX_SCHEMA = {
 
 # List of OpenAI models to test
 MODELS_TO_TEST = [
+    "gpt-5.4",
     "gpt-5.2",
     "gpt-5.1",
     "gpt-4o",
