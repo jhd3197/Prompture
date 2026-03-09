@@ -1,4 +1,17 @@
 {
+  "gpt-5.4": {
+    "supports_temperature": true,
+    "supports_tool_use": true,
+    "supports_structured_output": true,
+    "supports_vision": true,
+    "is_reasoning": false,
+    "context_window": 1050000,
+    "max_output_tokens": 128000,
+    "modalities_input": ["text", "image"],
+    "modalities_output": ["text"],
+    "api_type": "openai",
+    "tokens_param": "max_completion_tokens"
+  },
   "gpt-5.2": {
     "supports_temperature": true,
     "supports_tool_use": true,
