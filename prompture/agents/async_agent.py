@@ -26,8 +26,9 @@ from typing import Any, Generic
 from pydantic import BaseModel
 
 from ..extraction.tools import clean_json_text
-from ..infra.budget import BudgetPolicy, BudgetState, enforce_budget
+from ..infra.budget import BudgetPolicy, BudgetState, enforce_budget, resolve_budget_policy
 from ..infra.callbacks import DriverCallbacks
+from ..infra.provider_env import ProviderEnvironment
 from ..infra.session import UsageSession
 from .persona import Persona
 from .tools_schema import ToolDefinition, ToolRegistry
@@ -172,7 +173,7 @@ class AsyncAgent(Generic[DepsType]):
         max_iterations: int = 10,
         max_cost: float | None = None,
         max_tokens: int | None = None,
-        budget_policy: BudgetPolicy | None = None,
+        budget_policy: BudgetPolicy | str | None = None,
         fallback_models: list[str] | None = None,
         on_model_fallback: Callable[..., Any] | None = None,
         options: dict[str, Any] | None = None,
@@ -189,19 +190,21 @@ class AsyncAgent(Generic[DepsType]):
         skill_config: dict[str, Any] | None = None,
         max_tool_result_length: int | None = None,
         max_depth: int = _DEFAULT_MAX_AGENT_DEPTH,
+        env: ProviderEnvironment | None = None,
     ) -> None:
         if not model and driver is None:
             raise ValueError("Either model or driver must be provided")
 
         self._model = model
         self._driver = driver
+        self._env = env
         self._max_depth = max_depth
         self._system_prompt = system_prompt
         self._output_type = output_type
         self._max_iterations = max_iterations
         self._max_cost = max_cost
         self._max_tokens = max_tokens
-        self._budget_policy = budget_policy
+        self._budget_policy = resolve_budget_policy(budget_policy)
         self._fallback_models = list(fallback_models) if fallback_models else None
         self._on_model_fallback = on_model_fallback
         self._options = dict(options) if options else {}
@@ -779,6 +782,8 @@ class AsyncAgent(Generic[DepsType]):
             kwargs["driver"] = self._driver
         else:
             kwargs["model_name"] = self._model
+            if self._env is not None:
+                kwargs["env"] = self._env
 
         # Forward budget params when budget enforcement is active
         if self._budget_policy is not None:

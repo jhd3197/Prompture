@@ -6,6 +6,7 @@ from .budget import (
     enforce_budget,
     estimate_cost,
     estimate_tokens,
+    resolve_budget_policy,
 )
 from .cache import (
     CacheBackend,
@@ -17,6 +18,15 @@ from .cache import (
     get_cache,
 )
 from .callbacks import DriverCallbacks
+from .capabilities import (
+    ProviderCapabilities,
+    clear_overrides,
+    get_capabilities,
+    get_compatibility_matrix,
+    override_capabilities,
+    register_model,
+    register_provider,
+)
 from .cost_mixin import AudioCostMixin, EmbeddingCostMixin
 from .discovery import (
     clear_discovery_cache,
@@ -58,6 +68,7 @@ __all__ = [
     "MemoryCacheBackend",
     "ModelCapabilities",
     "ModelUsageLedger",
+    "ProviderCapabilities",
     "ProviderEnvironment",
     "RedisCacheBackend",
     "ResponseCache",
@@ -65,6 +76,7 @@ __all__ = [
     "TukuyLLMBackend",
     "UsageSession",
     "clear_discovery_cache",
+    "clear_overrides",
     "configure_cache",
     "configure_logging",
     "configure_tracker",
@@ -78,12 +90,18 @@ __all__ = [
     "get_available_image_gen_models",
     "get_available_models",
     "get_cache",
+    "get_capabilities",
+    "get_compatibility_matrix",
     "get_model_capabilities",
     "get_model_info",
     "get_model_lifecycle",
     "get_model_rates",
     "get_recently_used_models",
     "get_tracker",
+    "override_capabilities",
     "refresh_rates_cache",
+    "register_model",
+    "register_provider",
+    "resolve_budget_policy",
     "settings",
 ]

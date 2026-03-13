@@ -27,6 +27,22 @@ class BudgetPolicy(enum.Enum):
     degrade = "degrade"
 
 
+def resolve_budget_policy(value: BudgetPolicy | str | None) -> BudgetPolicy | None:
+    """Coerce a string or BudgetPolicy enum to BudgetPolicy.
+
+    Accepts enum members, their string values (``"hard_stop"``), or ``None``.
+    """
+    if value is None or isinstance(value, BudgetPolicy):
+        return value
+    if isinstance(value, str):
+        try:
+            return BudgetPolicy(value)
+        except ValueError:
+            valid = ", ".join(p.value for p in BudgetPolicy)
+            raise ValueError(f"Invalid budget policy {value!r}. Valid: {valid}") from None
+    raise TypeError(f"Expected BudgetPolicy, str, or None — got {type(value).__name__}")
+
+
 @dataclass(frozen=True)
 class BudgetState:
     """Snapshot of budget consumption vs. limits."""

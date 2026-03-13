@@ -17,8 +17,9 @@ Prompture is a Python library for structured LLM data extraction. It provides an
 - **Cross-Model Testing**: Compare results across different models
 - **Driver Architecture**: Extensible design for adding new LLM providers
 
-.. note::
-   Prompture is currently in development (version 0.0.23.dev1). APIs may change between versions.
+.. tip::
+   Prompture's core extraction APIs are **stable** — signatures and return shapes
+   are covered by semantic versioning.  See :doc:`stability` for details.
 
 Quick Start
 -----------
@@ -55,11 +56,15 @@ Documentation
    :maxdepth: 2
    :caption: Contents:
 
+   why_prompture
    installation
    quickstart
    toon_input_guide
    field_definitions_reference
    examples
+   test_harness
+   stability
+   migration
    contributing
 
 API Reference

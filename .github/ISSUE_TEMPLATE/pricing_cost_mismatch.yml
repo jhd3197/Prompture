@@ -1,0 +1,61 @@
+name: Pricing / Cost Mismatch
+description: Report incorrect cost calculation for a model
+labels: ["bug", "pricing"]
+body:
+  - type: input
+    id: model_string
+    attributes:
+      label: Model string
+      placeholder: "openai/gpt-4o"
+    validations:
+      required: true
+
+  - type: input
+    id: expected_cost
+    attributes:
+      label: Expected cost
+      description: "The cost you expect based on provider pricing (e.g., $0.0025 per 1K input tokens)"
+      placeholder: "$X.XX per 1K tokens or total cost"
+    validations:
+      required: true
+
+  - type: input
+    id: actual_cost
+    attributes:
+      label: Actual cost reported by Prompture
+      placeholder: "$0.0000"
+    validations:
+      required: true
+
+  - type: textarea
+    id: usage_dict
+    attributes:
+      label: Usage dict from response
+      description: "The usage metadata returned by the extraction call."
+      render: json
+    validations:
+      required: true
+
+  - type: input
+    id: pricing_source
+    attributes:
+      label: Source of expected pricing
+      description: "Link to provider pricing page or models.dev entry."
+      placeholder: "https://..."
+    validations:
+      required: true
+
+  - type: input
+    id: prompture_version
+    attributes:
+      label: Prompture version
+      placeholder: "1.0.49"
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+    validations:
+      required: false

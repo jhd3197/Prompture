@@ -81,6 +81,24 @@ AZURE_OPENAI_API_KEY=...
 
 Local providers (Ollama, LM Studio) work out of the box with no keys required.
 
+### Runtime API Keys (No Environment Variables)
+
+Pass API keys at runtime via `ProviderEnvironment` — useful for multi-tenant apps, web backends, or anywhere you don't want to set `os.environ`:
+
+```python
+from prompture import AsyncAgent, ProviderEnvironment
+
+env = ProviderEnvironment(
+    openai_api_key="sk-...",
+    claude_api_key="sk-ant-...",
+)
+
+agent = AsyncAgent("openai/gpt-4o", env=env)
+result = await agent.run("Hello!")
+```
+
+Works on `Agent`, `AsyncAgent`, `Conversation`, and `AsyncConversation`.
+
 ## Providers
 
 Model strings use `"provider/model"` format. The provider prefix routes to the correct driver automatically.
@@ -289,6 +307,35 @@ conv = Conversation("openai/gpt-4", tools=registry, simulated_tools=False)
 
 The simulation loop describes tools in the system prompt, asks the model to respond with JSON (`tool_call` or `final_answer`), executes tools, and feeds results back — all transparent to the caller.
 
+### Budget Control
+
+Set cost and token limits with policy-based enforcement:
+
+```python
+from prompture import AsyncAgent
+
+agent = AsyncAgent(
+    "openai/gpt-4o",
+    max_cost=0.50,
+    budget_policy="hard_stop",       # accepts strings or BudgetPolicy enum
+    fallback_models=["openai/gpt-4o-mini"],
+)
+```
+
+Policies: `"hard_stop"` (raise `BudgetExceededError` on exceed), `"warn_and_continue"` (log and proceed), `"degrade"` (auto-switch to cheaper model at 80% budget).
+
+### Provider Utilities
+
+Extract provider info from model strings:
+
+```python
+from prompture import provider_for_model, parse_model_string
+
+provider_for_model("claude/claude-sonnet-4-6")                  # "claude"
+provider_for_model("claude/claude-sonnet-4-6", canonical=True)  # "anthropic"
+parse_model_string("openai/gpt-4o")                             # ("openai", "gpt-4o")
+```
+
 ### Model Discovery
 
 Auto-detect available models from configured providers:
@@ -335,6 +382,117 @@ prompture run <spec-file>
 ```
 
 Run spec-driven extraction suites for cross-model comparison.
+
+## Integrating Prompture into Your Project
+
+### FastAPI + AsyncAgent with Tools
+
+The most common integration pattern — an AI chat endpoint with database-backed tools:
+
+```python
+from fastapi import APIRouter, Depends
+from prompture import AsyncAgent, ToolRegistry, ProviderEnvironment, BudgetExceededError
+
+router = APIRouter()
+
+def build_tools(db) -> ToolRegistry:
+    registry = ToolRegistry()
+
+    @registry.tool
+    async def search_records(query: str) -> str:
+        """Search the database for matching records."""
+        results = await db.execute(...)
+        return format_results(results)
+
+    return registry
+
+@router.post("/chat")
+async def chat(message: str, db=Depends(get_db)):
+    env = ProviderEnvironment(openai_api_key=get_api_key_from_db(db))
+
+    agent = AsyncAgent(
+        "openai/gpt-4o",
+        env=env,
+        tools=build_tools(db),
+        system_prompt="You are a helpful assistant with database access.",
+        max_cost=0.25,
+        budget_policy="hard_stop",
+    )
+
+    try:
+        result = await agent.run(message)
+        return {"reply": result.output_text, "usage": result.usage}
+    except BudgetExceededError:
+        return {"error": "Cost limit exceeded"}, 429
+```
+
+### SSE Streaming Endpoint
+
+Stream responses via Server-Sent Events:
+
+```python
+from fastapi.responses import StreamingResponse
+from prompture import AsyncAgent, StreamEventType
+
+@router.post("/chat/stream")
+async def chat_stream(message: str):
+    agent = AsyncAgent("claude/claude-sonnet-4-6", env=env, system_prompt="...")
+
+    async def event_stream():
+        async for event in agent.run_stream(message):
+            match event.event_type:
+                case StreamEventType.text_delta:
+                    yield f"data: {json.dumps({'type': 'text', 'content': event.data})}\n\n"
+                case StreamEventType.tool_call:
+                    yield f"data: {json.dumps({'type': 'tool_call', 'name': event.data['name']})}\n\n"
+                case StreamEventType.output:
+                    yield f"data: {json.dumps({'type': 'done'})}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+```
+
+### Structured Extraction in Endpoints
+
+Use `AsyncConversation.ask_for_json()` for one-shot structured data extraction:
+
+```python
+from prompture import AsyncConversation
+
+@router.get("/insights")
+async def get_insights():
+    conv = AsyncConversation("openai/gpt-4o", system_prompt="You analyze data.")
+    result = await conv.ask_for_json(
+        f"Analyze this data and produce insights:\n\n{context}",
+        {"type": "object", "properties": {
+            "insights": {"type": "array", "items": {"type": "object", ...}},
+            "summary": {"type": "string"},
+        }},
+    )
+    return result["json_object"]
+```
+
+### Error Handling
+
+Key exceptions to catch in production:
+
+```python
+from prompture import BudgetExceededError, DriverError, ExtractionError, ValidationError
+
+try:
+    result = await agent.run(message)
+except BudgetExceededError:
+    # Cost or token limit exceeded — return 429
+    pass
+except DriverError:
+    # Provider API error (auth, rate limit, network) — return 502
+    pass
+except ExtractionError:
+    # JSON parsing/validation failed — return 422
+    pass
+except ValidationError:
+    # Schema validation failed — return 422
+    pass
+```
 
 ## Development
 

@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Questions & Discussion
+    url: https://github.com/jhd3197/prompture/discussions
+    about: Ask questions, share ideas, or get help with Prompture.

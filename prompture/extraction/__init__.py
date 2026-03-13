@@ -42,6 +42,7 @@ from .reasoning import (
     reset_reasoning_strategy_registry,
     unregister_reasoning_strategy,
 )
+from .strategy import StructuredOutputStrategy, auto_select_strategy, resolve_strategy
 from .tools import clean_json_text, clean_toon_text
 from .validator import validate_against_schema
 
@@ -53,11 +54,13 @@ __all__ = [
     "ExtractResult",
     "ReasoningStrategy",
     "ReasoningStrategyProtocol",
+    "StructuredOutputStrategy",
     "add_field_definition",
     "add_field_definitions",
     "apply_reasoning_strategy",
     "ask_for_json",
     "auto_select_reasoning_strategy",
+    "auto_select_strategy",
     "clean_json_text",
     "clean_json_text_with_ai",
     "clean_toon_text",

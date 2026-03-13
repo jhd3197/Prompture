@@ -1,0 +1,74 @@
+{
+  "meta": {
+    "project": "prompture-validation",
+    "suite": "strategy_comparison",
+    "version": "1.0",
+    "description": "Same prompts tested with each StructuredOutputStrategy to compare reliability and cost."
+  },
+  "models": [
+    {"id": "openai/gpt-4o-mini", "driver": "openai", "options": {}},
+    {"id": "ollama/llama3.1:8b", "driver": "ollama", "options": {}}
+  ],
+  "tests": [
+    {
+      "id": "invoice-extraction",
+      "prompt_template": "Extract invoice details from: {text}",
+      "inputs": [
+        {"text": "Invoice #INV-2026-0042 from Acme Corp, dated March 1, 2026. Total: $1,847.50. Due: March 31, 2026. Items: 3x Widget A ($199.00 each), 1x Service Plan B ($1,250.50)."},
+        {"text": "Bill #7891 - CloudHost Inc. Feb 15 2026. Monthly hosting: $89.00, SSL cert: $15.00, Domain renewal: $12.99. Subtotal $116.99, Tax $9.36, Total $126.35. Pay by Mar 1."}
+      ],
+      "schema": {
+        "type": "object",
+        "properties": {
+          "invoice_number": {"type": "string"},
+          "vendor": {"type": "string"},
+          "date": {"type": "string"},
+          "total": {"type": "number"},
+          "due_date": {"type": ["string", "null"]},
+          "line_items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "description": {"type": "string"},
+                "quantity": {"type": "integer"},
+                "unit_price": {"type": "number"}
+              },
+              "required": ["description"]
+            }
+          }
+        },
+        "required": ["invoice_number", "vendor", "total"]
+      }
+    },
+    {
+      "id": "medical-record",
+      "prompt_template": "Extract medical information from this clinical note: {text}",
+      "inputs": [
+        {"text": "Patient: Robert Chen, DOB 1985-06-15, MRN 445521. Presented with persistent cough (3 weeks), mild fever (99.8F). History of asthma. Current meds: albuterol inhaler PRN, loratadine 10mg daily. Assessment: probable bronchitis. Plan: azithromycin 250mg x5 days, follow-up in 2 weeks."}
+      ],
+      "schema": {
+        "type": "object",
+        "properties": {
+          "patient_name": {"type": "string"},
+          "date_of_birth": {"type": "string"},
+          "symptoms": {
+            "type": "array",
+            "items": {"type": "string"}
+          },
+          "diagnosis": {"type": "string"},
+          "medications_current": {
+            "type": "array",
+            "items": {"type": "string"}
+          },
+          "medications_prescribed": {
+            "type": "array",
+            "items": {"type": "string"}
+          },
+          "follow_up": {"type": ["string", "null"]}
+        },
+        "required": ["patient_name", "symptoms", "diagnosis"]
+      }
+    }
+  ]
+}

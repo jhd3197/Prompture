@@ -23,8 +23,9 @@ from ..extraction.tools import (
     convert_value,
     get_field_default,
 )
-from ..infra.budget import BudgetPolicy, BudgetState, enforce_budget
+from ..infra.budget import BudgetPolicy, BudgetState, enforce_budget, resolve_budget_policy
 from ..infra.callbacks import DriverCallbacks
+from ..infra.provider_env import ProviderEnvironment
 from ..infra.session import UsageSession
 from ..media.image import ImageInput, make_image
 from ..persistence.serialization import export_conversation, import_conversation
@@ -66,9 +67,10 @@ class AsyncConversation:
         max_history_messages: int | None = None,
         max_cost: float | None = None,
         max_tokens: int | None = None,
-        budget_policy: BudgetPolicy | None = None,
+        budget_policy: BudgetPolicy | str | None = None,
         fallback_models: list[str] | None = None,
         on_model_fallback: Callable[[str, str, Any], None] | None = None,
+        env: ProviderEnvironment | None = None,
     ) -> None:
         if system_prompt is not None and persona is not None:
             raise ValueError("Cannot provide both 'system_prompt' and 'persona'. Use one or the other.")
@@ -89,10 +91,12 @@ class AsyncConversation:
             else:
                 raise ValueError("Either model_name or driver must be provided")
 
+        self._env = env
+
         if driver is not None:
             self._driver = driver
         else:
-            self._driver = get_async_driver_for_model(model_name)  # type: ignore[arg-type, assignment]
+            self._driver = get_async_driver_for_model(model_name, env=env)  # type: ignore[arg-type, assignment]
 
         if callbacks is not None:
             self._driver.callbacks = callbacks
@@ -125,7 +129,7 @@ class AsyncConversation:
         # Budget enforcement
         self._max_cost = max_cost
         self._max_tokens = max_tokens
-        self._budget_policy = budget_policy
+        self._budget_policy = resolve_budget_policy(budget_policy)
         self._fallback_models = list(fallback_models) if fallback_models else None
         self._on_model_fallback = on_model_fallback
 
@@ -148,6 +152,20 @@ class AsyncConversation:
     # ------------------------------------------------------------------
     # Public helpers
     # ------------------------------------------------------------------
+
+    @property
+    def model_name(self) -> str:
+        """The model name used by this conversation."""
+        return self._model_name
+
+    @property
+    def system_prompt(self) -> str | None:
+        """The system prompt for this conversation."""
+        return self._system_prompt
+
+    @system_prompt.setter
+    def system_prompt(self, value: str | None) -> None:
+        self._system_prompt = value
 
     @property
     def last_reasoning(self) -> str | None:
@@ -866,17 +884,52 @@ class AsyncConversation:
         output_format: Literal["json", "toon"] = "json",
         json_mode: Literal["auto", "on", "off"] = "auto",
         images: list[ImageInput] | None = None,
+        strategy: str | None = None,
     ) -> dict[str, Any]:
-        """Send a message with schema enforcement and get structured JSON back (async)."""
+        """Send a message with schema enforcement and get structured JSON back (async).
+
+        Args:
+            strategy: Structured output strategy.  ``"auto"`` (default/None)
+                picks the best approach based on driver capabilities.
+                Can also be ``"provider_native"``, ``"tool_call"``, or
+                ``"prompted_repair"``.
+        """
+        from ..extraction.strategy import StructuredOutputStrategy, resolve_strategy
+
         self._check_budget()
         self._last_reasoning = None
 
         merged = {**self._options, **(options or {})}
 
+        # Resolve structured-output strategy
+        resolved_strategy = resolve_strategy(strategy, self._model_name, driver=self._driver)
+
+        # TOOL_CALL strategy: use function-calling extraction path
+        if resolved_strategy == StructuredOutputStrategy.TOOL_CALL:
+            from ..extraction.async_core import _extract_via_tool_call
+
+            tool_result = await _extract_via_tool_call(self._driver, content, json_schema, self._model_name, merged)
+            if tool_result is not None:
+                tool_result["usage"]["strategy"] = resolved_strategy.value
+                user_content = self._build_content_with_images(content, images)
+                self._messages.append({"role": "user", "content": user_content})
+                self._messages.append({"role": "assistant", "content": tool_result.get("json_string", "")})
+                self._accumulate_usage(tool_result.get("usage", {}))
+                return tool_result
+            resolved_strategy = StructuredOutputStrategy.PROMPTED_REPAIR
+
         schema_string = json.dumps(json_schema, indent=2)
 
+        # Determine JSON mode based on strategy
         use_json_mode = False
-        if json_mode == "on":
+        if resolved_strategy == StructuredOutputStrategy.PROVIDER_NATIVE:
+            if json_mode == "off":
+                use_json_mode = False
+            elif json_mode == "on":
+                use_json_mode = True
+            else:
+                use_json_mode = getattr(self._driver, "supports_json_mode", False)
+        elif json_mode == "on":
             use_json_mode = True
         elif json_mode == "auto":
             use_json_mode = getattr(self._driver, "supports_json_mode", False)
@@ -922,7 +975,6 @@ class AsyncConversation:
 
                 cleaned, cleanup_meta = await clean_json_text_with_ai(self._driver, cleaned, self._model_name, merged)
                 json_obj = json.loads(cleaned)
-                # Track cleanup call tokens in conversation usage
                 if cleanup_meta:
                     self._accumulate_usage(cleanup_meta)
             else:
@@ -939,6 +991,7 @@ class AsyncConversation:
             **meta,
             "raw_response": resp,
             "model_name": model_name or getattr(self._driver, "model", ""),
+            "strategy": resolved_strategy.value,
         }
 
         result: dict[str, Any] = {
@@ -971,6 +1024,7 @@ class AsyncConversation:
         json_mode: Literal["auto", "on", "off"] = "auto",
         images: list[ImageInput] | None = None,
         reasoning_strategy: str | None = None,
+        strategy: str | None = None,
     ) -> dict[str, Any]:
         """Extract structured information into a Pydantic model with conversation context (async)."""
         from ..extraction.core import normalize_field_value
@@ -994,6 +1048,7 @@ class AsyncConversation:
             output_format=output_format,
             json_mode=json_mode,
             images=images,
+            strategy=strategy,
         )
         result["usage"]["reasoning_strategy"] = _strategy_name(reasoning_strategy)
 

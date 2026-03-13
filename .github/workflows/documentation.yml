@@ -11,22 +11,23 @@ permissions:
 jobs:
   docs:
     runs-on: ubuntu-latest
-    # Only run if the publish workflow succeeded
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main  # Ensure we get the latest main (with updated VERSION)
+          ref: main
       - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
       - name: Install dependencies
         run: |
-          pip install -r docs/requirements.txt
-      - name: Update documentation version
+          pip install cacaodocs cacao
+      - name: Build documentation
         run: |
-          python .github/scripts/update_docs_version.py
-      - name: Sphinx build
+          cacaodocs build ./prompture -o ./docs-cacao -c ./cacao.yaml
+      - name: Export static site
         run: |
-          sphinx-build docs/source _build
+          cacao build ./docs-cacao/app.py -o ./_build
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:

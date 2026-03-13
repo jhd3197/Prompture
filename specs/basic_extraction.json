@@ -1,0 +1,65 @@
+{
+  "meta": {
+    "project": "prompture-validation",
+    "suite": "basic_extraction",
+    "version": "1.0"
+  },
+  "models": [
+    {"id": "openai/gpt-4o-mini", "driver": "openai", "options": {}},
+    {"id": "ollama/llama3.1:8b", "driver": "ollama", "options": {}}
+  ],
+  "tests": [
+    {
+      "id": "person-simple",
+      "prompt_template": "Extract person information from: {text}",
+      "inputs": [
+        {"text": "John Smith is 32 years old and lives in New York City."},
+        {"text": "Dr. Maria Garcia, age 45, resides in San Francisco, California."},
+        {"text": "Kenji Tanaka (28) moved to London last year."}
+      ],
+      "schema": {
+        "type": "object",
+        "properties": {
+          "name": {"type": "string"},
+          "age": {"type": "integer"},
+          "city": {"type": "string"}
+        },
+        "required": ["name", "age", "city"]
+      }
+    },
+    {
+      "id": "contact-info",
+      "prompt_template": "Extract contact details from: {text}",
+      "inputs": [
+        {"text": "Reach out to alice@example.com or call (555) 123-4567."},
+        {"text": "Contact: Bob Johnson, bob.j@company.org, +1-800-555-0199"}
+      ],
+      "schema": {
+        "type": "object",
+        "properties": {
+          "name": {"type": "string"},
+          "email": {"type": "string"},
+          "phone": {"type": "string"}
+        },
+        "required": ["email"]
+      }
+    },
+    {
+      "id": "product-basic",
+      "prompt_template": "Extract product info from: {text}",
+      "inputs": [
+        {"text": "The Nike Air Max 90 retails for $129.99 and comes in sizes 7-13."},
+        {"text": "Samsung Galaxy S24 Ultra, 256GB, Titanium Black, priced at $1,299."}
+      ],
+      "schema": {
+        "type": "object",
+        "properties": {
+          "product_name": {"type": "string"},
+          "price": {"type": "number"},
+          "brand": {"type": "string"}
+        },
+        "required": ["product_name", "price"]
+      }
+    }
+  ]
+}

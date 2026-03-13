@@ -1,0 +1,74 @@
+name: Schema Extraction Failure
+description: Report a failure in structured JSON extraction
+labels: ["bug", "extraction"]
+body:
+  - type: input
+    id: model_string
+    attributes:
+      label: Model string
+      placeholder: "openai/gpt-4o-mini"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: strategy
+    attributes:
+      label: Strategy used
+      options:
+        - auto (default)
+        - provider_native
+        - tool_call
+        - prompted_repair
+    validations:
+      required: true
+
+  - type: textarea
+    id: schema
+    attributes:
+      label: JSON schema or Pydantic model
+      description: The schema you passed to the extraction function.
+      render: python
+    validations:
+      required: true
+
+  - type: textarea
+    id: input_text
+    attributes:
+      label: Input text
+      description: The text you asked the model to extract from.
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual_output
+    attributes:
+      label: Actual output
+      description: "The full response dict including usage metadata."
+      render: json
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected_output
+    attributes:
+      label: Expected output
+      description: What you expected the extraction to return.
+      render: json
+    validations:
+      required: true
+
+  - type: input
+    id: prompture_version
+    attributes:
+      label: Prompture version
+      placeholder: "1.0.49"
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Anything else that might help (e.g., works with a different model, only fails on certain inputs).
+    validations:
+      required: false
