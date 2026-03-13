@@ -23,7 +23,8 @@ from ..extraction.tools import (
     convert_value,
     get_field_default,
 )
-from ..infra.budget import BudgetPolicy, BudgetState, enforce_budget
+from ..infra.budget import BudgetPolicy, BudgetState, enforce_budget, resolve_budget_policy
+from ..infra.provider_env import ProviderEnvironment
 from ..infra.callbacks import DriverCallbacks
 from ..infra.session import UsageSession
 from ..media.image import ImageInput, make_image
@@ -66,9 +67,10 @@ class AsyncConversation:
         max_history_messages: int | None = None,
         max_cost: float | None = None,
         max_tokens: int | None = None,
-        budget_policy: BudgetPolicy | None = None,
+        budget_policy: BudgetPolicy | str | None = None,
         fallback_models: list[str] | None = None,
         on_model_fallback: Callable[[str, str, Any], None] | None = None,
+        env: ProviderEnvironment | None = None,
     ) -> None:
         if system_prompt is not None and persona is not None:
             raise ValueError("Cannot provide both 'system_prompt' and 'persona'. Use one or the other.")
@@ -89,10 +91,12 @@ class AsyncConversation:
             else:
                 raise ValueError("Either model_name or driver must be provided")
 
+        self._env = env
+
         if driver is not None:
             self._driver = driver
         else:
-            self._driver = get_async_driver_for_model(model_name)  # type: ignore[arg-type, assignment]
+            self._driver = get_async_driver_for_model(model_name, env=env)  # type: ignore[arg-type, assignment]
 
         if callbacks is not None:
             self._driver.callbacks = callbacks
@@ -125,7 +129,7 @@ class AsyncConversation:
         # Budget enforcement
         self._max_cost = max_cost
         self._max_tokens = max_tokens
-        self._budget_policy = budget_policy
+        self._budget_policy = resolve_budget_policy(budget_policy)
         self._fallback_models = list(fallback_models) if fallback_models else None
         self._on_model_fallback = on_model_fallback
 

@@ -363,6 +363,58 @@ def get_driver_for_model(
     return factory(model_id)
 
 
+# ── Provider name utilities ──────────────────────────────────────────────
+
+# Maps Prompture driver prefix → canonical provider name used by APIs.
+PROVIDER_NAME_MAP: dict[str, str] = {
+    "claude": "anthropic",
+    "openai": "openai",
+    "google": "google",
+    "groq": "groq",
+    "grok": "grok",
+    "openrouter": "openrouter",
+    "ollama": "ollama",
+    "lmstudio": "lmstudio",
+    "azure": "azure",
+    "moonshot": "moonshot",
+    "huggingface": "huggingface",
+    "local_http": "local_http",
+    "airllm": "airllm",
+    "modelscope": "modelscope",
+    "zhipu": "zhipu",
+    "cachibot": "cachibot",
+    "zai": "zai",
+}
+
+
+def parse_model_string(model_str: str) -> tuple[str, str | None]:
+    """Split a ``"provider/model_id"`` string into ``(provider, model_id)``.
+
+    Returns ``(provider, None)`` when no ``/`` separator is present.
+    """
+    parts = model_str.split("/", 1)
+    provider = parts[0].lower()
+    model_id = parts[1] if len(parts) > 1 else None
+    return provider, model_id
+
+
+def provider_for_model(model_str: str, *, canonical: bool = False) -> str:
+    """Extract the provider name from a Prompture model string.
+
+    Args:
+        model_str: Model identifier (e.g. ``"claude/claude-sonnet-4-6"``).
+        canonical: When ``True``, maps Prompture prefixes to canonical API
+            provider names (e.g. ``"claude"`` → ``"anthropic"``).
+
+    Returns:
+        The provider prefix, optionally mapped to its canonical name.
+    """
+    provider, _ = parse_model_string(model_str)
+    if canonical:
+        return PROVIDER_NAME_MAP.get(provider, provider)
+    return provider
+
+
 __all__ = [
     "ASYNC_DRIVER_REGISTRY",
     # Provider driver maps (for explicit-credential construction)
@@ -376,6 +428,8 @@ __all__ = [
     "PROVIDER_DESCRIPTOR_MAP",
     # Provider driver maps (for explicit-credential construction)
     "PROVIDER_DRIVER_MAP",
+    # Provider name mapping
+    "PROVIDER_NAME_MAP",
     # Sync LLM drivers
     "AirLLMDriver",
     # Async LLM drivers
@@ -500,6 +554,8 @@ __all__ = [
     "list_registered_stt_drivers",
     "list_registered_tts_drivers",
     "load_entry_point_drivers",
+    "parse_model_string",
+    "provider_for_model",
     "register_all_builtin_drivers",
     "register_async_driver",
     "register_async_embedding_driver",

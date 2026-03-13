@@ -6,6 +6,7 @@ from .budget import (
     enforce_budget,
     estimate_cost,
     estimate_tokens,
+    resolve_budget_policy,
 )
 from .cache import (
     CacheBackend,
@@ -101,5 +102,6 @@ __all__ = [
     "refresh_rates_cache",
     "register_model",
     "register_provider",
+    "resolve_budget_policy",
     "settings",
 ]
