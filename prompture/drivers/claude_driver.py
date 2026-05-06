@@ -185,14 +185,74 @@ class ClaudeDriver(CostMixin, Driver):
         return "\n".join(parts) if parts else None
 
     def _extract_system_and_messages(self, messages: list[dict[str, Any]]) -> tuple[str | None, list[dict[str, Any]]]:
-        """Separate system message from conversation messages for Anthropic API."""
-        system_content = None
+        """Separate system message and translate tool messages for Anthropic API.
+
+        The conversation layer stores tool use in OpenAI-compatible shape
+        (assistant messages with a ``tool_calls`` list and separate
+        ``role: "tool"`` result messages). Anthropic rejects role=tool and
+        expects:
+
+        - Assistant tool calls → ``content=[{"type": "text", ...}, {"type": "tool_use", "id": ..., "name": ..., "input": {...}}]``
+        - Tool results → a user message whose content is ``[{"type": "tool_result", "tool_use_id": ..., "content": ...}]``
+
+        Consecutive tool results are merged into a single user message so
+        the API sees one user turn per assistant turn, as required.
+        """
+        system_content: str | None = None
         api_messages: list[dict[str, Any]] = []
         for msg in messages:
-            if msg.get("role") == "system":
+            role = msg.get("role")
+            if role == "system":
                 system_content = msg.get("content", "")
-            else:
-                api_messages.append(msg)
+                continue
+
+            if role == "assistant" and msg.get("tool_calls"):
+                content = msg.get("content") or ""
+                blocks: list[dict[str, Any]] = []
+                if content:
+                    blocks.append({"type": "text", "text": content})
+                for tc in msg["tool_calls"]:
+                    fn = tc.get("function", tc)
+                    raw_args = fn.get("arguments", tc.get("arguments", {}))
+                    if isinstance(raw_args, str):
+                        try:
+                            tool_input = json.loads(raw_args) if raw_args else {}
+                        except json.JSONDecodeError:
+                            tool_input = {"_raw": raw_args}
+                    else:
+                        tool_input = raw_args or {}
+                    blocks.append(
+                        {
+                            "type": "tool_use",
+                            "id": tc.get("id", ""),
+                            "name": fn.get("name", tc.get("name", "")),
+                            "input": tool_input,
+                        }
+                    )
+                api_messages.append({"role": "assistant", "content": blocks})
+                continue
+
+            if role == "tool":
+                result_block = {
+                    "type": "tool_result",
+                    "tool_use_id": msg.get("tool_call_id", ""),
+                    "content": msg.get("content", ""),
+                }
+                if (
+                    api_messages
+                    and api_messages[-1].get("role") == "user"
+                    and isinstance(api_messages[-1].get("content"), list)
+                    and all(
+                        isinstance(b, dict) and b.get("type") == "tool_result"
+                        for b in api_messages[-1]["content"]
+                    )
+                ):
+                    api_messages[-1]["content"].append(result_block)
+                else:
+                    api_messages.append({"role": "user", "content": [result_block]})
+                continue
+
+            api_messages.append(msg)
         return system_content, api_messages
 
     # ------------------------------------------------------------------
