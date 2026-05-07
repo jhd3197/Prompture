@@ -3,32 +3,24 @@
 For every LLM driver registered in ``PROVIDER_DESCRIPTOR_MAP``, verifies
 that the declared ``supports_*`` flags match the methods that are actually
 overridden — bidirectionally.  Catches the class of bug where async ollama
-claims streaming support without implementing ``generate_messages_stream``
-(which causes ``auto_select_strategy`` to recommend a strategy the driver
-cannot honor).
+claimed streaming support without implementing ``generate_messages_stream``
+(which caused ``auto_select_strategy`` to recommend a strategy the driver
+could not honor).
+
+The validation logic lives in :mod:`prompture.testing.driver_contract` so
+third-party plugin authors can apply the same contract to their own
+drivers.
 """
 
 from __future__ import annotations
 
 import pytest
 
-from prompture.drivers.async_base import AsyncDriver
-from prompture.drivers.base import Driver
 from prompture.drivers.provider_descriptors import (
     PROVIDER_DESCRIPTOR_MAP,
     _resolve_cls,
 )
-
-# Capability flag → method that must be overridden when the flag is True.
-# Limited to flags whose support is determined by overriding a single method.
-# (json_mode / json_schema / vision are negotiated through option flags inside
-# ``generate``-family methods, not by overriding a separate method, so they're
-# excluded from this contract.)
-_FLAG_TO_METHOD = {
-    "supports_streaming": "generate_messages_stream",
-    "supports_tool_use": "generate_messages_with_tools",
-    "supports_messages": "generate_messages",
-}
+from prompture.testing import assert_driver_capabilities
 
 
 def _collect_llm_driver_classes() -> list[tuple[str, type]]:
@@ -55,42 +47,14 @@ def _collect_llm_driver_classes() -> list[tuple[str, type]]:
 _DRIVER_CLASSES = _collect_llm_driver_classes()
 
 
-def _base_for(cls: type) -> type:
-    if issubclass(cls, AsyncDriver):
-        return AsyncDriver
-    if issubclass(cls, Driver):
-        return Driver
-    raise AssertionError(f"{cls.__name__} is not a Driver or AsyncDriver subclass")
-
-
 @pytest.mark.parametrize(
     "label,cls",
     _DRIVER_CLASSES,
     ids=[label for label, _ in _DRIVER_CLASSES],
 )
 def test_declared_flags_match_implementation(label: str, cls: type) -> None:
-    """Bidirectional: ``supports_X = True`` ⇔ corresponding method overridden."""
-    base = _base_for(cls)
-    failures: list[str] = []
-    for flag, method_name in _FLAG_TO_METHOD.items():
-        declared = bool(getattr(cls, flag, False))
-        cls_method = getattr(cls, method_name, None)
-        base_method = getattr(base, method_name, None)
-        implemented = cls_method is not None and cls_method is not base_method
-
-        if declared and not implemented:
-            failures.append(
-                f"{flag}=True but {method_name} not overridden — "
-                f"auto-strategy will recommend an unsupported feature"
-            )
-        elif implemented and not declared:
-            failures.append(
-                f"{method_name} overridden but {flag}=False — "
-                f"capability is hidden from auto-strategy selection"
-            )
-    assert not failures, "{} ({}):\n  - {}".format(
-        cls.__name__, label, "\n  - ".join(failures)
-    )
+    """Every built-in driver must satisfy the capability contract."""
+    assert_driver_capabilities(cls)
 
 
 def test_capability_resolution_uses_driver_instance() -> None:
@@ -136,3 +100,24 @@ def test_capability_resolution_user_override_beats_driver() -> None:
         assert caps.streaming is True, "user override must trump live driver flags"
     finally:
         clear_overrides()
+
+
+def test_validate_driver_capabilities_returns_violations() -> None:
+    """Programmatic API returns a list — useful for plugin authors who
+    want to integrate the check into their own assertions or CI logic."""
+    from prompture.drivers.ollama_driver import OllamaDriver
+    from prompture.testing import validate_driver_capabilities
+
+    assert validate_driver_capabilities(OllamaDriver) == []
+
+    # Synthetic class with declared-but-unimplemented streaming
+    class BrokenDriver(OllamaDriver):
+        pass
+
+    BrokenDriver.supports_streaming = True
+    BrokenDriver.generate_messages_stream = (
+        OllamaDriver.__bases__[0].generate_messages_stream
+    )
+
+    violations = validate_driver_capabilities(BrokenDriver)
+    assert any("supports_streaming" in v for v in violations)

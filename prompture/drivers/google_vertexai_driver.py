@@ -15,7 +15,7 @@ import logging
 import os
 import uuid
 from collections.abc import Iterator
-from typing import Any, Optional
+from typing import Any
 
 try:
     from google import genai
@@ -276,7 +276,7 @@ class GoogleVertexAIDriver(CostMixin, Driver):
         return system_content, api_messages
 
     def _build_gemini_generation_args(
-        self, messages: list[dict[str, Any]], options: Optional[dict[str, Any]] = None
+        self, messages: list[dict[str, Any]], options: dict[str, Any] | None = None
     ) -> tuple[Any, dict[str, Any]]:
         merged = {**self.options, **(options or {})}
         config_dict: dict[str, Any] = {}
@@ -557,7 +557,7 @@ class GoogleVertexAIDriver(CostMixin, Driver):
     # ══════════════════════════════════════════════════════════════════
 
     def _gemini_generate(
-        self, messages: list[dict[str, Any]], options: Optional[dict[str, Any]] = None
+        self, messages: list[dict[str, Any]], options: dict[str, Any] | None = None
     ) -> dict[str, Any]:
         gen_input, config_dict = self._build_gemini_generation_args(messages, options)
 
@@ -682,7 +682,7 @@ class GoogleVertexAIDriver(CostMixin, Driver):
     #  PUBLIC API — dispatches to the right backend
     # ══════════════════════════════════════════════════════════════════
 
-    def generate(self, prompt: str, options: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+    def generate(self, prompt: str, options: dict[str, Any] | None = None) -> dict[str, Any]:
         messages = [{"role": "user", "content": prompt}]
         if _is_claude_model(self.model):
             return self._claude_generate(self._prepare_messages(messages), options or {})

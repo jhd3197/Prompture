@@ -9,7 +9,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-import uuid
 from collections.abc import AsyncIterator
 from typing import Any
 
