@@ -21,6 +21,160 @@ from .base import Driver
 logger = logging.getLogger(__name__)
 
 
+# ----------------------------------------------------------------------
+# Shared helpers (used by both sync ClaudeDriver and AsyncClaudeDriver)
+# ----------------------------------------------------------------------
+
+
+def _extract_anthropic_system_and_messages(
+    messages: list[dict[str, Any]],
+) -> tuple[str | None, list[dict[str, Any]]]:
+    """Separate system message and translate OpenAI-shaped tool messages to Anthropic format.
+
+    See ClaudeDriver._extract_system_and_messages for the shape contract.
+    """
+    system_content: str | None = None
+    api_messages: list[dict[str, Any]] = []
+    for msg in messages:
+        role = msg.get("role")
+        if role == "system":
+            system_content = msg.get("content", "")
+            continue
+
+        if role == "assistant" and msg.get("tool_calls"):
+            content = msg.get("content") or ""
+            blocks: list[dict[str, Any]] = []
+            if content:
+                blocks.append({"type": "text", "text": content})
+            for tc in msg["tool_calls"]:
+                fn = tc.get("function", tc)
+                raw_args = fn.get("arguments", tc.get("arguments", {}))
+                if isinstance(raw_args, str):
+                    try:
+                        tool_input = json.loads(raw_args) if raw_args else {}
+                    except json.JSONDecodeError:
+                        tool_input = {"_raw": raw_args}
+                else:
+                    tool_input = raw_args or {}
+                blocks.append(
+                    {
+                        "type": "tool_use",
+                        "id": tc.get("id", ""),
+                        "name": fn.get("name", tc.get("name", "")),
+                        "input": tool_input,
+                    }
+                )
+            api_messages.append({"role": "assistant", "content": blocks})
+            continue
+
+        if role == "tool":
+            result_block = {
+                "type": "tool_result",
+                "tool_use_id": msg.get("tool_call_id", ""),
+                "content": msg.get("content", ""),
+            }
+            # Merge consecutive tool_results into one user turn (Anthropic prefers
+            # one user turn per assistant turn even with multiple tool calls).
+            if (
+                api_messages
+                and api_messages[-1].get("role") == "user"
+                and isinstance(api_messages[-1].get("content"), list)
+                and all(
+                    isinstance(b, dict) and b.get("type") == "tool_result"
+                    for b in api_messages[-1]["content"]
+                )
+            ):
+                api_messages[-1]["content"].append(result_block)
+            else:
+                api_messages.append({"role": "user", "content": [result_block]})
+            continue
+
+        api_messages.append(msg)
+    return system_content, api_messages
+
+
+def _convert_tools_to_anthropic(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    anthropic_tools: list[dict[str, Any]] = []
+    for t in tools:
+        if "type" in t and t["type"] == "function":
+            fn = t["function"]
+            anthropic_tools.append(
+                {
+                    "name": fn["name"],
+                    "description": fn.get("description", ""),
+                    "input_schema": fn.get("parameters", {"type": "object", "properties": {}}),
+                }
+            )
+        elif "input_schema" in t:
+            anthropic_tools.append(t)
+        else:
+            anthropic_tools.append(t)
+    return anthropic_tools
+
+
+def _build_anthropic_meta(resp: Any, model: str, total_cost: float) -> dict[str, Any]:
+    prompt_tokens = resp.usage.input_tokens
+    completion_tokens = resp.usage.output_tokens
+    return {
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "total_tokens": prompt_tokens + completion_tokens,
+        "cost": round(total_cost, 6),
+        "raw_response": dict(resp),
+        "model_name": model,
+    }
+
+
+def _extract_anthropic_text_and_tool_calls(content_blocks: list[Any]) -> tuple[str, list[dict[str, Any]]]:
+    text = ""
+    tool_calls_out: list[dict[str, Any]] = []
+    for block in content_blocks:
+        if block.type == "text":
+            text += block.text
+        elif block.type == "tool_use":
+            tool_calls_out.append(
+                {
+                    "id": block.id,
+                    "name": block.name,
+                    "arguments": block.input,
+                }
+            )
+    return text, tool_calls_out
+
+
+def _build_anthropic_json_mode_tool_def(json_schema: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "name": "extract_json",
+        "description": "Extract structured data matching the schema",
+        "input_schema": json_schema,
+    }
+
+
+def _build_anthropic_stream_done(
+    model: str,
+    full_text: str,
+    full_reasoning: str,
+    prompt_tokens: int,
+    completion_tokens: int,
+    total_cost: float,
+) -> dict[str, Any]:
+    done_chunk: dict[str, Any] = {
+        "type": "done",
+        "text": full_text,
+        "meta": {
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": prompt_tokens + completion_tokens,
+            "cost": round(total_cost, 6),
+            "raw_response": {},
+            "model_name": model,
+        },
+    }
+    if full_reasoning:
+        done_chunk["reasoning_content"] = full_reasoning
+    return done_chunk
+
+
 class ClaudeDriver(CostMixin, Driver):
     supports_json_mode = True
     supports_json_schema = True
@@ -94,7 +248,9 @@ class ClaudeDriver(CostMixin, Driver):
 
         client = anthropic.Anthropic(api_key=self.api_key)
 
-        # Anthropic requires system messages as a top-level parameter
+        # _do_generate uses the simple system/non-system split (no tool-message
+        # translation) — pre-existing behaviour, intentionally distinct from the
+        # tool-aware _extract_system_and_messages used elsewhere.
         system_content = None
         api_messages = []
         for msg in messages:
@@ -103,7 +259,6 @@ class ClaudeDriver(CostMixin, Driver):
             else:
                 api_messages.append(msg)
 
-        # Build common kwargs
         common_kwargs: dict[str, Any] = {
             "model": model,
             "messages": api_messages,
@@ -117,14 +272,9 @@ class ClaudeDriver(CostMixin, Driver):
         if options.get("json_mode"):
             json_schema = options.get("json_schema")
             if json_schema:
-                tool_def = {
-                    "name": "extract_json",
-                    "description": "Extract structured data matching the schema",
-                    "input_schema": json_schema,
-                }
                 resp = client.messages.create(  # type: ignore[call-overload]
                     **common_kwargs,
-                    tools=[tool_def],
+                    tools=[_build_anthropic_json_mode_tool_def(json_schema)],
                     tool_choice={"type": "tool", "name": "extract_json"},
                 )
                 text = ""
@@ -139,30 +289,14 @@ class ClaudeDriver(CostMixin, Driver):
             resp = client.messages.create(**common_kwargs)
             text = resp.content[0].text
 
-        # Extract reasoning/thinking content from content blocks
         reasoning_content = self._extract_thinking(resp.content)
-
-        # Fallback: use reasoning as text if content is empty
         if not text and reasoning_content:
             text = reasoning_content
 
-        # Extract token usage from Claude response
-        prompt_tokens = resp.usage.input_tokens
-        completion_tokens = resp.usage.output_tokens
-        total_tokens = prompt_tokens + completion_tokens
-
-        # Calculate cost via shared mixin
-        total_cost = self._calculate_cost("claude", model, prompt_tokens, completion_tokens)
-
-        # Create standardized meta object
-        meta = {
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
-            "total_tokens": total_tokens,
-            "cost": round(total_cost, 6),  # Round to 6 decimal places
-            "raw_response": dict(resp),
-            "model_name": model,
-        }
+        total_cost = self._calculate_cost(
+            "claude", model, resp.usage.input_tokens, resp.usage.output_tokens
+        )
+        meta = _build_anthropic_meta(resp, model, total_cost)
 
         result: dict[str, Any] = {"text": text, "meta": meta}
         if reasoning_content is not None:
@@ -185,75 +319,7 @@ class ClaudeDriver(CostMixin, Driver):
         return "\n".join(parts) if parts else None
 
     def _extract_system_and_messages(self, messages: list[dict[str, Any]]) -> tuple[str | None, list[dict[str, Any]]]:
-        """Separate system message and translate tool messages for Anthropic API.
-
-        The conversation layer stores tool use in OpenAI-compatible shape
-        (assistant messages with a ``tool_calls`` list and separate
-        ``role: "tool"`` result messages). Anthropic rejects role=tool and
-        expects:
-
-        - Assistant tool calls → ``content=[{"type": "text", ...}, {"type": "tool_use", "id": ..., "name": ..., "input": {...}}]``
-        - Tool results → a user message whose content is ``[{"type": "tool_result", "tool_use_id": ..., "content": ...}]``
-
-        Consecutive tool results are merged into a single user message so
-        the API sees one user turn per assistant turn, as required.
-        """
-        system_content: str | None = None
-        api_messages: list[dict[str, Any]] = []
-        for msg in messages:
-            role = msg.get("role")
-            if role == "system":
-                system_content = msg.get("content", "")
-                continue
-
-            if role == "assistant" and msg.get("tool_calls"):
-                content = msg.get("content") or ""
-                blocks: list[dict[str, Any]] = []
-                if content:
-                    blocks.append({"type": "text", "text": content})
-                for tc in msg["tool_calls"]:
-                    fn = tc.get("function", tc)
-                    raw_args = fn.get("arguments", tc.get("arguments", {}))
-                    if isinstance(raw_args, str):
-                        try:
-                            tool_input = json.loads(raw_args) if raw_args else {}
-                        except json.JSONDecodeError:
-                            tool_input = {"_raw": raw_args}
-                    else:
-                        tool_input = raw_args or {}
-                    blocks.append(
-                        {
-                            "type": "tool_use",
-                            "id": tc.get("id", ""),
-                            "name": fn.get("name", tc.get("name", "")),
-                            "input": tool_input,
-                        }
-                    )
-                api_messages.append({"role": "assistant", "content": blocks})
-                continue
-
-            if role == "tool":
-                result_block = {
-                    "type": "tool_result",
-                    "tool_use_id": msg.get("tool_call_id", ""),
-                    "content": msg.get("content", ""),
-                }
-                if (
-                    api_messages
-                    and api_messages[-1].get("role") == "user"
-                    and isinstance(api_messages[-1].get("content"), list)
-                    and all(
-                        isinstance(b, dict) and b.get("type") == "tool_result"
-                        for b in api_messages[-1]["content"]
-                    )
-                ):
-                    api_messages[-1]["content"].append(result_block)
-                else:
-                    api_messages.append({"role": "user", "content": [result_block]})
-                continue
-
-            api_messages.append(msg)
-        return system_content, api_messages
+        return _extract_anthropic_system_and_messages(messages)
 
     # ------------------------------------------------------------------
     # Tool use
@@ -276,26 +342,8 @@ class ClaudeDriver(CostMixin, Driver):
 
         client = anthropic.Anthropic(api_key=self.api_key)
 
-        system_content, api_messages = self._extract_system_and_messages(messages)
-
-        # Convert tools from OpenAI format to Anthropic format if needed
-        anthropic_tools = []
-        for t in tools:
-            if "type" in t and t["type"] == "function":
-                # OpenAI format -> Anthropic format
-                fn = t["function"]
-                anthropic_tools.append(
-                    {
-                        "name": fn["name"],
-                        "description": fn.get("description", ""),
-                        "input_schema": fn.get("parameters", {"type": "object", "properties": {}}),
-                    }
-                )
-            elif "input_schema" in t:
-                # Already Anthropic format
-                anthropic_tools.append(t)
-            else:
-                anthropic_tools.append(t)
+        system_content, api_messages = _extract_anthropic_system_and_messages(messages)
+        anthropic_tools = _convert_tools_to_anthropic(tools)
 
         kwargs: dict[str, Any] = {
             "model": model,
@@ -309,34 +357,12 @@ class ClaudeDriver(CostMixin, Driver):
 
         resp = client.messages.create(**kwargs)
 
-        prompt_tokens = resp.usage.input_tokens
-        completion_tokens = resp.usage.output_tokens
-        total_tokens = prompt_tokens + completion_tokens
-        total_cost = self._calculate_cost("claude", model, prompt_tokens, completion_tokens)
+        total_cost = self._calculate_cost(
+            "claude", model, resp.usage.input_tokens, resp.usage.output_tokens
+        )
+        meta = _build_anthropic_meta(resp, model, total_cost)
 
-        meta = {
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
-            "total_tokens": total_tokens,
-            "cost": round(total_cost, 6),
-            "raw_response": dict(resp),
-            "model_name": model,
-        }
-
-        text = ""
-        tool_calls_out: list[dict[str, Any]] = []
-        for block in resp.content:
-            if block.type == "text":
-                text += block.text
-            elif block.type == "tool_use":
-                tool_calls_out.append(
-                    {
-                        "id": block.id,
-                        "name": block.name,
-                        "arguments": block.input,
-                    }
-                )
-
+        text, tool_calls_out = _extract_anthropic_text_and_tool_calls(resp.content)
         reasoning_content = self._extract_thinking(resp.content)
 
         result: dict[str, Any] = {
@@ -366,7 +392,7 @@ class ClaudeDriver(CostMixin, Driver):
         model = options.get("model", self.model)
         client = anthropic.Anthropic(api_key=self.api_key)
 
-        system_content, api_messages = self._extract_system_and_messages(messages)
+        system_content, api_messages = _extract_anthropic_system_and_messages(messages)
 
         kwargs: dict[str, Any] = {
             "model": model,
@@ -404,21 +430,7 @@ class ClaudeDriver(CostMixin, Driver):
                         if usage:
                             prompt_tokens = getattr(usage, "input_tokens", 0)
 
-        total_tokens = prompt_tokens + completion_tokens
         total_cost = self._calculate_cost("claude", model, prompt_tokens, completion_tokens)
-
-        done_chunk: dict[str, Any] = {
-            "type": "done",
-            "text": full_text,
-            "meta": {
-                "prompt_tokens": prompt_tokens,
-                "completion_tokens": completion_tokens,
-                "total_tokens": total_tokens,
-                "cost": round(total_cost, 6),
-                "raw_response": {},
-                "model_name": model,
-            },
-        }
-        if full_reasoning:
-            done_chunk["reasoning_content"] = full_reasoning
-        yield done_chunk
+        yield _build_anthropic_stream_done(
+            model, full_text, full_reasoning, prompt_tokens, completion_tokens, total_cost
+        )

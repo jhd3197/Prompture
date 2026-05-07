@@ -12,10 +12,16 @@ try:
 except Exception:
     AsyncOpenAI = None  # type: ignore[misc, assignment]
 
-from ..infra.cost_mixin import CostMixin, prepare_strict_schema
+from ..infra.cost_mixin import CostMixin
 from .async_base import AsyncDriver
-from .base import _parse_tool_arguments
-from .openai_driver import OpenAIDriver
+from .openai_driver import (
+    OpenAIDriver,
+    _build_openai_base_kwargs,
+    _build_openai_json_mode_response_format,
+    _build_openai_stream_done,
+    _extract_openai_meta,
+    _extract_openai_tool_calls,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -69,29 +75,13 @@ class AsyncOpenAIDriver(CostMixin, AsyncDriver):
         )
 
         opts = {"temperature": 1.0, "max_tokens": 512, **options}
-
-        kwargs = {
-            "model": model,
-            "messages": messages,
-        }
-        kwargs[tokens_param] = opts.get("max_tokens", 512)
-
-        if supports_temperature and "temperature" in opts:
-            kwargs["temperature"] = opts["temperature"]
+        kwargs = _build_openai_base_kwargs(model, messages, opts, tokens_param, supports_temperature, 512)
 
         # Native JSON mode support — with graceful fallback
         if options.get("json_mode"):
             json_schema = options.get("json_schema")
             if json_schema and self._should_use_json_schema("openai", model):
-                schema_copy = prepare_strict_schema(json_schema)
-                kwargs["response_format"] = {
-                    "type": "json_schema",
-                    "json_schema": {
-                        "name": "extraction",
-                        "strict": True,
-                        "schema": schema_copy,
-                    },
-                }
+                kwargs["response_format"] = _build_openai_json_mode_response_format(json_schema)
             else:
                 kwargs["response_format"] = {"type": "json_object"}
                 if json_schema:
@@ -100,21 +90,10 @@ class AsyncOpenAIDriver(CostMixin, AsyncDriver):
 
         resp = await self.client.chat.completions.create(**kwargs)
 
-        usage = getattr(resp, "usage", None)
-        prompt_tokens = getattr(usage, "prompt_tokens", 0)
-        completion_tokens = getattr(usage, "completion_tokens", 0)
-        total_tokens = getattr(usage, "total_tokens", 0)
-
+        prompt_tokens = getattr(getattr(resp, "usage", None), "prompt_tokens", 0)
+        completion_tokens = getattr(getattr(resp, "usage", None), "completion_tokens", 0)
         total_cost = self._calculate_cost("openai", model, prompt_tokens, completion_tokens)
-
-        meta = {
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
-            "total_tokens": total_tokens,
-            "cost": round(total_cost, 6),
-            "raw_response": resp.model_dump(),
-            "model_name": model,
-        }
+        meta = _extract_openai_meta(resp, model, total_cost)
 
         text = resp.choices[0].message.content
         return {"text": text, "meta": meta}
@@ -141,49 +120,21 @@ class AsyncOpenAIDriver(CostMixin, AsyncDriver):
         self._validate_model_capabilities("openai", model, using_tool_use=True)
 
         opts = {"temperature": 1.0, "max_tokens": 4096, **options}
-
-        kwargs: dict[str, Any] = {
-            "model": model,
-            "messages": messages,
-            "tools": tools,
-        }
-        kwargs[tokens_param] = opts.get("max_tokens", 4096)
-
-        if supports_temperature and "temperature" in opts:
-            kwargs["temperature"] = opts["temperature"]
+        kwargs = _build_openai_base_kwargs(
+            model, messages, opts, tokens_param, supports_temperature, 4096, extra={"tools": tools}
+        )
 
         resp = await self.client.chat.completions.create(**kwargs)
 
-        usage = getattr(resp, "usage", None)
-        prompt_tokens = getattr(usage, "prompt_tokens", 0)
-        completion_tokens = getattr(usage, "completion_tokens", 0)
-        total_tokens = getattr(usage, "total_tokens", 0)
+        prompt_tokens = getattr(getattr(resp, "usage", None), "prompt_tokens", 0)
+        completion_tokens = getattr(getattr(resp, "usage", None), "completion_tokens", 0)
         total_cost = self._calculate_cost("openai", model, prompt_tokens, completion_tokens)
-
-        meta = {
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
-            "total_tokens": total_tokens,
-            "cost": round(total_cost, 6),
-            "raw_response": resp.model_dump(),
-            "model_name": model,
-        }
+        meta = _extract_openai_meta(resp, model, total_cost)
 
         choice = resp.choices[0]
         text = choice.message.content or ""
         stop_reason = choice.finish_reason
-
-        tool_calls_out: list[dict[str, Any]] = []
-        if choice.message.tool_calls:
-            for tc in choice.message.tool_calls:
-                args = _parse_tool_arguments(tc.function.arguments, tc.function.name, stop_reason)
-                tool_calls_out.append(
-                    {
-                        "id": tc.id,
-                        "name": tc.function.name,
-                        "arguments": args,
-                    }
-                )
+        tool_calls_out = _extract_openai_tool_calls(choice.message, stop_reason)
 
         return {
             "text": text,
@@ -211,17 +162,15 @@ class AsyncOpenAIDriver(CostMixin, AsyncDriver):
         supports_temperature = model_config["supports_temperature"]
 
         opts = {"temperature": 1.0, "max_tokens": 512, **options}
-
-        kwargs: dict[str, Any] = {
-            "model": model,
-            "messages": messages,
-            "stream": True,
-            "stream_options": {"include_usage": True},
-        }
-        kwargs[tokens_param] = opts.get("max_tokens", 512)
-
-        if supports_temperature and "temperature" in opts:
-            kwargs["temperature"] = opts["temperature"]
+        kwargs = _build_openai_base_kwargs(
+            model,
+            messages,
+            opts,
+            tokens_param,
+            supports_temperature,
+            512,
+            extra={"stream": True, "stream_options": {"include_usage": True}},
+        )
 
         stream = await self.client.chat.completions.create(**kwargs)
 
@@ -242,18 +191,5 @@ class AsyncOpenAIDriver(CostMixin, AsyncDriver):
                     full_text += content
                     yield {"type": "delta", "text": content}
 
-        total_tokens = prompt_tokens + completion_tokens
         total_cost = self._calculate_cost("openai", model, prompt_tokens, completion_tokens)
-
-        yield {
-            "type": "done",
-            "text": full_text,
-            "meta": {
-                "prompt_tokens": prompt_tokens,
-                "completion_tokens": completion_tokens,
-                "total_tokens": total_tokens,
-                "cost": round(total_cost, 6),
-                "raw_response": {},
-                "model_name": model,
-            },
-        }
+        yield _build_openai_stream_done(model, full_text, prompt_tokens, completion_tokens, total_cost)
