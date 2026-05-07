@@ -227,3 +227,4 @@ PROMPTURE_FEATURES.md
 .claude/settings.local.json
 /.pr
 /docs-cacao
+/.agents
