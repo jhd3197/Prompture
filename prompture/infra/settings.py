@@ -49,6 +49,13 @@ class Settings(BaseSettings):
     google_api_key: Optional[str] = None
     google_model: str = "gemini-1.5-pro"
 
+    # Google Vertex AI (Gemini + Claude via Model Garden)
+    google_vertex_api_key: Optional[str] = None
+    google_vertex_project_id: Optional[str] = None
+    google_vertex_location: str = "us-central1"
+    google_vertex_model: str = "gemini-2.5-flash"
+    google_vertex_access_token: Optional[str] = None
+
     # Groq
     groq_api_key: Optional[str] = None
     groq_model: str = "llama2-70b-4096"
