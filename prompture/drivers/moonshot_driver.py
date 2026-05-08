@@ -23,6 +23,31 @@ from .base import Driver, _parse_tool_arguments
 logger = logging.getLogger("prompture.drivers.moonshot")
 
 
+def _extract_moonshot_cached_tokens(usage: dict[str, Any]) -> int:
+    """Return the count of input tokens served from Moonshot's prompt cache.
+
+    Moonshot's OpenAI-compatible API exposes the cache hit count in two
+    places depending on the model and SDK version:
+
+    1. ``usage.cached_tokens`` — direct top-level field (Kimi K2 family)
+    2. ``usage.prompt_tokens_details.cached_tokens`` — OpenAI-shaped nested
+
+    Both shapes are checked. Like OpenAI, Moonshot's ``prompt_tokens``
+    already includes the cached portion, so the resolver only needs to
+    surface the cached count for cost discounting.
+    """
+    if not usage:
+        return 0
+    direct = usage.get("cached_tokens")
+    if isinstance(direct, (int, float)):
+        return int(direct)
+    details = usage.get("prompt_tokens_details") or {}
+    nested = details.get("cached_tokens") if isinstance(details, dict) else None
+    if isinstance(nested, (int, float)):
+        return int(nested)
+    return 0
+
+
 class MoonshotDriver(CostMixin, Driver):
     supports_json_mode = True
     supports_json_schema = True
@@ -250,6 +275,7 @@ class MoonshotDriver(CostMixin, Driver):
         prompt_tokens = usage.get("prompt_tokens", 0)
         completion_tokens = usage.get("completion_tokens", 0)
         total_tokens = usage.get("total_tokens", 0)
+        cached_prompt_tokens = _extract_moonshot_cached_tokens(usage)
 
         message = resp["choices"][0]["message"]
         text = message.get("content") or ""
@@ -298,6 +324,7 @@ class MoonshotDriver(CostMixin, Driver):
                 prompt_tokens += fb_usage.get("prompt_tokens", 0)
                 completion_tokens = fb_usage.get("completion_tokens", 0)
                 total_tokens = prompt_tokens + completion_tokens
+                cached_prompt_tokens += _extract_moonshot_cached_tokens(fb_usage)
                 resp = fb_resp
                 fb_message = fb_resp["choices"][0]["message"]
                 text = fb_message.get("content") or ""
@@ -305,12 +332,16 @@ class MoonshotDriver(CostMixin, Driver):
                 if not text and reasoning_content:
                     text = reasoning_content
 
-        total_cost = self._calculate_cost("moonshot", model, prompt_tokens, completion_tokens)
+        total_cost = self._calculate_cost(
+            "moonshot", model, prompt_tokens, completion_tokens,
+            cached_tokens=cached_prompt_tokens,
+        )
 
         meta = {
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
             "total_tokens": total_tokens,
+            "cached_prompt_tokens": cached_prompt_tokens,
             "cost": round(total_cost, 6),
             "raw_response": resp,
             "model_name": model,
@@ -391,12 +422,17 @@ class MoonshotDriver(CostMixin, Driver):
         prompt_tokens = usage.get("prompt_tokens", 0)
         completion_tokens = usage.get("completion_tokens", 0)
         total_tokens = usage.get("total_tokens", 0)
-        total_cost = self._calculate_cost("moonshot", model, prompt_tokens, completion_tokens)
+        cached_prompt_tokens = _extract_moonshot_cached_tokens(usage)
+        total_cost = self._calculate_cost(
+            "moonshot", model, prompt_tokens, completion_tokens,
+            cached_tokens=cached_prompt_tokens,
+        )
 
         meta = {
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
             "total_tokens": total_tokens,
+            "cached_prompt_tokens": cached_prompt_tokens,
             "cost": round(total_cost, 6),
             "raw_response": resp,
             "model_name": model,
@@ -488,6 +524,7 @@ class MoonshotDriver(CostMixin, Driver):
         full_reasoning = ""
         prompt_tokens = 0
         completion_tokens = 0
+        cached_prompt_tokens = 0
 
         for line in response.iter_lines(decode_unicode=True):
             if not line or not line.startswith("data: "):
@@ -504,6 +541,7 @@ class MoonshotDriver(CostMixin, Driver):
             if usage:
                 prompt_tokens = usage.get("prompt_tokens", 0)
                 completion_tokens = usage.get("completion_tokens", 0)
+                cached_prompt_tokens = _extract_moonshot_cached_tokens(usage)
 
             choices = chunk.get("choices", [])
             if choices:
@@ -519,7 +557,10 @@ class MoonshotDriver(CostMixin, Driver):
                     yield {"type": "delta", "text": content}
 
         total_tokens = prompt_tokens + completion_tokens
-        total_cost = self._calculate_cost("moonshot", model, prompt_tokens, completion_tokens)
+        total_cost = self._calculate_cost(
+            "moonshot", model, prompt_tokens, completion_tokens,
+            cached_tokens=cached_prompt_tokens,
+        )
 
         done_chunk: dict[str, Any] = {
             "type": "done",
@@ -528,6 +569,7 @@ class MoonshotDriver(CostMixin, Driver):
                 "prompt_tokens": prompt_tokens,
                 "completion_tokens": completion_tokens,
                 "total_tokens": total_tokens,
+                "cached_prompt_tokens": cached_prompt_tokens,
                 "cost": round(total_cost, 6),
                 "raw_response": {},
                 "model_name": model,

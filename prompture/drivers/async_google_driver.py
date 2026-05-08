@@ -64,11 +64,18 @@ class AsyncGoogleDriver(CostMixin, AsyncDriver):
     def _extract_usage_metadata(self, response: Any, messages: list[dict[str, Any]]) -> dict[str, Any]:
         """Extract token counts from response, falling back to character estimation."""
         usage = getattr(response, "usage_metadata", None)
+        cached_prompt_tokens = 0
         if usage:
             prompt_tokens = getattr(usage, "prompt_token_count", 0) or 0
             completion_tokens = getattr(usage, "candidates_token_count", 0) or 0
             total_tokens = getattr(usage, "total_token_count", 0) or (prompt_tokens + completion_tokens)
-            cost = self._calculate_cost("google", self.model, prompt_tokens, completion_tokens)
+            raw_cached = getattr(usage, "cached_content_token_count", 0) or 0
+            if isinstance(raw_cached, (int, float)):
+                cached_prompt_tokens = int(raw_cached)
+            cost = self._calculate_cost(
+                "google", self.model, prompt_tokens, completion_tokens,
+                cached_tokens=cached_prompt_tokens,
+            )
         else:
             # Fallback: estimate from character counts
             total_prompt_chars = 0
@@ -92,6 +99,7 @@ class AsyncGoogleDriver(CostMixin, AsyncDriver):
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
             "total_tokens": total_tokens,
+            "cached_prompt_tokens": cached_prompt_tokens,
             "cost": round(cost, 6),
         }
 

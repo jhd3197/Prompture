@@ -21,6 +21,7 @@ from prompture.drivers.claude_driver import (
     _build_anthropic_meta,
     _extract_anthropic_cache_tokens,
 )
+from prompture.drivers.moonshot_driver import _extract_moonshot_cached_tokens
 from prompture.drivers.openai_driver import (
     OpenAIDriver,
     _extract_openai_cached_tokens,
@@ -369,3 +370,90 @@ class TestAnthropicCostBilling:
         # 100 * 5 + 1500 * 0.5 + 500 * 6.25 + 300 * 25 = 500 + 750 + 3125 + 7500 = 11875
         # Per 1M → $0.011875
         assert cost == pytest.approx(0.011875, abs=1e-9)
+
+
+# ---------------------------------------------------------------------------
+# Moonshot / Kimi
+# ---------------------------------------------------------------------------
+
+
+class TestMoonshotCacheExtraction:
+    """Moonshot exposes cached tokens either as ``usage.cached_tokens`` or as
+    OpenAI-shaped ``usage.prompt_tokens_details.cached_tokens``."""
+
+    def test_returns_zero_when_usage_empty(self):
+        assert _extract_moonshot_cached_tokens({}) == 0
+        assert _extract_moonshot_cached_tokens(None) == 0  # type: ignore[arg-type]
+
+    def test_extracts_top_level_cached_tokens(self):
+        usage = {"prompt_tokens": 1000, "completion_tokens": 50, "cached_tokens": 800}
+        assert _extract_moonshot_cached_tokens(usage) == 800
+
+    def test_extracts_openai_shaped_nested_cached_tokens(self):
+        usage = {
+            "prompt_tokens": 1000,
+            "completion_tokens": 50,
+            "prompt_tokens_details": {"cached_tokens": 600},
+        }
+        assert _extract_moonshot_cached_tokens(usage) == 600
+
+    def test_returns_zero_when_neither_field_present(self):
+        usage = {"prompt_tokens": 100, "completion_tokens": 50}
+        assert _extract_moonshot_cached_tokens(usage) == 0
+
+
+# ---------------------------------------------------------------------------
+# Google / Gemini
+# ---------------------------------------------------------------------------
+
+
+class TestGoogleCacheExtraction:
+    """Gemini's ``usage_metadata`` includes cached_content_token_count when
+    implicit/explicit caching is active."""
+
+    def test_extract_usage_metadata_returns_cached(self):
+        from prompture.drivers.google_driver import GoogleDriver
+
+        driver = GoogleDriver.__new__(GoogleDriver)
+        driver.model = "gemini-2.5-flash"
+
+        usage = MagicMock()
+        usage.prompt_token_count = 1000
+        usage.candidates_token_count = 50
+        usage.total_token_count = 1050
+        usage.cached_content_token_count = 700
+
+        response = MagicMock()
+        response.usage_metadata = usage
+        response.text = "ok"
+
+        with patch.object(driver, "_calculate_cost", return_value=0.0123) as mock_cost:
+            meta = driver._extract_usage_metadata(response, [])
+
+        assert meta["prompt_tokens"] == 1000
+        assert meta["cached_prompt_tokens"] == 700
+        # Verify cost was called with the cache discount
+        mock_cost.assert_called_once_with(
+            "google", "gemini-2.5-flash", 1000, 50, cached_tokens=700
+        )
+
+    def test_extract_usage_metadata_with_no_cache(self):
+        from prompture.drivers.google_driver import GoogleDriver
+
+        driver = GoogleDriver.__new__(GoogleDriver)
+        driver.model = "gemini-2.5-pro"
+
+        usage = MagicMock()
+        usage.prompt_token_count = 200
+        usage.candidates_token_count = 100
+        usage.total_token_count = 300
+        usage.cached_content_token_count = 0
+
+        response = MagicMock()
+        response.usage_metadata = usage
+        response.text = "ok"
+
+        with patch.object(driver, "_calculate_cost", return_value=0.0):
+            meta = driver._extract_usage_metadata(response, [])
+
+        assert meta["cached_prompt_tokens"] == 0

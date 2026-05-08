@@ -10,7 +10,11 @@
     "modalities_input": ["text"],
     "modalities_output": ["text"],
     "api_type": "openai-compatible",
-    "tokens_param": "max_tokens"
+    "tokens_param": "max_tokens",
+    "cost": {
+      "input": 0.59,
+      "output": 0.79
+    }
   },
   "llama-3.1-8b-instant": {
     "supports_temperature": true,
@@ -23,7 +27,11 @@
     "modalities_input": ["text"],
     "modalities_output": ["text"],
     "api_type": "openai-compatible",
-    "tokens_param": "max_tokens"
+    "tokens_param": "max_tokens",
+    "cost": {
+      "input": 0.05,
+      "output": 0.08
+    }
   },
   "openai/gpt-oss-120b": {
     "supports_temperature": true,
@@ -36,7 +44,12 @@
     "modalities_input": ["text"],
     "modalities_output": ["text"],
     "api_type": "openai-compatible",
-    "tokens_param": "max_tokens"
+    "tokens_param": "max_tokens",
+    "cost": {
+      "input": 0.15,
+      "output": 0.60,
+      "cache_read": 0.075
+    }
   },
   "openai/gpt-oss-20b": {
     "supports_temperature": true,
@@ -49,7 +62,12 @@
     "modalities_input": ["text"],
     "modalities_output": ["text"],
     "api_type": "openai-compatible",
-    "tokens_param": "max_tokens"
+    "tokens_param": "max_tokens",
+    "cost": {
+      "input": 0.075,
+      "output": 0.30,
+      "cache_read": 0.0375
+    }
   },
   "openai/gpt-oss-safeguard-20b": {
     "supports_temperature": true,
@@ -62,7 +80,12 @@
     "modalities_input": ["text"],
     "modalities_output": ["text"],
     "api_type": "openai-compatible",
-    "tokens_param": "max_tokens"
+    "tokens_param": "max_tokens",
+    "cost": {
+      "input": 0.075,
+      "output": 0.30,
+      "cache_read": 0.0375
+    }
   },
   "meta-llama/llama-4-scout-17b-16e-instruct": {
     "supports_temperature": true,
@@ -75,7 +98,11 @@
     "modalities_input": ["text", "image"],
     "modalities_output": ["text"],
     "api_type": "openai-compatible",
-    "tokens_param": "max_tokens"
+    "tokens_param": "max_tokens",
+    "cost": {
+      "input": 0.11,
+      "output": 0.34
+    }
   },
   "qwen/qwen3-32b": {
     "supports_temperature": true,
@@ -88,7 +115,11 @@
     "modalities_input": ["text"],
     "modalities_output": ["text"],
     "api_type": "openai-compatible",
-    "tokens_param": "max_tokens"
+    "tokens_param": "max_tokens",
+    "cost": {
+      "input": 0.29,
+      "output": 0.59
+    }
   },
   "moonshotai/kimi-k2-instruct-0905": {
     "supports_temperature": true,
@@ -101,7 +132,12 @@
     "modalities_input": ["text"],
     "modalities_output": ["text"],
     "api_type": "openai-compatible",
-    "tokens_param": "max_tokens"
+    "tokens_param": "max_tokens",
+    "cost": {
+      "input": 1.00,
+      "output": 3.00,
+      "cache_read": 0.50
+    }
   },
   "qwen-qwq-32b": {
     "supports_temperature": true,

@@ -20,7 +20,7 @@ import httpx
 from ..infra.cost_mixin import CostMixin, prepare_strict_schema
 from .async_base import AsyncDriver
 from .base import _parse_tool_arguments
-from .moonshot_driver import MoonshotDriver
+from .moonshot_driver import MoonshotDriver, _extract_moonshot_cached_tokens
 
 logger = logging.getLogger("prompture.drivers.moonshot")
 
@@ -142,6 +142,7 @@ class AsyncMoonshotDriver(CostMixin, AsyncDriver):
         prompt_tokens = usage.get("prompt_tokens", 0)
         completion_tokens = usage.get("completion_tokens", 0)
         total_tokens = usage.get("total_tokens", 0)
+        cached_prompt_tokens = _extract_moonshot_cached_tokens(usage)
 
         message = resp["choices"][0]["message"]
         text = message.get("content") or ""
@@ -189,6 +190,7 @@ class AsyncMoonshotDriver(CostMixin, AsyncDriver):
                     prompt_tokens += fb_usage.get("prompt_tokens", 0)
                     completion_tokens = fb_usage.get("completion_tokens", 0)
                     total_tokens = prompt_tokens + completion_tokens
+                    cached_prompt_tokens += _extract_moonshot_cached_tokens(fb_usage)
                     resp = fb_resp
                     fb_message = fb_resp["choices"][0]["message"]
                     text = fb_message.get("content") or ""
@@ -196,12 +198,16 @@ class AsyncMoonshotDriver(CostMixin, AsyncDriver):
                     if not text and reasoning_content:
                         text = reasoning_content
 
-        total_cost = self._calculate_cost("moonshot", model, prompt_tokens, completion_tokens)
+        total_cost = self._calculate_cost(
+            "moonshot", model, prompt_tokens, completion_tokens,
+            cached_tokens=cached_prompt_tokens,
+        )
 
         meta = {
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
             "total_tokens": total_tokens,
+            "cached_prompt_tokens": cached_prompt_tokens,
             "cost": round(total_cost, 6),
             "raw_response": resp,
             "model_name": model,
@@ -280,12 +286,17 @@ class AsyncMoonshotDriver(CostMixin, AsyncDriver):
         prompt_tokens = usage.get("prompt_tokens", 0)
         completion_tokens = usage.get("completion_tokens", 0)
         total_tokens = usage.get("total_tokens", 0)
-        total_cost = self._calculate_cost("moonshot", model, prompt_tokens, completion_tokens)
+        cached_prompt_tokens = _extract_moonshot_cached_tokens(usage)
+        total_cost = self._calculate_cost(
+            "moonshot", model, prompt_tokens, completion_tokens,
+            cached_tokens=cached_prompt_tokens,
+        )
 
         meta = {
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
             "total_tokens": total_tokens,
+            "cached_prompt_tokens": cached_prompt_tokens,
             "cost": round(total_cost, 6),
             "raw_response": resp,
             "model_name": model,
@@ -365,6 +376,7 @@ class AsyncMoonshotDriver(CostMixin, AsyncDriver):
         full_reasoning = ""
         prompt_tokens = 0
         completion_tokens = 0
+        cached_prompt_tokens = 0
 
         async with (
             httpx.AsyncClient() as client,
@@ -392,6 +404,7 @@ class AsyncMoonshotDriver(CostMixin, AsyncDriver):
                 if usage:
                     prompt_tokens = usage.get("prompt_tokens", 0)
                     completion_tokens = usage.get("completion_tokens", 0)
+                    cached_prompt_tokens = _extract_moonshot_cached_tokens(usage)
 
                 choices = chunk.get("choices", [])
                 if choices:
@@ -407,7 +420,10 @@ class AsyncMoonshotDriver(CostMixin, AsyncDriver):
                         yield {"type": "delta", "text": content}
 
         total_tokens = prompt_tokens + completion_tokens
-        total_cost = self._calculate_cost("moonshot", model, prompt_tokens, completion_tokens)
+        total_cost = self._calculate_cost(
+            "moonshot", model, prompt_tokens, completion_tokens,
+            cached_tokens=cached_prompt_tokens,
+        )
 
         done_chunk: dict[str, Any] = {
             "type": "done",
@@ -416,6 +432,7 @@ class AsyncMoonshotDriver(CostMixin, AsyncDriver):
                 "prompt_tokens": prompt_tokens,
                 "completion_tokens": completion_tokens,
                 "total_tokens": total_tokens,
+                "cached_prompt_tokens": cached_prompt_tokens,
                 "cost": round(total_cost, 6),
                 "raw_response": {},
                 "model_name": model,
