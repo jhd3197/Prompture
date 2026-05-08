@@ -58,6 +58,7 @@ class UsageEvent:
     completion_tokens: int = 0
     total_tokens: int = 0
     cached_prompt_tokens: int = 0
+    cache_creation_tokens: int = 0
     cost: float = 0.0
     elapsed_ms: float = 0.0
     session_id: str | None = None
@@ -134,6 +135,7 @@ CREATE TABLE IF NOT EXISTS usage_events (
     completion_tokens INTEGER DEFAULT 0,
     total_tokens      INTEGER DEFAULT 0,
     cached_prompt_tokens INTEGER DEFAULT 0,
+    cache_creation_tokens INTEGER DEFAULT 0,
     cost              REAL DEFAULT 0.0,
     elapsed_ms        REAL DEFAULT 0.0,
     session_id        TEXT,
@@ -227,10 +229,10 @@ _INSERT_SQL = """
 INSERT INTO usage_events (
     id, timestamp, model_name, provider, api_key_hash,
     prompt_tokens, completion_tokens, total_tokens, cached_prompt_tokens,
-    cost, elapsed_ms,
+    cache_creation_tokens, cost, elapsed_ms,
     session_id, conversation_id, agent_id, tool_name, operation,
     cache_hit, status, error_type, tags, metadata
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 """
 
 # Column additions applied to existing databases via ALTER TABLE.
@@ -240,6 +242,10 @@ _SCHEMA_MIGRATIONS: list[tuple[str, str]] = [
     (
         "cached_prompt_tokens",
         "ALTER TABLE usage_events ADD COLUMN cached_prompt_tokens INTEGER DEFAULT 0",
+    ),
+    (
+        "cache_creation_tokens",
+        "ALTER TABLE usage_events ADD COLUMN cache_creation_tokens INTEGER DEFAULT 0",
     ),
 ]
 
@@ -379,6 +385,7 @@ class UsageTracker:
                             e.completion_tokens,
                             e.total_tokens,
                             e.cached_prompt_tokens,
+                            e.cache_creation_tokens,
                             e.cost,
                             e.elapsed_ms,
                             e.session_id,
@@ -753,6 +760,7 @@ class UsageTracker:
                 completion_tokens=meta.get("completion_tokens", 0),
                 total_tokens=meta.get("total_tokens", 0),
                 cached_prompt_tokens=meta.get("cached_prompt_tokens", 0),
+                cache_creation_tokens=meta.get("cache_creation_tokens", 0),
                 cost=meta.get("cost", 0.0),
                 elapsed_ms=info.get("elapsed_ms", 0.0),
                 session_id=ctx.get("session_id"),

@@ -10,7 +10,13 @@
     "modalities_input": ["text", "image"],
     "modalities_output": ["text"],
     "api_type": "anthropic",
-    "tokens_param": "max_tokens"
+    "tokens_param": "max_tokens",
+    "cost": {
+      "input": 5.00,
+      "output": 25.00,
+      "cache_read": 0.50,
+      "cache_write": 6.25
+    }
   },
   "claude-opus-4-6": {
     "supports_temperature": true,
@@ -23,7 +29,13 @@
     "modalities_input": ["text", "image"],
     "modalities_output": ["text"],
     "api_type": "anthropic",
-    "tokens_param": "max_tokens"
+    "tokens_param": "max_tokens",
+    "cost": {
+      "input": 5.00,
+      "output": 25.00,
+      "cache_read": 0.50,
+      "cache_write": 6.25
+    }
   },
   "claude-sonnet-4-6": {
     "supports_temperature": true,
@@ -36,7 +48,13 @@
     "modalities_input": ["text", "image"],
     "modalities_output": ["text"],
     "api_type": "anthropic",
-    "tokens_param": "max_tokens"
+    "tokens_param": "max_tokens",
+    "cost": {
+      "input": 3.00,
+      "output": 15.00,
+      "cache_read": 0.30,
+      "cache_write": 3.75
+    }
   },
   "claude-haiku-4-5": {
     "supports_temperature": true,
@@ -49,6 +67,12 @@
     "modalities_input": ["text", "image"],
     "modalities_output": ["text"],
     "api_type": "anthropic",
-    "tokens_param": "max_tokens"
+    "tokens_param": "max_tokens",
+    "cost": {
+      "input": 1.00,
+      "output": 5.00,
+      "cache_read": 0.10,
+      "cache_write": 1.25
+    }
   }
 }

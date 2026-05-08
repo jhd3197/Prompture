@@ -20,6 +20,7 @@ from .claude_driver import (
     _build_anthropic_meta,
     _build_anthropic_stream_done,
     _convert_tools_to_anthropic,
+    _extract_anthropic_cache_tokens,
     _extract_anthropic_system_and_messages,
     _extract_anthropic_text_and_tool_calls,
 )
@@ -104,8 +105,14 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
         if not text and reasoning_content:
             text = reasoning_content
 
+        cache_read, cache_create = _extract_anthropic_cache_tokens(resp.usage)
         total_cost = self._calculate_cost(
-            "claude", model, resp.usage.input_tokens, resp.usage.output_tokens
+            "claude",
+            model,
+            resp.usage.input_tokens + cache_read + cache_create,
+            resp.usage.output_tokens,
+            cached_tokens=cache_read,
+            cache_creation_tokens=cache_create,
         )
         meta = _build_anthropic_meta(resp, model, total_cost)
 
@@ -157,8 +164,14 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
 
         resp = await client.messages.create(**kwargs)
 
+        cache_read, cache_create = _extract_anthropic_cache_tokens(resp.usage)
         total_cost = self._calculate_cost(
-            "claude", model, resp.usage.input_tokens, resp.usage.output_tokens
+            "claude",
+            model,
+            resp.usage.input_tokens + cache_read + cache_create,
+            resp.usage.output_tokens,
+            cached_tokens=cache_read,
+            cache_creation_tokens=cache_create,
         )
         meta = _build_anthropic_meta(resp, model, total_cost)
 
@@ -205,8 +218,10 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
 
         full_text = ""
         full_reasoning = ""
-        prompt_tokens = 0
+        base_input = 0
         completion_tokens = 0
+        cache_read = 0
+        cache_create = 0
 
         async with client.messages.stream(**kwargs) as stream:
             async for event in stream:
@@ -228,9 +243,19 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
                     elif event.type == "message_start" and hasattr(event, "message"):
                         usage = getattr(event.message, "usage", None)
                         if usage:
-                            prompt_tokens = getattr(usage, "input_tokens", 0)
+                            base_input = getattr(usage, "input_tokens", 0)
+                            cache_read, cache_create = _extract_anthropic_cache_tokens(usage)
 
-        total_cost = self._calculate_cost("claude", model, prompt_tokens, completion_tokens)
+        prompt_tokens = base_input + cache_read + cache_create
+        total_cost = self._calculate_cost(
+            "claude",
+            model,
+            prompt_tokens,
+            completion_tokens,
+            cached_tokens=cache_read,
+            cache_creation_tokens=cache_create,
+        )
         yield _build_anthropic_stream_done(
-            model, full_text, full_reasoning, prompt_tokens, completion_tokens, total_cost
+            model, full_text, full_reasoning, prompt_tokens, completion_tokens, total_cost,
+            cached_prompt_tokens=cache_read, cache_creation_tokens=cache_create,
         )

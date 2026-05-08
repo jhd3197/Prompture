@@ -403,6 +403,7 @@ class Driver(ABC):
                 completion_tokens=meta.get("completion_tokens", 0),
                 total_tokens=meta.get("total_tokens", 0),
                 cached_prompt_tokens=meta.get("cached_prompt_tokens", 0),
+                cache_creation_tokens=meta.get("cache_creation_tokens", 0),
                 cost=meta.get("cost", 0.0),
                 elapsed_ms=elapsed_ms,
                 status=status,

@@ -1,9 +1,14 @@
-"""Tests for provider-side prompt-cache token tracking (OpenAI).
+"""Tests for provider-side prompt-cache token tracking.
 
 Covers:
-- Cost calculation discounts cached input tokens at the cache_read rate.
+- Cost calculation discounts cached input tokens at the cache_read rate
+  and bills cache-creation tokens at the cache_write rate.
 - The OpenAI driver extracts ``prompt_tokens_details.cached_tokens`` into meta.
-- Cached tokens flow through the meta dict into the SQLite usage tracker.
+- The Anthropic driver extracts ``cache_read_input_tokens`` and
+  ``cache_creation_input_tokens`` into meta and synthesizes a total
+  ``prompt_tokens`` consistent with OpenAI semantics.
+- Cached / cache-creation tokens flow through the meta dict into the
+  SQLite usage tracker.
 """
 
 from __future__ import annotations
@@ -12,6 +17,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from prompture.drivers.claude_driver import (
+    _build_anthropic_meta,
+    _extract_anthropic_cache_tokens,
+)
 from prompture.drivers.openai_driver import (
     OpenAIDriver,
     _extract_openai_cached_tokens,
@@ -206,8 +215,26 @@ class TestTrackerCachedPromptTokens:
 
         rows = tracker.query()
         assert rows[0]["cached_prompt_tokens"] == 0
+        assert rows[0]["cache_creation_tokens"] == 0
 
-    def test_alter_migration_adds_column_to_old_db(self, tmp_path):
+    def test_record_and_query_cache_creation_tokens(self, tmp_path):
+        tracker = UsageTracker(db_path=tmp_path / "usage.db", flush_threshold=1)
+        tracker.record(
+            UsageEvent(
+                model_name="claude/opus-4-7",
+                provider="claude",
+                prompt_tokens=2500,
+                cached_prompt_tokens=1500,
+                cache_creation_tokens=500,
+                completion_tokens=300,
+                total_tokens=2800,
+            )
+        )
+        rows = tracker.query()
+        assert rows[0]["cached_prompt_tokens"] == 1500
+        assert rows[0]["cache_creation_tokens"] == 500
+
+    def test_alter_migration_adds_cached_prompt_tokens_to_old_db(self, tmp_path):
         """A pre-existing DB without cached_prompt_tokens should be migrated."""
         import sqlite3
 
@@ -258,3 +285,87 @@ class TestTrackerCachedPromptTokens:
 
         rows = tracker.query()
         assert rows[0]["cached_prompt_tokens"] == 150
+
+
+# ---------------------------------------------------------------------------
+# Anthropic / Claude
+# ---------------------------------------------------------------------------
+
+
+class TestAnthropicCacheExtraction:
+    """Anthropic returns cache reads/writes as separate fields, not folded
+    into ``input_tokens``. The driver must surface them and synthesize a
+    total ``prompt_tokens`` for downstream consistency."""
+
+    def test_extract_returns_zero_when_usage_missing(self):
+        assert _extract_anthropic_cache_tokens(None) == (0, 0)
+
+    def test_extract_returns_zero_when_fields_absent(self):
+        usage = MagicMock(spec=["input_tokens", "output_tokens"])
+        usage.cache_read_input_tokens = None
+        usage.cache_creation_input_tokens = None
+        assert _extract_anthropic_cache_tokens(usage) == (0, 0)
+
+    def test_extract_returns_both_fields_when_present(self):
+        usage = MagicMock()
+        usage.cache_read_input_tokens = 1500
+        usage.cache_creation_input_tokens = 500
+        assert _extract_anthropic_cache_tokens(usage) == (1500, 500)
+
+    def test_meta_synthesises_total_prompt_tokens(self):
+        # input_tokens=200, cache_read=1500, cache_create=500 → prompt_tokens=2200
+        resp = MagicMock()
+        resp.usage.input_tokens = 200
+        resp.usage.output_tokens = 300
+        resp.usage.cache_read_input_tokens = 1500
+        resp.usage.cache_creation_input_tokens = 500
+
+        meta = _build_anthropic_meta(resp, "claude-opus-4-7", 0.0)
+
+        assert meta["prompt_tokens"] == 2200  # base + cache_read + cache_create
+        assert meta["cached_prompt_tokens"] == 1500
+        assert meta["cache_creation_tokens"] == 500
+        assert meta["completion_tokens"] == 300
+        assert meta["total_tokens"] == 2500
+
+    def test_meta_with_no_cache_activity(self):
+        resp = MagicMock()
+        resp.usage.input_tokens = 100
+        resp.usage.output_tokens = 50
+        resp.usage.cache_read_input_tokens = 0
+        resp.usage.cache_creation_input_tokens = 0
+
+        meta = _build_anthropic_meta(resp, "claude-haiku-4-5", 0.0)
+
+        assert meta["prompt_tokens"] == 100
+        assert meta["cached_prompt_tokens"] == 0
+        assert meta["cache_creation_tokens"] == 0
+
+
+class TestAnthropicCostBilling:
+    """Cost should bill input / cache_read / cache_write at the right rates."""
+
+    @patch("prompture.infra.model_rates.get_model_rates")
+    def test_cost_bills_three_buckets_correctly(self, mock_rates):
+        # Claude Opus 4.7 rates (per 1M tokens)
+        mock_rates.return_value = {
+            "input": 5.00,
+            "output": 25.00,
+            "cache_read": 0.50,
+            "cache_write": 6.25,
+        }
+        mixin = CostMixin()
+
+        # Synthetic prompt_tokens = 100 input + 1500 cache_read + 500 cache_create = 2100
+        cost = mixin._calculate_cost(
+            "claude",
+            "claude-opus-4-7",
+            2100,
+            300,
+            cached_tokens=1500,
+            cache_creation_tokens=500,
+        )
+
+        # 100 * 5 + 1500 * 0.5 + 500 * 6.25 + 300 * 25 = 500 + 750 + 3125 + 7500 = 11875
+        # Per 1M → $0.011875
+        assert cost == pytest.approx(0.011875, abs=1e-9)

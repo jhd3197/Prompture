@@ -112,13 +112,41 @@ def _convert_tools_to_anthropic(tools: list[dict[str, Any]]) -> list[dict[str, A
     return anthropic_tools
 
 
+def _extract_anthropic_cache_tokens(usage: Any) -> tuple[int, int]:
+    """Return ``(cache_read_input_tokens, cache_creation_input_tokens)``.
+
+    Anthropic reports prompt-cache reads and writes as **separate** fields
+    on ``usage`` — they are NOT included in ``input_tokens``. Both default
+    to zero when caching is not used or when the SDK version doesn't
+    populate the fields.
+    """
+    if usage is None:
+        return 0, 0
+
+    def _safe(name: str) -> int:
+        val = getattr(usage, name, 0)
+        if val is None or not isinstance(val, (int, float)):
+            return 0
+        return int(val)
+
+    return _safe("cache_read_input_tokens"), _safe("cache_creation_input_tokens")
+
+
 def _build_anthropic_meta(resp: Any, model: str, total_cost: float) -> dict[str, Any]:
-    prompt_tokens = resp.usage.input_tokens
+    base_input = resp.usage.input_tokens
     completion_tokens = resp.usage.output_tokens
+    cache_read, cache_create = _extract_anthropic_cache_tokens(resp.usage)
+    # Anthropic reports cache reads/writes separately from input_tokens.
+    # Surface a synthesized prompt_tokens that represents the *total* input
+    # tokens consumed (matching how OpenAI reports prompt_tokens), so
+    # downstream tracking and dashboards see comparable numbers.
+    prompt_tokens = base_input + cache_read + cache_create
     return {
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,
         "total_tokens": prompt_tokens + completion_tokens,
+        "cached_prompt_tokens": cache_read,
+        "cache_creation_tokens": cache_create,
         "cost": round(total_cost, 6),
         "raw_response": dict(resp),
         "model_name": model,
@@ -157,6 +185,8 @@ def _build_anthropic_stream_done(
     prompt_tokens: int,
     completion_tokens: int,
     total_cost: float,
+    cached_prompt_tokens: int = 0,
+    cache_creation_tokens: int = 0,
 ) -> dict[str, Any]:
     done_chunk: dict[str, Any] = {
         "type": "done",
@@ -165,6 +195,8 @@ def _build_anthropic_stream_done(
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
             "total_tokens": prompt_tokens + completion_tokens,
+            "cached_prompt_tokens": cached_prompt_tokens,
+            "cache_creation_tokens": cache_creation_tokens,
             "cost": round(total_cost, 6),
             "raw_response": {},
             "model_name": model,
@@ -293,8 +325,14 @@ class ClaudeDriver(CostMixin, Driver):
         if not text and reasoning_content:
             text = reasoning_content
 
+        cache_read, cache_create = _extract_anthropic_cache_tokens(resp.usage)
         total_cost = self._calculate_cost(
-            "claude", model, resp.usage.input_tokens, resp.usage.output_tokens
+            "claude",
+            model,
+            resp.usage.input_tokens + cache_read + cache_create,
+            resp.usage.output_tokens,
+            cached_tokens=cache_read,
+            cache_creation_tokens=cache_create,
         )
         meta = _build_anthropic_meta(resp, model, total_cost)
 
@@ -357,8 +395,14 @@ class ClaudeDriver(CostMixin, Driver):
 
         resp = client.messages.create(**kwargs)
 
+        cache_read, cache_create = _extract_anthropic_cache_tokens(resp.usage)
         total_cost = self._calculate_cost(
-            "claude", model, resp.usage.input_tokens, resp.usage.output_tokens
+            "claude",
+            model,
+            resp.usage.input_tokens + cache_read + cache_create,
+            resp.usage.output_tokens,
+            cached_tokens=cache_read,
+            cache_creation_tokens=cache_create,
         )
         meta = _build_anthropic_meta(resp, model, total_cost)
 
@@ -405,8 +449,10 @@ class ClaudeDriver(CostMixin, Driver):
 
         full_text = ""
         full_reasoning = ""
-        prompt_tokens = 0
+        base_input = 0
         completion_tokens = 0
+        cache_read = 0
+        cache_create = 0
 
         with client.messages.stream(**kwargs) as stream:
             for event in stream:
@@ -428,9 +474,19 @@ class ClaudeDriver(CostMixin, Driver):
                     elif event.type == "message_start" and hasattr(event, "message"):
                         usage = getattr(event.message, "usage", None)
                         if usage:
-                            prompt_tokens = getattr(usage, "input_tokens", 0)
+                            base_input = getattr(usage, "input_tokens", 0)
+                            cache_read, cache_create = _extract_anthropic_cache_tokens(usage)
 
-        total_cost = self._calculate_cost("claude", model, prompt_tokens, completion_tokens)
+        prompt_tokens = base_input + cache_read + cache_create
+        total_cost = self._calculate_cost(
+            "claude",
+            model,
+            prompt_tokens,
+            completion_tokens,
+            cached_tokens=cache_read,
+            cache_creation_tokens=cache_create,
+        )
         yield _build_anthropic_stream_done(
-            model, full_text, full_reasoning, prompt_tokens, completion_tokens, total_cost
+            model, full_text, full_reasoning, prompt_tokens, completion_tokens, total_cost,
+            cached_prompt_tokens=cache_read, cache_creation_tokens=cache_create,
         )
