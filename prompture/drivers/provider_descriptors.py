@@ -203,7 +203,7 @@ def _build_descriptors() -> list[ProviderDescriptor]:
         "api_key": "google_vertex_api_key",
         "project_id": "google_vertex_project_id",
         "location": "google_vertex_location",
-        "access_token": "google_vertex_access_token",
+        "access_token": "google_vertex_access_token",  # nosec B105
     }
     descriptors.append(
         ProviderDescriptor(
