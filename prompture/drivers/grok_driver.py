@@ -99,19 +99,26 @@ class GrokDriver(CostMixin, Driver):
             raise RuntimeError(f"Grok API request failed: {e!s}") from e
 
         # Extract usage info
+        from .moonshot_driver import _extract_moonshot_cached_tokens
+
         usage = resp.get("usage", {})
         prompt_tokens = usage.get("prompt_tokens", 0)
         completion_tokens = usage.get("completion_tokens", 0)
         total_tokens = usage.get("total_tokens", 0)
+        cached_prompt_tokens = _extract_moonshot_cached_tokens(usage)
 
-        # Calculate cost via shared mixin
-        total_cost = self._calculate_cost("grok", model, prompt_tokens, completion_tokens)
+        # Calculate cost via shared mixin (cache hits at cache_read rate)
+        total_cost = self._calculate_cost(
+            "grok", model, prompt_tokens, completion_tokens,
+            cached_tokens=cached_prompt_tokens,
+        )
 
         # Standardized meta object
         meta = {
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
             "total_tokens": total_tokens,
+            "cached_prompt_tokens": cached_prompt_tokens,
             "cost": round(total_cost, 6),
             "raw_response": resp,
             "model_name": model,
@@ -174,16 +181,23 @@ class GrokDriver(CostMixin, Driver):
         except requests.exceptions.RequestException as e:
             raise RuntimeError(f"Grok API request failed: {e!s}") from e
 
+        from .moonshot_driver import _extract_moonshot_cached_tokens
+
         usage = resp.get("usage", {})
         prompt_tokens = usage.get("prompt_tokens", 0)
         completion_tokens = usage.get("completion_tokens", 0)
         total_tokens = usage.get("total_tokens", 0)
-        total_cost = self._calculate_cost("grok", model, prompt_tokens, completion_tokens)
+        cached_prompt_tokens = _extract_moonshot_cached_tokens(usage)
+        total_cost = self._calculate_cost(
+            "grok", model, prompt_tokens, completion_tokens,
+            cached_tokens=cached_prompt_tokens,
+        )
 
         meta = {
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
             "total_tokens": total_tokens,
+            "cached_prompt_tokens": cached_prompt_tokens,
             "cost": round(total_cost, 6),
             "raw_response": resp,
             "model_name": model,
