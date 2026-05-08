@@ -10,7 +10,12 @@
     "modalities_input": ["text", "image"],
     "modalities_output": ["text"],
     "api_type": "openai-compatible",
-    "tokens_param": "max_tokens"
+    "tokens_param": "max_tokens",
+    "cost": {
+      "input": 1.25,
+      "output": 2.50,
+      "cache_read": 0.25
+    }
   },
   "grok-4.20-0309-reasoning": {
     "supports_temperature": true,
@@ -23,7 +28,12 @@
     "modalities_input": ["text", "image"],
     "modalities_output": ["text"],
     "api_type": "openai-compatible",
-    "tokens_param": "max_tokens"
+    "tokens_param": "max_tokens",
+    "cost": {
+      "input": 1.25,
+      "output": 2.50,
+      "cache_read": 0.25
+    }
   },
   "grok-4.20-0309-non-reasoning": {
     "supports_temperature": true,
@@ -36,7 +46,12 @@
     "modalities_input": ["text", "image"],
     "modalities_output": ["text"],
     "api_type": "openai-compatible",
-    "tokens_param": "max_tokens"
+    "tokens_param": "max_tokens",
+    "cost": {
+      "input": 1.25,
+      "output": 2.50,
+      "cache_read": 0.25
+    }
   },
   "grok-4.20-multi-agent-0309": {
     "supports_temperature": true,
@@ -49,7 +64,12 @@
     "modalities_input": ["text", "image"],
     "modalities_output": ["text"],
     "api_type": "openai-compatible",
-    "tokens_param": "max_tokens"
+    "tokens_param": "max_tokens",
+    "cost": {
+      "input": 1.25,
+      "output": 2.50,
+      "cache_read": 0.25
+    }
   },
   "grok-4-1-fast-reasoning": {
     "supports_temperature": true,
@@ -62,7 +82,12 @@
     "modalities_input": ["text", "image"],
     "modalities_output": ["text"],
     "api_type": "openai-compatible",
-    "tokens_param": "max_tokens"
+    "tokens_param": "max_tokens",
+    "cost": {
+      "input": 0.20,
+      "output": 0.50,
+      "cache_read": 0.04
+    }
   },
   "grok-4-1-fast-non-reasoning": {
     "supports_temperature": true,
@@ -75,7 +100,12 @@
     "modalities_input": ["text", "image"],
     "modalities_output": ["text"],
     "api_type": "openai-compatible",
-    "tokens_param": "max_tokens"
+    "tokens_param": "max_tokens",
+    "cost": {
+      "input": 0.20,
+      "output": 0.50,
+      "cache_read": 0.04
+    }
   },
   "grok-3": {
     "supports_temperature": true,

@@ -57,6 +57,8 @@ class UsageEvent:
     prompt_tokens: int = 0
     completion_tokens: int = 0
     total_tokens: int = 0
+    cached_prompt_tokens: int = 0
+    cache_creation_tokens: int = 0
     cost: float = 0.0
     elapsed_ms: float = 0.0
     session_id: str | None = None
@@ -132,6 +134,8 @@ CREATE TABLE IF NOT EXISTS usage_events (
     prompt_tokens     INTEGER DEFAULT 0,
     completion_tokens INTEGER DEFAULT 0,
     total_tokens      INTEGER DEFAULT 0,
+    cached_prompt_tokens INTEGER DEFAULT 0,
+    cache_creation_tokens INTEGER DEFAULT 0,
     cost              REAL DEFAULT 0.0,
     elapsed_ms        REAL DEFAULT 0.0,
     session_id        TEXT,
@@ -224,11 +228,26 @@ CREATE VIEW IF NOT EXISTS model_usage AS
 _INSERT_SQL = """
 INSERT INTO usage_events (
     id, timestamp, model_name, provider, api_key_hash,
-    prompt_tokens, completion_tokens, total_tokens, cost, elapsed_ms,
+    prompt_tokens, completion_tokens, total_tokens, cached_prompt_tokens,
+    cache_creation_tokens, cost, elapsed_ms,
     session_id, conversation_id, agent_id, tool_name, operation,
     cache_hit, status, error_type, tags, metadata
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 """
+
+# Column additions applied to existing databases via ALTER TABLE.
+# Each entry is (column_name, "ALTER TABLE ... ADD COLUMN ..." statement).
+# Failures are ignored (column already exists), so this is idempotent.
+_SCHEMA_MIGRATIONS: list[tuple[str, str]] = [
+    (
+        "cached_prompt_tokens",
+        "ALTER TABLE usage_events ADD COLUMN cached_prompt_tokens INTEGER DEFAULT 0",
+    ),
+    (
+        "cache_creation_tokens",
+        "ALTER TABLE usage_events ADD COLUMN cache_creation_tokens INTEGER DEFAULT 0",
+    ),
+]
 
 
 # ---------------------------------------------------------------------------
@@ -288,6 +307,13 @@ class UsageTracker:
                 try:
                     conn.execute("PRAGMA journal_mode=WAL")
                     conn.executescript(_SCHEMA_SQL)
+                    # Apply additive column migrations for older DBs.
+                    # OperationalError means the column already exists on a
+                    # fresh DB created from _SCHEMA_SQL above, or the
+                    # migration was already applied — both fine.
+                    for _col, ddl in _SCHEMA_MIGRATIONS:
+                        with contextlib.suppress(sqlite3.OperationalError):
+                            conn.execute(ddl)
                     conn.commit()
                 finally:
                     conn.close()
@@ -356,6 +382,8 @@ class UsageTracker:
                             e.prompt_tokens,
                             e.completion_tokens,
                             e.total_tokens,
+                            e.cached_prompt_tokens,
+                            e.cache_creation_tokens,
                             e.cost,
                             e.elapsed_ms,
                             e.session_id,
@@ -729,6 +757,8 @@ class UsageTracker:
                 prompt_tokens=meta.get("prompt_tokens", 0),
                 completion_tokens=meta.get("completion_tokens", 0),
                 total_tokens=meta.get("total_tokens", 0),
+                cached_prompt_tokens=meta.get("cached_prompt_tokens", 0),
+                cache_creation_tokens=meta.get("cache_creation_tokens", 0),
                 cost=meta.get("cost", 0.0),
                 elapsed_ms=info.get("elapsed_ms", 0.0),
                 session_id=ctx.get("session_id"),

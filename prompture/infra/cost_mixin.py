@@ -50,21 +50,49 @@ class CostMixin:
         model: str,
         prompt_tokens: int | float,
         completion_tokens: int | float,
+        *,
+        cached_tokens: int | float = 0,
+        cache_creation_tokens: int | float = 0,
     ) -> float:
         """Calculate USD cost for a generation call.
 
         Uses live rates from ``model_rates.get_model_rates()`` (per 1M tokens).
         Returns 0.0 if no rates are available.
+
+        Provider-side prompt-cache tokens are billed at the discounted
+        ``cache_read`` rate (and ``cache_write`` rate for Anthropic-style
+        cache writes) when the rate is available; otherwise they fall back
+        to the full input rate.
+
+        ``prompt_tokens`` is treated as the *total* prompt token count
+        reported by the provider (which already includes any cached tokens
+        — that's how OpenAI and Anthropic both report it). The cached
+        portion is subtracted out before applying the full input rate.
         """
         from .model_rates import get_model_rates
 
         live_rates = get_model_rates(provider, model)
-        if live_rates and (live_rates.get("input") or live_rates.get("output")):
-            prompt_cost = (prompt_tokens / 1_000_000) * live_rates["input"]
-            completion_cost = (completion_tokens / 1_000_000) * live_rates["output"]
-            return round(prompt_cost + completion_cost, 6)
+        if not live_rates or not (live_rates.get("input") or live_rates.get("output")):
+            return 0.0
 
-        return 0.0
+        input_rate = live_rates.get("input", 0.0)
+        output_rate = live_rates.get("output", 0.0)
+        cache_read_rate = live_rates.get("cache_read", input_rate)
+        cache_write_rate = live_rates.get("cache_write", input_rate)
+
+        cached = max(0, cached_tokens)
+        cache_created = max(0, cache_creation_tokens)
+        # Both cached reads and cache-creation tokens are reported inside
+        # prompt_tokens — strip them out so we don't double-bill.
+        non_cached = max(0, prompt_tokens - cached - cache_created)
+
+        cost = (
+            (non_cached / 1_000_000) * input_rate
+            + (cached / 1_000_000) * cache_read_rate
+            + (cache_created / 1_000_000) * cache_write_rate
+            + (completion_tokens / 1_000_000) * output_rate
+        )
+        return round(cost, 6)
 
     def _get_model_config(self, provider: str, model: str) -> dict[str, Any]:
         """Return per-model configuration from capabilities knowledge base.

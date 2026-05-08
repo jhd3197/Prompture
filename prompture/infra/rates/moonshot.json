@@ -36,7 +36,12 @@
     "modalities_input": ["text"],
     "modalities_output": ["text"],
     "api_type": "openai-compatible",
-    "tokens_param": "max_tokens"
+    "tokens_param": "max_tokens",
+    "cost": {
+      "input": 0.60,
+      "output": 2.50,
+      "cache_read": 0.15
+    }
   },
   "kimi-k2-0711-preview": {
     "supports_temperature": true,
@@ -49,7 +54,12 @@
     "modalities_input": ["text"],
     "modalities_output": ["text"],
     "api_type": "openai-compatible",
-    "tokens_param": "max_tokens"
+    "tokens_param": "max_tokens",
+    "cost": {
+      "input": 0.60,
+      "output": 2.50,
+      "cache_read": 0.15
+    }
   },
   "kimi-k2-thinking": {
     "supports_temperature": true,
@@ -62,7 +72,12 @@
     "modalities_input": ["text"],
     "modalities_output": ["text"],
     "api_type": "openai-compatible",
-    "tokens_param": "max_tokens"
+    "tokens_param": "max_tokens",
+    "cost": {
+      "input": 0.60,
+      "output": 2.50,
+      "cache_read": 0.15
+    }
   },
   "kimi-k2-thinking-turbo": {
     "supports_temperature": true,
@@ -75,7 +90,12 @@
     "modalities_input": ["text"],
     "modalities_output": ["text"],
     "api_type": "openai-compatible",
-    "tokens_param": "max_tokens"
+    "tokens_param": "max_tokens",
+    "cost": {
+      "input": 1.15,
+      "output": 8.00,
+      "cache_read": 0.15
+    }
   },
   "kimi-k2-turbo-preview": {
     "supports_temperature": true,
@@ -88,6 +108,11 @@
     "modalities_input": ["text"],
     "modalities_output": ["text"],
     "api_type": "openai-compatible",
-    "tokens_param": "max_tokens"
+    "tokens_param": "max_tokens",
+    "cost": {
+      "input": 1.15,
+      "output": 8.00,
+      "cache_read": 0.15
+    }
   }
 }

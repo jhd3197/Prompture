@@ -102,19 +102,26 @@ class GroqDriver(CostMixin, Driver):
             raise
 
         # Extract usage statistics
+        from .openai_driver import _extract_openai_cached_tokens
+
         usage = getattr(resp, "usage", None)
         prompt_tokens = getattr(usage, "prompt_tokens", 0)
         completion_tokens = getattr(usage, "completion_tokens", 0)
         total_tokens = getattr(usage, "total_tokens", 0)
+        cached_prompt_tokens = _extract_openai_cached_tokens(usage)
 
-        # Calculate cost via shared mixin
-        total_cost = self._calculate_cost("groq", model, prompt_tokens, completion_tokens)
+        # Calculate cost via shared mixin (cache hits billed at cache_read rate)
+        total_cost = self._calculate_cost(
+            "groq", model, prompt_tokens, completion_tokens,
+            cached_tokens=cached_prompt_tokens,
+        )
 
         # Standard metadata object
         meta = {
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
             "total_tokens": total_tokens,
+            "cached_prompt_tokens": cached_prompt_tokens,
             "cost": round(total_cost, 6),
             "raw_response": resp.model_dump(),
             "model_name": model,
@@ -167,16 +174,23 @@ class GroqDriver(CostMixin, Driver):
 
         resp = self.client.chat.completions.create(**kwargs)
 
+        from .openai_driver import _extract_openai_cached_tokens
+
         usage = getattr(resp, "usage", None)
         prompt_tokens = getattr(usage, "prompt_tokens", 0)
         completion_tokens = getattr(usage, "completion_tokens", 0)
         total_tokens = getattr(usage, "total_tokens", 0)
-        total_cost = self._calculate_cost("groq", model, prompt_tokens, completion_tokens)
+        cached_prompt_tokens = _extract_openai_cached_tokens(usage)
+        total_cost = self._calculate_cost(
+            "groq", model, prompt_tokens, completion_tokens,
+            cached_tokens=cached_prompt_tokens,
+        )
 
         meta = {
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
             "total_tokens": total_tokens,
+            "cached_prompt_tokens": cached_prompt_tokens,
             "cost": round(total_cost, 6),
             "raw_response": resp.model_dump(),
             "model_name": model,

@@ -103,6 +103,15 @@ class Settings(BaseSettings):
     # Model rates cache
     model_rates_ttl_days: int = 7  # How often to refresh models.dev cache
 
+    # Pricing source resolution. Controls which built-in pricing sources are
+    # registered at startup. Custom sources can always be added via
+    # ``prompture.infra.pricing.register_pricing_source(...)`` regardless of
+    # this setting.
+    #   "local_first"      — local KB first, then models.dev fallback (default)
+    #   "local_only"       — only the local KB; missing models report no cost
+    #   "models_dev_only"  — only models.dev (legacy behaviour)
+    pricing_source: str = "local_first"
+
     # Usage tracking
     usage_tracking_enabled: bool = False
     usage_db_path: Optional[str] = None  # default ~/.prompture/usage/usage.db

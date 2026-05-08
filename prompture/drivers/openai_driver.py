@@ -54,15 +54,32 @@ def _build_openai_json_mode_response_format(json_schema: dict[str, Any]) -> dict
     }
 
 
+def _extract_openai_cached_tokens(usage: Any) -> int:
+    """Return the count of input tokens served from OpenAI's prompt cache.
+
+    Returns 0 when the response carries no ``prompt_tokens_details`` block,
+    which is the case for older models or short prompts that don't trigger
+    automatic caching.
+    """
+    if usage is None:
+        return 0
+    details = getattr(usage, "prompt_tokens_details", None)
+    if details is None:
+        return 0
+    return int(getattr(details, "cached_tokens", 0) or 0)
+
+
 def _extract_openai_meta(resp: Any, model: str, total_cost: float) -> dict[str, Any]:
     usage = getattr(resp, "usage", None)
     prompt_tokens = getattr(usage, "prompt_tokens", 0)
     completion_tokens = getattr(usage, "completion_tokens", 0)
     total_tokens = getattr(usage, "total_tokens", 0)
+    cached_prompt_tokens = _extract_openai_cached_tokens(usage)
     return {
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,
         "total_tokens": total_tokens,
+        "cached_prompt_tokens": cached_prompt_tokens,
         "cost": round(total_cost, 6),
         "raw_response": resp.model_dump(),
         "model_name": model,
@@ -90,6 +107,7 @@ def _build_openai_stream_done(
     prompt_tokens: int,
     completion_tokens: int,
     total_cost: float,
+    cached_prompt_tokens: int = 0,
 ) -> dict[str, Any]:
     return {
         "type": "done",
@@ -98,6 +116,7 @@ def _build_openai_stream_done(
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
             "total_tokens": prompt_tokens + completion_tokens,
+            "cached_prompt_tokens": cached_prompt_tokens,
             "cost": round(total_cost, 6),
             "raw_response": {},
             "model_name": model,
@@ -182,9 +201,13 @@ class OpenAIDriver(CostMixin, Driver):
 
         resp = self.client.chat.completions.create(**kwargs)
 
-        prompt_tokens = getattr(getattr(resp, "usage", None), "prompt_tokens", 0)
-        completion_tokens = getattr(getattr(resp, "usage", None), "completion_tokens", 0)
-        total_cost = self._calculate_cost("openai", model, prompt_tokens, completion_tokens)
+        usage = getattr(resp, "usage", None)
+        prompt_tokens = getattr(usage, "prompt_tokens", 0)
+        completion_tokens = getattr(usage, "completion_tokens", 0)
+        cached_prompt_tokens = _extract_openai_cached_tokens(usage)
+        total_cost = self._calculate_cost(
+            "openai", model, prompt_tokens, completion_tokens, cached_tokens=cached_prompt_tokens
+        )
         meta = _extract_openai_meta(resp, model, total_cost)
 
         text = resp.choices[0].message.content
@@ -218,9 +241,13 @@ class OpenAIDriver(CostMixin, Driver):
 
         resp = self.client.chat.completions.create(**kwargs)
 
-        prompt_tokens = getattr(getattr(resp, "usage", None), "prompt_tokens", 0)
-        completion_tokens = getattr(getattr(resp, "usage", None), "completion_tokens", 0)
-        total_cost = self._calculate_cost("openai", model, prompt_tokens, completion_tokens)
+        usage = getattr(resp, "usage", None)
+        prompt_tokens = getattr(usage, "prompt_tokens", 0)
+        completion_tokens = getattr(usage, "completion_tokens", 0)
+        cached_prompt_tokens = _extract_openai_cached_tokens(usage)
+        total_cost = self._calculate_cost(
+            "openai", model, prompt_tokens, completion_tokens, cached_tokens=cached_prompt_tokens
+        )
         meta = _extract_openai_meta(resp, model, total_cost)
 
         choice = resp.choices[0]
@@ -269,12 +296,14 @@ class OpenAIDriver(CostMixin, Driver):
         full_text = ""
         prompt_tokens = 0
         completion_tokens = 0
+        cached_prompt_tokens = 0
 
         for chunk in stream:
             # Usage comes in the final chunk
             if getattr(chunk, "usage", None):
                 prompt_tokens = chunk.usage.prompt_tokens or 0
                 completion_tokens = chunk.usage.completion_tokens or 0
+                cached_prompt_tokens = _extract_openai_cached_tokens(chunk.usage)
 
             if chunk.choices:
                 delta = chunk.choices[0].delta
@@ -283,5 +312,9 @@ class OpenAIDriver(CostMixin, Driver):
                     full_text += content
                     yield {"type": "delta", "text": content}
 
-        total_cost = self._calculate_cost("openai", model, prompt_tokens, completion_tokens)
-        yield _build_openai_stream_done(model, full_text, prompt_tokens, completion_tokens, total_cost)
+        total_cost = self._calculate_cost(
+            "openai", model, prompt_tokens, completion_tokens, cached_tokens=cached_prompt_tokens
+        )
+        yield _build_openai_stream_done(
+            model, full_text, prompt_tokens, completion_tokens, total_cost, cached_prompt_tokens
+        )
