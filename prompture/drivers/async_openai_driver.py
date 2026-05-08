@@ -19,6 +19,7 @@ from .openai_driver import (
     _build_openai_base_kwargs,
     _build_openai_json_mode_response_format,
     _build_openai_stream_done,
+    _extract_openai_cached_tokens,
     _extract_openai_meta,
     _extract_openai_tool_calls,
 )
@@ -90,9 +91,13 @@ class AsyncOpenAIDriver(CostMixin, AsyncDriver):
 
         resp = await self.client.chat.completions.create(**kwargs)
 
-        prompt_tokens = getattr(getattr(resp, "usage", None), "prompt_tokens", 0)
-        completion_tokens = getattr(getattr(resp, "usage", None), "completion_tokens", 0)
-        total_cost = self._calculate_cost("openai", model, prompt_tokens, completion_tokens)
+        usage = getattr(resp, "usage", None)
+        prompt_tokens = getattr(usage, "prompt_tokens", 0)
+        completion_tokens = getattr(usage, "completion_tokens", 0)
+        cached_prompt_tokens = _extract_openai_cached_tokens(usage)
+        total_cost = self._calculate_cost(
+            "openai", model, prompt_tokens, completion_tokens, cached_tokens=cached_prompt_tokens
+        )
         meta = _extract_openai_meta(resp, model, total_cost)
 
         text = resp.choices[0].message.content
@@ -126,9 +131,13 @@ class AsyncOpenAIDriver(CostMixin, AsyncDriver):
 
         resp = await self.client.chat.completions.create(**kwargs)
 
-        prompt_tokens = getattr(getattr(resp, "usage", None), "prompt_tokens", 0)
-        completion_tokens = getattr(getattr(resp, "usage", None), "completion_tokens", 0)
-        total_cost = self._calculate_cost("openai", model, prompt_tokens, completion_tokens)
+        usage = getattr(resp, "usage", None)
+        prompt_tokens = getattr(usage, "prompt_tokens", 0)
+        completion_tokens = getattr(usage, "completion_tokens", 0)
+        cached_prompt_tokens = _extract_openai_cached_tokens(usage)
+        total_cost = self._calculate_cost(
+            "openai", model, prompt_tokens, completion_tokens, cached_tokens=cached_prompt_tokens
+        )
         meta = _extract_openai_meta(resp, model, total_cost)
 
         choice = resp.choices[0]
@@ -177,12 +186,14 @@ class AsyncOpenAIDriver(CostMixin, AsyncDriver):
         full_text = ""
         prompt_tokens = 0
         completion_tokens = 0
+        cached_prompt_tokens = 0
 
         async for chunk in stream:
             # Usage comes in the final chunk
             if getattr(chunk, "usage", None):
                 prompt_tokens = chunk.usage.prompt_tokens or 0
                 completion_tokens = chunk.usage.completion_tokens or 0
+                cached_prompt_tokens = _extract_openai_cached_tokens(chunk.usage)
 
             if chunk.choices:
                 delta = chunk.choices[0].delta
@@ -191,5 +202,9 @@ class AsyncOpenAIDriver(CostMixin, AsyncDriver):
                     full_text += content
                     yield {"type": "delta", "text": content}
 
-        total_cost = self._calculate_cost("openai", model, prompt_tokens, completion_tokens)
-        yield _build_openai_stream_done(model, full_text, prompt_tokens, completion_tokens, total_cost)
+        total_cost = self._calculate_cost(
+            "openai", model, prompt_tokens, completion_tokens, cached_tokens=cached_prompt_tokens
+        )
+        yield _build_openai_stream_done(
+            model, full_text, prompt_tokens, completion_tokens, total_cost, cached_prompt_tokens
+        )
