@@ -257,29 +257,19 @@ def _lookup_model(provider: str, model_id: str) -> Optional[dict[str, Any]]:
 def get_model_rates(provider: str, model_id: str) -> Optional[dict[str, float]]:
     """Return pricing dict for a model, or ``None`` if unavailable.
 
+    Resolution is delegated to the pluggable :mod:`pricing` registry —
+    by default the curated local KB (``infra/rates/*.json`` ``cost`` blocks)
+    is consulted first, with models.dev as a fallback. The order can be
+    changed via the ``pricing_source`` setting or by registering custom
+    sources at runtime.
+
     Returned keys mirror models.dev cost fields (per 1M tokens):
     ``input``, ``output``, and optionally ``cache_read``, ``cache_write``,
     ``reasoning``.
     """
-    entry = _lookup_model(provider, model_id)
-    if entry is None:
-        return None
+    from .pricing import resolve_rates
 
-    cost = entry.get("cost")
-    if not isinstance(cost, dict):
-        return None
-
-    rates: dict[str, float] = {}
-    for key in ("input", "output", "cache_read", "cache_write", "reasoning"):
-        val = cost.get(key)
-        if val is not None:
-            with contextlib.suppress(TypeError, ValueError):
-                rates[key] = float(val)
-
-    # Must have at least input and output to be useful
-    if "input" in rates and "output" in rates:
-        return rates
-    return None
+    return resolve_rates(provider, model_id)
 
 
 def get_model_info(provider: str, model_id: str) -> Optional[dict[str, Any]]:

@@ -10,7 +10,12 @@
     "modalities_input": ["text", "image"],
     "modalities_output": ["text"],
     "api_type": "openai",
-    "tokens_param": "max_completion_tokens"
+    "tokens_param": "max_completion_tokens",
+    "cost": {
+      "input": 5.00,
+      "output": 30.00,
+      "cache_read": 0.50
+    }
   },
   "gpt-5.5-pro": {
     "supports_temperature": false,
@@ -23,7 +28,11 @@
     "modalities_input": ["text", "image"],
     "modalities_output": ["text"],
     "api_type": "openai",
-    "tokens_param": "max_completion_tokens"
+    "tokens_param": "max_completion_tokens",
+    "cost": {
+      "input": 30.00,
+      "output": 180.00
+    }
   },
   "gpt-5-nano": {
     "supports_temperature": false,
@@ -49,7 +58,12 @@
     "modalities_input": ["text", "image"],
     "modalities_output": ["text"],
     "api_type": "openai",
-    "tokens_param": "max_completion_tokens"
+    "tokens_param": "max_completion_tokens",
+    "cost": {
+      "input": 2.50,
+      "output": 15.00,
+      "cache_read": 0.25
+    }
   },
   "gpt-5.2": {
     "supports_temperature": true,
