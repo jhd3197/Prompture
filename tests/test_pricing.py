@@ -11,7 +11,6 @@ Covers:
 
 from __future__ import annotations
 
-from typing import Optional
 from unittest.mock import patch
 
 import pytest
@@ -38,7 +37,7 @@ class _StubSource:
         self,
         name: str,
         priority: int,
-        rates: Optional[dict[str, float]] = None,
+        rates: dict[str, float] | None = None,
     ) -> None:
         self.name = name
         self.priority = priority

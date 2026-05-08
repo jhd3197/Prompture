@@ -308,14 +308,12 @@ class UsageTracker:
                     conn.execute("PRAGMA journal_mode=WAL")
                     conn.executescript(_SCHEMA_SQL)
                     # Apply additive column migrations for older DBs.
+                    # OperationalError means the column already exists on a
+                    # fresh DB created from _SCHEMA_SQL above, or the
+                    # migration was already applied — both fine.
                     for _col, ddl in _SCHEMA_MIGRATIONS:
-                        try:
+                        with contextlib.suppress(sqlite3.OperationalError):
                             conn.execute(ddl)
-                        except sqlite3.OperationalError:
-                            # Column already exists on a fresh DB created from
-                            # _SCHEMA_SQL above, or the migration was already
-                            # applied — both fine.
-                            pass
                     conn.commit()
                 finally:
                     conn.close()

@@ -26,7 +26,7 @@ import json
 import logging
 import threading
 from pathlib import Path
-from typing import Any, Optional, Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +50,7 @@ class PricingSource(Protocol):
     name: str
     priority: int
 
-    def get_rates(self, provider: str, model_id: str) -> Optional[dict[str, float]]:
+    def get_rates(self, provider: str, model_id: str) -> dict[str, float] | None:
         """Return per-1M rates or ``None`` when the source has no data.
 
         Returned dict should include ``input`` and ``output`` keys (per 1M
@@ -118,7 +118,7 @@ def clear_pricing_sources() -> None:
         _initialized = False
 
 
-def resolve_rates(provider: str, model_id: str) -> Optional[dict[str, float]]:
+def resolve_rates(provider: str, model_id: str) -> dict[str, float] | None:
     """Walk the registry and return the first source's rates for ``(provider, model_id)``.
 
     A source's result is accepted only if it includes both ``input`` and
@@ -142,7 +142,7 @@ def resolve_rates(provider: str, model_id: str) -> Optional[dict[str, float]]:
 _RATES_DIR = Path(__file__).resolve().parent / "rates"
 
 
-def _coerce_rate_dict(raw: Any) -> Optional[dict[str, float]]:
+def _coerce_rate_dict(raw: Any) -> dict[str, float] | None:
     """Turn a ``cost`` block into a clean float dict, or ``None`` if invalid."""
     if not isinstance(raw, dict):
         return None
@@ -197,7 +197,7 @@ class LocalKBPricingSource:
         """Rebuild the in-memory KB from disk."""
         self._kb = _load_local_rates_kb()
 
-    def get_rates(self, provider: str, model_id: str) -> Optional[dict[str, float]]:
+    def get_rates(self, provider: str, model_id: str) -> dict[str, float] | None:
         # Resolve the prompture provider name to its models.dev key (so
         # provider aliases like "claude" → "anthropic" work for both
         # storage forms — but the JSON files are keyed by the prompture
@@ -222,7 +222,7 @@ class ModelsDevPricingSource:
     name = "models_dev"
     priority = 100
 
-    def get_rates(self, provider: str, model_id: str) -> Optional[dict[str, float]]:
+    def get_rates(self, provider: str, model_id: str) -> dict[str, float] | None:
         from .model_rates import _lookup_model
 
         entry = _lookup_model(provider, model_id)
@@ -236,7 +236,7 @@ class ModelsDevPricingSource:
 # ---------------------------------------------------------------------------
 
 
-def _initialize_default_sources(mode: Optional[str] = None) -> None:
+def _initialize_default_sources(mode: str | None = None) -> None:
     """Install built-in sources for the requested mode.
 
     If *mode* is ``None``, reads from ``settings.pricing_source``. Recognised
