@@ -528,7 +528,7 @@ class TestCapabilitiesKB:
         assert caps.api_type == "anthropic"
         assert caps.supports_vision is True
         assert caps.supports_tool_use is True
-        assert caps.context_window == 200_000
+        assert caps.context_window == 1_000_000
 
     def test_api_type_overlay_on_live_data(self):
         """api_type from KB is overlaid onto models.dev result."""
