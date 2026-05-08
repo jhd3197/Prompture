@@ -19,7 +19,6 @@ Findings so far:
 
 import os
 
-import httpx
 import pytest
 import requests
 
@@ -89,7 +88,7 @@ class TestModelResolution:
 
     @pytest.mark.parametrize("model", GPT_5_MODELS)
     def test_resolve_returns_correct_provider(self, model):
-        api_model, provider, name = _resolve_model(model)
+        api_model, provider, _name = _resolve_model(model)
         assert provider == "openai"
         assert api_model == model
 

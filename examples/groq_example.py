@@ -62,7 +62,7 @@ custom_result = extract_and_jsonify(
     text=text,
     json_schema=json_schema,
     instruction_template="Parse the biographical details from this text:",
-    model_name="groq/mixtral-8x7b-32768",  # override model here
+    model_name="groq/llama-3.3-70b-versatile",  # override model here
 )
 
 custom_json_output = custom_result["json_string"]

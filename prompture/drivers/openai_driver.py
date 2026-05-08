@@ -18,6 +18,93 @@ from .base import Driver, _parse_tool_arguments
 logger = logging.getLogger(__name__)
 
 
+# ----------------------------------------------------------------------
+# Shared helpers (used by both sync OpenAIDriver and AsyncOpenAIDriver)
+# ----------------------------------------------------------------------
+
+
+def _build_openai_base_kwargs(
+    model: str,
+    messages: list[dict[str, Any]],
+    opts: dict[str, Any],
+    tokens_param: str,
+    supports_temperature: bool,
+    default_max_tokens: int,
+    *,
+    extra: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    kwargs: dict[str, Any] = {"model": model, "messages": messages}
+    if extra:
+        kwargs.update(extra)
+    kwargs[tokens_param] = opts.get("max_tokens", default_max_tokens)
+    if supports_temperature and "temperature" in opts:
+        kwargs["temperature"] = opts["temperature"]
+    return kwargs
+
+
+def _build_openai_json_mode_response_format(json_schema: dict[str, Any]) -> dict[str, Any]:
+    schema_copy = prepare_strict_schema(json_schema)
+    return {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "extraction",
+            "strict": True,
+            "schema": schema_copy,
+        },
+    }
+
+
+def _extract_openai_meta(resp: Any, model: str, total_cost: float) -> dict[str, Any]:
+    usage = getattr(resp, "usage", None)
+    prompt_tokens = getattr(usage, "prompt_tokens", 0)
+    completion_tokens = getattr(usage, "completion_tokens", 0)
+    total_tokens = getattr(usage, "total_tokens", 0)
+    return {
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "total_tokens": total_tokens,
+        "cost": round(total_cost, 6),
+        "raw_response": resp.model_dump(),
+        "model_name": model,
+    }
+
+
+def _extract_openai_tool_calls(message: Any, stop_reason: str | None) -> list[dict[str, Any]]:
+    tool_calls_out: list[dict[str, Any]] = []
+    if message.tool_calls:
+        for tc in message.tool_calls:
+            args = _parse_tool_arguments(tc.function.arguments, tc.function.name, stop_reason)
+            tool_calls_out.append(
+                {
+                    "id": tc.id,
+                    "name": tc.function.name,
+                    "arguments": args,
+                }
+            )
+    return tool_calls_out
+
+
+def _build_openai_stream_done(
+    model: str,
+    full_text: str,
+    prompt_tokens: int,
+    completion_tokens: int,
+    total_cost: float,
+) -> dict[str, Any]:
+    return {
+        "type": "done",
+        "text": full_text,
+        "meta": {
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": prompt_tokens + completion_tokens,
+            "cost": round(total_cost, 6),
+            "raw_response": {},
+            "model_name": model,
+        },
+    }
+
+
 class OpenAIDriver(CostMixin, Driver):
     supports_json_mode = True
     supports_json_schema = True
@@ -79,35 +166,14 @@ class OpenAIDriver(CostMixin, Driver):
             using_json_schema=bool(options.get("json_schema")),
         )
 
-        # Defaults
         opts = {"temperature": 1.0, "max_tokens": 512, **options}
-
-        # Base kwargs
-        kwargs = {
-            "model": model,
-            "messages": messages,
-        }
-
-        # Assign token limit with the correct parameter name
-        kwargs[tokens_param] = opts.get("max_tokens", 512)
-
-        # Only include temperature if the model supports it
-        if supports_temperature and "temperature" in opts:
-            kwargs["temperature"] = opts["temperature"]
+        kwargs = _build_openai_base_kwargs(model, messages, opts, tokens_param, supports_temperature, 512)
 
         # Native JSON mode support — with graceful fallback
         if options.get("json_mode"):
             json_schema = options.get("json_schema")
             if json_schema and self._should_use_json_schema("openai", model):
-                schema_copy = prepare_strict_schema(json_schema)
-                kwargs["response_format"] = {
-                    "type": "json_schema",
-                    "json_schema": {
-                        "name": "extraction",
-                        "strict": True,
-                        "schema": schema_copy,
-                    },
-                }
+                kwargs["response_format"] = _build_openai_json_mode_response_format(json_schema)
             else:
                 kwargs["response_format"] = {"type": "json_object"}
                 if json_schema:
@@ -116,24 +182,10 @@ class OpenAIDriver(CostMixin, Driver):
 
         resp = self.client.chat.completions.create(**kwargs)
 
-        # Extract usage info
-        usage = getattr(resp, "usage", None)
-        prompt_tokens = getattr(usage, "prompt_tokens", 0)
-        completion_tokens = getattr(usage, "completion_tokens", 0)
-        total_tokens = getattr(usage, "total_tokens", 0)
-
-        # Calculate cost via shared mixin
+        prompt_tokens = getattr(getattr(resp, "usage", None), "prompt_tokens", 0)
+        completion_tokens = getattr(getattr(resp, "usage", None), "completion_tokens", 0)
         total_cost = self._calculate_cost("openai", model, prompt_tokens, completion_tokens)
-
-        # Standardized meta object
-        meta = {
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
-            "total_tokens": total_tokens,
-            "cost": round(total_cost, 6),
-            "raw_response": resp.model_dump(),
-            "model_name": model,
-        }
+        meta = _extract_openai_meta(resp, model, total_cost)
 
         text = resp.choices[0].message.content
         return {"text": text, "meta": meta}
@@ -160,49 +212,21 @@ class OpenAIDriver(CostMixin, Driver):
         self._validate_model_capabilities("openai", model, using_tool_use=True)
 
         opts = {"temperature": 1.0, "max_tokens": 4096, **options}
-
-        kwargs: dict[str, Any] = {
-            "model": model,
-            "messages": messages,
-            "tools": tools,
-        }
-        kwargs[tokens_param] = opts.get("max_tokens", 4096)
-
-        if supports_temperature and "temperature" in opts:
-            kwargs["temperature"] = opts["temperature"]
+        kwargs = _build_openai_base_kwargs(
+            model, messages, opts, tokens_param, supports_temperature, 4096, extra={"tools": tools}
+        )
 
         resp = self.client.chat.completions.create(**kwargs)
 
-        usage = getattr(resp, "usage", None)
-        prompt_tokens = getattr(usage, "prompt_tokens", 0)
-        completion_tokens = getattr(usage, "completion_tokens", 0)
-        total_tokens = getattr(usage, "total_tokens", 0)
+        prompt_tokens = getattr(getattr(resp, "usage", None), "prompt_tokens", 0)
+        completion_tokens = getattr(getattr(resp, "usage", None), "completion_tokens", 0)
         total_cost = self._calculate_cost("openai", model, prompt_tokens, completion_tokens)
-
-        meta = {
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
-            "total_tokens": total_tokens,
-            "cost": round(total_cost, 6),
-            "raw_response": resp.model_dump(),
-            "model_name": model,
-        }
+        meta = _extract_openai_meta(resp, model, total_cost)
 
         choice = resp.choices[0]
         text = choice.message.content or ""
         stop_reason = choice.finish_reason
-
-        tool_calls_out: list[dict[str, Any]] = []
-        if choice.message.tool_calls:
-            for tc in choice.message.tool_calls:
-                args = _parse_tool_arguments(tc.function.arguments, tc.function.name, stop_reason)
-                tool_calls_out.append(
-                    {
-                        "id": tc.id,
-                        "name": tc.function.name,
-                        "arguments": args,
-                    }
-                )
+        tool_calls_out = _extract_openai_tool_calls(choice.message, stop_reason)
 
         return {
             "text": text,
@@ -230,17 +254,15 @@ class OpenAIDriver(CostMixin, Driver):
         supports_temperature = model_config["supports_temperature"]
 
         opts = {"temperature": 1.0, "max_tokens": 512, **options}
-
-        kwargs: dict[str, Any] = {
-            "model": model,
-            "messages": messages,
-            "stream": True,
-            "stream_options": {"include_usage": True},
-        }
-        kwargs[tokens_param] = opts.get("max_tokens", 512)
-
-        if supports_temperature and "temperature" in opts:
-            kwargs["temperature"] = opts["temperature"]
+        kwargs = _build_openai_base_kwargs(
+            model,
+            messages,
+            opts,
+            tokens_param,
+            supports_temperature,
+            512,
+            extra={"stream": True, "stream_options": {"include_usage": True}},
+        )
 
         stream = self.client.chat.completions.create(**kwargs)
 
@@ -261,18 +283,5 @@ class OpenAIDriver(CostMixin, Driver):
                     full_text += content
                     yield {"type": "delta", "text": content}
 
-        total_tokens = prompt_tokens + completion_tokens
         total_cost = self._calculate_cost("openai", model, prompt_tokens, completion_tokens)
-
-        yield {
-            "type": "done",
-            "text": full_text,
-            "meta": {
-                "prompt_tokens": prompt_tokens,
-                "completion_tokens": completion_tokens,
-                "total_tokens": total_tokens,
-                "cost": round(total_cost, 6),
-                "raw_response": {},
-                "model_name": model,
-            },
-        }
+        yield _build_openai_stream_done(model, full_text, prompt_tokens, completion_tokens, total_cost)

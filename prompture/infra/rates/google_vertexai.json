@@ -1,44 +1,70 @@
 {
-  "claude-opus-4-7": {
-    "supports_temperature": false,
-    "supports_tool_use": true,
-    "supports_structured_output": true,
-    "supports_vision": true,
-    "is_reasoning": true,
-    "context_window": 1000000,
-    "max_output_tokens": 128000,
-    "modalities_input": ["text", "image"],
-    "modalities_output": ["text"],
-    "api_type": "anthropic",
-    "tokens_param": "max_tokens"
-  },
-  "claude-opus-4-6": {
+  "gemini-2.5-pro": {
     "supports_temperature": true,
     "supports_tool_use": true,
     "supports_structured_output": true,
     "supports_vision": true,
     "is_reasoning": true,
     "context_window": 1000000,
-    "max_output_tokens": 128000,
-    "modalities_input": ["text", "image"],
+    "max_output_tokens": 65536,
+    "modalities_input": ["text", "image", "audio", "video"],
     "modalities_output": ["text"],
-    "api_type": "anthropic",
+    "api_type": "google",
     "tokens_param": "max_tokens"
   },
-  "claude-sonnet-4-6": {
+  "gemini-2.5-flash": {
     "supports_temperature": true,
     "supports_tool_use": true,
     "supports_structured_output": true,
     "supports_vision": true,
     "is_reasoning": true,
     "context_window": 1000000,
-    "max_output_tokens": 64000,
+    "max_output_tokens": 65536,
+    "modalities_input": ["text", "image", "audio", "video"],
+    "modalities_output": ["text"],
+    "api_type": "google",
+    "tokens_param": "max_tokens"
+  },
+  "gemini-2.0-flash": {
+    "supports_temperature": true,
+    "supports_tool_use": true,
+    "supports_structured_output": true,
+    "supports_vision": true,
+    "is_reasoning": false,
+    "context_window": 1000000,
+    "max_output_tokens": 8192,
+    "modalities_input": ["text", "image", "audio", "video"],
+    "modalities_output": ["text"],
+    "api_type": "google",
+    "tokens_param": "max_tokens"
+  },
+  "claude-sonnet-4-20250514": {
+    "supports_temperature": true,
+    "supports_tool_use": true,
+    "supports_structured_output": true,
+    "supports_vision": true,
+    "is_reasoning": false,
+    "context_window": 200000,
+    "max_output_tokens": 8192,
     "modalities_input": ["text", "image"],
     "modalities_output": ["text"],
     "api_type": "anthropic",
     "tokens_param": "max_tokens"
   },
-  "claude-haiku-4-5": {
+  "claude-haiku-4-5-20251001": {
+    "supports_temperature": true,
+    "supports_tool_use": true,
+    "supports_structured_output": true,
+    "supports_vision": true,
+    "is_reasoning": false,
+    "context_window": 200000,
+    "max_output_tokens": 8192,
+    "modalities_input": ["text", "image"],
+    "modalities_output": ["text"],
+    "api_type": "anthropic",
+    "tokens_param": "max_tokens"
+  },
+  "claude-opus-4-20250514": {
     "supports_temperature": true,
     "supports_tool_use": true,
     "supports_structured_output": true,

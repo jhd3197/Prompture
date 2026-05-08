@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from prompture.infra.tukuy_backend import TukuyLLMBackend, create_tukuy_backend
 from prompture.exceptions import ConfigurationError, DriverError
+from prompture.infra.tukuy_backend import TukuyLLMBackend, create_tukuy_backend
 
 # ---------------------------------------------------------------------------
 # Mock driver

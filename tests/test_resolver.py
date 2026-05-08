@@ -4,19 +4,18 @@ import pytest
 
 from prompture.pipeline.resolver import (
     DEFAULT_FALLBACK_SLOTS,
-    ModelResolver,
-    NoModelConfiguredError,
     SLOT_AUDIO,
     SLOT_DEFAULT,
     SLOT_EMBEDDING,
     SLOT_IMAGE,
     SLOT_STRUCTURED,
     SLOT_UTILITY,
+    ModelResolver,
+    NoModelConfiguredError,
     attr_layer,
     dict_layer,
     resolve_model,
 )
-
 
 # ── dict_layer tests ──────────────────────────────────────────────────────
 

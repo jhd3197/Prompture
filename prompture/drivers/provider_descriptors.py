@@ -198,6 +198,35 @@ def _build_descriptors() -> list[ProviderDescriptor]:
         )
     )
 
+    # ── Google Vertex AI (Gemini + Claude via Model Garden) ─────────────
+    _vertex_kw = {
+        "api_key": "google_vertex_api_key",
+        "project_id": "google_vertex_project_id",
+        "location": "google_vertex_location",
+        "access_token": "google_vertex_access_token",  # nosec B105
+    }
+    descriptors.append(
+        ProviderDescriptor(
+            name="google_vertexai",
+            **_llm(
+                "google_vertexai_driver",
+                "GoogleVertexAIDriver",
+                "async_google_vertexai_driver",
+                "AsyncGoogleVertexAIDriver",
+                _vertex_kw,
+                "google_vertex_model",
+            ),
+            display_name="Google Vertex AI",
+            is_configured_fn=_google_vertexai_is_configured,
+            list_models_kwargs=[
+                ("api_key", "google_vertex_api_key", "GOOGLE_VERTEX_API_KEY"),
+                ("project_id", "google_vertex_project_id", "GOOGLE_VERTEX_PROJECT_ID"),
+                ("location", "google_vertex_location", "GOOGLE_VERTEX_LOCATION"),
+            ],
+            models_dev_name="google",
+        )
+    )
+
     # ── Groq ───────────────────────────────────────────────────────────
     _groq_kw = {"api_key": "groq_api_key"}
     descriptors.append(
@@ -468,6 +497,8 @@ def _build_descriptors() -> list[ProviderDescriptor]:
         ("zhipu", "zai", {"llm"}),
         ("hf", "huggingface", {"llm"}),
         ("dalle", "openai", {"img_gen"}),
+        ("vertex", "google_vertexai", {"llm"}),
+        ("vertexai", "google_vertexai", {"llm"}),
     ]
 
     # Build a lookup of canonical descriptors by name.
@@ -497,6 +528,24 @@ def _build_descriptors() -> list[ProviderDescriptor]:
         descriptors.append(alias_desc)
 
     return descriptors
+
+
+def _google_vertexai_is_configured(env: Any = None) -> bool:
+    """Vertex AI accepts either API key (Gemini) or project_id (Gemini + Claude)."""
+    import os
+
+    from ..infra.settings import settings
+
+    if env is not None:
+        return bool(
+            env.resolve("google_vertex_api_key") or env.resolve("google_vertex_project_id")
+        )
+    return bool(
+        getattr(settings, "google_vertex_api_key", None)
+        or os.getenv("GOOGLE_VERTEX_API_KEY")
+        or getattr(settings, "google_vertex_project_id", None)
+        or os.getenv("GOOGLE_VERTEX_PROJECT_ID")
+    )
 
 
 def _azure_is_configured(env: Any = None) -> bool:

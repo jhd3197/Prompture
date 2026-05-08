@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Optional
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -18,7 +17,7 @@ from prompture.extraction.core import ExtractResult, extract_with_models
 class PersonModel(BaseModel):
     name: str
     age: int
-    city: Optional[str] = None
+    city: str | None = None
 
 
 # ---------------------------------------------------------------------------

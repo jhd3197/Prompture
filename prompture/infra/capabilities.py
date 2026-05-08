@@ -101,9 +101,11 @@ def get_capabilities(
 
     Resolution order (first match wins at each field level):
     1. User overrides (exact model match, then provider match).
-    2. Model-level registry.
-    3. Provider-level registry.
-    4. Live driver instance flags (if *driver* is provided).
+    2. Live driver instance flags (when *driver* is provided) — the
+       instance is the source of truth and distinguishes sync vs async
+       drivers, which the descriptor-derived registries cannot.
+    3. Model-level registry.
+    4. Provider-level registry (auto-populated from sync driver classes).
     5. models.dev metadata.
     6. Unknown (all ``None``).
     """
@@ -122,21 +124,22 @@ def get_capabilities(
         if provider in _user_overrides:
             return _user_overrides[provider]
 
-        # 2. Model-level registry
+    # 2. Live driver flags — checked before cached registries because
+    # ``_populate_from_descriptors`` only sees the sync driver class, so a
+    # cached entry would mislead callers using the async sibling.  Not
+    # cached: caching would re-introduce the shadowing bug for the next
+    # caller using a different driver instance.
+    if driver is not None:
+        return _caps_from_driver(driver)
+
+    with _lock:
+        # 3. Model-level registry
         if model_str in _model_caps:
             return _model_caps[model_str]
 
-        # 3. Provider-level registry
+        # 4. Provider-level registry
         if provider in _provider_caps:
             return _provider_caps[provider]
-
-    # 4. Live driver flags
-    if driver is not None:
-        caps = _caps_from_driver(driver)
-        # Cache for next time
-        with _lock:
-            _model_caps[model_str] = caps
-        return caps
 
     # 5. models.dev metadata
     if "/" in model_str:

@@ -31,7 +31,10 @@ print(person.name)  # Maria
 ## Key Features
 
 - **Structured output** — JSON schema enforcement and direct Pydantic model population
-- **12 providers** — OpenAI, Claude, Google, Groq, Grok, Azure, Ollama, LM Studio, OpenRouter, HuggingFace, AirLLM, and generic HTTP
+- **17+ providers** — OpenAI, Claude, Google, Groq, Grok, Azure, Ollama, LM Studio, OpenRouter, HuggingFace, Moonshot, ModelScope, Z.ai, Vertex AI, AirLLM, CachiBot, and generic HTTP
+- **Multi-modal** — Drivers for embeddings, image generation (DALL-E, Imagen, Grok, Stability), text-to-speech, and speech-to-text (Whisper, ElevenLabs)
+- **Multi-model fallback** — Try a list of models in sequence with per-attempt cost, token, and capability accounting
+- **Strategy cascade** — Auto-selects between provider-native JSON mode, tool-call extraction, and prompted repair so extraction works on any model
 - **TOON input conversion** — 45-60% token savings when sending structured data via [Token-Oriented Object Notation](https://github.com/jhd3197/python-toon)
 - **Stepwise extraction** — Per-field prompts with smart type coercion (shorthand numbers, multilingual booleans, dates)
 - **Field registry** — 50+ predefined extraction fields with template variables and Pydantic integration
@@ -108,14 +111,42 @@ Model strings use `"provider/model"` format. The provider prefix routes to the c
 | `openai` | `openai/gpt-4` | Automatic |
 | `claude` | `claude/claude-3` | Automatic |
 | `google` | `google/gemini-1.5-pro` | Automatic |
+| `google_vertexai` | `google_vertexai/gemini-1.5-pro` | Automatic |
 | `groq` | `groq/llama2-70b-4096` | Automatic |
 | `grok` | `grok/grok-4-fast-reasoning` | Automatic |
 | `azure` | `azure/deployed-name` | Automatic |
 | `openrouter` | `openrouter/anthropic/claude-2` | Automatic |
+| `moonshot` | `moonshot/kimi-k2` | Automatic |
+| `modelscope` | `modelscope/Qwen2.5-72B-Instruct` | Automatic |
+| `zai` | `zai/glm-4` | Automatic |
+| `cachibot` | `cachibot/openai/gpt-4o-mini` | Automatic |
 | `ollama` | `ollama/llama3.1:8b` | Free (local) |
 | `lmstudio` | `lmstudio/local-model` | Free (local) |
 | `huggingface` | `hf/model-name` | Free (local) |
-| `http` | `http/self-hosted` | Free |
+| `airllm` | `airllm/Qwen2-7B` | Free (local) |
+| `local_http` | `local_http/self-hosted` | Free |
+
+Aliases (`anthropic`, `gemini`, `chatgpt`, `xai`, `lm_studio`, `zhipu`, `hf`, `dalle`) route to their canonical providers.
+
+## Multi-Modal
+
+Beyond text LLMs, Prompture exposes drivers for adjacent modalities under the same `provider/model` routing:
+
+- **Embeddings** — OpenAI (`text-embedding-3-*`) and Ollama (`nomic-embed-text`)
+- **Image generation** — OpenAI DALL-E, Google Imagen, Grok, Stability AI
+- **Text-to-speech** — OpenAI (`tts-1`) and ElevenLabs
+- **Speech-to-text** — OpenAI Whisper and ElevenLabs
+
+```python
+from prompture.drivers.img_gen_registry import get_img_gen_driver_for_model
+
+driver = get_img_gen_driver_for_model("openai/dall-e-3")
+result = driver.generate_image(
+    "a cat on a surfboard at sunset",
+    {"size": "1024x1024", "quality": "hd"},
+)
+print(result["meta"]["cost"], result["meta"]["image_count"])
+```
 
 ## Usage
 
@@ -191,6 +222,48 @@ result = ask_for_json(
 print(result["json_object"])  # {"name": "John", "age": 28}
 print(result["usage"])        # token counts and cost
 ```
+
+### Strategy Cascade
+
+Prompture picks how to obtain structured JSON based on each model's capabilities. The cascade is `provider_native` (built-in JSON mode / schema enforcement) → `tool_call` (encode the schema as a function definition and read it back from the tool call) → `prompted_repair` (prompt for JSON, repair malformed output via AI cleanup). Pass `strategy="auto"` (default) to let Prompture select per model, or pin a specific strategy via the `StructuredOutputStrategy` enum or its string value. The strategy used is recorded in the response so you can see which path each call took.
+
+### Multi-Model Fallback
+
+Try a list of models in priority order, with full per-attempt accounting — every model tried (success, failure, or skipped) is recorded with its cost, tokens, duration, capabilities, and strategy. The first success wins; if all fail, an optional `fallback` Pydantic instance is returned instead of raising.
+
+```python
+from prompture import extract_with_models
+
+result = extract_with_models(
+    Person,
+    "Maria is 32, a software developer in NYC.",
+    models=[
+        "openai/gpt-4o-mini",        # try first
+        "claude/claude-3-5-haiku",   # fallback
+        "ollama/llama3.1:8b",        # last resort, free
+    ],
+    fallback=Person(name="unknown", age=0, profession="unknown"),
+)
+
+print(result["selected_model"])     # winning model string
+print(result["model"])              # validated Pydantic instance
+print(result["total_cost"])         # cumulative cost across all attempts
+print(result["total_attempts"])     # number of models actually called
+
+for attempt in result["attempts"]:
+    print(
+        attempt["model"],
+        attempt["status"],          # "success" | "failed" | "skipped"
+        attempt["strategy"],        # "single" | "stepwise"
+        attempt["cost"],
+        attempt["prompt_tokens"],
+        attempt["completion_tokens"],
+        attempt["duration_ms"],
+        attempt["capabilities"],    # {"json_mode": bool, "json_schema": bool}
+    )
+```
+
+If every model fails and no `fallback` is provided, an `ExtractionError` is raised with the full `attempts` list, `total_cost`, and `total_tokens` attached as attributes.
 
 ### TOON Input — Token Savings
 

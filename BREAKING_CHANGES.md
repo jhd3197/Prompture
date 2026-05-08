@@ -2,7 +2,7 @@
 
 This log records every backward-incompatible change to Prompture's
 **stable** APIs. Experimental surfaces may change without an entry here
-(see [API Stability](docs/source/stability.rst) for tier definitions).
+(see [API Stability](prompture/pages/06-stability.md) for tier definitions).
 
 Changes are listed newest-first.
 

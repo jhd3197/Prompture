@@ -37,11 +37,9 @@ Environment:
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 import time
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -423,7 +421,7 @@ def run_tests(model_name: str, test_names: list[str] | None = None) -> dict[str,
             print(f"  [WARN] Unknown test '{name}', skipping")
             continue
 
-        label, fn = ALL_TESTS[name]
+        _label, fn = ALL_TESTS[name]
         passed = fn(model_name)
         results[name] = passed
 
@@ -454,7 +452,7 @@ Examples:
     parser.add_argument(
         "--tests", "-t",
         nargs="+",
-        choices=list(ALL_TESTS.keys()) + ["discovery"],
+        choices=[*list(ALL_TESTS.keys()), "discovery"],
         help="Run only specific tests (default: all)",
     )
     parser.add_argument(

@@ -209,6 +209,8 @@ __pycache__/
 *.egg-info/
 /dist/
 .env
+.env.*
+!.env.copy
 .vscode/
 .idea/
 playground.py
@@ -225,3 +227,5 @@ PROMPTURE_FEATURES.md
 .claude/settings.local.json
 /.pr
 /docs-cacao
+/.agents
+/.claude
