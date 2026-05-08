@@ -38,6 +38,8 @@ class UsageSession:
     prompt_tokens: int = 0
     completion_tokens: int = 0
     total_tokens: int = 0
+    cached_prompt_tokens: int = 0
+    cache_creation_tokens: int = 0
     cost: float = 0.0
     call_count: int = 0
     errors: int = 0
@@ -84,12 +86,16 @@ class UsageSession:
         pt = meta.get("prompt_tokens", 0)
         ct = meta.get("completion_tokens", 0)
         tt = meta.get("total_tokens", 0)
+        cached = meta.get("cached_prompt_tokens", 0)
+        cache_create = meta.get("cache_creation_tokens", 0)
         cost = meta.get("cost", 0.0)
 
         with self._lock:
             self.prompt_tokens += pt
             self.completion_tokens += ct
             self.total_tokens += tt
+            self.cached_prompt_tokens += cached
+            self.cache_creation_tokens += cache_create
             self.cost += cost
             self.call_count += 1
 
@@ -116,6 +122,8 @@ class UsageSession:
                     "prompt_tokens": 0,
                     "completion_tokens": 0,
                     "total_tokens": 0,
+                    "cached_prompt_tokens": 0,
+                    "cache_creation_tokens": 0,
                     "cost": 0.0,
                     "calls": 0,
                     "elapsed_ms": 0.0,
@@ -125,6 +133,10 @@ class UsageSession:
             bucket["prompt_tokens"] += pt
             bucket["completion_tokens"] += ct
             bucket["total_tokens"] += tt
+            bucket.setdefault("cached_prompt_tokens", 0)
+            bucket.setdefault("cache_creation_tokens", 0)
+            bucket["cached_prompt_tokens"] += cached
+            bucket["cache_creation_tokens"] += cache_create
             bucket["cost"] += cost
             bucket["calls"] += 1
             if elapsed_ms > 0:
@@ -185,6 +197,8 @@ class UsageSession:
             "prompt_tokens": self.prompt_tokens,
             "completion_tokens": self.completion_tokens,
             "total_tokens": self.total_tokens,
+            "cached_prompt_tokens": self.cached_prompt_tokens,
+            "cache_creation_tokens": self.cache_creation_tokens,
             "cost": self.cost,
             "total_cost": self.cost,  # Deprecated alias for backwards compatibility
             "call_count": self.call_count,
@@ -202,6 +216,8 @@ class UsageSession:
             self.prompt_tokens = 0
             self.completion_tokens = 0
             self.total_tokens = 0
+            self.cached_prompt_tokens = 0
+            self.cache_creation_tokens = 0
             self.cost = 0.0
             self.call_count = 0
             self.errors = 0
