@@ -217,6 +217,7 @@ playground.py
 /prompture-env
 nul
 VERSION
+prompture/_version.py
 FEEDBACK.md
 agent_prompts.md
 IDEAS.md
