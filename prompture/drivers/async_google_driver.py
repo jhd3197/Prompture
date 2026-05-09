@@ -120,7 +120,10 @@ class AsyncGoogleDriver(CostMixin, AsyncDriver):
 
         config_dict: dict[str, Any] = {}
 
-        if "temperature" in merged_options:
+        model = merged_options.get("model", self.model)
+        supports_temperature = self._get_model_config("google", model)["supports_temperature"]
+
+        if supports_temperature and "temperature" in merged_options:
             config_dict.setdefault("temperature", merged_options["temperature"])
         if "max_tokens" in merged_options:
             config_dict.setdefault("max_output_tokens", merged_options["max_tokens"])

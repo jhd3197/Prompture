@@ -119,6 +119,8 @@ def export_usage_session(session: UsageSession) -> dict[str, Any]:
         "prompt_tokens": session.prompt_tokens,
         "completion_tokens": session.completion_tokens,
         "total_tokens": session.total_tokens,
+        "cached_prompt_tokens": session.cached_prompt_tokens,
+        "cache_creation_tokens": session.cache_creation_tokens,
         "cost": session.cost,
         "total_cost": session.cost,  # Deprecated alias for backwards compatibility
         "call_count": session.call_count,
@@ -135,6 +137,8 @@ def import_usage_session(data: dict[str, Any]) -> UsageSession:
         prompt_tokens=data.get("prompt_tokens", 0),
         completion_tokens=data.get("completion_tokens", 0),
         total_tokens=data.get("total_tokens", 0),
+        cached_prompt_tokens=data.get("cached_prompt_tokens", 0),
+        cache_creation_tokens=data.get("cache_creation_tokens", 0),
         cost=cost_value,
         call_count=data.get("call_count", 0),
         errors=data.get("errors", 0),

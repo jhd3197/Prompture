@@ -278,6 +278,8 @@ class ClaudeDriver(CostMixin, Driver):
             using_json_schema=bool(options.get("json_schema")),
         )
 
+        supports_temperature = self._get_model_config("claude", model)["supports_temperature"]
+
         client = anthropic.Anthropic(api_key=self.api_key)
 
         # _do_generate uses the simple system/non-system split (no tool-message
@@ -294,9 +296,10 @@ class ClaudeDriver(CostMixin, Driver):
         common_kwargs: dict[str, Any] = {
             "model": model,
             "messages": api_messages,
-            "temperature": opts["temperature"],
             "max_tokens": opts["max_tokens"],
         }
+        if supports_temperature:
+            common_kwargs["temperature"] = opts["temperature"]
         if system_content:
             common_kwargs["system"] = system_content
 
@@ -378,6 +381,8 @@ class ClaudeDriver(CostMixin, Driver):
 
         self._validate_model_capabilities("claude", model, using_tool_use=True)
 
+        supports_temperature = self._get_model_config("claude", model)["supports_temperature"]
+
         client = anthropic.Anthropic(api_key=self.api_key)
 
         system_content, api_messages = _extract_anthropic_system_and_messages(messages)
@@ -386,10 +391,11 @@ class ClaudeDriver(CostMixin, Driver):
         kwargs: dict[str, Any] = {
             "model": model,
             "messages": api_messages,
-            "temperature": opts["temperature"],
             "max_tokens": opts["max_tokens"],
             "tools": anthropic_tools,
         }
+        if supports_temperature:
+            kwargs["temperature"] = opts["temperature"]
         if system_content:
             kwargs["system"] = system_content
 
@@ -434,6 +440,7 @@ class ClaudeDriver(CostMixin, Driver):
 
         opts = {**{"temperature": 0.0, "max_tokens": 512}, **options}
         model = options.get("model", self.model)
+        supports_temperature = self._get_model_config("claude", model)["supports_temperature"]
         client = anthropic.Anthropic(api_key=self.api_key)
 
         system_content, api_messages = _extract_anthropic_system_and_messages(messages)
@@ -441,9 +448,10 @@ class ClaudeDriver(CostMixin, Driver):
         kwargs: dict[str, Any] = {
             "model": model,
             "messages": api_messages,
-            "temperature": opts["temperature"],
             "max_tokens": opts["max_tokens"],
         }
+        if supports_temperature:
+            kwargs["temperature"] = opts["temperature"]
         if system_content:
             kwargs["system"] = system_content
 
