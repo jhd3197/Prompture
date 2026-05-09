@@ -132,6 +132,40 @@ class TestUsageSessionSerialization:
         assert restored.total_tokens == 0
         assert restored.call_count == 0
 
+    def test_cache_tokens_round_trip(self):
+        """Cache fields should be preserved through export/import."""
+        session = UsageSession(
+            prompt_tokens=300,
+            completion_tokens=150,
+            total_tokens=450,
+            cached_prompt_tokens=230,
+            cache_creation_tokens=20,
+            cost=0.009,
+            call_count=2,
+        )
+        exported = export_usage_session(session)
+        assert exported["cached_prompt_tokens"] == 230
+        assert exported["cache_creation_tokens"] == 20
+
+        restored = import_usage_session(exported)
+        assert restored.cached_prompt_tokens == 230
+        assert restored.cache_creation_tokens == 20
+
+    def test_import_pre_cache_format(self):
+        """Older exports without cache fields should default to 0."""
+        old_format = {
+            "prompt_tokens": 100,
+            "completion_tokens": 50,
+            "total_tokens": 150,
+            "cost": 0.005,
+            "call_count": 1,
+            "errors": 0,
+            "per_model": {},
+        }
+        restored = import_usage_session(old_format)
+        assert restored.cached_prompt_tokens == 0
+        assert restored.cache_creation_tokens == 0
+
 
 # ------------------------------------------------------------------
 # Conversation export / import

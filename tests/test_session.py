@@ -88,6 +88,64 @@ class TestUsageSession:
         assert summary["per_model"]["openai/gpt-4"]["calls"] == 1
         assert summary["per_model"]["ollama/llama3"]["calls"] == 1
 
+    def test_cache_tokens_accumulate(self):
+        """Cache token fields should accumulate across record() calls and per_model bucket."""
+        session = UsageSession()
+        session.record(
+            {
+                "meta": {
+                    "prompt_tokens": 100,
+                    "completion_tokens": 50,
+                    "total_tokens": 150,
+                    "cached_prompt_tokens": 80,
+                    "cache_creation_tokens": 20,
+                    "cost": 0.003,
+                },
+                "driver": "claude/sonnet",
+            }
+        )
+        session.record(
+            {
+                "meta": {
+                    "prompt_tokens": 200,
+                    "completion_tokens": 100,
+                    "total_tokens": 300,
+                    "cached_prompt_tokens": 150,
+                    "cache_creation_tokens": 0,
+                    "cost": 0.006,
+                },
+                "driver": "claude/sonnet",
+            }
+        )
+
+        assert session.cached_prompt_tokens == 230
+        assert session.cache_creation_tokens == 20
+
+        summary = session.summary()
+        assert summary["cached_prompt_tokens"] == 230
+        assert summary["cache_creation_tokens"] == 20
+        bucket = summary["per_model"]["claude/sonnet"]
+        assert bucket["cached_prompt_tokens"] == 230
+        assert bucket["cache_creation_tokens"] == 20
+
+        session.reset()
+        assert session.cached_prompt_tokens == 0
+        assert session.cache_creation_tokens == 0
+
+    def test_cache_tokens_default_zero(self):
+        """Cache fields default to 0 when meta omits them."""
+        session = UsageSession()
+        session.record(
+            {
+                "meta": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15, "cost": 0.0},
+                "driver": "openai/gpt-4",
+            }
+        )
+        assert session.cached_prompt_tokens == 0
+        assert session.cache_creation_tokens == 0
+        assert session.summary()["cached_prompt_tokens"] == 0
+        assert session.summary()["cache_creation_tokens"] == 0
+
     def test_summary_format(self):
         session = UsageSession()
         session.record(
