@@ -66,7 +66,9 @@ class Settings(BaseSettings):
 
     # Grok
     grok_api_key: Optional[str] = None
+    xai_api_key: Optional[str] = None
     grok_model: str = "grok-4-fast-reasoning"
+    grok_video_model: str = "grok-imagine-video"
 
     # Moonshot AI (Kimi)
     moonshot_api_key: Optional[str] = None

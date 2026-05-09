@@ -27,7 +27,7 @@ from .capabilities import (
     register_model,
     register_provider,
 )
-from .cost_mixin import AudioCostMixin, EmbeddingCostMixin
+from .cost_mixin import AudioCostMixin, EmbeddingCostMixin, VideoCostMixin
 from .discovery import (
     clear_discovery_cache,
     display_available_models,
@@ -35,6 +35,7 @@ from .discovery import (
     get_available_embedding_models,
     get_available_image_gen_models,
     get_available_models,
+    get_available_video_gen_models,
 )
 from .ledger import ModelUsageLedger, get_recently_used_models
 from .logging import JSONFormatter, configure_logging
@@ -75,6 +76,7 @@ __all__ = [
     "SQLiteCacheBackend",
     "TukuyLLMBackend",
     "UsageSession",
+    "VideoCostMixin",
     "clear_discovery_cache",
     "clear_overrides",
     "configure_cache",
@@ -89,6 +91,7 @@ __all__ = [
     "get_available_embedding_models",
     "get_available_image_gen_models",
     "get_available_models",
+    "get_available_video_gen_models",
     "get_cache",
     "get_capabilities",
     "get_compatibility_matrix",

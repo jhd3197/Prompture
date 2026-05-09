@@ -41,6 +41,7 @@ from .async_google_driver import AsyncGoogleDriver
 from .async_google_img_gen_driver import AsyncGoogleImageGenDriver
 from .async_grok_driver import AsyncGrokDriver
 from .async_grok_img_gen_driver import AsyncGrokImageGenDriver
+from .async_grok_video_gen_driver import AsyncGrokVideoGenDriver
 from .async_groq_driver import AsyncGroqDriver
 from .async_hugging_driver import AsyncHuggingFaceDriver
 from .async_img_gen_base import AsyncImageGenDriver
@@ -59,6 +60,7 @@ from .async_openrouter_driver import AsyncOpenRouterDriver
 from .async_stability_img_gen_driver import AsyncStabilityImageGenDriver
 from .async_stt_base import AsyncSTTDriver
 from .async_tts_base import AsyncTTSDriver
+from .async_video_gen_base import AsyncVideoGenDriver
 from .async_zai_driver import AsyncZaiDriver
 from .azure_config import (
     clear_azure_configs,
@@ -76,6 +78,7 @@ from .google_driver import GoogleDriver
 from .google_img_gen_driver import GoogleImageGenDriver
 from .grok_driver import GrokDriver
 from .grok_img_gen_driver import GrokImageGenDriver
+from .grok_video_gen_driver import GrokVideoGenDriver
 from .groq_driver import GroqDriver
 from .hugging_driver import HuggingFaceDriver
 from .img_gen_base import ImageGenDriver
@@ -104,59 +107,70 @@ from .registry import (
     get_async_img_gen_driver_factory,
     get_async_stt_driver_factory,
     get_async_tts_driver_factory,
+    get_async_video_gen_driver_factory,
     get_driver_factory,
     get_embedding_driver_factory,
     get_img_gen_driver_factory,
     get_stt_driver_factory,
     get_tts_driver_factory,
+    get_video_gen_driver_factory,
     is_async_driver_registered,
     is_async_embedding_driver_registered,
     is_async_img_gen_driver_registered,
     is_async_stt_driver_registered,
     is_async_tts_driver_registered,
+    is_async_video_gen_driver_registered,
     is_driver_registered,
     is_embedding_driver_registered,
     is_img_gen_driver_registered,
     is_stt_driver_registered,
     is_tts_driver_registered,
+    is_video_gen_driver_registered,
     list_registered_async_drivers,
     list_registered_async_embedding_drivers,
     list_registered_async_img_gen_drivers,
     list_registered_async_stt_drivers,
     list_registered_async_tts_drivers,
+    list_registered_async_video_gen_drivers,
     list_registered_drivers,
     list_registered_embedding_drivers,
     list_registered_img_gen_drivers,
     list_registered_stt_drivers,
     list_registered_tts_drivers,
+    list_registered_video_gen_drivers,
     load_entry_point_drivers,
     register_async_driver,
     register_async_embedding_driver,
     register_async_img_gen_driver,
     register_async_stt_driver,
     register_async_tts_driver,
+    register_async_video_gen_driver,
     register_driver,
     register_embedding_driver,
     register_img_gen_driver,
     register_stt_driver,
     register_tts_driver,
+    register_video_gen_driver,
     unregister_async_driver,
     unregister_async_embedding_driver,
     unregister_async_img_gen_driver,
     unregister_async_stt_driver,
     unregister_async_tts_driver,
+    unregister_async_video_gen_driver,
     unregister_driver,
     unregister_embedding_driver,
     unregister_img_gen_driver,
     unregister_stt_driver,
     unregister_tts_driver,
+    unregister_video_gen_driver,
 )
 from .stability_img_gen_driver import StabilityImageGenDriver
 from .stt_base import STTDriver
 from .tts_base import TTSDriver
+from .video_gen_base import VideoGenDriver
 from .zai_driver import ZaiDriver
 
-# Register all built-in drivers (LLM sync/async, STT, TTS, img_gen, embedding)
+# Register all built-in drivers (LLM sync/async, STT, TTS, img_gen, video_gen, embedding)
 # from the unified ProviderDescriptor list — replaces ~200 lines of individual
 # register_*() calls that were previously scattered across this file,
 # async_registry.py, audio_registry.py, embedding_registry.py, and img_gen_registry.py.
@@ -184,6 +198,10 @@ from .embedding_registry import (
 from .img_gen_registry import (
     get_async_img_gen_driver_for_model,
     get_img_gen_driver_for_model,
+)
+from .video_gen_registry import (
+    get_async_video_gen_driver_for_model,
+    get_video_gen_driver_for_model,
 )
 
 # Backwards compatibility: expose registry dict (read-only view recommended)
@@ -449,6 +467,7 @@ __all__ = [
     "AsyncGoogleImageGenDriver",
     "AsyncGrokDriver",
     "AsyncGrokImageGenDriver",
+    "AsyncGrokVideoGenDriver",
     "AsyncGroqDriver",
     "AsyncHuggingFaceDriver",
     "AsyncImageGenDriver",
@@ -467,6 +486,7 @@ __all__ = [
     "AsyncSTTDriver",
     "AsyncStabilityImageGenDriver",
     "AsyncTTSDriver",
+    "AsyncVideoGenDriver",
     "AsyncZaiDriver",
     # Sync LLM drivers
     "AzureDriver",
@@ -482,6 +502,7 @@ __all__ = [
     "GoogleImageGenDriver",
     "GrokDriver",
     "GrokImageGenDriver",
+    "GrokVideoGenDriver",
     "GroqDriver",
     "HuggingFaceDriver",
     # Image gen base class
@@ -502,6 +523,7 @@ __all__ = [
     "STTDriver",
     "StabilityImageGenDriver",
     "TTSDriver",
+    "VideoGenDriver",
     "ZaiDriver",
     # Azure config API
     "clear_azure_configs",
@@ -521,6 +543,10 @@ __all__ = [
     "get_async_stt_driver_for_model",
     "get_async_tts_driver_factory",
     "get_async_tts_driver_for_model",
+    # Video gen registry query functions
+    "get_async_video_gen_driver_factory",
+    # Video gen factory functions
+    "get_async_video_gen_driver_for_model",
     # LLM factory functions
     "get_driver",
     "get_driver_for_model",
@@ -532,27 +558,33 @@ __all__ = [
     "get_stt_driver_for_model",
     "get_tts_driver_factory",
     "get_tts_driver_for_model",
+    "get_video_gen_driver_factory",
+    "get_video_gen_driver_for_model",
     # Other registry query functions
     "is_async_driver_registered",
     "is_async_embedding_driver_registered",
     "is_async_img_gen_driver_registered",
     "is_async_stt_driver_registered",
     "is_async_tts_driver_registered",
+    "is_async_video_gen_driver_registered",
     "is_driver_registered",
     "is_embedding_driver_registered",
     "is_img_gen_driver_registered",
     "is_stt_driver_registered",
     "is_tts_driver_registered",
+    "is_video_gen_driver_registered",
     "list_registered_async_drivers",
     "list_registered_async_embedding_drivers",
     "list_registered_async_img_gen_drivers",
     "list_registered_async_stt_drivers",
     "list_registered_async_tts_drivers",
+    "list_registered_async_video_gen_drivers",
     "list_registered_drivers",
     "list_registered_embedding_drivers",
     "list_registered_img_gen_drivers",
     "list_registered_stt_drivers",
     "list_registered_tts_drivers",
+    "list_registered_video_gen_drivers",
     "load_entry_point_drivers",
     "parse_model_string",
     "provider_for_model",
@@ -562,6 +594,7 @@ __all__ = [
     "register_async_img_gen_driver",
     "register_async_stt_driver",
     "register_async_tts_driver",
+    "register_async_video_gen_driver",
     "register_azure_config",
     # Registry functions (public API)
     "register_driver",
@@ -569,16 +602,19 @@ __all__ = [
     "register_img_gen_driver",
     "register_stt_driver",
     "register_tts_driver",
+    "register_video_gen_driver",
     "set_azure_config_resolver",
     "unregister_async_driver",
     "unregister_async_embedding_driver",
     "unregister_async_img_gen_driver",
     "unregister_async_stt_driver",
     "unregister_async_tts_driver",
+    "unregister_async_video_gen_driver",
     "unregister_azure_config",
     "unregister_driver",
     "unregister_embedding_driver",
     "unregister_img_gen_driver",
     "unregister_stt_driver",
     "unregister_tts_driver",
+    "unregister_video_gen_driver",
 ]

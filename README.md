@@ -32,7 +32,7 @@ print(person.name)  # Maria
 
 - **Structured output** — JSON schema enforcement and direct Pydantic model population
 - **17+ providers** — OpenAI, Claude, Google, Groq, Grok, Azure, Ollama, LM Studio, OpenRouter, HuggingFace, Moonshot, ModelScope, Z.ai, Vertex AI, AirLLM, CachiBot, and generic HTTP
-- **Multi-modal** — Drivers for embeddings, image generation (DALL-E, Imagen, Grok, Stability), text-to-speech, and speech-to-text (Whisper, ElevenLabs)
+- **Multi-modal** — Drivers for embeddings, image generation (DALL-E, Imagen, Grok, Stability), video generation (Grok Imagine Video), text-to-speech, and speech-to-text (Whisper, ElevenLabs)
 - **Multi-model fallback** — Try a list of models in sequence with per-attempt cost, token, and capability accounting
 - **Strategy cascade** — Auto-selects between provider-native JSON mode, tool-call extraction, and prompted repair so extraction works on any model
 - **TOON input conversion** — 45-60% token savings when sending structured data via [Token-Oriented Object Notation](https://github.com/jhd3197/python-toon)
@@ -77,6 +77,8 @@ ANTHROPIC_API_KEY=sk-ant-...
 GOOGLE_API_KEY=...
 GROQ_API_KEY=...
 GROK_API_KEY=...
+# optional xAI-compatible alias for Grok APIs
+XAI_API_KEY=...
 OPENROUTER_API_KEY=...
 AZURE_OPENAI_ENDPOINT=...
 AZURE_OPENAI_API_KEY=...
@@ -134,6 +136,7 @@ Beyond text LLMs, Prompture exposes drivers for adjacent modalities under the sa
 
 - **Embeddings** — OpenAI (`text-embedding-3-*`) and Ollama (`nomic-embed-text`)
 - **Image generation** — OpenAI DALL-E, Google Imagen, Grok, Stability AI
+- **Video generation** — Grok Imagine Video (`grok-imagine-video`) with text-to-video, image-to-video, reference images, and polling
 - **Text-to-speech** — OpenAI (`tts-1`) and ElevenLabs
 - **Speech-to-text** — OpenAI Whisper and ElevenLabs
 
@@ -147,6 +150,26 @@ result = driver.generate_image(
 )
 print(result["meta"]["cost"], result["meta"]["image_count"])
 ```
+
+Video generation uses the same provider/model routing. Set `GROK_API_KEY` or `XAI_API_KEY`, then request a Grok video model:
+
+```python
+from prompture import get_video_gen_driver_for_model
+
+driver = get_video_gen_driver_for_model("grok/grok-imagine-video")
+result = driver.generate_video(
+    "wide shot of a crystal-powered rocket launching from red desert dunes",
+    {"duration": 8, "aspect_ratio": "16:9", "resolution": "720p"},
+)
+
+video = result["videos"][0]
+print(video.url)
+print(result["meta"]["request_id"], result["meta"]["cost"])
+```
+
+For local smoke tests without waiting on the render, pass `{"poll": False}` to get the provider request ID. The async factory is available as `get_async_video_gen_driver_for_model()`.
+
+Runnable example: `python examples/grok_video_generation_example.py`.
 
 ## Usage
 
