@@ -518,6 +518,16 @@ def get_available_audio_models(
                 for model_id in ElevenLabsTTSDriver.AUDIO_PRICING:
                     available.add(f"elevenlabs/{model_id}")
 
+    # Runway TTS + sound-effect models (no STT)
+    runway_key = _cfg_value(env, "runway_api_key", "RUNWAY_API_KEY") or _cfg_value(
+        env, "runwayml_api_secret", "RUNWAYML_API_SECRET"
+    )
+    if runway_key and (modality is None or modality == "tts"):
+        from ..drivers.runway_tts_driver import RunwayTTSDriver
+
+        for model_id in RunwayTTSDriver.KNOWN_MODELS:
+            available.add(f"runway/{model_id}")
+
     # Dynamic discovery: check modalities_output from models.dev capabilities
     # for any models that the pricing dicts don't know about yet.
     from .model_rates import get_model_capabilities
@@ -577,6 +587,16 @@ def get_available_image_gen_models(
         for model_id in GrokImageGenDriver.IMAGE_PRICING:
             available.add(f"grok/{model_id}")
 
+    # Runway image gen models (requires runway_api_key or RUNWAYML_API_SECRET)
+    runway_key = _cfg_value(env, "runway_api_key", "RUNWAY_API_KEY") or _cfg_value(
+        env, "runwayml_api_secret", "RUNWAYML_API_SECRET"
+    )
+    if runway_key:
+        from ..drivers.runway_img_gen_driver import RunwayImageGenDriver
+
+        for model_id in RunwayImageGenDriver.KNOWN_MODELS:
+            available.add(f"runway/{model_id}")
+
     # Dynamic discovery: check modalities_output from models.dev capabilities
     # for any models that the pricing dicts don't know about yet.
     from .model_rates import get_model_capabilities
@@ -588,6 +608,54 @@ def get_available_image_gen_models(
         provider, model_id = parts
         caps = get_model_capabilities(provider, model_id)
         if caps and "image" in caps.modalities_output:
+            available.add(model_str)
+
+    return sorted(available)
+
+
+def get_available_video_gen_models(
+    *,
+    env: ProviderEnvironment | None = None,
+) -> list[str]:
+    """Auto-detect available video generation models based on configured API keys.
+
+    Args:
+        env: Optional per-consumer environment for isolated API keys.
+            When ``None``, uses the global settings singleton (current behavior).
+
+    Returns:
+        A sorted list of unique model strings (e.g. ``"grok/grok-imagine-video"``).
+    """
+    from ..drivers.grok_video_gen_driver import GrokVideoGenDriver
+
+    available: set[str] = set()
+
+    grok_video_key = _cfg_value(env, "grok_api_key", "GROK_API_KEY") or _cfg_value(env, "xai_api_key", "XAI_API_KEY")
+    if grok_video_key:
+        for model_id in GrokVideoGenDriver.KNOWN_MODELS:
+            available.add(f"grok/{model_id}")
+
+    # Runway video gen models (text/image/video → video)
+    runway_key = _cfg_value(env, "runway_api_key", "RUNWAY_API_KEY") or _cfg_value(
+        env, "runwayml_api_secret", "RUNWAYML_API_SECRET"
+    )
+    if runway_key:
+        from ..drivers.runway_video_gen_driver import RunwayVideoGenDriver
+
+        for model_id in RunwayVideoGenDriver.KNOWN_MODELS:
+            available.add(f"runway/{model_id}")
+
+    # Dynamic discovery: check modalities_output from models.dev capabilities
+    # for any models that the built-in video drivers don't know about yet.
+    from .model_rates import get_model_capabilities
+
+    for model_str in get_available_models(env=env):
+        parts = model_str.split("/", 1)
+        if len(parts) != 2:
+            continue
+        provider, model_id = parts
+        caps = get_model_capabilities(provider, model_id)
+        if caps and "video" in caps.modalities_output:
             available.add(model_str)
 
     return sorted(available)

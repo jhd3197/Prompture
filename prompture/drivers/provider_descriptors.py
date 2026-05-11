@@ -4,7 +4,7 @@ Each ``ProviderDescriptor`` describes one canonical provider (or an alias for
 one) and carries enough metadata to:
 
 * register sync + async driver factories for every modality (LLM, STT, TTS,
-  image-gen, embedding)
+  image-gen, video-gen, embedding)
 * populate ``PROVIDER_DRIVER_MAP`` / ``ASYNC_PROVIDER_DRIVER_MAP``
 * drive the discovery module's ``is_configured`` / ``list_models_kwargs`` logic
 * generate the ``PROVIDER_MAP`` in ``model_rates.py``
@@ -57,6 +57,9 @@ class ProviderDescriptor:
 
     img_gen_sync: DriverSpec | None = None
     img_gen_async: DriverSpec | None = None
+
+    video_gen_sync: DriverSpec | None = None
+    video_gen_async: DriverSpec | None = None
 
     embedding_sync: DriverSpec | None = None
     embedding_async: DriverSpec | None = None
@@ -248,6 +251,12 @@ def _build_descriptors() -> list[ProviderDescriptor]:
             **_llm("grok_driver", "GrokDriver", "async_grok_driver", "AsyncGrokDriver", _grok_kw, "grok_model"),
             img_gen_sync=DriverSpec("grok_img_gen_driver.GrokImageGenDriver", _grok_kw, "grok-2-image"),
             img_gen_async=DriverSpec("async_grok_img_gen_driver.AsyncGrokImageGenDriver", _grok_kw, "grok-2-image"),
+            video_gen_sync=DriverSpec(
+                "grok_video_gen_driver.GrokVideoGenDriver", _grok_kw, "grok_video_model"
+            ),
+            video_gen_async=DriverSpec(
+                "async_grok_video_gen_driver.AsyncGrokVideoGenDriver", _grok_kw, "grok_video_model"
+            ),
             display_name="xAI Grok",
             is_configured_check="grok_api_key",
             list_models_kwargs=[("api_key", "grok_api_key", "GROK_API_KEY")],
@@ -482,6 +491,34 @@ def _build_descriptors() -> list[ProviderDescriptor]:
         )
     )
 
+    # ── Runway (image / video / TTS) ─────────────────────────────────
+    _runway_kw = {"api_key": "runway_api_key", "endpoint": "runway_endpoint"}
+    descriptors.append(
+        ProviderDescriptor(
+            name="runway",
+            img_gen_sync=DriverSpec(
+                "runway_img_gen_driver.RunwayImageGenDriver", _runway_kw, "gen4_image"
+            ),
+            img_gen_async=DriverSpec(
+                "async_runway_img_gen_driver.AsyncRunwayImageGenDriver", _runway_kw, "gen4_image"
+            ),
+            video_gen_sync=DriverSpec(
+                "runway_video_gen_driver.RunwayVideoGenDriver", _runway_kw, "gen4.5"
+            ),
+            video_gen_async=DriverSpec(
+                "async_runway_video_gen_driver.AsyncRunwayVideoGenDriver", _runway_kw, "gen4.5"
+            ),
+            tts_sync=DriverSpec(
+                "runway_tts_driver.RunwayTTSDriver", _runway_kw, "eleven_multilingual_v2"
+            ),
+            tts_async=DriverSpec(
+                "async_runway_tts_driver.AsyncRunwayTTSDriver", _runway_kw, "eleven_multilingual_v2"
+            ),
+            display_name="Runway",
+            is_configured_check="runway_api_key",
+        )
+    )
+
     # ── Aliases ───────────────────────────────────────────────────────
     # Each alias specifies exactly which modalities it covers, matching
     # the original per-file registrations.  Format:
@@ -491,12 +528,13 @@ def _build_descriptors() -> list[ProviderDescriptor]:
         ("anthropic", "claude", {"llm"}),
         ("gemini", "google", {"llm", "img_gen"}),
         ("chatgpt", "openai", {"llm", "embedding"}),
-        ("xai", "grok", {"llm", "img_gen"}),
+        ("xai", "grok", {"llm", "img_gen", "video_gen"}),
         ("lm_studio", "lmstudio", {"llm"}),
         ("lm-studio", "lmstudio", {"llm"}),
         ("zhipu", "zai", {"llm"}),
         ("hf", "huggingface", {"llm"}),
         ("dalle", "openai", {"img_gen"}),
+        ("runwayml", "runway", {"img_gen", "video_gen", "tts"}),
         ("vertex", "google_vertexai", {"llm"}),
         ("vertexai", "google_vertexai", {"llm"}),
     ]
@@ -517,6 +555,8 @@ def _build_descriptors() -> list[ProviderDescriptor]:
             tts_async=canon.tts_async if "tts" in modalities else None,
             img_gen_sync=canon.img_gen_sync if "img_gen" in modalities else None,
             img_gen_async=canon.img_gen_async if "img_gen" in modalities else None,
+            video_gen_sync=canon.video_gen_sync if "video_gen" in modalities else None,
+            video_gen_async=canon.video_gen_async if "video_gen" in modalities else None,
             embedding_sync=canon.embedding_sync if "embedding" in modalities else None,
             embedding_async=canon.embedding_async if "embedding" in modalities else None,
             is_configured_check=canon.is_configured_check,
@@ -596,11 +636,13 @@ def register_all_builtin_drivers() -> None:
         register_async_img_gen_driver,
         register_async_stt_driver,
         register_async_tts_driver,
+        register_async_video_gen_driver,
         register_driver,
         register_embedding_driver,
         register_img_gen_driver,
         register_stt_driver,
         register_tts_driver,
+        register_video_gen_driver,
     )
 
     _MODALITY_REGISTRARS = {
@@ -612,6 +654,8 @@ def register_all_builtin_drivers() -> None:
         "tts_async": register_async_tts_driver,
         "img_gen_sync": register_img_gen_driver,
         "img_gen_async": register_async_img_gen_driver,
+        "video_gen_sync": register_video_gen_driver,
+        "video_gen_async": register_async_video_gen_driver,
         "embedding_sync": register_embedding_driver,
         "embedding_async": register_async_embedding_driver,
     }

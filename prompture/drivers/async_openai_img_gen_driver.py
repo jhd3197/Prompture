@@ -48,15 +48,18 @@ class AsyncOpenAIImageGenDriver(ImageCostMixin, AsyncImageGenDriver):
             raise RuntimeError("openai package (>=1.0.0) is not installed")
 
         model = options.get("model", self.model)
+        is_gpt_image = model.startswith("gpt-image")
+        is_dalle3 = "dall-e-3" in model
+
         size = options.get("size", "1024x1024")
-        quality = options.get("quality", "standard")
+        default_quality = "high" if is_gpt_image else "standard"
+        quality = options.get("quality", default_quality)
         n = options.get("n", 1)
         style = options.get("style", "vivid")
 
         images = []
         revised_prompt = None
 
-        is_dalle3 = "dall-e-3" in model
         batch_size = 1 if is_dalle3 else n
 
         remaining = n
@@ -68,11 +71,14 @@ class AsyncOpenAIImageGenDriver(ImageCostMixin, AsyncImageGenDriver):
                 "prompt": prompt,
                 "n": batch_n,
                 "size": size,
-                "response_format": "b64_json",
             }
-            if is_dalle3:
+            if is_gpt_image:
                 kwargs["quality"] = quality
-                kwargs["style"] = style
+            else:
+                kwargs["response_format"] = "b64_json"
+                if is_dalle3:
+                    kwargs["quality"] = quality
+                    kwargs["style"] = style
 
             resp = await self.client.images.generate(**kwargs)
 

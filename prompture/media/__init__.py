@@ -1,4 +1,4 @@
-"""Media handling: images and audio."""
+"""Media handling: images, audio, and video."""
 
 from .audio import (
     AudioContent,
@@ -18,12 +18,23 @@ from .image import (
     image_from_url,
     make_image,
 )
+from .video import (
+    VideoContent,
+    VideoInput,
+    make_video,
+    video_from_base64,
+    video_from_bytes,
+    video_from_file,
+    video_from_url,
+)
 
 __all__ = [
     "AudioContent",
     "AudioInput",
     "ImageContent",
     "ImageInput",
+    "VideoContent",
+    "VideoInput",
     "audio_from_base64",
     "audio_from_bytes",
     "audio_from_file",
@@ -34,4 +45,9 @@ __all__ = [
     "image_from_url",
     "make_audio",
     "make_image",
+    "make_video",
+    "video_from_base64",
+    "video_from_bytes",
+    "video_from_file",
+    "video_from_url",
 ]

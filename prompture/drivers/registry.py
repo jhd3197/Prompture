@@ -43,6 +43,11 @@ _tts_async = DriverRegistry("TTS async", "prompture.async_tts_drivers", error_pr
 _img_gen_sync = DriverRegistry("image gen sync", "prompture.img_gen_drivers", error_prefix="image gen ")
 _img_gen_async = DriverRegistry("image gen async", "prompture.async_img_gen_drivers", error_prefix="async image gen ")
 
+_video_gen_sync = DriverRegistry("video gen sync", "prompture.video_gen_drivers", error_prefix="video gen ")
+_video_gen_async = DriverRegistry(
+    "video gen async", "prompture.async_video_gen_drivers", error_prefix="async video gen "
+)
+
 _embedding_sync = DriverRegistry("embedding sync", "prompture.embedding_drivers", error_prefix="embedding ")
 _embedding_async = DriverRegistry(
     "embedding async", "prompture.async_embedding_drivers", error_prefix="async embedding "
@@ -368,6 +373,68 @@ def load_img_gen_entry_point_drivers() -> tuple[int, int]:
     return (_img_gen_sync.load_entry_points(), _img_gen_async.load_entry_points())
 
 
+# ── Video Gen ─────────────────────────────────────────────────────────────
+
+
+def register_video_gen_driver(name: str, factory: DriverFactory, *, overwrite: bool = False) -> None:
+    """Register a sync video generation driver factory for a provider name."""
+    _video_gen_sync.register(name, factory, overwrite=overwrite)
+
+
+def register_async_video_gen_driver(name: str, factory: DriverFactory, *, overwrite: bool = False) -> None:
+    """Register an async video generation driver factory for a provider name."""
+    _video_gen_async.register(name, factory, overwrite=overwrite)
+
+
+def unregister_video_gen_driver(name: str) -> bool:
+    """Unregister a sync video gen driver by name."""
+    return _video_gen_sync.unregister(name)
+
+
+def unregister_async_video_gen_driver(name: str) -> bool:
+    """Unregister an async video gen driver by name."""
+    return _video_gen_async.unregister(name)
+
+
+def list_registered_video_gen_drivers() -> list[str]:
+    """Return a sorted list of registered sync video gen driver names."""
+    return _video_gen_sync.list_names()
+
+
+def list_registered_async_video_gen_drivers() -> list[str]:
+    """Return a sorted list of registered async video gen driver names."""
+    return _video_gen_async.list_names()
+
+
+def is_video_gen_driver_registered(name: str) -> bool:
+    """Check if a sync video gen driver is registered."""
+    return _video_gen_sync.is_registered(name)
+
+
+def is_async_video_gen_driver_registered(name: str) -> bool:
+    """Check if an async video gen driver is registered."""
+    return _video_gen_async.is_registered(name)
+
+
+def get_video_gen_driver_factory(name: str) -> DriverFactory:
+    """Get a registered sync video gen driver factory by name."""
+    return _video_gen_sync.get_factory(name)
+
+
+def get_async_video_gen_driver_factory(name: str) -> DriverFactory:
+    """Get a registered async video gen driver factory by name."""
+    return _video_gen_async.get_factory(name)
+
+
+def load_video_gen_entry_point_drivers() -> tuple[int, int]:
+    """Load video gen drivers from installed packages via entry points.
+
+    Returns:
+        A tuple of (sync_count, async_count) counts.
+    """
+    return (_video_gen_sync.load_entry_points(), _video_gen_async.load_entry_points())
+
+
 # ── Embedding ──────────────────────────────────────────────────────────────
 
 
@@ -467,6 +534,14 @@ def _get_async_img_gen_registry() -> dict[str, DriverFactory]:
     return _img_gen_async.dict
 
 
+def _get_video_gen_registry() -> dict[str, DriverFactory]:
+    return _video_gen_sync.dict
+
+
+def _get_async_video_gen_registry() -> dict[str, DriverFactory]:
+    return _video_gen_async.dict
+
+
 def _get_embedding_registry() -> dict[str, DriverFactory]:
     return _embedding_sync.dict
 
@@ -485,6 +560,8 @@ def _reset_registries() -> None:
     _tts_async.reset()
     _img_gen_sync.reset()
     _img_gen_async.reset()
+    _video_gen_sync.reset()
+    _video_gen_async.reset()
     _embedding_sync.reset()
     _embedding_async.reset()
 
@@ -501,5 +578,7 @@ _TTS_REGISTRY = _tts_sync._registry
 _ASYNC_TTS_REGISTRY = _tts_async._registry
 _IMG_GEN_REGISTRY = _img_gen_sync._registry
 _ASYNC_IMG_GEN_REGISTRY = _img_gen_async._registry
+_VIDEO_GEN_REGISTRY = _video_gen_sync._registry
+_ASYNC_VIDEO_GEN_REGISTRY = _video_gen_async._registry
 _EMBEDDING_REGISTRY = _embedding_sync._registry
 _ASYNC_EMBEDDING_REGISTRY = _embedding_async._registry

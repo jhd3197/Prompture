@@ -66,7 +66,9 @@ class Settings(BaseSettings):
 
     # Grok
     grok_api_key: Optional[str] = None
+    xai_api_key: Optional[str] = None
     grok_model: str = "grok-4-fast-reasoning"
+    grok_video_model: str = "grok-imagine-video"
 
     # Moonshot AI (Kimi)
     moonshot_api_key: Optional[str] = None
@@ -94,6 +96,10 @@ class Settings(BaseSettings):
     # Stability AI (image generation)
     stability_api_key: Optional[str] = None
     stability_endpoint: Optional[str] = None
+
+    # Runway (image generation via /v1/text_to_image)
+    runway_api_key: Optional[str] = None
+    runway_endpoint: Optional[str] = None
 
     # ElevenLabs (audio)
     elevenlabs_api_key: Optional[str] = None

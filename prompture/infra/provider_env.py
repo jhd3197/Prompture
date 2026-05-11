@@ -18,6 +18,7 @@ class ProviderEnvironment:
     google_api_key: str | None = None
     groq_api_key: str | None = None
     grok_api_key: str | None = None
+    xai_api_key: str | None = None
     openrouter_api_key: str | None = None
     moonshot_api_key: str | None = None
     moonshot_endpoint: str | None = None

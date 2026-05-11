@@ -253,3 +253,45 @@ class ImageCostMixin:
         per_image = pricing.get(f"{size}/{quality}") or pricing.get(size) or pricing.get("default", 0.0)
 
         return round(per_image * n, 6)
+
+
+class VideoCostMixin:
+    """Mixin that provides ``_calculate_video_cost`` to video generation drivers.
+
+    Video generation pricing is typically per-second or per-video. Subclasses
+    can define ``VIDEO_PRICING`` with any of these keys:
+
+    ``{"model_id": {"per_second": 0.1, "per_video": 1.0, "default": 1.0}}``.
+    Resolution-specific pricing can use
+    ``{"per_second_by_resolution": {"720p": 0.07}}``.
+    """
+
+    VIDEO_PRICING: dict[str, dict[str, Any]] = {}
+
+    def _calculate_video_cost(
+        self,
+        provider: str,
+        model: str,
+        *,
+        duration_seconds: float = 0,
+        n: int = 1,
+        resolution: str | None = None,
+    ) -> float:
+        """Calculate USD cost for a video generation call.
+
+        Lookup order: resolution-specific ``per_second`` × duration →
+        generic ``per_second`` × duration → ``per_video`` → ``default`` → 0.
+        """
+        pricing = self.VIDEO_PRICING.get(model, {})
+
+        per_second_by_resolution = pricing.get("per_second_by_resolution")
+        if duration_seconds > 0 and resolution and isinstance(per_second_by_resolution, dict):
+            rate = per_second_by_resolution.get(resolution)
+            if rate is not None:
+                return round(float(rate) * duration_seconds * n, 6)
+
+        if duration_seconds > 0 and "per_second" in pricing:
+            return round(float(pricing["per_second"]) * duration_seconds * n, 6)
+
+        per_video = pricing.get("per_video", pricing.get("default", 0.0))
+        return round(float(per_video) * n, 6)
