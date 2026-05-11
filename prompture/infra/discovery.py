@@ -518,6 +518,16 @@ def get_available_audio_models(
                 for model_id in ElevenLabsTTSDriver.AUDIO_PRICING:
                     available.add(f"elevenlabs/{model_id}")
 
+    # Runway TTS + sound-effect models (no STT)
+    runway_key = _cfg_value(env, "runway_api_key", "RUNWAY_API_KEY") or _cfg_value(
+        env, "runwayml_api_secret", "RUNWAYML_API_SECRET"
+    )
+    if runway_key and (modality is None or modality == "tts"):
+        from ..drivers.runway_tts_driver import RunwayTTSDriver
+
+        for model_id in RunwayTTSDriver.KNOWN_MODELS:
+            available.add(f"runway/{model_id}")
+
     # Dynamic discovery: check modalities_output from models.dev capabilities
     # for any models that the pricing dicts don't know about yet.
     from .model_rates import get_model_capabilities
@@ -577,6 +587,16 @@ def get_available_image_gen_models(
         for model_id in GrokImageGenDriver.IMAGE_PRICING:
             available.add(f"grok/{model_id}")
 
+    # Runway image gen models (requires runway_api_key or RUNWAYML_API_SECRET)
+    runway_key = _cfg_value(env, "runway_api_key", "RUNWAY_API_KEY") or _cfg_value(
+        env, "runwayml_api_secret", "RUNWAYML_API_SECRET"
+    )
+    if runway_key:
+        from ..drivers.runway_img_gen_driver import RunwayImageGenDriver
+
+        for model_id in RunwayImageGenDriver.KNOWN_MODELS:
+            available.add(f"runway/{model_id}")
+
     # Dynamic discovery: check modalities_output from models.dev capabilities
     # for any models that the pricing dicts don't know about yet.
     from .model_rates import get_model_capabilities
@@ -614,6 +634,16 @@ def get_available_video_gen_models(
     if grok_video_key:
         for model_id in GrokVideoGenDriver.KNOWN_MODELS:
             available.add(f"grok/{model_id}")
+
+    # Runway video gen models (text/image/video → video)
+    runway_key = _cfg_value(env, "runway_api_key", "RUNWAY_API_KEY") or _cfg_value(
+        env, "runwayml_api_secret", "RUNWAYML_API_SECRET"
+    )
+    if runway_key:
+        from ..drivers.runway_video_gen_driver import RunwayVideoGenDriver
+
+        for model_id in RunwayVideoGenDriver.KNOWN_MODELS:
+            available.add(f"runway/{model_id}")
 
     # Dynamic discovery: check modalities_output from models.dev capabilities
     # for any models that the built-in video drivers don't know about yet.

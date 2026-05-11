@@ -168,6 +168,18 @@ from .registry import (
     unregister_video_gen_driver,
 )
 from .runway_audio_transform_driver import RunwayAudioTransformDriver
+from .runway_capabilities import (
+    ALL_MODALITIES as RUNWAY_ALL_MODALITIES,
+)
+from .runway_capabilities import (
+    ALL_OPERATIONS as RUNWAY_ALL_OPERATIONS,
+)
+from .runway_capabilities import (
+    RUNWAY_MODEL_INFO,
+    get_runway_model_info,
+    get_runway_models_by_modality,
+    get_runway_models_by_op,
+)
 from .runway_img_gen_driver import RunwayImageGenDriver
 from .runway_tts_driver import RunwayTTSDriver
 from .runway_video_gen_driver import RunwayVideoGenDriver
@@ -455,6 +467,9 @@ __all__ = [
     "PROVIDER_DRIVER_MAP",
     # Provider name mapping
     "PROVIDER_NAME_MAP",
+    "RUNWAY_ALL_MODALITIES",
+    "RUNWAY_ALL_OPERATIONS",
+    "RUNWAY_MODEL_INFO",
     # Sync LLM drivers
     "AirLLMDriver",
     # Async LLM drivers
@@ -568,6 +583,9 @@ __all__ = [
     "get_embedding_driver_for_model",
     "get_img_gen_driver_factory",
     "get_img_gen_driver_for_model",
+    "get_runway_model_info",
+    "get_runway_models_by_modality",
+    "get_runway_models_by_op",
     "get_stt_driver_factory",
     "get_stt_driver_for_model",
     "get_tts_driver_factory",
