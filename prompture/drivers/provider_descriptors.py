@@ -491,7 +491,7 @@ def _build_descriptors() -> list[ProviderDescriptor]:
         )
     )
 
-    # ── Runway (image gen via /v1/text_to_image) ─────────────────────
+    # ── Runway (image / video / TTS) ─────────────────────────────────
     _runway_kw = {"api_key": "runway_api_key", "endpoint": "runway_endpoint"}
     descriptors.append(
         ProviderDescriptor(
@@ -501,6 +501,18 @@ def _build_descriptors() -> list[ProviderDescriptor]:
             ),
             img_gen_async=DriverSpec(
                 "async_runway_img_gen_driver.AsyncRunwayImageGenDriver", _runway_kw, "gen4_image"
+            ),
+            video_gen_sync=DriverSpec(
+                "runway_video_gen_driver.RunwayVideoGenDriver", _runway_kw, "gen4.5"
+            ),
+            video_gen_async=DriverSpec(
+                "async_runway_video_gen_driver.AsyncRunwayVideoGenDriver", _runway_kw, "gen4.5"
+            ),
+            tts_sync=DriverSpec(
+                "runway_tts_driver.RunwayTTSDriver", _runway_kw, "eleven_multilingual_v2"
+            ),
+            tts_async=DriverSpec(
+                "async_runway_tts_driver.AsyncRunwayTTSDriver", _runway_kw, "eleven_multilingual_v2"
             ),
             display_name="Runway",
             is_configured_check="runway_api_key",
@@ -522,7 +534,7 @@ def _build_descriptors() -> list[ProviderDescriptor]:
         ("zhipu", "zai", {"llm"}),
         ("hf", "huggingface", {"llm"}),
         ("dalle", "openai", {"img_gen"}),
-        ("runwayml", "runway", {"img_gen"}),
+        ("runwayml", "runway", {"img_gen", "video_gen", "tts"}),
         ("vertex", "google_vertexai", {"llm"}),
         ("vertexai", "google_vertexai", {"llm"}),
     ]

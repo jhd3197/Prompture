@@ -58,6 +58,8 @@ from .async_openai_stt_driver import AsyncOpenAISTTDriver
 from .async_openai_tts_driver import AsyncOpenAITTSDriver
 from .async_openrouter_driver import AsyncOpenRouterDriver
 from .async_runway_img_gen_driver import AsyncRunwayImageGenDriver
+from .async_runway_tts_driver import AsyncRunwayTTSDriver
+from .async_runway_video_gen_driver import AsyncRunwayVideoGenDriver
 from .async_stability_img_gen_driver import AsyncStabilityImageGenDriver
 from .async_stt_base import AsyncSTTDriver
 from .async_tts_base import AsyncTTSDriver
@@ -165,7 +167,10 @@ from .registry import (
     unregister_tts_driver,
     unregister_video_gen_driver,
 )
+from .runway_audio_transform_driver import RunwayAudioTransformDriver
 from .runway_img_gen_driver import RunwayImageGenDriver
+from .runway_tts_driver import RunwayTTSDriver
+from .runway_video_gen_driver import RunwayVideoGenDriver
 from .stability_img_gen_driver import StabilityImageGenDriver
 from .stt_base import STTDriver
 from .tts_base import TTSDriver
@@ -486,6 +491,8 @@ __all__ = [
     "AsyncOpenAITTSDriver",
     "AsyncOpenRouterDriver",
     "AsyncRunwayImageGenDriver",
+    "AsyncRunwayTTSDriver",
+    "AsyncRunwayVideoGenDriver",
     "AsyncSTTDriver",
     "AsyncStabilityImageGenDriver",
     "AsyncTTSDriver",
@@ -522,7 +529,10 @@ __all__ = [
     "OpenAISTTDriver",
     "OpenAITTSDriver",
     "OpenRouterDriver",
+    "RunwayAudioTransformDriver",
     "RunwayImageGenDriver",
+    "RunwayTTSDriver",
+    "RunwayVideoGenDriver",
     # STT/TTS base classes
     "STTDriver",
     "StabilityImageGenDriver",

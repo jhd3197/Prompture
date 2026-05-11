@@ -31,8 +31,29 @@ _TERMINAL_FAIL = {"FAILED", "CANCELLED"}
 _DEFAULT_RATIOS: dict[str, str] = {
     "gen4_image": "1280:720",
     "gen4_image_turbo": "1280:720",
-    "gemini_2.5_flash": "1344:768",
-    "gpt_image_2": "1920:1088",
+    "gemini_2.5_flash": "1024:1024",
+    "gemini_image3_pro": "1024:1024",
+    "gpt_image_2": "1920:1080",
+}
+
+# Per-docs accepted ratios for POST /v1/text_to_image.
+_TEXT_TO_IMAGE_RATIOS: set[str] = {
+    "1024:1024",
+    "1080:1080",
+    "1168:880",
+    "1360:768",
+    "1440:1080",
+    "1080:1440",
+    "1808:768",
+    "1920:1080",
+    "1080:1920",
+    "2112:912",
+    "1280:720",
+    "720:1280",
+    "720:720",
+    "960:720",
+    "720:960",
+    "1680:720",
 }
 
 
@@ -82,32 +103,15 @@ class RunwayImageGenDriver(ImageCostMixin, ImageGenDriver):
 
     supports_multiple = False
     supports_size_variants = True
-    # Ratio strings accepted by Runway; this list is informational, not exhaustive.
-    supported_sizes = [
-        "1920:1080",
-        "1080:1920",
-        "1024:1024",
-        "1360:768",
-        "1080:1080",
-        "1168:880",
-        "1440:1080",
-        "1080:1440",
-        "1808:768",
-        "2112:912",
-        "1280:720",
-        "720:1280",
-        "1344:768",
-        "768:1344",
-        "1920:1088",
-        "1088:1920",
-    ]
+    supported_sizes = sorted(_TEXT_TO_IMAGE_RATIOS)
     max_images = 1
 
     KNOWN_MODELS = [
         "gen4_image",
         "gen4_image_turbo",
-        "gemini_2.5_flash",
         "gpt_image_2",
+        "gemini_image3_pro",
+        "gemini_2.5_flash",
     ]
 
     # USD per image. Credits → USD assumed at $0.01/credit; refine when Runway
@@ -116,6 +120,7 @@ class RunwayImageGenDriver(ImageCostMixin, ImageGenDriver):
         "gen4_image": {"720p": 0.05, "1080p": 0.08, "default": 0.05},
         "gen4_image_turbo": {"default": 0.02},
         "gemini_2.5_flash": {"default": 0.05},
+        "gemini_image3_pro": {"default": 0.08},
         "gpt_image_2": {
             "low": 0.04,
             "medium": 0.06,
@@ -161,6 +166,11 @@ class RunwayImageGenDriver(ImageCostMixin, ImageGenDriver):
             or options.get("aspect_ratio")
             or _DEFAULT_RATIOS.get(model, "1280:720")
         )
+        if ratio not in _TEXT_TO_IMAGE_RATIOS:
+            raise ValueError(
+                f"Unsupported ratio {ratio!r} for text_to_image. "
+                f"Accepted values: {sorted(_TEXT_TO_IMAGE_RATIOS)}"
+            )
 
         body: dict[str, Any] = {
             "model": model,
@@ -184,6 +194,10 @@ class RunwayImageGenDriver(ImageCostMixin, ImageGenDriver):
         seed = options.get("seed")
         if seed is not None:
             body["seed"] = int(seed)
+
+        content_mod = options.get("content_moderation") or options.get("contentModeration")
+        if content_mod is not None:
+            body["contentModeration"] = content_mod
 
         return model, body
 
