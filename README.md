@@ -31,8 +31,8 @@ print(person.name)  # Maria
 ## Key Features
 
 - **Structured output** — JSON schema enforcement and direct Pydantic model population
-- **17+ providers** — OpenAI, Claude, Google, Groq, Grok, Azure, Ollama, LM Studio, OpenRouter, HuggingFace, Moonshot, ModelScope, Z.ai, Vertex AI, AirLLM, CachiBot, and generic HTTP
-- **Multi-modal** — Drivers for embeddings, image generation (DALL-E, Imagen, Grok, Stability), video generation (Grok Imagine Video), text-to-speech, and speech-to-text (Whisper, ElevenLabs)
+- **18+ providers** — OpenAI, Claude, Google, Groq, Grok, Azure, Ollama, LM Studio, OpenRouter, HuggingFace, Moonshot, ModelScope, Z.ai, Vertex AI, AirLLM, CachiBot, Runway, and generic HTTP
+- **Multi-modal** — Drivers for embeddings, image generation (DALL-E, Imagen, Grok, Stability, Runway), video generation (Grok Imagine Video, Runway text/image/video → video), text-to-speech (OpenAI, ElevenLabs, Runway), sound effects, voice dubbing / isolation / conversion (Runway), and speech-to-text (Whisper, ElevenLabs)
 - **Multi-model fallback** — Try a list of models in sequence with per-attempt cost, token, and capability accounting
 - **Strategy cascade** — Auto-selects between provider-native JSON mode, tool-call extraction, and prompted repair so extraction works on any model
 - **TOON input conversion** — 45-60% token savings when sending structured data via [Token-Oriented Object Notation](https://github.com/jhd3197/python-toon)
@@ -127,17 +127,20 @@ Model strings use `"provider/model"` format. The provider prefix routes to the c
 | `huggingface` | `hf/model-name` | Free (local) |
 | `airllm` | `airllm/Qwen2-7B` | Free (local) |
 | `local_http` | `local_http/self-hosted` | Free |
+| `runway` | `runway/gen4.5` (video), `runway/gpt_image_2` (image), `runway/eleven_multilingual_v2` (TTS) | Automatic |
 
-Aliases (`anthropic`, `gemini`, `chatgpt`, `xai`, `lm_studio`, `zhipu`, `hf`, `dalle`) route to their canonical providers.
+Aliases (`anthropic`, `gemini`, `chatgpt`, `xai`, `lm_studio`, `zhipu`, `hf`, `dalle`, `runwayml`) route to their canonical providers.
 
 ## Multi-Modal
 
 Beyond text LLMs, Prompture exposes drivers for adjacent modalities under the same `provider/model` routing:
 
 - **Embeddings** — OpenAI (`text-embedding-3-*`) and Ollama (`nomic-embed-text`)
-- **Image generation** — OpenAI DALL-E, Google Imagen, Grok, Stability AI
-- **Video generation** — Grok Imagine Video (`grok-imagine-video`) with text-to-video, image-to-video, reference images, and polling
-- **Text-to-speech** — OpenAI (`tts-1`) and ElevenLabs
+- **Image generation** — OpenAI DALL-E + GPT image, Google Imagen, Grok, Stability AI, Runway (`gen4_image`, `gen4_image_turbo`, `gpt_image_2`, `gemini_image3_pro`, `gemini_2.5_flash`)
+- **Video generation** — Grok Imagine Video; Runway text/image/video → video (`gen4.5`, `gen4_turbo`, `gen3a_turbo`, `gen4_aleph`, `veo3`, `veo3.1`, `veo3.1_fast`)
+- **Text-to-speech** — OpenAI (`tts-1`), ElevenLabs, Runway (`eleven_multilingual_v2`)
+- **Sound effects** — Runway (`eleven_text_to_sound_v2`)
+- **Audio transforms** — Runway voice dubbing, voice isolation, speech-to-speech (`RunwayAudioTransformDriver`)
 - **Speech-to-text** — OpenAI Whisper and ElevenLabs
 
 ```python
@@ -170,6 +173,61 @@ print(result["meta"]["request_id"], result["meta"]["cost"])
 For local smoke tests without waiting on the render, pass `{"poll": False}` to get the provider request ID. The async factory is available as `get_async_video_gen_driver_for_model()`.
 
 Runnable example: `python examples/grok_video_generation_example.py`.
+
+### Runway
+
+Runway is a single API surface covering image, video, and audio. One key (`RUNWAY_API_KEY`, or `RUNWAYML_API_SECRET`) unlocks all of it:
+
+```python
+from prompture.drivers.img_gen_registry import get_img_gen_driver_for_model
+from prompture.drivers.video_gen_registry import get_video_gen_driver_for_model
+from prompture.drivers.audio_registry import get_tts_driver_for_model
+from prompture.drivers import RunwayAudioTransformDriver
+
+# Image — text_to_image, optionally with reference images
+img = get_img_gen_driver_for_model("runway/gpt_image_2").generate_image(
+    "A cinematic wide shot of a neon-lit Tokyo alleyway at night in the rain",
+    {"ratio": "1920:1080", "quality": "high"},
+)
+
+# Video — one driver, three modes (auto-detected from inputs)
+vid = get_video_gen_driver_for_model("runway/gen4.5").generate_video(
+    "wide cinematic shot of a rocket launching from desert dunes",
+    {"ratio": "1280:720", "duration": 5},          # text_to_video
+)
+# Pass `image=...` → image_to_video; `video=...` → video_to_video (gen4_aleph).
+
+# Speech and sound effects
+tts = get_tts_driver_for_model("runway/eleven_multilingual_v2").synthesize(
+    "Hello from Runway via Prompture.", {"voice": "Maya"},
+)
+sfx = get_tts_driver_for_model("runway/eleven_text_to_sound_v2").synthesize(
+    "Heavy tropical rain on a metal roof", {"duration": 5},
+)
+
+# Voice transforms (audio in → audio out, not a registered modality)
+dub = RunwayAudioTransformDriver().dub("https://.../speech.mp3", target_lang="es")
+```
+
+Inspect any model's capabilities (operations, endpoints, cost) as data — no need to instantiate the driver:
+
+```python
+from prompture.drivers import get_runway_model_info, get_runway_models_by_op
+
+get_runway_model_info("gen4.5")
+# {'modality': 'video',
+#  'operations': ['text_to_video', 'image_to_video'],
+#  'endpoints':  ['/v1/text_to_video', '/v1/image_to_video'],
+#  'cost': '$0.12 per second'}
+
+get_runway_models_by_op("text_to_video")
+# ['gen4.5', 'veo3', 'veo3.1', 'veo3.1_fast']
+```
+
+Runnable examples:
+- `python examples/runway_image_generation_example.py`
+- `python examples/runway_video_generation_example.py`
+- `python examples/runway_audio_example.py`
 
 ## Usage
 
@@ -442,6 +500,20 @@ from prompture import get_available_models
 models = get_available_models()
 for model in models:
     print(model)  # "openai/gpt-4", "ollama/llama3:latest", ...
+```
+
+For non-LLM modalities, use the matching helper:
+
+```python
+from prompture.infra.discovery import (
+    get_available_image_gen_models,
+    get_available_video_gen_models,
+    get_available_audio_models,
+)
+
+get_available_image_gen_models()        # ['runway/gpt_image_2', 'openai/dall-e-3', ...]
+get_available_video_gen_models()        # ['runway/gen4.5', 'runway/gen4_aleph', ...]
+get_available_audio_models(modality="tts")  # ['runway/eleven_multilingual_v2', ...]
 ```
 
 ### Logging and Debugging
