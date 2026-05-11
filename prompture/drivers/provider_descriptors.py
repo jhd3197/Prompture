@@ -491,6 +491,22 @@ def _build_descriptors() -> list[ProviderDescriptor]:
         )
     )
 
+    # ── Runway (image gen via /v1/text_to_image) ─────────────────────
+    _runway_kw = {"api_key": "runway_api_key", "endpoint": "runway_endpoint"}
+    descriptors.append(
+        ProviderDescriptor(
+            name="runway",
+            img_gen_sync=DriverSpec(
+                "runway_img_gen_driver.RunwayImageGenDriver", _runway_kw, "gen4_image"
+            ),
+            img_gen_async=DriverSpec(
+                "async_runway_img_gen_driver.AsyncRunwayImageGenDriver", _runway_kw, "gen4_image"
+            ),
+            display_name="Runway",
+            is_configured_check="runway_api_key",
+        )
+    )
+
     # ── Aliases ───────────────────────────────────────────────────────
     # Each alias specifies exactly which modalities it covers, matching
     # the original per-file registrations.  Format:
@@ -506,6 +522,7 @@ def _build_descriptors() -> list[ProviderDescriptor]:
         ("zhipu", "zai", {"llm"}),
         ("hf", "huggingface", {"llm"}),
         ("dalle", "openai", {"img_gen"}),
+        ("runwayml", "runway", {"img_gen"}),
         ("vertex", "google_vertexai", {"llm"}),
         ("vertexai", "google_vertexai", {"llm"}),
     ]

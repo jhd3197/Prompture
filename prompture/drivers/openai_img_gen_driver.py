@@ -23,7 +23,15 @@ class OpenAIImageGenDriver(ImageCostMixin, ImageGenDriver):
 
     supports_multiple = True
     supports_size_variants = True
-    supported_sizes = ["256x256", "512x512", "1024x1024", "1792x1024", "1024x1792"]
+    supported_sizes = [
+        "256x256",
+        "512x512",
+        "1024x1024",
+        "1536x1024",
+        "1024x1536",
+        "1792x1024",
+        "1024x1792",
+    ]
     max_images = 10
 
     IMAGE_PRICING = {
@@ -39,6 +47,26 @@ class OpenAIImageGenDriver(ImageCostMixin, ImageGenDriver):
             "256x256": 0.016,
             "512x512": 0.018,
             "1024x1024": 0.020,
+        },
+        # gpt-image-1 (and gpt-image-2 when OpenAI ships it) — token-priced in reality;
+        # values below are per-image USD approximations published by OpenAI.
+        "gpt-image-1": {
+            "1024x1024/low": 0.011,
+            "1024x1024/medium": 0.042,
+            "1024x1024/high": 0.167,
+            "1536x1024/low": 0.016,
+            "1536x1024/medium": 0.063,
+            "1536x1024/high": 0.25,
+            "1024x1536/low": 0.016,
+            "1024x1536/medium": 0.063,
+            "1024x1536/high": 0.25,
+            "default": 0.042,
+        },
+        "gpt-image-2": {
+            "1024x1024/low": 0.011,
+            "1024x1024/medium": 0.042,
+            "1024x1024/high": 0.167,
+            "default": 0.042,
         },
     }
 
@@ -62,8 +90,13 @@ class OpenAIImageGenDriver(ImageCostMixin, ImageGenDriver):
             raise RuntimeError("openai package (>=1.0.0) is not installed")
 
         model = options.get("model", self.model)
+        is_gpt_image = model.startswith("gpt-image")
+        is_dalle3 = "dall-e-3" in model
+
         size = options.get("size", "1024x1024")
-        quality = options.get("quality", "standard")
+        # gpt-image-* uses low/medium/high/auto; DALL-E 3 uses standard/hd; DALL-E 2 ignores quality.
+        default_quality = "high" if is_gpt_image else "standard"
+        quality = options.get("quality", default_quality)
         n = options.get("n", 1)
         style = options.get("style", "vivid")
 
@@ -71,7 +104,6 @@ class OpenAIImageGenDriver(ImageCostMixin, ImageGenDriver):
         revised_prompt = None
 
         # DALL-E 3 only supports n=1, so we loop for multiple images
-        is_dalle3 = "dall-e-3" in model
         batch_size = 1 if is_dalle3 else n
 
         remaining = n
@@ -83,11 +115,15 @@ class OpenAIImageGenDriver(ImageCostMixin, ImageGenDriver):
                 "prompt": prompt,
                 "n": batch_n,
                 "size": size,
-                "response_format": "b64_json",
             }
-            if is_dalle3:
+            if is_gpt_image:
+                # gpt-image-* always returns b64; passing response_format is rejected.
                 kwargs["quality"] = quality
-                kwargs["style"] = style
+            else:
+                kwargs["response_format"] = "b64_json"
+                if is_dalle3:
+                    kwargs["quality"] = quality
+                    kwargs["style"] = style
 
             resp = self.client.images.generate(**kwargs)
 
