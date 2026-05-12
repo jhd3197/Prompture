@@ -90,10 +90,25 @@ class AsyncLMStudioDriver(AsyncDriver):
         async with httpx.AsyncClient() as client:
             try:
                 r = await client.post(self.endpoint, json=payload, headers=self._headers, timeout=120)
-                r.raise_for_status()
-                response_data = r.json()
             except Exception as e:
                 raise RuntimeError(f"AsyncLMStudioDriver request failed: {e}") from e
+            if r.status_code >= 400:
+                # Surface the server's actual rejection reason. LM Studio
+                # returns useful JSON bodies on 400 (model not loaded,
+                # context overflow, schema rejected) that httpx's default
+                # HTTPStatusError throws away.
+                body = (r.text or "").strip()
+                snippet = body[:500] + ("…" if len(body) > 500 else "")
+                raise RuntimeError(
+                    f"AsyncLMStudioDriver request failed: HTTP {r.status_code} "
+                    f"from {self.endpoint} — body: {snippet or '<empty>'}"
+                )
+            try:
+                response_data = r.json()
+            except Exception as e:
+                raise RuntimeError(
+                    f"AsyncLMStudioDriver got non-JSON response (HTTP {r.status_code}): {e}"
+                ) from e
 
         if "choices" not in response_data or not response_data["choices"]:
             raise ValueError(f"Unexpected response format: {response_data}")

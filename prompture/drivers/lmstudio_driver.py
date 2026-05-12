@@ -104,7 +104,15 @@ class LMStudioDriver(Driver):
             logger.debug(f"Request payload: {payload}")
 
             r = requests.post(self.endpoint, json=payload, headers=self._headers, timeout=120)
-            r.raise_for_status()
+            if r.status_code >= 400:
+                # Surface the server's actual rejection reason — see the
+                # async driver for rationale.
+                body = (r.text or "").strip()
+                snippet = body[:500] + ("…" if len(body) > 500 else "")
+                raise RuntimeError(
+                    f"LMStudioDriver request failed: HTTP {r.status_code} "
+                    f"from {self.endpoint} — body: {snippet or '<empty>'}"
+                )
 
             response_data = r.json()
             logger.debug(f"Parsed response data: {response_data}")
