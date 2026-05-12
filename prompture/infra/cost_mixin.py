@@ -33,8 +33,14 @@ def _patch_strict(node: dict[str, Any]) -> None:
     if not isinstance(node, dict):
         return
     if node.get("type") == "object" and "properties" in node:
-        node.setdefault("additionalProperties", False)
-        node.setdefault("required", list(node["properties"].keys()))
+        node["additionalProperties"] = False
+        # Strict mode requires `required` to list *every* property — not
+        # just the ones Pydantic considers required (i.e. those without a
+        # default). Overwrite rather than setdefault so a partial Pydantic-
+        # generated list doesn't slip through and get rejected with
+        # "'required' is required to be supplied and to be an array
+        # including every key in properties".
+        node["required"] = list(node["properties"].keys())
         for prop in node["properties"].values():
             _patch_strict(prop)
     if node.get("type") == "array" and isinstance(node.get("items"), dict):
