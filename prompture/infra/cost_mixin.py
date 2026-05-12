@@ -29,8 +29,20 @@ def _patch_strict(node: dict[str, Any]) -> None:
     those nested objects keep their default open-properties semantics
     and OpenAI's strict mode rejects the whole request with
     ``'additionalProperties' is required to be supplied and to be false``.
+
+    Also strips sibling keywords from ``$ref`` nodes — Pydantic emits
+    things like ``{"$ref": "#/$defs/Foo", "description": "..."}`` for
+    referenced sub-models, and OpenAI strict mode rejects with
+    ``$ref cannot have keywords {'description'}``. Older JSON Schema
+    drafts ignored siblings of ``$ref``, so dropping them is lossless
+    for our purposes.
     """
     if not isinstance(node, dict):
+        return
+    if "$ref" in node and len(node) > 1:
+        ref_value = node["$ref"]
+        node.clear()
+        node["$ref"] = ref_value
         return
     if node.get("type") == "object" and "properties" in node:
         node["additionalProperties"] = False
