@@ -101,6 +101,26 @@ class Settings(BaseSettings):
     runway_api_key: Optional[str] = None
     runway_endpoint: Optional[str] = None
 
+    # Kling AI (image + video generation)
+    kling_access_key: Optional[str] = None
+    kling_secret_key: Optional[str] = None
+    kling_endpoint: Optional[str] = None
+    kling_image_model: str = "kling-v2-1"
+    kling_video_model: str = "kling-v2-1"
+
+    # MiniMax / Hailuo (LLM + video generation)
+    minimax_api_key: Optional[str] = None
+    hailuo_api_key: Optional[str] = None
+    minimax_endpoint: str = "https://api.minimax.io/v1"
+    minimax_model: str = "MiniMax-Text-01"
+    minimax_video_model: str = "MiniMax-Hailuo-2.3"
+
+    # Fal.ai (image + video generation aggregator)
+    fal_api_key: Optional[str] = None
+    fal_endpoint: Optional[str] = None
+    fal_image_model: str = "fal-ai/flux/dev"
+    fal_video_model: str = "fal-ai/kling-video/v2.6/pro/image-to-video"
+
     # ElevenLabs (audio)
     elevenlabs_api_key: Optional[str] = None
     elevenlabs_tts_model: str = "eleven_multilingual_v2"
