@@ -190,6 +190,18 @@ class Settings(BaseSettings):
     assemblyai_api_key: Optional[str] = None  # nosec B105
     assemblyai_stt_model: str = "universal"
 
+    # Phase 8: Nomic, Mixedbread, GitHub Models
+    nomic_api_key: Optional[str] = None  # nosec B105
+    nomic_embedding_model: str = "nomic-embed-text-v1.5"
+
+    mixedbread_api_key: Optional[str] = None  # nosec B105
+    mxbai_embedding_model: str = "mxbai-embed-large-v1"
+    mxbai_rerank_model: str = "mxbai-rerank-large-v1"
+
+    # GitHub Models — used through the openai_compatible driver
+    # (profile=github_models). A GitHub Personal Access Token.
+    github_token: Optional[str] = None  # nosec B105
+
     # Model rates cache
     model_rates_ttl_days: int = 7  # How often to refresh models.dev cache
 

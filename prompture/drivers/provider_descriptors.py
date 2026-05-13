@@ -853,6 +853,50 @@ def _build_descriptors() -> list[ProviderDescriptor]:
         )
     )
 
+    # ── Nomic (embeddings only) ───────────────────────────────────────
+    _nomic_kw = {"api_key": "nomic_api_key"}
+    descriptors.append(
+        ProviderDescriptor(
+            name="nomic",
+            embedding_sync=DriverSpec(
+                "nomic_embedding_driver.NomicEmbeddingDriver", _nomic_kw, "nomic_embedding_model"
+            ),
+            embedding_async=DriverSpec(
+                "async_nomic_embedding_driver.AsyncNomicEmbeddingDriver",
+                _nomic_kw,
+                "nomic_embedding_model",
+            ),
+            display_name="Nomic",
+            is_configured_check="nomic_api_key",
+            models_dev_name=None,
+        )
+    )
+
+    # ── Mixedbread (embeddings + rerank) ──────────────────────────────
+    _mxbai_kw = {"api_key": "mixedbread_api_key"}
+    descriptors.append(
+        ProviderDescriptor(
+            name="mixedbread",
+            embedding_sync=DriverSpec(
+                "mxbai_embedding_driver.MxbaiEmbeddingDriver", _mxbai_kw, "mxbai_embedding_model"
+            ),
+            embedding_async=DriverSpec(
+                "async_mxbai_embedding_driver.AsyncMxbaiEmbeddingDriver",
+                _mxbai_kw,
+                "mxbai_embedding_model",
+            ),
+            rerank_sync=DriverSpec("mxbai_rerank_driver.MxbaiRerankDriver", _mxbai_kw, "mxbai_rerank_model"),
+            rerank_async=DriverSpec(
+                "async_mxbai_rerank_driver.AsyncMxbaiRerankDriver",
+                _mxbai_kw,
+                "mxbai_rerank_model",
+            ),
+            display_name="Mixedbread",
+            is_configured_check="mixedbread_api_key",
+            models_dev_name=None,
+        )
+    )
+
     # ── Aliases ───────────────────────────────────────────────────────
     # Each alias specifies exactly which modalities it covers, matching
     # the original per-file registrations.  Format:
@@ -876,6 +920,7 @@ def _build_descriptors() -> list[ProviderDescriptor]:
         ("dream-machine", "luma", {"video_gen"}),
         ("lumalabs", "luma", {"video_gen"}),
         ("flux", "bfl", {"img_gen"}),
+        ("mxbai", "mixedbread", {"embedding", "rerank"}),
     ]
 
     # Build a lookup of canonical descriptors by name.

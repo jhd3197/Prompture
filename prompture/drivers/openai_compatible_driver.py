@@ -74,6 +74,10 @@ OPENAI_COMPATIBLE_PROFILES: dict[str, dict[str, str]] = {
         "endpoint": "https://api.siliconflow.cn/v1",
         "env_var": "SILICONFLOW_API_KEY",
     },
+    "github_models": {
+        "endpoint": "https://models.github.ai/inference",
+        "env_var": "GITHUB_TOKEN",  # nosec B105 — env var name, not a credential
+    },
 }
 
 

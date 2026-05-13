@@ -765,6 +765,15 @@ def get_available_rerank_models(
         ):
             available.add(f"jina/{model_id}")
 
+    # Mixedbread rerank models
+    if _cfg_value(env, "mixedbread_api_key", "MIXEDBREAD_API_KEY"):
+        for model_id in (
+            "mxbai-rerank-large-v1",
+            "mxbai-rerank-base-v1",
+            "mxbai-rerank-xsmall-v1",
+        ):
+            available.add(f"mixedbread/{model_id}")
+
     return sorted(available)
 
 
@@ -809,6 +818,20 @@ def get_available_embedding_models(
     if _cfg_value(env, "jina_api_key", "JINA_API_KEY"):
         for model_id in JinaEmbeddingDriver.EMBEDDING_PRICING:
             available.add(f"jina/{model_id}")
+
+    # Nomic embedding models (requires nomic_api_key)
+    if _cfg_value(env, "nomic_api_key", "NOMIC_API_KEY"):
+        from ..drivers.nomic_embedding_driver import NomicEmbeddingDriver
+
+        for model_id in NomicEmbeddingDriver.EMBEDDING_PRICING:
+            available.add(f"nomic/{model_id}")
+
+    # Mixedbread embedding models (requires mixedbread_api_key)
+    if _cfg_value(env, "mixedbread_api_key", "MIXEDBREAD_API_KEY"):
+        from ..drivers.mxbai_embedding_driver import MxbaiEmbeddingDriver
+
+        for model_id in MxbaiEmbeddingDriver.EMBEDDING_PRICING:
+            available.add(f"mixedbread/{model_id}")
 
     # Ollama embedding models (always available — local)
     available.add("ollama/nomic-embed-text")

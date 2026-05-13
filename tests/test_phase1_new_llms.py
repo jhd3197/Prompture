@@ -231,6 +231,7 @@ class TestOpenAICompatibleDriver:
             "nvidia",
             "deepinfra",
             "siliconflow",
+            "github_models",
         }
         assert set(OPENAI_COMPATIBLE_PROFILES) == expected
 

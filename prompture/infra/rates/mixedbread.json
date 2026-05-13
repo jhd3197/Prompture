@@ -1,0 +1,59 @@
+{
+  "mxbai-embed-large-v1": {
+    "modality": "embedding",
+    "dimensions": 1024,
+    "context_window": 512,
+    "modalities_input": ["text"],
+    "modalities_output": ["embedding"],
+    "api_type": "mixedbread",
+    "cost": {
+      "input": 0.02,
+      "output": 0.0
+    }
+  },
+  "mxbai-embed-2d-large-v1": {
+    "modality": "embedding",
+    "dimensions": 1024,
+    "context_window": 512,
+    "modalities_input": ["text"],
+    "modalities_output": ["embedding"],
+    "api_type": "mixedbread",
+    "cost": {
+      "input": 0.02,
+      "output": 0.0
+    }
+  },
+  "mxbai-rerank-large-v1": {
+    "modality": "rerank",
+    "api_type": "mixedbread",
+    "modalities_input": ["text"],
+    "modalities_output": ["rerank"],
+    "cost": {
+      "input": 0.05,
+      "output": 0.0,
+      "per_million_tokens": 0.05
+    }
+  },
+  "mxbai-rerank-base-v1": {
+    "modality": "rerank",
+    "api_type": "mixedbread",
+    "modalities_input": ["text"],
+    "modalities_output": ["rerank"],
+    "cost": {
+      "input": 0.02,
+      "output": 0.0,
+      "per_million_tokens": 0.02
+    }
+  },
+  "mxbai-rerank-xsmall-v1": {
+    "modality": "rerank",
+    "api_type": "mixedbread",
+    "modalities_input": ["text"],
+    "modalities_output": ["rerank"],
+    "cost": {
+      "input": 0.01,
+      "output": 0.0,
+      "per_million_tokens": 0.01
+    }
+  }
+}
