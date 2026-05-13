@@ -64,8 +64,9 @@ rag-vs-qdrant = ["qdrant-client>=1.7.0"]
 rag-vs-pgvector = ["psycopg2-binary>=2.9.0", "pgvector>=0.2.0"]
 rag-vs-faiss = ["faiss-cpu>=1.7.0"]
 rag-vs-weaviate = ["weaviate-client>=4.4.0"]
+rag-hybrid = ["rank-bm25>=0.2.2"]
 rag = [
-    "prompture[rag-pdf,rag-docx,rag-html,rag-epub,rag-xlsx,rag-token,rag-semantic,rag-vs-chroma,rag-vs-pinecone,rag-vs-qdrant,rag-vs-pgvector,rag-vs-faiss,rag-vs-weaviate]",
+    "prompture[rag-pdf,rag-docx,rag-html,rag-epub,rag-xlsx,rag-token,rag-semantic,rag-vs-chroma,rag-vs-pinecone,rag-vs-qdrant,rag-vs-pgvector,rag-vs-faiss,rag-vs-weaviate,rag-hybrid]",
 ]
 
 [project.scripts]

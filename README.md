@@ -462,10 +462,92 @@ store = get_vectorstore("qdrant", embedding_driver=embedder, url="http://localho
 | `prompture[rag-vs-weaviate]` | `weaviate-client>=4.4` | Weaviate v4 client API. |
 
 The `rag` umbrella extra now installs all six vector-store extras in
-addition to the loader, token, and semantic-chunker extras.
+addition to the loader, token, semantic-chunker, and hybrid-retriever
+extras.
 
-> Coming in the next phase: **retrievers + end-to-end pipelines**
-> (Phase 13).
+### Retrievers
+
+Retrievers abstract the lookup step of RAG: given a query string, they
+return ranked `VectorSearchResult` objects.  Three concrete strategies
+ship out of the box and all share the `Retriever` interface, so the
+pipeline doesn't care how results were produced.
+
+```python
+from prompture.rag import (
+    ChromaVectorStore, VectorStoreRetriever, MMRRetriever, HybridRetriever,
+    get_loader_for_path, RecursiveCharacterChunker,
+)
+from prompture.drivers import get_embedding_driver_for_model
+
+embedder = get_embedding_driver_for_model("openai/text-embedding-3-small")
+store = ChromaVectorStore(embedding_driver=embedder, persist_directory="./vector_db")
+
+docs = get_loader_for_path("doc.pdf").load("doc.pdf")
+chunks = RecursiveCharacterChunker(chunk_size=500).split_documents(docs)
+store.add_documents(chunks)
+
+# 1. Pure vector similarity (with optional score threshold)
+sim = VectorStoreRetriever(store, k=4, score_threshold=0.2)
+results = sim.retrieve("how does X work?")
+
+# 2. MMR — diverse results, fetches 20 then re-ranks to 4
+mmr = MMRRetriever(store, k=4, fetch_k=20, lambda_mult=0.5)
+
+# 3. Hybrid — dense + sparse (BM25) fused via Reciprocal Rank Fusion.
+#    Requires `prompture[rag-hybrid]`.
+hybrid = HybridRetriever(store, corpus=chunks, k=4, alpha=0.5)
+```
+
+Resolve a retriever from the registry by name:
+
+```python
+from prompture.rag import get_retriever
+
+retriever = get_retriever("similarity", vector_store=store, k=10)
+```
+
+### End-to-End RAG Pipeline
+
+`RAGPipeline` composes a retriever, an optional reranker, and an LLM
+driver into a single object exposing `query()` for Q&A, `extract()` for
+structured extraction, and `ingest()` as a convenience to load + chunk +
+embed documents into the retriever's backing store.
+
+```python
+from prompture.rag import (
+    RAGPipeline, RecursiveCharacterChunker, ChromaVectorStore, VectorStoreRetriever,
+)
+from prompture.drivers import get_driver_for_model, get_embedding_driver_for_model
+from prompture.drivers.rerank_registry import get_rerank_driver_for_model
+
+embedder = get_embedding_driver_for_model("openai/text-embedding-3-small")
+llm = get_driver_for_model("openai/gpt-4o-mini")
+reranker = get_rerank_driver_for_model("cohere/rerank-v3.5")
+
+store = ChromaVectorStore(embedding_driver=embedder, persist_directory="./vector_db")
+retriever = VectorStoreRetriever(vector_store=store, k=10)
+
+pipeline = RAGPipeline(
+    retriever=retriever,
+    llm=llm,
+    reranker=reranker,
+    top_n_after_rerank=4,
+)
+
+# Ingest a document end-to-end (load + chunk + embed + store).
+pipeline.ingest("policy.pdf", chunker=RecursiveCharacterChunker(chunk_size=500))
+
+# Query natural language → RAGAnswer with answer, sources, retrieval_results, usage.
+answer = pipeline.query("What is the parental leave policy?")
+print(answer.answer)
+for src in answer.sources:
+    print(src.metadata.get("source"), src.metadata.get("page"))
+```
+
+Use `AsyncRAGPipeline` (with `aquery`, `aextract`, `aingest`) when
+composing async-native subcomponents.  Install the full RAG stack via
+`pip install prompture[rag]` — this pulls in loaders, chunkers, all six
+vector-store backends, and the `rank-bm25` hybrid-retriever dependency.
 
 ## Usage
 
