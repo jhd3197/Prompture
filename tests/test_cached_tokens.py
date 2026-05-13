@@ -44,16 +44,14 @@ class TestCostCalcWithCachedTokens:
     @patch("prompture.infra.model_rates.get_model_rates")
     def test_cached_tokens_use_cache_read_rate(self, mock_rates):
         mock_rates.return_value = {
-            "input": 10.0,    # $10 / 1M
-            "output": 30.0,   # $30 / 1M
+            "input": 10.0,  # $10 / 1M
+            "output": 30.0,  # $30 / 1M
             "cache_read": 1.0,  # $1 / 1M (10% of input)
         }
         mixin = self._bare_mixin()
 
         # 1000 prompt tokens, 800 of them cached; 500 completion
-        cost = mixin._calculate_cost(
-            "openai", "gpt-4o", 1000, 500, cached_tokens=800
-        )
+        cost = mixin._calculate_cost("openai", "gpt-4o", 1000, 500, cached_tokens=800)
 
         # non_cached = 200 → 200/1M * 10 = 0.002
         # cached = 800 → 800/1M * 1 = 0.0008
@@ -66,9 +64,7 @@ class TestCostCalcWithCachedTokens:
         mock_rates.return_value = {"input": 10.0, "output": 30.0, "cache_read": 1.0}
         mixin = self._bare_mixin()
 
-        cost_with_zero_cached = mixin._calculate_cost(
-            "openai", "gpt-4o", 1000, 500, cached_tokens=0
-        )
+        cost_with_zero_cached = mixin._calculate_cost("openai", "gpt-4o", 1000, 500, cached_tokens=0)
         cost_default = mixin._calculate_cost("openai", "gpt-4o", 1000, 500)
 
         assert cost_with_zero_cached == cost_default
@@ -81,9 +77,7 @@ class TestCostCalcWithCachedTokens:
         mock_rates.return_value = {"input": 10.0, "output": 30.0}
         mixin = self._bare_mixin()
 
-        cost = mixin._calculate_cost(
-            "openai", "some-model", 1000, 500, cached_tokens=800
-        )
+        cost = mixin._calculate_cost("openai", "some-model", 1000, 500, cached_tokens=800)
         # Effectively: 1000/1M * 10 + 500/1M * 30 = 0.025
         assert cost == pytest.approx(0.025, abs=1e-9)
 
@@ -151,7 +145,9 @@ class TestOpenAIDriverEndToEnd:
     @patch("prompture.infra.model_rates.get_model_rates")
     def test_generate_records_cached_prompt_tokens_in_meta(self, mock_rates):
         mock_rates.return_value = {
-            "input": 10.0, "output": 30.0, "cache_read": 1.0,
+            "input": 10.0,
+            "output": 30.0,
+            "cache_read": 1.0,
         }
 
         driver = OpenAIDriver.__new__(OpenAIDriver)
@@ -432,9 +428,7 @@ class TestGoogleCacheExtraction:
         assert meta["prompt_tokens"] == 1000
         assert meta["cached_prompt_tokens"] == 700
         # Verify cost was called with the cache discount
-        mock_cost.assert_called_once_with(
-            "google", "gemini-2.5-flash", 1000, 50, cached_tokens=700
-        )
+        mock_cost.assert_called_once_with("google", "gemini-2.5-flash", 1000, 50, cached_tokens=700)
 
     def test_extract_usage_metadata_with_no_cache(self):
         from prompture.drivers.google_driver import GoogleDriver

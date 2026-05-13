@@ -116,9 +116,7 @@ class FalVideoGenDriver(VideoCostMixin, VideoGenDriver):
         input_payload = _build_video_input(prompt, options)
 
         with httpx.Client(timeout=120.0) as client:
-            submit = client.post(
-                f"{self.endpoint}/{model_id}", headers=self._headers(), json=input_payload
-            )
+            submit = client.post(f"{self.endpoint}/{model_id}", headers=self._headers(), json=input_payload)
             if submit.status_code >= 400:
                 raise RuntimeError(f"Fal submit failed {submit.status_code}: {submit.text}")
             submitted = submit.json()
@@ -181,9 +179,7 @@ class FalVideoGenDriver(VideoCostMixin, VideoGenDriver):
                 raise TimeoutError(f"Fal job {request_id} timed out (status={status})")
             time.sleep(poll_interval)
 
-    def _fetch_result(
-        self, client: httpx.Client, model_id: str, request_id: str
-    ) -> dict[str, Any]:
+    def _fetch_result(self, client: httpx.Client, model_id: str, request_id: str) -> dict[str, Any]:
         url = f"{self.endpoint}/{model_id}/requests/{request_id}"
         r = client.get(url, headers=self._headers())
         if r.status_code >= 400:
@@ -203,9 +199,7 @@ class FalVideoGenDriver(VideoCostMixin, VideoGenDriver):
                 return first["url"]
         return None
 
-    def _pending_response(
-        self, model_id: str, request_id: str, raw: dict[str, Any]
-    ) -> dict[str, Any]:
+    def _pending_response(self, model_id: str, request_id: str, raw: dict[str, Any]) -> dict[str, Any]:
         return {
             "videos": [],
             "meta": {
@@ -260,9 +254,7 @@ class AsyncFalVideoGenDriver(VideoCostMixin, AsyncVideoGenDriver):
         input_payload = _build_video_input(prompt, options)
 
         async with httpx.AsyncClient(timeout=120.0) as client:
-            submit = await client.post(
-                f"{self.endpoint}/{model_id}", headers=self._headers(), json=input_payload
-            )
+            submit = await client.post(f"{self.endpoint}/{model_id}", headers=self._headers(), json=input_payload)
             if submit.status_code >= 400:
                 raise RuntimeError(f"Fal submit failed {submit.status_code}: {submit.text}")
             submitted = submit.json()
@@ -326,9 +318,7 @@ class AsyncFalVideoGenDriver(VideoCostMixin, AsyncVideoGenDriver):
                 raise TimeoutError(f"Fal job {request_id} timed out (status={status})")
             await asyncio.sleep(poll_interval)
 
-    async def _fetch_result(
-        self, client: httpx.AsyncClient, model_id: str, request_id: str
-    ) -> dict[str, Any]:
+    async def _fetch_result(self, client: httpx.AsyncClient, model_id: str, request_id: str) -> dict[str, Any]:
         url = f"{self.endpoint}/{model_id}/requests/{request_id}"
         r = await client.get(url, headers=self._headers())
         if r.status_code >= 400:

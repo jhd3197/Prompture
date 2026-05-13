@@ -36,13 +36,55 @@ SOUND_EFFECT_MODEL = "eleven_text_to_sound_v2"
 TTS_MODEL = "eleven_multilingual_v2"
 
 PRESET_VOICES: list[str] = [
-    "Maya", "Arjun", "Serene", "Bernard", "Billy", "Mark", "Clint", "Mabel",
-    "Chad", "Leslie", "Eleanor", "Elias", "Elliot", "Grungle", "Brodie",
-    "Sandra", "Kirk", "Kylie", "Lara", "Lisa", "Malachi", "Marlene", "Martin",
-    "Miriam", "Monster", "Paula", "Pip", "Rusty", "Ragnar", "Xylar", "Maggie",
-    "Jack", "Katie", "Noah", "James", "Rina", "Ella", "Mariah", "Frank",
-    "Claudia", "Niki", "Vincent", "Kendrick", "Myrna", "Tom", "Wanda",
-    "Benjamin", "Kiana", "Rachel",
+    "Maya",
+    "Arjun",
+    "Serene",
+    "Bernard",
+    "Billy",
+    "Mark",
+    "Clint",
+    "Mabel",
+    "Chad",
+    "Leslie",
+    "Eleanor",
+    "Elias",
+    "Elliot",
+    "Grungle",
+    "Brodie",
+    "Sandra",
+    "Kirk",
+    "Kylie",
+    "Lara",
+    "Lisa",
+    "Malachi",
+    "Marlene",
+    "Martin",
+    "Miriam",
+    "Monster",
+    "Paula",
+    "Pip",
+    "Rusty",
+    "Ragnar",
+    "Xylar",
+    "Maggie",
+    "Jack",
+    "Katie",
+    "Noah",
+    "James",
+    "Rina",
+    "Ella",
+    "Mariah",
+    "Frank",
+    "Claudia",
+    "Niki",
+    "Vincent",
+    "Kendrick",
+    "Myrna",
+    "Tom",
+    "Wanda",
+    "Benjamin",
+    "Kiana",
+    "Rachel",
 ]
 
 
@@ -80,9 +122,7 @@ class RunwayTTSDriver(AudioCostMixin, TTSDriver):
     ):
         self.api_key = _get_runway_api_key(api_key)
         self.model = model
-        self.endpoint = (
-            endpoint or os.getenv("RUNWAY_ENDPOINT") or _DEFAULT_ENDPOINT
-        ).rstrip("/")
+        self.endpoint = (endpoint or os.getenv("RUNWAY_ENDPOINT") or _DEFAULT_ENDPOINT).rstrip("/")
 
     @classmethod
     def list_models(cls, *, api_key: str | None = None, **kw: object) -> list[str] | None:

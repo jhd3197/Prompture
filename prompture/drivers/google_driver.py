@@ -115,7 +115,10 @@ class GoogleDriver(CostMixin, Driver):
             if isinstance(raw_cached, (int, float)):
                 cached_prompt_tokens = int(raw_cached)
             cost = self._calculate_cost(
-                "google", self.model, prompt_tokens, completion_tokens,
+                "google",
+                self.model,
+                prompt_tokens,
+                completion_tokens,
                 cached_tokens=cached_prompt_tokens,
             )
         else:

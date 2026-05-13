@@ -71,9 +71,7 @@ def _detect_mode(options: dict[str, Any]) -> str:
     if options.get("mode"):
         mode = options["mode"]
         if mode not in _MODE_ENDPOINTS:
-            raise ValueError(
-                f"Unknown mode {mode!r}. Expected one of {sorted(_MODE_ENDPOINTS)}."
-            )
+            raise ValueError(f"Unknown mode {mode!r}. Expected one of {sorted(_MODE_ENDPOINTS)}.")
         return mode
     if options.get("video") or options.get("videoUri") or options.get("video_uri"):
         return "video_to_video"
@@ -136,9 +134,7 @@ class RunwayVideoGenDriver(VideoCostMixin, VideoGenDriver):
     supported_resolutions = ["720p", "1080p"]
     max_seconds = 10
 
-    KNOWN_MODELS = sorted(
-        {m for s in _KNOWN_MODELS_BY_MODE.values() for m in s}
-    )
+    KNOWN_MODELS = sorted({m for s in _KNOWN_MODELS_BY_MODE.values() for m in s})
 
     # USD per second of output. Credits → USD at $0.01/credit per Runway docs.
     VIDEO_PRICING: dict[str, dict[str, Any]] = {
@@ -159,9 +155,7 @@ class RunwayVideoGenDriver(VideoCostMixin, VideoGenDriver):
     ):
         self.api_key = _get_runway_api_key(api_key)
         self.model = model
-        self.endpoint = (
-            endpoint or os.getenv("RUNWAY_ENDPOINT") or _DEFAULT_ENDPOINT
-        ).rstrip("/")
+        self.endpoint = (endpoint or os.getenv("RUNWAY_ENDPOINT") or _DEFAULT_ENDPOINT).rstrip("/")
 
     @classmethod
     def list_models(cls, *, api_key: str | None = None, **kw: object) -> list[str] | None:
@@ -199,15 +193,11 @@ class RunwayVideoGenDriver(VideoCostMixin, VideoGenDriver):
             if mode == "text_to_video":
                 ratio = ratio or "1280:720"
                 if ratio not in _T2V_RATIOS:
-                    raise ValueError(
-                        f"text_to_video ratio must be one of {sorted(_T2V_RATIOS)}, got {ratio!r}"
-                    )
+                    raise ValueError(f"text_to_video ratio must be one of {sorted(_T2V_RATIOS)}, got {ratio!r}")
             else:  # image_to_video
                 ratio = ratio or "1280:720"
                 if ratio not in _I2V_RATIOS:
-                    raise ValueError(
-                        f"image_to_video ratio must be one of {sorted(_I2V_RATIOS)}, got {ratio!r}"
-                    )
+                    raise ValueError(f"image_to_video ratio must be one of {sorted(_I2V_RATIOS)}, got {ratio!r}")
             body["ratio"] = ratio
 
         # ── duration ────────────────────────────────────────────────
@@ -225,17 +215,11 @@ class RunwayVideoGenDriver(VideoCostMixin, VideoGenDriver):
             body["promptImage"] = _normalize_prompt_image(image)
 
         elif mode == "video_to_video":
-            video_uri = (
-                options.get("video")
-                or options.get("videoUri")
-                or options.get("video_uri")
-            )
+            video_uri = options.get("video") or options.get("videoUri") or options.get("video_uri")
             if not video_uri or not isinstance(video_uri, str):
                 raise ValueError("video_to_video requires 'video' as a URI string")
             body["videoUri"] = video_uri
-            refs = _normalize_references(
-                options.get("references") or options.get("reference_images")
-            )
+            refs = _normalize_references(options.get("references") or options.get("reference_images"))
             if refs:
                 if len(refs) > 1:
                     raise ValueError("video_to_video supports at most 1 reference image")
@@ -269,9 +253,7 @@ class RunwayVideoGenDriver(VideoCostMixin, VideoGenDriver):
             poll, poll_interval, timeout: Control task polling.
         """
         if not self.api_key:
-            raise RuntimeError(
-                "RUNWAY_API_KEY (or RUNWAYML_API_SECRET) is not configured"
-            )
+            raise RuntimeError("RUNWAY_API_KEY (or RUNWAYML_API_SECRET) is not configured")
         if not prompt:
             raise ValueError("prompt cannot be empty")
 

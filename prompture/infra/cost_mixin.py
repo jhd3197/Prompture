@@ -180,12 +180,7 @@ def _default_tokens_param(provider: str, model: str) -> str:
     if provider != "openai":
         return "max_tokens"
     name = (model or "").split("/")[-1].lower()
-    if (
-        name.startswith("gpt-5")
-        or name.startswith("o1")
-        or name.startswith("o3")
-        or name.startswith("o4")
-    ):
+    if name.startswith("gpt-5") or name.startswith("o1") or name.startswith("o3") or name.startswith("o4"):
         return "max_completion_tokens"
     return "max_tokens"
 

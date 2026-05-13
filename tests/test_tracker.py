@@ -88,9 +88,7 @@ class TestBasicRecordAndQuery:
 
     def test_query_filter_by_status(self, tracker):
         tracker.record(UsageEvent(model_name="openai/gpt-4", provider="openai", status="success"))
-        tracker.record(
-            UsageEvent(model_name="openai/gpt-4", provider="openai", status="error", error_type="APIError")
-        )
+        tracker.record(UsageEvent(model_name="openai/gpt-4", provider="openai", status="error", error_type="APIError"))
 
         results = tracker.query(status="error")
         assert len(results) == 1
@@ -180,9 +178,7 @@ class TestContextPropagation:
     def test_explicit_event_context_not_overridden(self, tracker):
         """Event fields set explicitly should not be overridden by context."""
         with tracker.session("ctx-session"):
-            tracker.record(
-                UsageEvent(model_name="test", provider="test", session_id="explicit-session")
-            )
+            tracker.record(UsageEvent(model_name="test", provider="test", session_id="explicit-session"))
 
         results = tracker.query()
         assert results[0]["session_id"] == "explicit-session"

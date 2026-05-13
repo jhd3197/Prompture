@@ -37,9 +37,35 @@ VOICE_ISOLATION_MODEL = "eleven_voice_isolation"
 SPEECH_TO_SPEECH_MODEL = "eleven_multilingual_sts_v2"
 
 DUBBING_LANGUAGES: set[str] = {
-    "en", "hi", "pt", "zh", "es", "fr", "de", "ja", "ar", "ru", "ko", "id",
-    "it", "nl", "tr", "pl", "sv", "fil", "ms", "ro", "uk", "el", "cs", "da",
-    "fi", "bg", "hr", "sk", "ta",
+    "en",
+    "hi",
+    "pt",
+    "zh",
+    "es",
+    "fr",
+    "de",
+    "ja",
+    "ar",
+    "ru",
+    "ko",
+    "id",
+    "it",
+    "nl",
+    "tr",
+    "pl",
+    "sv",
+    "fil",
+    "ms",
+    "ro",
+    "uk",
+    "el",
+    "cs",
+    "da",
+    "fi",
+    "bg",
+    "hr",
+    "sk",
+    "ta",
 }
 
 
@@ -77,9 +103,7 @@ class RunwayAudioTransformDriver:
         endpoint: str | None = None,
     ):
         self.api_key = _get_runway_api_key(api_key)
-        self.endpoint = (
-            endpoint or os.getenv("RUNWAY_ENDPOINT") or _DEFAULT_ENDPOINT
-        ).rstrip("/")
+        self.endpoint = (endpoint or os.getenv("RUNWAY_ENDPOINT") or _DEFAULT_ENDPOINT).rstrip("/")
 
     # ── public API ──────────────────────────────────────────────────────
 
@@ -97,9 +121,7 @@ class RunwayAudioTransformDriver:
     ) -> dict[str, Any]:
         """Dub the input audio to ``target_lang`` (ISO 639-1 code)."""
         if target_lang not in DUBBING_LANGUAGES:
-            raise ValueError(
-                f"Unsupported targetLang {target_lang!r}. Accepted: {sorted(DUBBING_LANGUAGES)}"
-            )
+            raise ValueError(f"Unsupported targetLang {target_lang!r}. Accepted: {sorted(DUBBING_LANGUAGES)}")
         audio_norm = _normalize_media_input(audio, kind="audio")
         body: dict[str, Any] = {
             "model": VOICE_DUBBING_MODEL,

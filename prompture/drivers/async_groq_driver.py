@@ -84,7 +84,10 @@ class AsyncGroqDriver(CostMixin, AsyncDriver):
         cached_prompt_tokens = _extract_openai_cached_tokens(usage)
 
         total_cost = self._calculate_cost(
-            "groq", model, prompt_tokens, completion_tokens,
+            "groq",
+            model,
+            prompt_tokens,
+            completion_tokens,
             cached_tokens=cached_prompt_tokens,
         )
 
@@ -152,7 +155,10 @@ class AsyncGroqDriver(CostMixin, AsyncDriver):
         total_tokens = getattr(usage, "total_tokens", 0)
         cached_prompt_tokens = _extract_openai_cached_tokens(usage)
         total_cost = self._calculate_cost(
-            "groq", model, prompt_tokens, completion_tokens,
+            "groq",
+            model,
+            prompt_tokens,
+            completion_tokens,
             cached_tokens=cached_prompt_tokens,
         )
 

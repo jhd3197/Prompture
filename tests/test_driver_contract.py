@@ -92,9 +92,7 @@ def test_capability_resolution_user_override_beats_driver() -> None:
     )
 
     try:
-        override_capabilities(
-            "ollama", ProviderCapabilities(json_mode=True, streaming=True)
-        )
+        override_capabilities("ollama", ProviderCapabilities(json_mode=True, streaming=True))
         async_driver = AsyncOllamaDriver(endpoint="http://localhost:11434")
         caps = get_capabilities("ollama/llama3", driver=async_driver)
         assert caps.streaming is True, "user override must trump live driver flags"
@@ -115,9 +113,7 @@ def test_validate_driver_capabilities_returns_violations() -> None:
         pass
 
     BrokenDriver.supports_streaming = True
-    BrokenDriver.generate_messages_stream = (
-        OllamaDriver.__bases__[0].generate_messages_stream
-    )
+    BrokenDriver.generate_messages_stream = OllamaDriver.__bases__[0].generate_messages_stream
 
     violations = validate_driver_capabilities(BrokenDriver)
     assert any("supports_streaming" in v for v in violations)

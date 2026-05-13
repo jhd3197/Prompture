@@ -97,9 +97,7 @@ class FalImageGenDriver(ImageCostMixin, ImageGenDriver):
         input_payload = _build_img_input(prompt, options)
 
         with httpx.Client(timeout=120.0) as client:
-            submit = client.post(
-                f"{self.endpoint}/{model_id}", headers=self._headers(), json=input_payload
-            )
+            submit = client.post(f"{self.endpoint}/{model_id}", headers=self._headers(), json=input_payload)
             if submit.status_code >= 400:
                 raise RuntimeError(f"Fal submit failed {submit.status_code}: {submit.text}")
             submitted = submit.json()
@@ -211,9 +209,7 @@ class AsyncFalImageGenDriver(ImageCostMixin, AsyncImageGenDriver):
         input_payload = _build_img_input(prompt, options)
 
         async with httpx.AsyncClient(timeout=120.0) as client:
-            submit = await client.post(
-                f"{self.endpoint}/{model_id}", headers=self._headers(), json=input_payload
-            )
+            submit = await client.post(f"{self.endpoint}/{model_id}", headers=self._headers(), json=input_payload)
             if submit.status_code >= 400:
                 raise RuntimeError(f"Fal submit failed {submit.status_code}: {submit.text}")
             submitted = submit.json()

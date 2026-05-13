@@ -54,15 +54,11 @@ class AsyncGoogleVertexAIDriver(CostMixin, AsyncDriver):
     ):
         if _is_claude_model(model):
             if AsyncAnthropicVertex is None:
-                raise RuntimeError(
-                    "anthropic package is not installed. "
-                    "Install it with: pip install anthropic[vertex]"
-                )
+                raise RuntimeError("anthropic package is not installed. Install it with: pip install anthropic[vertex]")
         else:
             if genai is None:
                 raise RuntimeError(
-                    "google-genai package is not installed. "
-                    "Install it with: pip install prompture[google]"
+                    "google-genai package is not installed. Install it with: pip install prompture[google]"
                 )
 
         self.api_key = api_key or os.getenv("GOOGLE_VERTEX_API_KEY")
@@ -145,8 +141,10 @@ class AsyncGoogleVertexAIDriver(CostMixin, AsyncDriver):
     def _prepare_messages(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if _is_claude_model(self.model):
             from .vision_helpers import _prepare_claude_vision_messages
+
             return _prepare_claude_vision_messages(messages)
         from .vision_helpers import _prepare_google_vision_messages
+
         return _prepare_google_vision_messages(messages)
 
     def _build_gemini_generation_args(
@@ -218,8 +216,14 @@ class AsyncGoogleVertexAIDriver(CostMixin, AsyncDriver):
             kwargs["system"] = system_content
 
         if options.get("json_mode") and options.get("json_schema"):
-            tool_def = {"name": "extract_json", "description": "Extract structured data", "input_schema": options["json_schema"]}
-            resp = await client.messages.create(**kwargs, tools=[tool_def], tool_choice={"type": "tool", "name": "extract_json"})
+            tool_def = {
+                "name": "extract_json",
+                "description": "Extract structured data",
+                "input_schema": options["json_schema"],
+            }
+            resp = await client.messages.create(
+                **kwargs, tools=[tool_def], tool_choice={"type": "tool", "name": "extract_json"}
+            )
             text = ""
             for block in resp.content:
                 if block.type == "tool_use":
@@ -258,17 +262,24 @@ class AsyncGoogleVertexAIDriver(CostMixin, AsyncDriver):
         for t in tools:
             if "type" in t and t["type"] == "function":
                 fn = t["function"]
-                anthropic_tools.append({
-                    "name": fn["name"],
-                    "description": fn.get("description", ""),
-                    "input_schema": fn.get("parameters", {"type": "object", "properties": {}}),
-                })
+                anthropic_tools.append(
+                    {
+                        "name": fn["name"],
+                        "description": fn.get("description", ""),
+                        "input_schema": fn.get("parameters", {"type": "object", "properties": {}}),
+                    }
+                )
             elif "input_schema" in t:
                 anthropic_tools.append(t)
             else:
                 anthropic_tools.append(t)
 
-        kwargs: dict[str, Any] = {"model": model, "messages": api_messages, "max_tokens": opts["max_tokens"], "tools": anthropic_tools}
+        kwargs: dict[str, Any] = {
+            "model": model,
+            "messages": api_messages,
+            "max_tokens": opts["max_tokens"],
+            "tools": anthropic_tools,
+        }
         if "temperature" in opts:
             kwargs["temperature"] = opts["temperature"]
         if system_content:
@@ -352,7 +363,9 @@ class AsyncGoogleVertexAIDriver(CostMixin, AsyncDriver):
 
     # ── Gemini backend ──────────────────────────────────────────���─────
 
-    async def _gemini_generate(self, messages: list[dict[str, Any]], options: dict[str, Any] | None = None) -> dict[str, Any]:
+    async def _gemini_generate(
+        self, messages: list[dict[str, Any]], options: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         gen_input, config_dict = self._build_gemini_generation_args(messages, options)
         try:
             config = types.GenerateContentConfig(**config_dict)
@@ -364,7 +377,11 @@ class AsyncGoogleVertexAIDriver(CostMixin, AsyncDriver):
             usage_meta = self._extract_gemini_usage(response, messages)
             return {
                 "text": response.text,
-                "meta": {**usage_meta, "raw_response": getattr(response, "prompt_feedback", None), "model_name": self.model},
+                "meta": {
+                    **usage_meta,
+                    "raw_response": getattr(response, "prompt_feedback", None),
+                    "model_name": self.model,
+                },
             }
         except Exception as e:
             raise RuntimeError(f"Vertex AI Gemini request failed: {e}") from e
@@ -386,7 +403,11 @@ class AsyncGoogleVertexAIDriver(CostMixin, AsyncDriver):
                     yield {"type": "delta", "text": chunk_text}
 
             usage_meta = self._extract_gemini_usage(response, messages)
-            yield {"type": "done", "text": full_text, "meta": {**usage_meta, "raw_response": {}, "model_name": self.model}}
+            yield {
+                "type": "done",
+                "text": full_text,
+                "meta": {**usage_meta, "raw_response": {}, "model_name": self.model},
+            }
         except Exception as e:
             raise RuntimeError(f"Vertex AI Gemini streaming failed: {e}") from e
 

@@ -11,6 +11,7 @@ from prompture.infra.tukuy_backend import TukuyLLMBackend, create_tukuy_backend
 # Mock driver
 # ---------------------------------------------------------------------------
 
+
 class MockAsyncDriver:
     """Minimal mock that satisfies the AsyncDriver interface."""
 
@@ -89,6 +90,7 @@ class ErrorDriver(MockAsyncDriver):
 # Tests: construction
 # ---------------------------------------------------------------------------
 
+
 class TestConstruction:
     def test_basic_init(self):
         driver = MockAsyncDriver()
@@ -122,6 +124,7 @@ class TestConstruction:
 # ---------------------------------------------------------------------------
 # Tests: complete() message building
 # ---------------------------------------------------------------------------
+
 
 class TestComplete:
     @pytest.fixture
@@ -192,6 +195,7 @@ class TestComplete:
 # Tests: structured output (json_schema)
 # ---------------------------------------------------------------------------
 
+
 class TestJsonSchema:
     @pytest.mark.asyncio
     async def test_json_schema_native(self):
@@ -230,6 +234,7 @@ class TestJsonSchema:
 # Tests: generate() fallback for non-messages drivers
 # ---------------------------------------------------------------------------
 
+
 class TestGenerateFallback:
     @pytest.mark.asyncio
     async def test_falls_back_to_generate(self):
@@ -253,6 +258,7 @@ class TestGenerateFallback:
 # Tests: response normalization
 # ---------------------------------------------------------------------------
 
+
 class TestResponseNormalization:
     @pytest.mark.asyncio
     async def test_meta_mapping(self):
@@ -269,9 +275,11 @@ class TestResponseNormalization:
     async def test_model_fallback_to_default(self):
         """When driver meta has no model_name, use default_model."""
         driver = MockAsyncDriver()
+
         # Override generate_messages to return empty meta
         async def gen(messages, options):
             return {"text": "hi", "meta": {}}
+
         driver.generate_messages = gen
         backend = TukuyLLMBackend(driver, default_model="fallback/model")
         result = await backend.complete("Hi")
@@ -281,8 +289,10 @@ class TestResponseNormalization:
     async def test_model_fallback_to_unknown(self):
         """When no model_name and no default, use 'unknown'."""
         driver = MockAsyncDriver()
+
         async def gen(messages, options):
             return {"text": "hi", "meta": {}}
+
         driver.generate_messages = gen
         backend = TukuyLLMBackend(driver)
         result = await backend.complete("Hi")
@@ -292,8 +302,10 @@ class TestResponseNormalization:
     async def test_empty_result(self):
         """Handle a driver returning minimal dict."""
         driver = MockAsyncDriver()
+
         async def gen(messages, options):
             return {}
+
         driver.generate_messages = gen
         backend = TukuyLLMBackend(driver)
         result = await backend.complete("Hi")
@@ -307,10 +319,12 @@ class TestResponseNormalization:
 # Tests: on_complete callback
 # ---------------------------------------------------------------------------
 
+
 class TestOnCompleteCallback:
     @pytest.mark.asyncio
     async def test_sync_callback(self):
         captured = []
+
         def on_complete(response):
             captured.append(response)
 
@@ -323,6 +337,7 @@ class TestOnCompleteCallback:
     @pytest.mark.asyncio
     async def test_async_callback(self):
         captured = []
+
         async def on_complete(response):
             captured.append(response)
 
@@ -335,6 +350,7 @@ class TestOnCompleteCallback:
     @pytest.mark.asyncio
     async def test_callback_error_ignored(self):
         """Callback errors must not affect the response."""
+
         def on_complete(response):
             raise ValueError("logging failed")
 
@@ -366,6 +382,7 @@ class TestOnCompleteCallback:
 # Tests: error handling
 # ---------------------------------------------------------------------------
 
+
 class TestErrorHandling:
     @pytest.mark.asyncio
     async def test_driver_error_wrapped(self):
@@ -387,6 +404,7 @@ class TestErrorHandling:
 # ---------------------------------------------------------------------------
 # Tests: with_model()
 # ---------------------------------------------------------------------------
+
 
 class TestWithModel:
     def test_returns_new_instance(self):
@@ -443,6 +461,7 @@ class TestWithModel:
 # Tests: create_tukuy_backend() factory
 # ---------------------------------------------------------------------------
 
+
 class TestCreateFactory:
     def test_factory_creates_backend(self, monkeypatch):
         """Factory should call get_async_driver_for_model and return TukuyLLMBackend."""
@@ -457,6 +476,7 @@ class TestCreateFactory:
         )
         # Patch the import inside create_tukuy_backend
         import prompture.drivers as drivers_mod
+
         monkeypatch.setattr(drivers_mod, "get_async_driver_for_model", fake_get_driver)
 
         backend = create_tukuy_backend(
@@ -479,6 +499,7 @@ class TestCreateFactory:
             return mock_driver
 
         import prompture.drivers as drivers_mod
+
         monkeypatch.setattr(drivers_mod, "get_async_driver_for_model", fake_get_driver)
 
         sentinel_env = object()
@@ -492,6 +513,7 @@ class TestCreateFactory:
             return mock_driver
 
         import prompture.drivers as drivers_mod
+
         monkeypatch.setattr(drivers_mod, "get_async_driver_for_model", fake_get_driver)
 
         def my_callback(resp):
@@ -505,6 +527,7 @@ class TestCreateFactory:
 # Mock streaming driver
 # ---------------------------------------------------------------------------
 
+
 class MockStreamingAsyncDriver(MockAsyncDriver):
     """Driver that supports streaming via generate_messages_stream."""
 
@@ -515,13 +538,17 @@ class MockStreamingAsyncDriver(MockAsyncDriver):
         self._chunks = chunks or [
             {"type": "delta", "text": "Hello"},
             {"type": "delta", "text": " World"},
-            {"type": "done", "text": "Hello World", "meta": {
-                "prompt_tokens": 5,
-                "completion_tokens": 2,
-                "total_tokens": 7,
-                "cost": 0.001,
-                "model_name": "mock-streaming",
-            }},
+            {
+                "type": "done",
+                "text": "Hello World",
+                "meta": {
+                    "prompt_tokens": 5,
+                    "completion_tokens": 2,
+                    "total_tokens": 7,
+                    "cost": 0.001,
+                    "model_name": "mock-streaming",
+                },
+            },
         ]
         self.stream_messages = None
         self.stream_options = None
@@ -544,6 +571,7 @@ class ErrorStreamingDriver(MockStreamingAsyncDriver):
 # ---------------------------------------------------------------------------
 # Tests: stream()
 # ---------------------------------------------------------------------------
+
 
 class TestStream:
     @pytest.mark.asyncio
@@ -580,10 +608,12 @@ class TestStream:
     @pytest.mark.asyncio
     async def test_model_fallback_in_meta(self):
         """When driver meta has no model_name, use default_model."""
-        driver = MockStreamingAsyncDriver(chunks=[
-            {"type": "delta", "text": "hi"},
-            {"type": "done", "text": "hi", "meta": {}},
-        ])
+        driver = MockStreamingAsyncDriver(
+            chunks=[
+                {"type": "delta", "text": "hi"},
+                {"type": "done", "text": "hi", "meta": {}},
+            ]
+        )
         backend = TukuyLLMBackend(driver, default_model="fallback/model")
         chunks = []
         async for chunk in backend.stream("Hello"):
@@ -595,6 +625,7 @@ class TestStream:
     @pytest.mark.asyncio
     async def test_fires_on_complete_callback(self):
         captured = []
+
         def on_complete(response):
             captured.append(response)
 
@@ -611,6 +642,7 @@ class TestStream:
     @pytest.mark.asyncio
     async def test_fires_async_on_complete_callback(self):
         captured = []
+
         async def on_complete(response):
             captured.append(response)
 
@@ -709,18 +741,22 @@ class TestStream:
 # Tests: top-level exports
 # ---------------------------------------------------------------------------
 
+
 class TestExports:
     def test_importable_from_infra(self):
         from prompture.infra.tukuy_backend import TukuyLLMBackend, create_tukuy_backend
+
         assert TukuyLLMBackend is not None
         assert create_tukuy_backend is not None
 
     def test_importable_from_bridges_compat(self):
         from prompture.bridges import TukuyLLMBackend, create_tukuy_backend
+
         assert TukuyLLMBackend is not None
         assert create_tukuy_backend is not None
 
     def test_importable_from_top_level(self):
         from prompture import TukuyLLMBackend, create_tukuy_backend
+
         assert TukuyLLMBackend is not None
         assert create_tukuy_backend is not None
