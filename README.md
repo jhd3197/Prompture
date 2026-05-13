@@ -341,8 +341,83 @@ pip install 'prompture[rag-xlsx]'  # openpyxl
 Each loader raises an `ImportError` pointing at the right extra if its
 parser dep is missing.
 
-> Coming in subsequent phases: **chunkers** (Phase 11), **vector stores**
-> (Phase 12), and **retrievers + end-to-end pipelines** (Phase 13).
+### Chunkers
+
+Phase 11 adds text chunkers that slice loaded `Document` objects into
+smaller pieces ready for embedding. Each chunker preserves and extends
+the parent document's metadata with `chunk_index`, `chunk_count`, and
+`parent_source` (and, for `MarkdownChunker`, a `headers` breadcrumb).
+
+```python
+from prompture.rag import RecursiveCharacterChunker, get_loader_for_path
+
+loader = get_loader_for_path("doc.pdf")
+docs = loader.load("doc.pdf")
+chunker = RecursiveCharacterChunker(chunk_size=500, chunk_overlap=50)
+chunks = chunker.split_documents(docs)
+for c in chunks[:3]:
+    print(c.metadata["chunk_index"], "/", c.metadata["chunk_count"], "→", c.content[:80])
+```
+
+Built-in chunkers:
+
+* **`CharacterChunker`** — fixed-size character windows with a single
+  separator (default `"\n\n"`), falling back to a hard cut when the
+  separator is absent.
+* **`RecursiveCharacterChunker`** — LangChain-style splitter that tries
+  a hierarchy of separators (`["\n\n", "\n", ". ", " ", ""]`) from
+  largest to smallest and merges small pieces to fill `chunk_size`.
+* **`TokenChunker`** — counts tokens with `tiktoken` (default encoder
+  `cl100k_base`) instead of characters. Install
+  `prompture[rag-token]`.
+* **`SemanticChunker`** — groups adjacent sentences by embedding
+  similarity. Takes an `embedding_driver` and uses one of four
+  breakpoint strategies (`percentile`, `standard_deviation`,
+  `interquartile`, `gradient`). This is the only chunker that hits an
+  external API at split time. `numpy` is recommended but optional —
+  install `prompture[rag-semantic]`.
+* **`MarkdownChunker`** — Markdown-aware splitter that breaks on header
+  boundaries and records the active header hierarchy in chunk metadata
+  (e.g. `{"Header 1": "Intro", "Header 2": "Background"}`).
+
+```python
+from prompture.rag import SemanticChunker
+from prompture.drivers.openai_embedding_driver import OpenAIEmbeddingDriver
+
+driver = OpenAIEmbeddingDriver(model="text-embedding-3-small")
+chunker = SemanticChunker(
+    embedding_driver=driver,
+    breakpoint_threshold_type="percentile",
+    breakpoint_threshold_amount=95.0,
+)
+chunks = chunker.split_documents(docs)
+```
+
+Chunkers are also reachable through a registry:
+
+```python
+from prompture.rag import get_chunker, get_async_chunker
+
+chunker = get_chunker("recursive", chunk_size=500, chunk_overlap=50)
+async_chunker = get_async_chunker("recursive", chunk_size=500)
+```
+
+Async siblings wrap the sync implementations in `asyncio.to_thread`
+(`MarkdownChunker`, `CharacterChunker`, `RecursiveCharacterChunker`,
+`TokenChunker`, `SemanticChunker` are all available).
+
+#### Chunker optional extras
+
+```bash
+pip install 'prompture[rag-token]'     # tiktoken for TokenChunker
+pip install 'prompture[rag-semantic]'  # numpy for SemanticChunker (recommended)
+```
+
+The `rag` umbrella extra now installs `rag-token` and `rag-semantic` in
+addition to the loader extras.
+
+> Coming in subsequent phases: **vector stores** (Phase 12), and
+> **retrievers + end-to-end pipelines** (Phase 13).
 
 ## Usage
 

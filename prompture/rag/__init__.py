@@ -1,19 +1,39 @@
 """Prompture RAG (Retrieval-Augmented Generation) layer.
 
-Phase 10 introduces the document loader subset of the RAG stack:
+Phase 10 introduced the document loader subset of the RAG stack; Phase
+11 adds chunkers:
 
 * :class:`Document` — content + metadata container.
 * :class:`DocumentLoader` / :class:`AsyncDocumentLoader` — abstract base
   classes for synchronous and asynchronous loaders.
 * Built-in loaders for plain text, PDF, DOCX, HTML, Markdown, JSON / JSONL,
   CSV, EPUB, and XLSX.
-* A name + extension-indexed registry exposing :func:`get_loader`,
-  :func:`get_loader_for_path`, and async variants.
+* :class:`TextChunker` / :class:`AsyncTextChunker` plus concrete chunkers
+  (:class:`CharacterChunker`, :class:`RecursiveCharacterChunker`,
+  :class:`TokenChunker`, :class:`SemanticChunker`,
+  :class:`MarkdownChunker`).
+* Name + extension-indexed registries exposing :func:`get_loader`,
+  :func:`get_loader_for_path`, :func:`get_chunker`, and async variants.
 
-Subsequent phases will add chunkers (Phase 11), vector stores (Phase 12),
-and retrievers / end-to-end pipelines (Phase 13).
+Subsequent phases will add vector stores (Phase 12) and retrievers /
+end-to-end pipelines (Phase 13).
 """
 
+from .chunkers import (
+    ASYNC_CHUNKER_REGISTRY,
+    CHUNKER_REGISTRY,
+    AsyncTextChunker,
+    CharacterChunker,
+    MarkdownChunker,
+    RecursiveCharacterChunker,
+    SemanticChunker,
+    TextChunker,
+    TokenChunker,
+    get_async_chunker,
+    get_chunker,
+    register_async_chunker,
+    register_chunker,
+)
 from .documents import (
     AsyncDocumentLoader,
     Document,
@@ -67,24 +87,37 @@ for _name, _cls in _BUILTIN_LOADERS.items():
 del _name, _cls
 
 __all__ = [
+    "ASYNC_CHUNKER_REGISTRY",
     "ASYNC_LOADER_REGISTRY",
+    "CHUNKER_REGISTRY",
     "LOADER_REGISTRY",
     "AsyncDocumentLoader",
+    "AsyncTextChunker",
     "CSVLoader",
+    "CharacterChunker",
     "DOCXLoader",
     "Document",
     "DocumentLoader",
     "EPUBLoader",
     "HTMLLoader",
     "JSONLoader",
+    "MarkdownChunker",
     "MarkdownLoader",
     "PDFLoader",
+    "RecursiveCharacterChunker",
+    "SemanticChunker",
+    "TextChunker",
     "TextLoader",
+    "TokenChunker",
     "XLSXLoader",
+    "get_async_chunker",
     "get_async_loader",
     "get_async_loader_for_path",
+    "get_chunker",
     "get_loader",
     "get_loader_for_path",
+    "register_async_chunker",
     "register_async_loader",
+    "register_chunker",
     "register_loader",
 ]

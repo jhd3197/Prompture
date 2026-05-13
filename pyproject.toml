@@ -56,8 +56,10 @@ rag-docx = ["python-docx>=1.1.0"]
 rag-html = ["beautifulsoup4>=4.12.0", "markdownify>=0.11.0", "lxml>=5.0.0"]
 rag-epub = ["ebooklib>=0.18", "beautifulsoup4>=4.12.0"]
 rag-xlsx = ["openpyxl>=3.1.0"]
+rag-token = ["tiktoken>=0.5.0"]
+rag-semantic = ["numpy>=1.24.0"]
 rag = [
-    "prompture[rag-pdf,rag-docx,rag-html,rag-epub,rag-xlsx]",
+    "prompture[rag-pdf,rag-docx,rag-html,rag-epub,rag-xlsx,rag-token,rag-semantic]",
 ]
 
 [project.scripts]
