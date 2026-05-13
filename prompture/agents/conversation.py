@@ -72,6 +72,7 @@ class Conversation:
         fallback_models: list[str] | None = None,
         on_model_fallback: Callable[[str, str, Any], None] | None = None,
         env: ProviderEnvironment | None = None,
+        before_turn: Callable[["Conversation", int], None] | None = None,
     ) -> None:
         if system_prompt is not None and persona is not None:
             raise ValueError("Cannot provide both 'system_prompt' and 'persona'. Use one or the other.")
@@ -141,6 +142,13 @@ class Conversation:
 
         # Reasoning content from last response
         self._last_reasoning: str | None = None
+
+        # Optional callback fired before each driver call inside the tool
+        # loop. Used by DeepAgent for summarization. The hook receives
+        # ``(conversation, last_prompt_tokens)`` and may mutate
+        # ``conversation._messages`` directly.
+        self._before_turn: Callable[["Conversation", int], None] | None = before_turn
+        self._last_prompt_tokens: int = 0
 
         # Persistence
         self._conversation_id = conversation_id or str(uuid.uuid4())
@@ -426,11 +434,16 @@ class Conversation:
     def _accumulate_usage(self, meta: dict[str, Any]) -> None:
         delta_tokens = meta.get("total_tokens", 0)
         delta_cost = meta.get("cost", 0.0)
-        self._usage["prompt_tokens"] += meta.get("prompt_tokens", 0)
+        prompt_tokens = meta.get("prompt_tokens", 0)
+        self._usage["prompt_tokens"] += prompt_tokens
         self._usage["completion_tokens"] += meta.get("completion_tokens", 0)
         self._usage["total_tokens"] += delta_tokens
         self._usage["cost"] += delta_cost
         self._usage["turns"] += 1
+        # Track most recent prompt size so before_turn hooks know the
+        # current context window without recomputing it.
+        if prompt_tokens:
+            self._last_prompt_tokens = prompt_tokens
         logger.debug(
             "[conversation] usage delta tokens=%d cost=%.6f | running total tokens=%d cost=%.6f turns=%d",
             delta_tokens,
@@ -506,6 +519,8 @@ class Conversation:
 
         for _round in range(self._max_tool_rounds):
             self._check_budget()
+            if self._run_before_turn():
+                msgs = self._build_messages_raw()
             resp = self._driver.generate_messages_with_tools_with_hooks(msgs, tool_defs, merged)
 
             meta = resp.get("meta", {})
@@ -600,6 +615,8 @@ class Conversation:
         msgs = self._build_messages_raw()
 
         for _round in range(self._max_tool_rounds):
+            if self._run_before_turn():
+                msgs = self._build_messages_raw()
             resp = self._driver.generate_messages_with_tools_with_hooks(msgs, tool_defs, merged)
 
             meta = resp.get("meta", {})
@@ -687,6 +704,7 @@ class Conversation:
         self._messages.append({"role": "user", "content": user_content})
 
         for _round in range(self._max_tool_rounds):
+            self._run_before_turn()
             msgs: list[dict[str, Any]] = []
             msgs.append({"role": "system", "content": augmented_system})
             msgs.extend(self._messages)
@@ -746,6 +764,7 @@ class Conversation:
 
         for _round in range(self._max_tool_rounds):
             self._check_budget()
+            self._run_before_turn()
             # Build messages with the augmented system prompt
             msgs: list[dict[str, Any]] = []
             msgs.append({"role": "system", "content": augmented_system})
@@ -788,6 +807,20 @@ class Conversation:
             msgs.append({"role": "system", "content": self._system_prompt})
         msgs.extend(self._messages)
         return msgs
+
+    def _run_before_turn(self) -> bool:
+        """Fire the optional before_turn hook. Returns True if the hook
+        mutated ``self._messages`` (callers should rebuild their local
+        msgs list)."""
+        if self._before_turn is None:
+            return False
+        msg_count_before = len(self._messages)
+        try:
+            self._before_turn(self, self._last_prompt_tokens)
+        except Exception:  # noqa: BLE001
+            logger.exception("before_turn hook raised; continuing without mutation")
+            return False
+        return len(self._messages) != msg_count_before
 
     # ------------------------------------------------------------------
     # Streaming

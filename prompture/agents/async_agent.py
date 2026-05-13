@@ -762,6 +762,9 @@ class AsyncAgent(Generic[DepsType]):
                 conv._tools = tools
             if driver_callbacks is not None:
                 conv._driver.callbacks = driver_callbacks
+            hook = getattr(self, "_before_turn_hook", None)
+            if hook is not None:
+                conv._before_turn = hook
             return conv
 
         effective_tools = tools if tools is not None else (self._tools if self._tools else None)
@@ -771,6 +774,9 @@ class AsyncAgent(Generic[DepsType]):
             "tools": effective_tools,
             "max_tool_rounds": self._max_iterations,
         }
+        hook = getattr(self, "_before_turn_hook", None)
+        if hook is not None:
+            kwargs["before_turn"] = hook
         if self._max_tool_result_length is not None:
             kwargs["max_tool_result_length"] = self._max_tool_result_length
         if self._options:
