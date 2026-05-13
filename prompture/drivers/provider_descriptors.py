@@ -671,6 +671,40 @@ def _build_descriptors() -> list[ProviderDescriptor]:
         )
     )
 
+    # ── Luma AI (Dream Machine — video gen) ──────────────────────────
+    _luma_kw = {"api_key": "luma_api_key"}
+    descriptors.append(
+        ProviderDescriptor(
+            name="luma",
+            video_gen_sync=DriverSpec("luma_video_gen_driver.LumaVideoGenDriver", _luma_kw, "luma_video_model"),
+            video_gen_async=DriverSpec(
+                "async_luma_video_gen_driver.AsyncLumaVideoGenDriver",
+                _luma_kw,
+                "luma_video_model",
+            ),
+            display_name="Luma AI",
+            is_configured_check="luma_api_key",
+            list_models_kwargs=[("api_key", "luma_api_key", "LUMA_API_KEY")],
+        )
+    )
+
+    # ── Pika Labs (video gen) ────────────────────────────────────────
+    _pika_kw = {"api_key": "pika_api_key"}
+    descriptors.append(
+        ProviderDescriptor(
+            name="pika",
+            video_gen_sync=DriverSpec("pika_video_gen_driver.PikaVideoGenDriver", _pika_kw, "pika_video_model"),
+            video_gen_async=DriverSpec(
+                "async_pika_video_gen_driver.AsyncPikaVideoGenDriver",
+                _pika_kw,
+                "pika_video_model",
+            ),
+            display_name="Pika Labs",
+            is_configured_check="pika_api_key",
+            list_models_kwargs=[("api_key", "pika_api_key", "PIKA_API_KEY")],
+        )
+    )
+
     # ── Fal.ai (image + video aggregator) ────────────────────────────
     _fal_kw = {"api_key": "fal_api_key", "endpoint": "fal_endpoint"}
     descriptors.append(
@@ -809,6 +843,8 @@ def _build_descriptors() -> list[ProviderDescriptor]:
         ("vertexai", "google_vertexai", {"llm"}),
         ("hailuo", "minimax", {"video_gen"}),
         ("mistralai", "mistral", {"llm"}),
+        ("dream-machine", "luma", {"video_gen"}),
+        ("lumalabs", "luma", {"video_gen"}),
     ]
 
     # Build a lookup of canonical descriptors by name.

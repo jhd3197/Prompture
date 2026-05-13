@@ -684,6 +684,20 @@ def get_available_video_gen_models(
         for model_id in RunwayVideoGenDriver.KNOWN_MODELS:
             available.add(f"runway/{model_id}")
 
+    # Luma AI (Dream Machine) video gen models
+    if _cfg_value(env, "luma_api_key", "LUMA_API_KEY"):
+        from ..drivers.luma_video_gen_driver import LumaVideoGenDriver
+
+        for model_id in LumaVideoGenDriver.KNOWN_MODELS:
+            available.add(f"luma/{model_id}")
+
+    # Pika Labs video gen models
+    if _cfg_value(env, "pika_api_key", "PIKA_API_KEY"):
+        from ..drivers.pika_video_gen_driver import PikaVideoGenDriver
+
+        for model_id in PikaVideoGenDriver.KNOWN_MODELS:
+            available.add(f"pika/{model_id}")
+
     # Dynamic discovery: check modalities_output from models.dev capabilities
     # for any models that the built-in video drivers don't know about yet.
     from .model_rates import get_model_capabilities

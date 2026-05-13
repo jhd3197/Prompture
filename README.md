@@ -31,7 +31,7 @@ print(person.name)  # Maria
 ## Key Features
 
 - **Structured output** — JSON schema enforcement and direct Pydantic model population
-- **30+ providers** — OpenAI, Claude, Google, Groq, Grok, Azure, AWS Bedrock, Ollama, LM Studio, OpenRouter, HuggingFace, Moonshot, ModelScope, Z.ai, Vertex AI, AirLLM, CachiBot, Runway, MiniMax/Hailuo, Kling AI, Fal.ai, Mistral AI, DeepSeek, Cohere, Voyage AI, Jina AI, Cartesia, Deepgram, AssemblyAI, generic OpenAI-compatible (Fireworks, Together, Cerebras, SambaNova, Perplexity, NVIDIA, DeepInfra, SiliconFlow), and generic HTTP
+- **32+ providers** — OpenAI, Claude, Google, Groq, Grok, Azure, AWS Bedrock, Ollama, LM Studio, OpenRouter, HuggingFace, Moonshot, ModelScope, Z.ai, Vertex AI, AirLLM, CachiBot, Runway, MiniMax/Hailuo, Kling AI, Luma AI, Pika Labs, Fal.ai, Mistral AI, DeepSeek, Cohere, Voyage AI, Jina AI, Cartesia, Deepgram, AssemblyAI, generic OpenAI-compatible (Fireworks, Together, Cerebras, SambaNova, Perplexity, NVIDIA, DeepInfra, SiliconFlow), and generic HTTP
 - **Multi-modal** — Drivers for embeddings, rerank (Cohere, Voyage, Jina), image generation (DALL-E, Imagen, Grok, Stability, Runway), video generation (Grok Imagine Video, Runway text/image/video → video), text-to-speech (OpenAI, ElevenLabs, Cartesia Sonic, Deepgram Aura, Runway), sound effects, voice dubbing / isolation / conversion (Runway), and speech-to-text (Whisper, ElevenLabs, Deepgram Nova-3, AssemblyAI Universal-2)
 - **Multi-model fallback** — Try a list of models in sequence with per-attempt cost, token, and capability accounting
 - **Strategy cascade** — Auto-selects between provider-native JSON mode, tool-call extraction, and prompted repair so extraction works on any model
@@ -131,6 +131,8 @@ Model strings use `"provider/model"` format. The provider prefix routes to the c
 | `runway` | `runway/gen4.5` (video), `runway/gpt_image_2` (image), `runway/eleven_multilingual_v2` (TTS) | Automatic |
 | `minimax` | `minimax/MiniMax-Text-01` (LLM), `minimax/MiniMax-Hailuo-2.3` (video) | Automatic |
 | `kling` | `kling/kling-v2-1` (image + video) | Automatic |
+| `luma` | `luma/ray-2`, `luma/ray-flash-2`, `luma/ray-1-6` (Dream Machine video) | Automatic |
+| `pika` | `pika/pika-2.2`, `pika/pika-2.1`, `pika/pika-1.5` (video) | Automatic |
 | `fal` | `fal/fal-ai/flux/dev` (image), `fal/fal-ai/kling-video/v2.6/pro/image-to-video` (video) | Automatic |
 | `mistral` | `mistral/mistral-large-latest` | Automatic |
 | `deepseek` | `deepseek/deepseek-chat`, `deepseek/deepseek-reasoner` | Automatic |
@@ -148,7 +150,7 @@ Beyond text LLMs, Prompture exposes drivers for adjacent modalities under the sa
 - **Embeddings** — OpenAI (`text-embedding-3-*`), Cohere (`embed-v4.0`), Voyage AI (`voyage-3.5`, `voyage-3-large`), Jina AI (`jina-embeddings-v3`), and Ollama (`nomic-embed-text`)
 - **Rerank** — Cohere (`rerank-v3.5`), Voyage AI (`rerank-2.5`), Jina AI (`jina-reranker-v2-base-multilingual`)
 - **Image generation** — OpenAI DALL-E + GPT image, Google Imagen, Grok, Stability AI, Runway (`gen4_image`, `gen4_image_turbo`, `gpt_image_2`, `gemini_image3_pro`, `gemini_2.5_flash`), Kling AI, Fal.ai
-- **Video generation** — Grok Imagine Video; Runway text/image/video → video (`gen4.5`, `gen4_turbo`, `gen3a_turbo`, `gen4_aleph`, `veo3`, `veo3.1`, `veo3.1_fast`); MiniMax / Hailuo; Kling AI; Fal.ai
+- **Video generation** — Grok Imagine Video; Runway text/image/video → video (`gen4.5`, `gen4_turbo`, `gen3a_turbo`, `gen4_aleph`, `veo3`, `veo3.1`, `veo3.1_fast`); MiniMax / Hailuo; Kling AI; Luma AI Dream Machine (`ray-2`, `ray-flash-2`, `ray-1-6`); Pika Labs (`pika-2.2`, `pika-2.1`, `pika-1.5`); Fal.ai
 - **Text-to-speech** — OpenAI (`tts-1`), ElevenLabs, Cartesia (`sonic-2`), Deepgram (`aura-2-thalia-en`), Runway (`eleven_multilingual_v2`)
 - **Sound effects** — Runway (`eleven_text_to_sound_v2`)
 - **Audio transforms** — Runway voice dubbing, voice isolation, speech-to-speech (`RunwayAudioTransformDriver`)

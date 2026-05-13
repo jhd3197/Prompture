@@ -121,6 +121,14 @@ class Settings(BaseSettings):
     fal_image_model: str = "fal-ai/flux/dev"
     fal_video_model: str = "fal-ai/kling-video/v2.6/pro/image-to-video"
 
+    # Luma AI (Dream Machine — video generation)
+    luma_api_key: Optional[str] = None  # nosec B105
+    luma_video_model: str = "ray-2"
+
+    # Pika Labs (video generation)
+    pika_api_key: Optional[str] = None  # nosec B105
+    pika_video_model: str = "pika-2.2"
+
     # Mistral AI
     mistral_api_key: Optional[str] = None
     mistral_model: str = "mistral-large-latest"
