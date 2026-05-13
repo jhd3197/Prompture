@@ -121,6 +121,26 @@ class Settings(BaseSettings):
     fal_image_model: str = "fal-ai/flux/dev"
     fal_video_model: str = "fal-ai/kling-video/v2.6/pro/image-to-video"
 
+    # Mistral AI
+    mistral_api_key: Optional[str] = None
+    mistral_model: str = "mistral-large-latest"
+
+    # DeepSeek
+    deepseek_api_key: Optional[str] = None
+    deepseek_model: str = "deepseek-chat"
+
+    # OpenAI-compatible aggregators (used via the openai_compatible driver
+    # with a `profile=` arg). Each setting is consumed lazily — only the
+    # profile you actually use needs its key set.
+    fireworks_api_key: Optional[str] = None
+    together_api_key: Optional[str] = None
+    cerebras_api_key: Optional[str] = None
+    sambanova_api_key: Optional[str] = None
+    perplexity_api_key: Optional[str] = None
+    nvidia_api_key: Optional[str] = None
+    deepinfra_api_key: Optional[str] = None
+    siliconflow_api_key: Optional[str] = None
+
     # ElevenLabs (audio)
     elevenlabs_api_key: Optional[str] = None
     elevenlabs_tts_model: str = "eleven_multilingual_v2"

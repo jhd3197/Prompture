@@ -251,9 +251,7 @@ def _build_descriptors() -> list[ProviderDescriptor]:
             **_llm("grok_driver", "GrokDriver", "async_grok_driver", "AsyncGrokDriver", _grok_kw, "grok_model"),
             img_gen_sync=DriverSpec("grok_img_gen_driver.GrokImageGenDriver", _grok_kw, "grok-2-image"),
             img_gen_async=DriverSpec("async_grok_img_gen_driver.AsyncGrokImageGenDriver", _grok_kw, "grok-2-image"),
-            video_gen_sync=DriverSpec(
-                "grok_video_gen_driver.GrokVideoGenDriver", _grok_kw, "grok_video_model"
-            ),
+            video_gen_sync=DriverSpec("grok_video_gen_driver.GrokVideoGenDriver", _grok_kw, "grok_video_model"),
             video_gen_async=DriverSpec(
                 "async_grok_video_gen_driver.AsyncGrokVideoGenDriver", _grok_kw, "grok_video_model"
             ),
@@ -496,24 +494,12 @@ def _build_descriptors() -> list[ProviderDescriptor]:
     descriptors.append(
         ProviderDescriptor(
             name="runway",
-            img_gen_sync=DriverSpec(
-                "runway_img_gen_driver.RunwayImageGenDriver", _runway_kw, "gen4_image"
-            ),
-            img_gen_async=DriverSpec(
-                "async_runway_img_gen_driver.AsyncRunwayImageGenDriver", _runway_kw, "gen4_image"
-            ),
-            video_gen_sync=DriverSpec(
-                "runway_video_gen_driver.RunwayVideoGenDriver", _runway_kw, "gen4.5"
-            ),
-            video_gen_async=DriverSpec(
-                "async_runway_video_gen_driver.AsyncRunwayVideoGenDriver", _runway_kw, "gen4.5"
-            ),
-            tts_sync=DriverSpec(
-                "runway_tts_driver.RunwayTTSDriver", _runway_kw, "eleven_multilingual_v2"
-            ),
-            tts_async=DriverSpec(
-                "async_runway_tts_driver.AsyncRunwayTTSDriver", _runway_kw, "eleven_multilingual_v2"
-            ),
+            img_gen_sync=DriverSpec("runway_img_gen_driver.RunwayImageGenDriver", _runway_kw, "gen4_image"),
+            img_gen_async=DriverSpec("async_runway_img_gen_driver.AsyncRunwayImageGenDriver", _runway_kw, "gen4_image"),
+            video_gen_sync=DriverSpec("runway_video_gen_driver.RunwayVideoGenDriver", _runway_kw, "gen4.5"),
+            video_gen_async=DriverSpec("async_runway_video_gen_driver.AsyncRunwayVideoGenDriver", _runway_kw, "gen4.5"),
+            tts_sync=DriverSpec("runway_tts_driver.RunwayTTSDriver", _runway_kw, "eleven_multilingual_v2"),
+            tts_async=DriverSpec("async_runway_tts_driver.AsyncRunwayTTSDriver", _runway_kw, "eleven_multilingual_v2"),
             display_name="Runway",
             is_configured_check="runway_api_key",
         )
@@ -528,17 +514,13 @@ def _build_descriptors() -> list[ProviderDescriptor]:
     descriptors.append(
         ProviderDescriptor(
             name="kling",
-            img_gen_sync=DriverSpec(
-                "kling_img_gen_driver.KlingImageGenDriver", _kling_kw, "kling_image_model"
-            ),
+            img_gen_sync=DriverSpec("kling_img_gen_driver.KlingImageGenDriver", _kling_kw, "kling_image_model"),
             img_gen_async=DriverSpec(
                 "async_kling_img_gen_driver.AsyncKlingImageGenDriver",
                 _kling_kw,
                 "kling_image_model",
             ),
-            video_gen_sync=DriverSpec(
-                "kling_video_gen_driver.KlingVideoGenDriver", _kling_kw, "kling_video_model"
-            ),
+            video_gen_sync=DriverSpec("kling_video_gen_driver.KlingVideoGenDriver", _kling_kw, "kling_video_model"),
             video_gen_async=DriverSpec(
                 "async_kling_video_gen_driver.AsyncKlingVideoGenDriver",
                 _kling_kw,
@@ -562,9 +544,7 @@ def _build_descriptors() -> list[ProviderDescriptor]:
                 _mm_kw,
                 "minimax_model",
             ),
-            video_gen_sync=DriverSpec(
-                "minimax_video_gen_driver.MiniMaxVideoGenDriver", _mm_kw, "minimax_video_model"
-            ),
+            video_gen_sync=DriverSpec("minimax_video_gen_driver.MiniMaxVideoGenDriver", _mm_kw, "minimax_video_model"),
             video_gen_async=DriverSpec(
                 "async_minimax_video_gen_driver.AsyncMiniMaxVideoGenDriver",
                 _mm_kw,
@@ -577,23 +557,78 @@ def _build_descriptors() -> list[ProviderDescriptor]:
         )
     )
 
+    # ── Mistral AI ───────────────────────────────────────────────────
+    _mistral_kw = {"api_key": "mistral_api_key"}
+    descriptors.append(
+        ProviderDescriptor(
+            name="mistral",
+            **_llm(
+                "mistral_driver",
+                "MistralDriver",
+                "async_mistral_driver",
+                "AsyncMistralDriver",
+                _mistral_kw,
+                "mistral_model",
+            ),
+            display_name="Mistral AI",
+            is_configured_check="mistral_api_key",
+            list_models_kwargs=[("api_key", "mistral_api_key", "MISTRAL_API_KEY")],
+            models_dev_name="mistral",
+        )
+    )
+
+    # ── DeepSeek ─────────────────────────────────────────────────────
+    _ds_kw = {"api_key": "deepseek_api_key"}
+    descriptors.append(
+        ProviderDescriptor(
+            name="deepseek",
+            **_llm(
+                "deepseek_driver",
+                "DeepSeekDriver",
+                "async_deepseek_driver",
+                "AsyncDeepSeekDriver",
+                _ds_kw,
+                "deepseek_model",
+            ),
+            display_name="DeepSeek",
+            is_configured_check="deepseek_api_key",
+            list_models_kwargs=[("api_key", "deepseek_api_key", "DEEPSEEK_API_KEY")],
+            models_dev_name="deepseek",
+        )
+    )
+
+    # ── Generic OpenAI-compatible (Fireworks, Together, Cerebras, …) ──
+    # Routed via `openai_compatible/<profile>/<model>` model strings.
+    # `is_configured_check=None` — configuration depends on the chosen
+    # profile's env var, not a single setting on this descriptor.
+    _oac_kw: dict[str, str] = {}
+    descriptors.append(
+        ProviderDescriptor(
+            name="openai_compatible",
+            **_llm(
+                "openai_compatible_driver",
+                "OpenAICompatibleDriver",
+                "async_openai_compatible_driver",
+                "AsyncOpenAICompatibleDriver",
+                _oac_kw,
+                "",
+            ),
+            display_name="OpenAI-Compatible",
+            is_configured_check=None,
+            list_models_kwargs=[],
+            models_dev_name=None,
+        )
+    )
+
     # ── Fal.ai (image + video aggregator) ────────────────────────────
     _fal_kw = {"api_key": "fal_api_key", "endpoint": "fal_endpoint"}
     descriptors.append(
         ProviderDescriptor(
             name="fal",
-            img_gen_sync=DriverSpec(
-                "fal_img_gen_driver.FalImageGenDriver", _fal_kw, "fal_image_model"
-            ),
-            img_gen_async=DriverSpec(
-                "async_fal_img_gen_driver.AsyncFalImageGenDriver", _fal_kw, "fal_image_model"
-            ),
-            video_gen_sync=DriverSpec(
-                "fal_video_gen_driver.FalVideoGenDriver", _fal_kw, "fal_video_model"
-            ),
-            video_gen_async=DriverSpec(
-                "async_fal_video_gen_driver.AsyncFalVideoGenDriver", _fal_kw, "fal_video_model"
-            ),
+            img_gen_sync=DriverSpec("fal_img_gen_driver.FalImageGenDriver", _fal_kw, "fal_image_model"),
+            img_gen_async=DriverSpec("async_fal_img_gen_driver.AsyncFalImageGenDriver", _fal_kw, "fal_image_model"),
+            video_gen_sync=DriverSpec("fal_video_gen_driver.FalVideoGenDriver", _fal_kw, "fal_video_model"),
+            video_gen_async=DriverSpec("async_fal_video_gen_driver.AsyncFalVideoGenDriver", _fal_kw, "fal_video_model"),
             display_name="Fal.ai",
             is_configured_check="fal_api_key",
         )
@@ -618,6 +653,7 @@ def _build_descriptors() -> list[ProviderDescriptor]:
         ("vertex", "google_vertexai", {"llm"}),
         ("vertexai", "google_vertexai", {"llm"}),
         ("hailuo", "minimax", {"video_gen"}),
+        ("mistralai", "mistral", {"llm"}),
     ]
 
     # Build a lookup of canonical descriptors by name.
@@ -658,9 +694,7 @@ def _google_vertexai_is_configured(env: Any = None) -> bool:
     from ..infra.settings import settings
 
     if env is not None:
-        return bool(
-            env.resolve("google_vertex_api_key") or env.resolve("google_vertex_project_id")
-        )
+        return bool(env.resolve("google_vertex_api_key") or env.resolve("google_vertex_project_id"))
     return bool(
         getattr(settings, "google_vertex_api_key", None)
         or os.getenv("GOOGLE_VERTEX_API_KEY")

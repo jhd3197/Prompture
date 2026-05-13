@@ -31,7 +31,7 @@ print(person.name)  # Maria
 ## Key Features
 
 - **Structured output** — JSON schema enforcement and direct Pydantic model population
-- **20+ providers** — OpenAI, Claude, Google, Groq, Grok, Azure, Ollama, LM Studio, OpenRouter, HuggingFace, Moonshot, ModelScope, Z.ai, Vertex AI, AirLLM, CachiBot, Runway, MiniMax/Hailuo, Kling AI, Fal.ai, and generic HTTP
+- **23+ providers** — OpenAI, Claude, Google, Groq, Grok, Azure, Ollama, LM Studio, OpenRouter, HuggingFace, Moonshot, ModelScope, Z.ai, Vertex AI, AirLLM, CachiBot, Runway, MiniMax/Hailuo, Kling AI, Fal.ai, Mistral AI, DeepSeek, generic OpenAI-compatible (Fireworks, Together, Cerebras, SambaNova, Perplexity, NVIDIA, DeepInfra, SiliconFlow), and generic HTTP
 - **Multi-modal** — Drivers for embeddings, image generation (DALL-E, Imagen, Grok, Stability, Runway), video generation (Grok Imagine Video, Runway text/image/video → video), text-to-speech (OpenAI, ElevenLabs, Runway), sound effects, voice dubbing / isolation / conversion (Runway), and speech-to-text (Whisper, ElevenLabs)
 - **Multi-model fallback** — Try a list of models in sequence with per-attempt cost, token, and capability accounting
 - **Strategy cascade** — Auto-selects between provider-native JSON mode, tool-call extraction, and prompted repair so extraction works on any model
@@ -131,8 +131,11 @@ Model strings use `"provider/model"` format. The provider prefix routes to the c
 | `minimax` | `minimax/MiniMax-Text-01` (LLM), `minimax/MiniMax-Hailuo-2.3` (video) | Automatic |
 | `kling` | `kling/kling-v2-1` (image + video) | Automatic |
 | `fal` | `fal/fal-ai/flux/dev` (image), `fal/fal-ai/kling-video/v2.6/pro/image-to-video` (video) | Automatic |
+| `mistral` | `mistral/mistral-large-latest` | Automatic |
+| `deepseek` | `deepseek/deepseek-chat`, `deepseek/deepseek-reasoner` | Automatic |
+| `openai_compatible` | `openai_compatible/<profile>/<model>` — 8 curated profiles: `fireworks`, `together`, `cerebras`, `sambanova`, `perplexity`, `nvidia`, `deepinfra`, `siliconflow` (or pass an explicit `endpoint=` for anything else) | Automatic where pricing is known |
 
-Aliases (`anthropic`, `gemini`, `chatgpt`, `xai`, `lm_studio`, `zhipu`, `hf`, `dalle`, `runwayml`, `hailuo`) route to their canonical providers.
+Aliases (`anthropic`, `gemini`, `chatgpt`, `xai`, `lm_studio`, `zhipu`, `hf`, `dalle`, `runwayml`, `hailuo`, `mistralai`) route to their canonical providers.
 
 ## Multi-Modal
 

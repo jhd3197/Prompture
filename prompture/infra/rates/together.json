@@ -1,0 +1,53 @@
+{
+  "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo": {
+    "supports_temperature": true,
+    "supports_tool_use": true,
+    "supports_structured_output": true,
+    "supports_vision": false,
+    "is_reasoning": false,
+    "context_window": 131072,
+    "max_output_tokens": 8192,
+    "modalities_input": ["text"],
+    "modalities_output": ["text"],
+    "api_type": "openai-compatible",
+    "tokens_param": "max_tokens",
+    "cost": {
+      "input": 0.88,
+      "output": 0.88
+    }
+  },
+  "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo": {
+    "supports_temperature": true,
+    "supports_tool_use": true,
+    "supports_structured_output": true,
+    "supports_vision": false,
+    "is_reasoning": false,
+    "context_window": 131072,
+    "max_output_tokens": 8192,
+    "modalities_input": ["text"],
+    "modalities_output": ["text"],
+    "api_type": "openai-compatible",
+    "tokens_param": "max_tokens",
+    "cost": {
+      "input": 0.18,
+      "output": 0.18
+    }
+  },
+  "mistralai/Mixtral-8x7B-Instruct-v0.1": {
+    "supports_temperature": true,
+    "supports_tool_use": true,
+    "supports_structured_output": true,
+    "supports_vision": false,
+    "is_reasoning": false,
+    "context_window": 32768,
+    "max_output_tokens": 8192,
+    "modalities_input": ["text"],
+    "modalities_output": ["text"],
+    "api_type": "openai-compatible",
+    "tokens_param": "max_tokens",
+    "cost": {
+      "input": 0.60,
+      "output": 0.60
+    }
+  }
+}
