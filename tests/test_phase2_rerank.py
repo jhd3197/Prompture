@@ -110,7 +110,9 @@ class TestCohereRerank:
         # last_usage populated
         assert d.last_usage["model_name"] == "cohere/rerank-v3.5"
         assert d.last_usage["search_units"] == 1
-        assert d.last_usage["pricing_unknown"] is True
+        # Phase 3: rate JSONs now populated → pricing is known.
+        assert d.last_usage["pricing_unknown"] is False
+        assert d.last_usage["cost"] > 0.0
 
     def test_return_documents_false_leaves_document_none(self):
         d = CohereRerankDriver(api_key="sk-test")

@@ -24,14 +24,80 @@ Usage::
 
 from __future__ import annotations
 
+import json
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from ..infra.callbacks import DriverCallbacks
 
 logger = logging.getLogger("prompture.rerank_driver")
+
+
+_RATES_DIR = Path(__file__).resolve().parent.parent / "infra" / "rates"
+_rerank_pricing_cache: dict[str, dict[str, dict[str, float]]] = {}
+
+
+def _load_rerank_pricing(provider: str) -> dict[str, dict[str, float]]:
+    """Return ``{model_id: {"per_search_unit": ..., "per_million_tokens": ...}}``
+    parsed from the provider's rates JSON.  Results are cached.
+
+    Rerank pricing models don't fit the standard input/output rate shape used
+    by ``LocalKBPricingSource``, so we read the raw JSON directly here.
+    """
+    if provider in _rerank_pricing_cache:
+        return _rerank_pricing_cache[provider]
+    out: dict[str, dict[str, float]] = {}
+    path = _RATES_DIR / f"{provider}.json"
+    if path.is_file():
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            logger.warning("Failed to parse rerank pricing from %s", path)
+            raw = {}
+        for model_id, entry in raw.items():
+            if not isinstance(entry, dict):
+                continue
+            if entry.get("modality") != "rerank":
+                continue
+            cost = entry.get("cost") or {}
+            if not isinstance(cost, dict):
+                continue
+            slim: dict[str, float] = {}
+            for key in ("per_search_unit", "per_million_tokens", "input"):
+                val = cost.get(key)
+                if isinstance(val, (int, float)):
+                    slim[key] = float(val)
+            if slim:
+                out[model_id] = slim
+    _rerank_pricing_cache[provider] = out
+    return out
+
+
+def calculate_rerank_cost(
+    provider: str,
+    model: str,
+    *,
+    search_units: int = 0,
+    total_tokens: int = 0,
+) -> tuple[float, bool]:
+    """Calculate USD cost for a rerank call.
+
+    Returns ``(cost, pricing_unknown)``.  ``pricing_unknown`` is ``True`` when
+    no pricing entry was found.
+    """
+    pricing = _load_rerank_pricing(provider).get(model)
+    if not pricing:
+        return 0.0, True
+    cost = 0.0
+    if "per_search_unit" in pricing and search_units > 0:
+        cost += search_units * pricing["per_search_unit"]
+    per_million = pricing.get("per_million_tokens", pricing.get("input", 0.0))
+    if per_million and total_tokens > 0:
+        cost += (total_tokens / 1_000_000) * per_million
+    return round(cost, 6), False
 
 
 @dataclass

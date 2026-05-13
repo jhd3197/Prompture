@@ -12,7 +12,7 @@ from typing import Any
 
 import requests
 
-from .rerank_base import RerankDriver, RerankResult
+from .rerank_base import RerankDriver, RerankResult, calculate_rerank_cost
 
 logger = logging.getLogger(__name__)
 
@@ -104,12 +104,13 @@ class JinaRerankDriver(RerankDriver):
         usage = resp.get("usage", {}) or {}
         total_tokens = int(usage.get("total_tokens", 0) or 0)
 
+        cost, pricing_unknown = calculate_rerank_cost("jina", model, search_units=0, total_tokens=total_tokens)
         self.last_usage = {
             "model_name": f"jina/{model}",
             "search_units": 1,
             "total_tokens": total_tokens,
-            "cost": 0.0,
-            "pricing_unknown": True,
+            "cost": cost,
+            "pricing_unknown": pricing_unknown,
             "raw_response": resp,
         }
         return out

@@ -12,7 +12,7 @@ from typing import Any
 
 import requests
 
-from .rerank_base import RerankDriver, RerankResult
+from .rerank_base import RerankDriver, RerankResult, calculate_rerank_cost
 
 logger = logging.getLogger(__name__)
 
@@ -108,9 +108,7 @@ class CohereRerankDriver(RerankDriver):
         billed = (meta_info.get("billed_units") or {}) if isinstance(meta_info, dict) else {}
         search_units = int(billed.get("search_units", 1) or 1)
 
-        # Phase 2: no rate JSON for rerank providers yet — flag as unknown.
-        cost = 0.0
-        pricing_unknown = True
+        cost, pricing_unknown = calculate_rerank_cost("cohere", model, search_units=search_units, total_tokens=0)
 
         self.last_usage = {
             "model_name": f"cohere/{model}",

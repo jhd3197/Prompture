@@ -716,7 +716,10 @@ def get_available_embedding_models(
     Returns:
         A sorted list of unique model strings (e.g. ``"openai/text-embedding-3-small"``).
     """
+    from ..drivers.cohere_embedding_driver import CohereEmbeddingDriver
+    from ..drivers.jina_embedding_driver import JinaEmbeddingDriver
     from ..drivers.openai_embedding_driver import OpenAIEmbeddingDriver
+    from ..drivers.voyage_embedding_driver import VoyageEmbeddingDriver
 
     available: set[str] = set()
 
@@ -724,6 +727,21 @@ def get_available_embedding_models(
     if _cfg_value(env, "openai_api_key", "OPENAI_API_KEY"):
         for model_id in OpenAIEmbeddingDriver.EMBEDDING_PRICING:
             available.add(f"openai/{model_id}")
+
+    # Cohere embedding models (requires cohere_api_key)
+    if _cfg_value(env, "cohere_api_key", "COHERE_API_KEY"):
+        for model_id in CohereEmbeddingDriver.EMBEDDING_PRICING:
+            available.add(f"cohere/{model_id}")
+
+    # Voyage AI embedding models (requires voyage_api_key)
+    if _cfg_value(env, "voyage_api_key", "VOYAGE_API_KEY"):
+        for model_id in VoyageEmbeddingDriver.EMBEDDING_PRICING:
+            available.add(f"voyage/{model_id}")
+
+    # Jina AI embedding models (requires jina_api_key)
+    if _cfg_value(env, "jina_api_key", "JINA_API_KEY"):
+        for model_id in JinaEmbeddingDriver.EMBEDDING_PRICING:
+            available.add(f"jina/{model_id}")
 
     # Ollama embedding models (always available — local)
     available.add("ollama/nomic-embed-text")

@@ -1,0 +1,179 @@
+{
+  "command-r-plus": {
+    "supports_temperature": true,
+    "supports_tool_use": true,
+    "supports_structured_output": true,
+    "supports_vision": false,
+    "is_reasoning": false,
+    "context_window": 128000,
+    "max_output_tokens": 4096,
+    "modalities_input": ["text"],
+    "modalities_output": ["text"],
+    "api_type": "cohere",
+    "tokens_param": "max_tokens",
+    "cost": {
+      "input": 2.50,
+      "output": 10.00
+    }
+  },
+  "command-r-plus-08-2024": {
+    "supports_temperature": true,
+    "supports_tool_use": true,
+    "supports_structured_output": true,
+    "supports_vision": false,
+    "is_reasoning": false,
+    "context_window": 128000,
+    "max_output_tokens": 4096,
+    "modalities_input": ["text"],
+    "modalities_output": ["text"],
+    "api_type": "cohere",
+    "tokens_param": "max_tokens",
+    "cost": {
+      "input": 2.50,
+      "output": 10.00
+    }
+  },
+  "command-r": {
+    "supports_temperature": true,
+    "supports_tool_use": true,
+    "supports_structured_output": true,
+    "supports_vision": false,
+    "is_reasoning": false,
+    "context_window": 128000,
+    "max_output_tokens": 4096,
+    "modalities_input": ["text"],
+    "modalities_output": ["text"],
+    "api_type": "cohere",
+    "tokens_param": "max_tokens",
+    "cost": {
+      "input": 0.15,
+      "output": 0.60
+    }
+  },
+  "command-r-08-2024": {
+    "supports_temperature": true,
+    "supports_tool_use": true,
+    "supports_structured_output": true,
+    "supports_vision": false,
+    "is_reasoning": false,
+    "context_window": 128000,
+    "max_output_tokens": 4096,
+    "modalities_input": ["text"],
+    "modalities_output": ["text"],
+    "api_type": "cohere",
+    "tokens_param": "max_tokens",
+    "cost": {
+      "input": 0.15,
+      "output": 0.60
+    }
+  },
+  "command-a-03-2025": {
+    "supports_temperature": true,
+    "supports_tool_use": true,
+    "supports_structured_output": true,
+    "supports_vision": false,
+    "is_reasoning": false,
+    "context_window": 256000,
+    "max_output_tokens": 8192,
+    "modalities_input": ["text"],
+    "modalities_output": ["text"],
+    "api_type": "cohere",
+    "tokens_param": "max_tokens",
+    "cost": {
+      "input": 2.50,
+      "output": 10.00
+    }
+  },
+  "command-r7b-12-2024": {
+    "supports_temperature": true,
+    "supports_tool_use": true,
+    "supports_structured_output": true,
+    "supports_vision": false,
+    "is_reasoning": false,
+    "context_window": 128000,
+    "max_output_tokens": 4096,
+    "modalities_input": ["text"],
+    "modalities_output": ["text"],
+    "api_type": "cohere",
+    "tokens_param": "max_tokens",
+    "cost": {
+      "input": 0.0375,
+      "output": 0.15
+    }
+  },
+  "embed-v4.0": {
+    "modality": "embedding",
+    "dimensions": 1536,
+    "context_window": 128000,
+    "modalities_input": ["text"],
+    "modalities_output": ["embedding"],
+    "api_type": "cohere",
+    "cost": {
+      "input": 0.12,
+      "output": 0.0
+    }
+  },
+  "embed-english-v3.0": {
+    "modality": "embedding",
+    "dimensions": 1024,
+    "context_window": 512,
+    "modalities_input": ["text"],
+    "modalities_output": ["embedding"],
+    "api_type": "cohere",
+    "cost": {
+      "input": 0.10,
+      "output": 0.0
+    }
+  },
+  "embed-multilingual-v3.0": {
+    "modality": "embedding",
+    "dimensions": 1024,
+    "context_window": 512,
+    "modalities_input": ["text"],
+    "modalities_output": ["embedding"],
+    "api_type": "cohere",
+    "cost": {
+      "input": 0.10,
+      "output": 0.0
+    }
+  },
+  "embed-english-light-v3.0": {
+    "modality": "embedding",
+    "dimensions": 384,
+    "context_window": 512,
+    "modalities_input": ["text"],
+    "modalities_output": ["embedding"],
+    "api_type": "cohere",
+    "cost": {
+      "input": 0.10,
+      "output": 0.0
+    }
+  },
+  "rerank-v3.5": {
+    "modality": "rerank",
+    "api_type": "cohere",
+    "modalities_input": ["text"],
+    "modalities_output": ["rerank"],
+    "cost": {
+      "per_search_unit": 0.002
+    }
+  },
+  "rerank-english-v3.0": {
+    "modality": "rerank",
+    "api_type": "cohere",
+    "modalities_input": ["text"],
+    "modalities_output": ["rerank"],
+    "cost": {
+      "per_search_unit": 0.002
+    }
+  },
+  "rerank-multilingual-v3.0": {
+    "modality": "rerank",
+    "api_type": "cohere",
+    "modalities_input": ["text"],
+    "modalities_output": ["rerank"],
+    "cost": {
+      "per_search_unit": 0.002
+    }
+  }
+}

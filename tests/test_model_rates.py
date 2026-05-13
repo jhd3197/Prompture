@@ -594,16 +594,29 @@ class TestCapabilitiesKB:
 
     def test_all_kb_entries_are_valid(self):
         """Every entry in the KB has required fields populated."""
+        # Non-LLM modalities (embedding / rerank) don't carry chat-specific
+        # fields like context_window or max_output_tokens — they're loaded
+        # into the same KB so capability lookups work, but the validation
+        # below only applies to LLM chat models.
         for (provider, model_id), caps in mr._CAPABILITIES_KB.items():
             assert isinstance(caps, mr.ModelCapabilities), f"({provider}, {model_id})"
             assert caps.api_type is not None, f"({provider}, {model_id}) missing api_type"
-            assert caps.api_type in ("openai", "anthropic", "google", "openai-compatible"), (
-                f"({provider}, {model_id}) invalid api_type: {caps.api_type}"
-            )
-            assert caps.context_window is not None, f"({provider}, {model_id}) missing context_window"
-            assert caps.context_window > 0, f"({provider}, {model_id}) context_window must be positive"
+            assert caps.api_type in (
+                "openai",
+                "anthropic",
+                "google",
+                "openai-compatible",
+                "cohere",
+                "voyage",
+                "jina",
+            ), f"({provider}, {model_id}) invalid api_type: {caps.api_type}"
             assert len(caps.modalities_input) > 0, f"({provider}, {model_id}) missing modalities_input"
             assert len(caps.modalities_output) > 0, f"({provider}, {model_id}) missing modalities_output"
+            # Skip chat-only field checks for non-LLM modalities.
+            if "embedding" in caps.modalities_output or "rerank" in caps.modalities_output:
+                continue
+            assert caps.context_window is not None, f"({provider}, {model_id}) missing context_window"
+            assert caps.context_window > 0, f"({provider}, {model_id}) context_window must be positive"
 
     def test_google_models_have_google_api_type(self):
         """All Google/Gemini models use api_type='google'."""

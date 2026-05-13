@@ -133,6 +133,9 @@ Model strings use `"provider/model"` format. The provider prefix routes to the c
 | `fal` | `fal/fal-ai/flux/dev` (image), `fal/fal-ai/kling-video/v2.6/pro/image-to-video` (video) | Automatic |
 | `mistral` | `mistral/mistral-large-latest` | Automatic |
 | `deepseek` | `deepseek/deepseek-chat`, `deepseek/deepseek-reasoner` | Automatic |
+| `cohere` | `cohere/command-r-plus` (LLM), `cohere/embed-v4.0` (embedding), `cohere/rerank-v3.5` (rerank) | Automatic |
+| `voyage` | `voyage/voyage-3.5` (embedding), `voyage/rerank-2.5` (rerank) | Automatic |
+| `jina` | `jina/jina-embeddings-v3` (embedding), `jina/jina-reranker-v2-base-multilingual` (rerank) | Automatic |
 | `openai_compatible` | `openai_compatible/<profile>/<model>` — 8 curated profiles: `fireworks`, `together`, `cerebras`, `sambanova`, `perplexity`, `nvidia`, `deepinfra`, `siliconflow` (or pass an explicit `endpoint=` for anything else) | Automatic where pricing is known |
 
 Aliases (`anthropic`, `gemini`, `chatgpt`, `xai`, `lm_studio`, `zhipu`, `hf`, `dalle`, `runwayml`, `hailuo`, `mistralai`) route to their canonical providers.
@@ -141,7 +144,7 @@ Aliases (`anthropic`, `gemini`, `chatgpt`, `xai`, `lm_studio`, `zhipu`, `hf`, `d
 
 Beyond text LLMs, Prompture exposes drivers for adjacent modalities under the same `provider/model` routing:
 
-- **Embeddings** — OpenAI (`text-embedding-3-*`) and Ollama (`nomic-embed-text`)
+- **Embeddings** — OpenAI (`text-embedding-3-*`), Cohere (`embed-v4.0`), Voyage AI (`voyage-3.5`, `voyage-3-large`), Jina AI (`jina-embeddings-v3`), and Ollama (`nomic-embed-text`)
 - **Rerank** — Cohere (`rerank-v3.5`), Voyage AI (`rerank-2.5`), Jina AI (`jina-reranker-v2-base-multilingual`)
 - **Image generation** — OpenAI DALL-E + GPT image, Google Imagen, Grok, Stability AI, Runway (`gen4_image`, `gen4_image_turbo`, `gpt_image_2`, `gemini_image3_pro`, `gemini_2.5_flash`), Kling AI, Fal.ai
 - **Video generation** — Grok Imagine Video; Runway text/image/video → video (`gen4.5`, `gen4_turbo`, `gen3a_turbo`, `gen4_aleph`, `veo3`, `veo3.1`, `veo3.1_fast`); MiniMax / Hailuo; Kling AI; Fal.ai

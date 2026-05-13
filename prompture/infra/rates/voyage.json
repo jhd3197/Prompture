@@ -1,0 +1,119 @@
+{
+  "voyage-3.5": {
+    "modality": "embedding",
+    "dimensions": 1024,
+    "context_window": 32000,
+    "modalities_input": ["text"],
+    "modalities_output": ["embedding"],
+    "api_type": "voyage",
+    "cost": {
+      "input": 0.06,
+      "output": 0.0
+    }
+  },
+  "voyage-3.5-lite": {
+    "modality": "embedding",
+    "dimensions": 1024,
+    "context_window": 32000,
+    "modalities_input": ["text"],
+    "modalities_output": ["embedding"],
+    "api_type": "voyage",
+    "cost": {
+      "input": 0.02,
+      "output": 0.0
+    }
+  },
+  "voyage-3-large": {
+    "modality": "embedding",
+    "dimensions": 1024,
+    "context_window": 32000,
+    "modalities_input": ["text"],
+    "modalities_output": ["embedding"],
+    "api_type": "voyage",
+    "cost": {
+      "input": 0.18,
+      "output": 0.0
+    }
+  },
+  "voyage-code-3": {
+    "modality": "embedding",
+    "dimensions": 1024,
+    "context_window": 32000,
+    "modalities_input": ["text"],
+    "modalities_output": ["embedding"],
+    "api_type": "voyage",
+    "cost": {
+      "input": 0.18,
+      "output": 0.0
+    }
+  },
+  "voyage-finance-2": {
+    "modality": "embedding",
+    "dimensions": 1024,
+    "context_window": 32000,
+    "modalities_input": ["text"],
+    "modalities_output": ["embedding"],
+    "api_type": "voyage",
+    "cost": {
+      "input": 0.12,
+      "output": 0.0
+    }
+  },
+  "voyage-law-2": {
+    "modality": "embedding",
+    "dimensions": 1024,
+    "context_window": 16000,
+    "modalities_input": ["text"],
+    "modalities_output": ["embedding"],
+    "api_type": "voyage",
+    "cost": {
+      "input": 0.12,
+      "output": 0.0
+    }
+  },
+  "voyage-multilingual-2": {
+    "modality": "embedding",
+    "dimensions": 1024,
+    "context_window": 32000,
+    "modalities_input": ["text"],
+    "modalities_output": ["embedding"],
+    "api_type": "voyage",
+    "cost": {
+      "input": 0.12,
+      "output": 0.0
+    }
+  },
+  "rerank-2.5": {
+    "modality": "rerank",
+    "api_type": "voyage",
+    "modalities_input": ["text"],
+    "modalities_output": ["rerank"],
+    "cost": {
+      "input": 0.05,
+      "output": 0.0,
+      "per_million_tokens": 0.05
+    }
+  },
+  "rerank-2.5-lite": {
+    "modality": "rerank",
+    "api_type": "voyage",
+    "modalities_input": ["text"],
+    "modalities_output": ["rerank"],
+    "cost": {
+      "input": 0.02,
+      "output": 0.0,
+      "per_million_tokens": 0.02
+    }
+  },
+  "rerank-2": {
+    "modality": "rerank",
+    "api_type": "voyage",
+    "modalities_input": ["text"],
+    "modalities_output": ["rerank"],
+    "cost": {
+      "input": 0.05,
+      "output": 0.0,
+      "per_million_tokens": 0.05
+    }
+  }
+}

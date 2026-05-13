@@ -9,7 +9,7 @@ from typing import Any
 
 import httpx
 
-from .rerank_base import AsyncRerankDriver, RerankResult
+from .rerank_base import AsyncRerankDriver, RerankResult, calculate_rerank_cost
 
 logger = logging.getLogger(__name__)
 
@@ -91,12 +91,13 @@ class AsyncCohereRerankDriver(AsyncRerankDriver):
         billed = (meta_info.get("billed_units") or {}) if isinstance(meta_info, dict) else {}
         search_units = int(billed.get("search_units", 1) or 1)
 
+        cost, pricing_unknown = calculate_rerank_cost("cohere", model, search_units=search_units, total_tokens=0)
         self.last_usage = {
             "model_name": f"cohere/{model}",
             "search_units": search_units,
             "total_tokens": 0,
-            "cost": 0.0,
-            "pricing_unknown": True,
+            "cost": cost,
+            "pricing_unknown": pricing_unknown,
             "raw_response": resp,
         }
         return out

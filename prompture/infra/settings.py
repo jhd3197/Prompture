@@ -146,6 +146,12 @@ class Settings(BaseSettings):
     voyage_api_key: Optional[str] = None
     jina_api_key: Optional[str] = None
 
+    # Phase 3: Cohere LLM + Cohere/Voyage/Jina embedding model defaults
+    cohere_model: str = "command-r-plus"
+    cohere_embedding_model: str = "embed-v4.0"
+    voyage_embedding_model: str = "voyage-3.5"
+    jina_embedding_model: str = "jina-embeddings-v3"
+
     # ElevenLabs (audio)
     elevenlabs_api_key: Optional[str] = None
     elevenlabs_tts_model: str = "eleven_multilingual_v2"

@@ -637,24 +637,49 @@ def _build_descriptors() -> list[ProviderDescriptor]:
         )
     )
 
-    # ── Cohere (rerank) ───────────────────────────────────────────────
+    # ── Cohere (LLM + embeddings + rerank) ────────────────────────────
     _cohere_kw = {"api_key": "cohere_api_key"}
     descriptors.append(
         ProviderDescriptor(
             name="cohere",
+            **_llm(
+                "cohere_driver",
+                "CohereDriver",
+                "async_cohere_driver",
+                "AsyncCohereDriver",
+                _cohere_kw,
+                "cohere_model",
+            ),
+            embedding_sync=DriverSpec(
+                "cohere_embedding_driver.CohereEmbeddingDriver", _cohere_kw, "cohere_embedding_model"
+            ),
+            embedding_async=DriverSpec(
+                "async_cohere_embedding_driver.AsyncCohereEmbeddingDriver",
+                _cohere_kw,
+                "cohere_embedding_model",
+            ),
             rerank_sync=DriverSpec("cohere_rerank_driver.CohereRerankDriver", _cohere_kw, "rerank-v3.5"),
             rerank_async=DriverSpec("async_cohere_rerank_driver.AsyncCohereRerankDriver", _cohere_kw, "rerank-v3.5"),
             display_name="Cohere",
             is_configured_check="cohere_api_key",
-            models_dev_name=None,
+            list_models_kwargs=[("api_key", "cohere_api_key", "COHERE_API_KEY")],
+            models_dev_name="cohere",
         )
     )
 
-    # ── Voyage AI (rerank) ────────────────────────────────────────────
+    # ── Voyage AI (embeddings + rerank) ───────────────────────────────
     _voyage_kw = {"api_key": "voyage_api_key"}
     descriptors.append(
         ProviderDescriptor(
             name="voyage",
+            embedding_sync=DriverSpec(
+                "voyage_embedding_driver.VoyageEmbeddingDriver", _voyage_kw, "voyage_embedding_model"
+            ),
+            embedding_async=DriverSpec(
+                "async_voyage_embedding_driver.AsyncVoyageEmbeddingDriver",
+                _voyage_kw,
+                "voyage_embedding_model",
+            ),
             rerank_sync=DriverSpec("voyage_rerank_driver.VoyageRerankDriver", _voyage_kw, "rerank-2.5"),
             rerank_async=DriverSpec("async_voyage_rerank_driver.AsyncVoyageRerankDriver", _voyage_kw, "rerank-2.5"),
             display_name="Voyage AI",
@@ -663,11 +688,17 @@ def _build_descriptors() -> list[ProviderDescriptor]:
         )
     )
 
-    # ── Jina AI (rerank) ──────────────────────────────────────────────
+    # ── Jina AI (embeddings + rerank) ─────────────────────────────────
     _jina_kw = {"api_key": "jina_api_key"}
     descriptors.append(
         ProviderDescriptor(
             name="jina",
+            embedding_sync=DriverSpec("jina_embedding_driver.JinaEmbeddingDriver", _jina_kw, "jina_embedding_model"),
+            embedding_async=DriverSpec(
+                "async_jina_embedding_driver.AsyncJinaEmbeddingDriver",
+                _jina_kw,
+                "jina_embedding_model",
+            ),
             rerank_sync=DriverSpec(
                 "jina_rerank_driver.JinaRerankDriver", _jina_kw, "jina-reranker-v2-base-multilingual"
             ),
