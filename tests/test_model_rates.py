@@ -612,11 +612,16 @@ class TestCapabilitiesKB:
                 "bedrock",
                 "nomic",
                 "mixedbread",
+                "moderation",
             ), f"({provider}, {model_id}) invalid api_type: {caps.api_type}"
             assert len(caps.modalities_input) > 0, f"({provider}, {model_id}) missing modalities_input"
             assert len(caps.modalities_output) > 0, f"({provider}, {model_id}) missing modalities_output"
             # Skip chat-only field checks for non-LLM modalities.
-            if "embedding" in caps.modalities_output or "rerank" in caps.modalities_output:
+            if (
+                "embedding" in caps.modalities_output
+                or "rerank" in caps.modalities_output
+                or "moderation" in caps.modalities_output
+            ):
                 continue
             assert caps.context_window is not None, f"({provider}, {model_id}) missing context_window"
             assert caps.context_window > 0, f"({provider}, {model_id}) context_window must be positive"

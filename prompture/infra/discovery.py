@@ -777,6 +777,45 @@ def get_available_rerank_models(
     return sorted(available)
 
 
+def get_available_moderation_models(
+    *,
+    env: ProviderEnvironment | None = None,
+) -> list[str]:
+    """Auto-detect available moderation models based on configured API keys.
+
+    Checks which moderation providers are configured (OpenAI, Mistral) and
+    returns their supported models.
+
+    Args:
+        env: Optional per-consumer environment for isolated API keys.
+            When ``None``, uses the global settings singleton.
+
+    Returns:
+        A sorted list of unique model strings (e.g. ``"openai/omni-moderation-latest"``).
+    """
+    available: set[str] = set()
+
+    # OpenAI moderation models
+    if _cfg_value(env, "openai_api_key", "OPENAI_API_KEY"):
+        for model_id in (
+            "omni-moderation-latest",
+            "omni-moderation-2024-09-26",
+            "text-moderation-latest",
+            "text-moderation-stable",
+        ):
+            available.add(f"openai/{model_id}")
+
+    # Mistral moderation models
+    if _cfg_value(env, "mistral_api_key", "MISTRAL_API_KEY"):
+        for model_id in (
+            "mistral-moderation-latest",
+            "mistral-moderation-2411",
+        ):
+            available.add(f"mistral/{model_id}")
+
+    return sorted(available)
+
+
 def get_available_embedding_models(
     *,
     env: ProviderEnvironment | None = None,

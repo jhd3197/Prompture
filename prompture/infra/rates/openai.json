@@ -233,5 +233,41 @@
     "modalities_output": ["text"],
     "api_type": "openai",
     "tokens_param": "max_tokens"
+  },
+  "omni-moderation-latest": {
+    "modality": "moderation",
+    "api_type": "moderation",
+    "modalities_input": ["text", "image"],
+    "modalities_output": ["moderation"],
+    "cost": {
+      "per_request": 0.0
+    }
+  },
+  "omni-moderation-2024-09-26": {
+    "modality": "moderation",
+    "api_type": "moderation",
+    "modalities_input": ["text", "image"],
+    "modalities_output": ["moderation"],
+    "cost": {
+      "per_request": 0.0
+    }
+  },
+  "text-moderation-latest": {
+    "modality": "moderation",
+    "api_type": "moderation",
+    "modalities_input": ["text"],
+    "modalities_output": ["moderation"],
+    "cost": {
+      "per_request": 0.0
+    }
+  },
+  "text-moderation-stable": {
+    "modality": "moderation",
+    "api_type": "moderation",
+    "modalities_input": ["text"],
+    "modalities_output": ["moderation"],
+    "cost": {
+      "per_request": 0.0
+    }
   }
 }

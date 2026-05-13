@@ -32,7 +32,7 @@ print(person.name)  # Maria
 
 - **Structured output** — JSON schema enforcement and direct Pydantic model population
 - **36+ providers** — OpenAI, Claude, Google, Groq, Grok, Azure, AWS Bedrock, Ollama, LM Studio, OpenRouter, HuggingFace, Moonshot, ModelScope, Z.ai, Vertex AI, AirLLM, CachiBot, Runway, MiniMax/Hailuo, Kling AI, Luma AI, Pika Labs, Fal.ai, Ideogram, Black Forest Labs (Flux), Mistral AI, DeepSeek, Cohere, Voyage AI, Jina AI, Nomic, Mixedbread (mxbai), Cartesia, Deepgram, AssemblyAI, generic OpenAI-compatible (Fireworks, Together, Cerebras, SambaNova, Perplexity, NVIDIA, DeepInfra, SiliconFlow, GitHub Models), and generic HTTP
-- **Multi-modal** — Drivers for embeddings, rerank (Cohere, Voyage, Jina), image generation (DALL-E, Imagen, Grok, Stability, Runway), video generation (Grok Imagine Video, Runway text/image/video → video), text-to-speech (OpenAI, ElevenLabs, Cartesia Sonic, Deepgram Aura, Runway), sound effects, voice dubbing / isolation / conversion (Runway), and speech-to-text (Whisper, ElevenLabs, Deepgram Nova-3, AssemblyAI Universal-2)
+- **Multi-modal** — Drivers for embeddings, rerank (Cohere, Voyage, Jina), moderation (OpenAI, Mistral), image generation (DALL-E, Imagen, Grok, Stability, Runway), video generation (Grok Imagine Video, Runway text/image/video → video), text-to-speech (OpenAI, ElevenLabs, Cartesia Sonic, Deepgram Aura, Runway), sound effects, voice dubbing / isolation / conversion (Runway), and speech-to-text (Whisper, ElevenLabs, Deepgram Nova-3, AssemblyAI Universal-2)
 - **Multi-model fallback** — Try a list of models in sequence with per-attempt cost, token, and capability accounting
 - **Strategy cascade** — Auto-selects between provider-native JSON mode, tool-call extraction, and prompted repair so extraction works on any model
 - **TOON input conversion** — 45-60% token savings when sending structured data via [Token-Oriented Object Notation](https://github.com/jhd3197/python-toon)
@@ -151,6 +151,7 @@ Beyond text LLMs, Prompture exposes drivers for adjacent modalities under the sa
 
 - **Embeddings** — OpenAI (`text-embedding-3-*`), Cohere (`embed-v4.0`), Voyage AI (`voyage-3.5`, `voyage-3-large`), Jina AI (`jina-embeddings-v3`), Nomic (`nomic-embed-text-v1.5`), Mixedbread (`mxbai-embed-large-v1`, `mxbai-embed-2d-large-v1`), and Ollama (`nomic-embed-text`)
 - **Rerank** — Cohere (`rerank-v3.5`), Voyage AI (`rerank-2.5`), Jina AI (`jina-reranker-v2-base-multilingual`), Mixedbread (`mxbai-rerank-large-v1`, `mxbai-rerank-base-v1`, `mxbai-rerank-xsmall-v1`)
+- **Moderation** — OpenAI (`omni-moderation-latest` — free multimodal), Mistral (`mistral-moderation-latest`)
 - **Image generation** — OpenAI DALL-E + GPT image, Google Imagen, Grok, Stability AI, Runway (`gen4_image`, `gen4_image_turbo`, `gpt_image_2`, `gemini_image3_pro`, `gemini_2.5_flash`), Kling AI, Fal.ai, Ideogram (v3 — strong typography), Black Forest Labs / Flux (`flux-pro-1.1`, `flux-pro-1.1-ultra`, `flux-dev`, `flux-schnell`, `flux-kontext-pro`/`max` for editing)
 - **Video generation** — Grok Imagine Video; Runway text/image/video → video (`gen4.5`, `gen4_turbo`, `gen3a_turbo`, `gen4_aleph`, `veo3`, `veo3.1`, `veo3.1_fast`); MiniMax / Hailuo; Kling AI; Luma AI Dream Machine (`ray-2`, `ray-flash-2`, `ray-1-6`); Pika Labs (`pika-2.2`, `pika-2.1`, `pika-1.5`); Fal.ai
 - **Text-to-speech** — OpenAI (`tts-1`), ElevenLabs, Cartesia (`sonic-2`), Deepgram (`aura-2-thalia-en`), Runway (`eleven_multilingual_v2`)
@@ -212,6 +213,27 @@ for r in results:
 ```
 
 Discover configured rerank models with `get_available_rerank_models()`. The async factory is available as `get_async_rerank_driver_for_model()`.
+
+### Moderation
+
+Moderation providers classify text against a content-policy taxonomy and return per-category flags + confidence scores. Set `OPENAI_API_KEY` or `MISTRAL_API_KEY`, then:
+
+```python
+from prompture.drivers.moderation_registry import get_moderation_driver_for_model
+
+driver = get_moderation_driver_for_model("openai/omni-moderation-latest")
+
+# Single string → single ModerationResult
+result = driver.moderate("I will hurt someone")
+print(result.flagged, result.categories["harassment"], result.category_scores["harassment"])
+
+# List of strings → list of ModerationResult
+results = driver.moderate(["benign text", "violent text"])
+for r in results:
+    print(r.flagged, r.categories)
+```
+
+OpenAI moderation is free of charge (`cost == 0`, `pricing_unknown == False`). Mistral moderation is billed at ~$0.10 per million input tokens. Discover configured moderation models with `get_available_moderation_models()`. The async factory is `get_async_moderation_driver_for_model()`.
 
 ### Runway
 

@@ -67,6 +67,9 @@ class ProviderDescriptor:
     rerank_sync: DriverSpec | None = None
     rerank_async: DriverSpec | None = None
 
+    moderation_sync: DriverSpec | None = None
+    moderation_async: DriverSpec | None = None
+
     # Human-friendly name for display purposes (e.g. "OpenAI", "Google Gemini").
     # Aliases get None.
     display_name: str | None = None
@@ -160,6 +163,12 @@ def _build_descriptors() -> list[ProviderDescriptor]:
             ),
             embedding_async=DriverSpec(
                 "async_openai_embedding_driver.AsyncOpenAIEmbeddingDriver", _oai_kw, "text-embedding-3-small"
+            ),
+            moderation_sync=DriverSpec(
+                "openai_moderation_driver.OpenAIModerationDriver", _oai_kw, "omni-moderation-latest"
+            ),
+            moderation_async=DriverSpec(
+                "async_openai_moderation_driver.AsyncOpenAIModerationDriver", _oai_kw, "omni-moderation-latest"
             ),
             display_name="OpenAI",
             is_configured_check="openai_api_key",
@@ -621,6 +630,16 @@ def _build_descriptors() -> list[ProviderDescriptor]:
                 _mistral_kw,
                 "mistral_model",
             ),
+            moderation_sync=DriverSpec(
+                "mistral_moderation_driver.MistralModerationDriver",
+                _mistral_kw,
+                "mistral-moderation-latest",
+            ),
+            moderation_async=DriverSpec(
+                "async_mistral_moderation_driver.AsyncMistralModerationDriver",
+                _mistral_kw,
+                "mistral-moderation-latest",
+            ),
             display_name="Mistral AI",
             is_configured_check="mistral_api_key",
             list_models_kwargs=[("api_key", "mistral_api_key", "MISTRAL_API_KEY")],
@@ -905,7 +924,7 @@ def _build_descriptors() -> list[ProviderDescriptor]:
     _aliases: list[tuple[str, str, set[str]]] = [
         ("anthropic", "claude", {"llm"}),
         ("gemini", "google", {"llm", "img_gen"}),
-        ("chatgpt", "openai", {"llm", "embedding"}),
+        ("chatgpt", "openai", {"llm", "embedding", "moderation"}),
         ("xai", "grok", {"llm", "img_gen", "video_gen"}),
         ("lm_studio", "lmstudio", {"llm"}),
         ("lm-studio", "lmstudio", {"llm"}),
@@ -916,7 +935,7 @@ def _build_descriptors() -> list[ProviderDescriptor]:
         ("vertex", "google_vertexai", {"llm"}),
         ("vertexai", "google_vertexai", {"llm"}),
         ("hailuo", "minimax", {"video_gen"}),
-        ("mistralai", "mistral", {"llm"}),
+        ("mistralai", "mistral", {"llm", "moderation"}),
         ("dream-machine", "luma", {"video_gen"}),
         ("lumalabs", "luma", {"video_gen"}),
         ("flux", "bfl", {"img_gen"}),
@@ -945,6 +964,8 @@ def _build_descriptors() -> list[ProviderDescriptor]:
             embedding_async=canon.embedding_async if "embedding" in modalities else None,
             rerank_sync=canon.rerank_sync if "rerank" in modalities else None,
             rerank_async=canon.rerank_async if "rerank" in modalities else None,
+            moderation_sync=canon.moderation_sync if "moderation" in modalities else None,
+            moderation_async=canon.moderation_async if "moderation" in modalities else None,
             is_configured_check=canon.is_configured_check,
             is_configured_fn=canon.is_configured_fn,
             always_available=canon.always_available,
@@ -1043,6 +1064,7 @@ def register_all_builtin_drivers() -> None:
         register_async_driver,
         register_async_embedding_driver,
         register_async_img_gen_driver,
+        register_async_moderation_driver,
         register_async_rerank_driver,
         register_async_stt_driver,
         register_async_tts_driver,
@@ -1050,6 +1072,7 @@ def register_all_builtin_drivers() -> None:
         register_driver,
         register_embedding_driver,
         register_img_gen_driver,
+        register_moderation_driver,
         register_rerank_driver,
         register_stt_driver,
         register_tts_driver,
@@ -1071,6 +1094,8 @@ def register_all_builtin_drivers() -> None:
         "embedding_async": register_async_embedding_driver,
         "rerank_sync": register_rerank_driver,
         "rerank_async": register_async_rerank_driver,
+        "moderation_sync": register_moderation_driver,
+        "moderation_async": register_async_moderation_driver,
     }
 
     for desc in PROVIDER_DESCRIPTORS:

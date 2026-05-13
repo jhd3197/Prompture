@@ -168,5 +168,25 @@
       "input": 0.15,
       "output": 0.15
     }
+  },
+  "mistral-moderation-latest": {
+    "modality": "moderation",
+    "api_type": "moderation",
+    "modalities_input": ["text"],
+    "modalities_output": ["moderation"],
+    "cost": {
+      "input": 0.10,
+      "per_million_tokens": 0.10
+    }
+  },
+  "mistral-moderation-2411": {
+    "modality": "moderation",
+    "api_type": "moderation",
+    "modalities_input": ["text"],
+    "modalities_output": ["moderation"],
+    "cost": {
+      "input": 0.10,
+      "per_million_tokens": 0.10
+    }
   }
 }

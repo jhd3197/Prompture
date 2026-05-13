@@ -49,6 +49,7 @@ from .async_img_gen_base import AsyncImageGenDriver
 from .async_jina_rerank_driver import AsyncJinaRerankDriver
 from .async_lmstudio_driver import AsyncLMStudioDriver
 from .async_local_http_driver import AsyncLocalHTTPDriver
+from .async_mistral_moderation_driver import AsyncMistralModerationDriver
 from .async_modelscope_driver import AsyncModelScopeDriver
 from .async_moonshot_driver import AsyncMoonshotDriver
 from .async_ollama_driver import AsyncOllamaDriver
@@ -56,6 +57,7 @@ from .async_ollama_embedding_driver import AsyncOllamaEmbeddingDriver
 from .async_openai_driver import AsyncOpenAIDriver
 from .async_openai_embedding_driver import AsyncOpenAIEmbeddingDriver
 from .async_openai_img_gen_driver import AsyncOpenAIImageGenDriver
+from .async_openai_moderation_driver import AsyncOpenAIModerationDriver
 from .async_openai_stt_driver import AsyncOpenAISTTDriver
 from .async_openai_tts_driver import AsyncOpenAITTSDriver
 from .async_openrouter_driver import AsyncOpenRouterDriver
@@ -92,13 +94,16 @@ from .img_gen_base import ImageGenDriver
 from .jina_rerank_driver import JinaRerankDriver
 from .lmstudio_driver import LMStudioDriver
 from .local_http_driver import LocalHTTPDriver
+from .mistral_moderation_driver import MistralModerationDriver
 from .modelscope_driver import ModelScopeDriver
+from .moderation_base import AsyncModerationDriver, ModerationDriver, ModerationResult
 from .moonshot_driver import MoonshotDriver
 from .ollama_driver import OllamaDriver
 from .ollama_embedding_driver import OllamaEmbeddingDriver
 from .openai_driver import OpenAIDriver
 from .openai_embedding_driver import OpenAIEmbeddingDriver
 from .openai_img_gen_driver import OpenAIImageGenDriver
+from .openai_moderation_driver import OpenAIModerationDriver
 from .openai_stt_driver import OpenAISTTDriver
 from .openai_tts_driver import OpenAITTSDriver
 from .openrouter_driver import OpenRouterDriver
@@ -113,6 +118,7 @@ from .registry import (
     get_async_driver_factory,
     get_async_embedding_driver_factory,
     get_async_img_gen_driver_factory,
+    get_async_moderation_driver_factory,
     get_async_rerank_driver_factory,
     get_async_stt_driver_factory,
     get_async_tts_driver_factory,
@@ -120,6 +126,7 @@ from .registry import (
     get_driver_factory,
     get_embedding_driver_factory,
     get_img_gen_driver_factory,
+    get_moderation_driver_factory,
     get_rerank_driver_factory,
     get_stt_driver_factory,
     get_tts_driver_factory,
@@ -127,6 +134,7 @@ from .registry import (
     is_async_driver_registered,
     is_async_embedding_driver_registered,
     is_async_img_gen_driver_registered,
+    is_async_moderation_driver_registered,
     is_async_rerank_driver_registered,
     is_async_stt_driver_registered,
     is_async_tts_driver_registered,
@@ -134,6 +142,7 @@ from .registry import (
     is_driver_registered,
     is_embedding_driver_registered,
     is_img_gen_driver_registered,
+    is_moderation_driver_registered,
     is_rerank_driver_registered,
     is_stt_driver_registered,
     is_tts_driver_registered,
@@ -141,6 +150,7 @@ from .registry import (
     list_registered_async_drivers,
     list_registered_async_embedding_drivers,
     list_registered_async_img_gen_drivers,
+    list_registered_async_moderation_drivers,
     list_registered_async_rerank_drivers,
     list_registered_async_stt_drivers,
     list_registered_async_tts_drivers,
@@ -148,6 +158,7 @@ from .registry import (
     list_registered_drivers,
     list_registered_embedding_drivers,
     list_registered_img_gen_drivers,
+    list_registered_moderation_drivers,
     list_registered_rerank_drivers,
     list_registered_stt_drivers,
     list_registered_tts_drivers,
@@ -156,6 +167,7 @@ from .registry import (
     register_async_driver,
     register_async_embedding_driver,
     register_async_img_gen_driver,
+    register_async_moderation_driver,
     register_async_rerank_driver,
     register_async_stt_driver,
     register_async_tts_driver,
@@ -163,6 +175,7 @@ from .registry import (
     register_driver,
     register_embedding_driver,
     register_img_gen_driver,
+    register_moderation_driver,
     register_rerank_driver,
     register_stt_driver,
     register_tts_driver,
@@ -170,6 +183,7 @@ from .registry import (
     unregister_async_driver,
     unregister_async_embedding_driver,
     unregister_async_img_gen_driver,
+    unregister_async_moderation_driver,
     unregister_async_rerank_driver,
     unregister_async_stt_driver,
     unregister_async_tts_driver,
@@ -177,6 +191,7 @@ from .registry import (
     unregister_driver,
     unregister_embedding_driver,
     unregister_img_gen_driver,
+    unregister_moderation_driver,
     unregister_rerank_driver,
     unregister_stt_driver,
     unregister_tts_driver,
@@ -234,6 +249,12 @@ from .embedding_registry import (
 from .img_gen_registry import (
     get_async_img_gen_driver_for_model,
     get_img_gen_driver_for_model,
+)
+from .moderation_registry import (
+    ASYNC_MODERATION_DRIVER_REGISTRY,
+    MODERATION_DRIVER_REGISTRY,
+    get_async_moderation_driver_for_model,
+    get_moderation_driver_for_model,
 )
 from .rerank_registry import (
     ASYNC_RERANK_DRIVER_REGISTRY,
@@ -477,6 +498,7 @@ def provider_for_model(model_str: str, *, canonical: bool = False) -> str:
 
 __all__ = [
     "ASYNC_DRIVER_REGISTRY",
+    "ASYNC_MODERATION_DRIVER_REGISTRY",
     # Provider driver maps (for explicit-credential construction)
     "ASYNC_PROVIDER_DRIVER_MAP",
     "ASYNC_RERANK_DRIVER_REGISTRY",
@@ -484,6 +506,7 @@ __all__ = [
     "DRIVER_REGISTRY",
     # Embedding model dimension metadata
     "EMBEDDING_MODEL_DIMENSIONS",
+    "MODERATION_DRIVER_REGISTRY",
     "PROVIDER_DESCRIPTORS",
     # Provider descriptors
     "PROVIDER_DESCRIPTOR_MAP",
@@ -523,13 +546,16 @@ __all__ = [
     "AsyncJinaRerankDriver",
     "AsyncLMStudioDriver",
     "AsyncLocalHTTPDriver",
+    "AsyncMistralModerationDriver",
     "AsyncModelScopeDriver",
+    "AsyncModerationDriver",
     "AsyncMoonshotDriver",
     "AsyncOllamaDriver",
     "AsyncOllamaEmbeddingDriver",
     "AsyncOpenAIDriver",
     "AsyncOpenAIEmbeddingDriver",
     "AsyncOpenAIImageGenDriver",
+    "AsyncOpenAIModerationDriver",
     "AsyncOpenAISTTDriver",
     "AsyncOpenAITTSDriver",
     "AsyncOpenRouterDriver",
@@ -567,13 +593,18 @@ __all__ = [
     "JinaRerankDriver",
     "LMStudioDriver",
     "LocalHTTPDriver",
+    "MistralModerationDriver",
     "ModelScopeDriver",
+    # Moderation base + result types
+    "ModerationDriver",
+    "ModerationResult",
     "MoonshotDriver",
     "OllamaDriver",
     "OllamaEmbeddingDriver",
     "OpenAIDriver",
     "OpenAIEmbeddingDriver",
     "OpenAIImageGenDriver",
+    "OpenAIModerationDriver",
     "OpenAISTTDriver",
     "OpenAITTSDriver",
     "OpenRouterDriver",
@@ -603,6 +634,10 @@ __all__ = [
     "get_async_img_gen_driver_factory",
     # Image gen factory functions
     "get_async_img_gen_driver_for_model",
+    # Moderation registry query functions
+    "get_async_moderation_driver_factory",
+    # Moderation factory functions
+    "get_async_moderation_driver_for_model",
     # Rerank registry query functions
     "get_async_rerank_driver_factory",
     # Rerank factory functions
@@ -624,6 +659,8 @@ __all__ = [
     "get_embedding_driver_for_model",
     "get_img_gen_driver_factory",
     "get_img_gen_driver_for_model",
+    "get_moderation_driver_factory",
+    "get_moderation_driver_for_model",
     "get_rerank_driver_factory",
     "get_rerank_driver_for_model",
     "get_runway_model_info",
@@ -639,6 +676,7 @@ __all__ = [
     "is_async_driver_registered",
     "is_async_embedding_driver_registered",
     "is_async_img_gen_driver_registered",
+    "is_async_moderation_driver_registered",
     "is_async_rerank_driver_registered",
     "is_async_stt_driver_registered",
     "is_async_tts_driver_registered",
@@ -646,6 +684,7 @@ __all__ = [
     "is_driver_registered",
     "is_embedding_driver_registered",
     "is_img_gen_driver_registered",
+    "is_moderation_driver_registered",
     "is_rerank_driver_registered",
     "is_stt_driver_registered",
     "is_tts_driver_registered",
@@ -653,6 +692,7 @@ __all__ = [
     "list_registered_async_drivers",
     "list_registered_async_embedding_drivers",
     "list_registered_async_img_gen_drivers",
+    "list_registered_async_moderation_drivers",
     "list_registered_async_rerank_drivers",
     "list_registered_async_stt_drivers",
     "list_registered_async_tts_drivers",
@@ -660,6 +700,7 @@ __all__ = [
     "list_registered_drivers",
     "list_registered_embedding_drivers",
     "list_registered_img_gen_drivers",
+    "list_registered_moderation_drivers",
     "list_registered_rerank_drivers",
     "list_registered_stt_drivers",
     "list_registered_tts_drivers",
@@ -671,6 +712,7 @@ __all__ = [
     "register_async_driver",
     "register_async_embedding_driver",
     "register_async_img_gen_driver",
+    "register_async_moderation_driver",
     "register_async_rerank_driver",
     "register_async_stt_driver",
     "register_async_tts_driver",
@@ -680,6 +722,7 @@ __all__ = [
     "register_driver",
     "register_embedding_driver",
     "register_img_gen_driver",
+    "register_moderation_driver",
     "register_rerank_driver",
     "register_stt_driver",
     "register_tts_driver",
@@ -688,6 +731,7 @@ __all__ = [
     "unregister_async_driver",
     "unregister_async_embedding_driver",
     "unregister_async_img_gen_driver",
+    "unregister_async_moderation_driver",
     "unregister_async_rerank_driver",
     "unregister_async_stt_driver",
     "unregister_async_tts_driver",
@@ -696,6 +740,7 @@ __all__ = [
     "unregister_driver",
     "unregister_embedding_driver",
     "unregister_img_gen_driver",
+    "unregister_moderation_driver",
     "unregister_rerank_driver",
     "unregister_stt_driver",
     "unregister_tts_driver",

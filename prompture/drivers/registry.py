@@ -56,6 +56,11 @@ _embedding_async = DriverRegistry(
 _rerank_sync = DriverRegistry("rerank sync", "prompture.rerank_drivers", error_prefix="rerank ")
 _rerank_async = DriverRegistry("rerank async", "prompture.async_rerank_drivers", error_prefix="async rerank ")
 
+_moderation_sync = DriverRegistry("moderation sync", "prompture.moderation_drivers", error_prefix="moderation ")
+_moderation_async = DriverRegistry(
+    "moderation async", "prompture.async_moderation_drivers", error_prefix="async moderation "
+)
+
 # ── LLM sync ───────────────────────────────────────────────────────────────
 
 
@@ -562,6 +567,68 @@ def load_rerank_entry_point_drivers() -> tuple[int, int]:
     return (_rerank_sync.load_entry_points(), _rerank_async.load_entry_points())
 
 
+# ── Moderation ─────────────────────────────────────────────────────────────
+
+
+def register_moderation_driver(name: str, factory: DriverFactory, *, overwrite: bool = False) -> None:
+    """Register a sync moderation driver factory for a provider name."""
+    _moderation_sync.register(name, factory, overwrite=overwrite)
+
+
+def register_async_moderation_driver(name: str, factory: DriverFactory, *, overwrite: bool = False) -> None:
+    """Register an async moderation driver factory for a provider name."""
+    _moderation_async.register(name, factory, overwrite=overwrite)
+
+
+def unregister_moderation_driver(name: str) -> bool:
+    """Unregister a sync moderation driver by name."""
+    return _moderation_sync.unregister(name)
+
+
+def unregister_async_moderation_driver(name: str) -> bool:
+    """Unregister an async moderation driver by name."""
+    return _moderation_async.unregister(name)
+
+
+def list_registered_moderation_drivers() -> list[str]:
+    """Return a sorted list of registered sync moderation driver names."""
+    return _moderation_sync.list_names()
+
+
+def list_registered_async_moderation_drivers() -> list[str]:
+    """Return a sorted list of registered async moderation driver names."""
+    return _moderation_async.list_names()
+
+
+def is_moderation_driver_registered(name: str) -> bool:
+    """Check if a sync moderation driver is registered."""
+    return _moderation_sync.is_registered(name)
+
+
+def is_async_moderation_driver_registered(name: str) -> bool:
+    """Check if an async moderation driver is registered."""
+    return _moderation_async.is_registered(name)
+
+
+def get_moderation_driver_factory(name: str) -> DriverFactory:
+    """Get a registered sync moderation driver factory by name."""
+    return _moderation_sync.get_factory(name)
+
+
+def get_async_moderation_driver_factory(name: str) -> DriverFactory:
+    """Get a registered async moderation driver factory by name."""
+    return _moderation_async.get_factory(name)
+
+
+def load_moderation_entry_point_drivers() -> tuple[int, int]:
+    """Load moderation drivers from installed packages via entry points.
+
+    Returns:
+        A tuple of (sync_count, async_count) counts.
+    """
+    return (_moderation_sync.load_entry_points(), _moderation_async.load_entry_points())
+
+
 # ── Internal helpers (used by __init__.py and async_registry.py) ───────────
 
 
@@ -623,6 +690,14 @@ def _get_async_rerank_registry() -> dict[str, DriverFactory]:
     return _rerank_async.dict
 
 
+def _get_moderation_registry() -> dict[str, DriverFactory]:
+    return _moderation_sync.dict
+
+
+def _get_async_moderation_registry() -> dict[str, DriverFactory]:
+    return _moderation_async.dict
+
+
 def _reset_registries() -> None:
     """Reset registries to empty state (for testing only)."""
     _llm_sync.reset()
@@ -639,6 +714,8 @@ def _reset_registries() -> None:
     _embedding_async.reset()
     _rerank_sync.reset()
     _rerank_async.reset()
+    _moderation_sync.reset()
+    _moderation_async.reset()
 
 
 # ── Backwards-compat aliases for internal dicts (used by tests) ────────────
@@ -659,3 +736,5 @@ _EMBEDDING_REGISTRY = _embedding_sync._registry
 _ASYNC_EMBEDDING_REGISTRY = _embedding_async._registry
 _RERANK_REGISTRY = _rerank_sync._registry
 _ASYNC_RERANK_REGISTRY = _rerank_async._registry
+_MODERATION_REGISTRY = _moderation_sync._registry
+_ASYNC_MODERATION_REGISTRY = _moderation_async._registry
