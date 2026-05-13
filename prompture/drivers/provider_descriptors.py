@@ -519,6 +519,86 @@ def _build_descriptors() -> list[ProviderDescriptor]:
         )
     )
 
+    # ── Kling AI (image + video) ─────────────────────────────────────
+    _kling_kw = {
+        "access_key": "kling_access_key",
+        "secret_key": "kling_secret_key",  # nosec B105 — settings attribute name, not a credential
+        "endpoint": "kling_endpoint",
+    }
+    descriptors.append(
+        ProviderDescriptor(
+            name="kling",
+            img_gen_sync=DriverSpec(
+                "kling_img_gen_driver.KlingImageGenDriver", _kling_kw, "kling_image_model"
+            ),
+            img_gen_async=DriverSpec(
+                "async_kling_img_gen_driver.AsyncKlingImageGenDriver",
+                _kling_kw,
+                "kling_image_model",
+            ),
+            video_gen_sync=DriverSpec(
+                "kling_video_gen_driver.KlingVideoGenDriver", _kling_kw, "kling_video_model"
+            ),
+            video_gen_async=DriverSpec(
+                "async_kling_video_gen_driver.AsyncKlingVideoGenDriver",
+                _kling_kw,
+                "kling_video_model",
+            ),
+            display_name="Kling AI",
+            is_configured_check="kling_access_key",
+        )
+    )
+
+    # ── MiniMax / Hailuo (LLM + video) ───────────────────────────────
+    _mm_kw = {"api_key": "minimax_api_key", "endpoint": "minimax_endpoint"}
+    descriptors.append(
+        ProviderDescriptor(
+            name="minimax",
+            **_llm(
+                "minimax_driver",
+                "MiniMaxDriver",
+                "async_minimax_driver",
+                "AsyncMiniMaxDriver",
+                _mm_kw,
+                "minimax_model",
+            ),
+            video_gen_sync=DriverSpec(
+                "minimax_video_gen_driver.MiniMaxVideoGenDriver", _mm_kw, "minimax_video_model"
+            ),
+            video_gen_async=DriverSpec(
+                "async_minimax_video_gen_driver.AsyncMiniMaxVideoGenDriver",
+                _mm_kw,
+                "minimax_video_model",
+            ),
+            display_name="MiniMax",
+            is_configured_check="minimax_api_key",
+            list_models_kwargs=[("api_key", "minimax_api_key", "MINIMAX_API_KEY")],
+            models_dev_name="minimax",
+        )
+    )
+
+    # ── Fal.ai (image + video aggregator) ────────────────────────────
+    _fal_kw = {"api_key": "fal_api_key", "endpoint": "fal_endpoint"}
+    descriptors.append(
+        ProviderDescriptor(
+            name="fal",
+            img_gen_sync=DriverSpec(
+                "fal_img_gen_driver.FalImageGenDriver", _fal_kw, "fal_image_model"
+            ),
+            img_gen_async=DriverSpec(
+                "async_fal_img_gen_driver.AsyncFalImageGenDriver", _fal_kw, "fal_image_model"
+            ),
+            video_gen_sync=DriverSpec(
+                "fal_video_gen_driver.FalVideoGenDriver", _fal_kw, "fal_video_model"
+            ),
+            video_gen_async=DriverSpec(
+                "async_fal_video_gen_driver.AsyncFalVideoGenDriver", _fal_kw, "fal_video_model"
+            ),
+            display_name="Fal.ai",
+            is_configured_check="fal_api_key",
+        )
+    )
+
     # ── Aliases ───────────────────────────────────────────────────────
     # Each alias specifies exactly which modalities it covers, matching
     # the original per-file registrations.  Format:
@@ -537,6 +617,7 @@ def _build_descriptors() -> list[ProviderDescriptor]:
         ("runwayml", "runway", {"img_gen", "video_gen", "tts"}),
         ("vertex", "google_vertexai", {"llm"}),
         ("vertexai", "google_vertexai", {"llm"}),
+        ("hailuo", "minimax", {"video_gen"}),
     ]
 
     # Build a lookup of canonical descriptors by name.

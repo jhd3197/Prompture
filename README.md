@@ -31,7 +31,7 @@ print(person.name)  # Maria
 ## Key Features
 
 - **Structured output** — JSON schema enforcement and direct Pydantic model population
-- **18+ providers** — OpenAI, Claude, Google, Groq, Grok, Azure, Ollama, LM Studio, OpenRouter, HuggingFace, Moonshot, ModelScope, Z.ai, Vertex AI, AirLLM, CachiBot, Runway, and generic HTTP
+- **20+ providers** — OpenAI, Claude, Google, Groq, Grok, Azure, Ollama, LM Studio, OpenRouter, HuggingFace, Moonshot, ModelScope, Z.ai, Vertex AI, AirLLM, CachiBot, Runway, MiniMax/Hailuo, Kling AI, Fal.ai, and generic HTTP
 - **Multi-modal** — Drivers for embeddings, image generation (DALL-E, Imagen, Grok, Stability, Runway), video generation (Grok Imagine Video, Runway text/image/video → video), text-to-speech (OpenAI, ElevenLabs, Runway), sound effects, voice dubbing / isolation / conversion (Runway), and speech-to-text (Whisper, ElevenLabs)
 - **Multi-model fallback** — Try a list of models in sequence with per-attempt cost, token, and capability accounting
 - **Strategy cascade** — Auto-selects between provider-native JSON mode, tool-call extraction, and prompted repair so extraction works on any model
@@ -128,16 +128,19 @@ Model strings use `"provider/model"` format. The provider prefix routes to the c
 | `airllm` | `airllm/Qwen2-7B` | Free (local) |
 | `local_http` | `local_http/self-hosted` | Free |
 | `runway` | `runway/gen4.5` (video), `runway/gpt_image_2` (image), `runway/eleven_multilingual_v2` (TTS) | Automatic |
+| `minimax` | `minimax/MiniMax-Text-01` (LLM), `minimax/MiniMax-Hailuo-2.3` (video) | Automatic |
+| `kling` | `kling/kling-v2-1` (image + video) | Automatic |
+| `fal` | `fal/fal-ai/flux/dev` (image), `fal/fal-ai/kling-video/v2.6/pro/image-to-video` (video) | Automatic |
 
-Aliases (`anthropic`, `gemini`, `chatgpt`, `xai`, `lm_studio`, `zhipu`, `hf`, `dalle`, `runwayml`) route to their canonical providers.
+Aliases (`anthropic`, `gemini`, `chatgpt`, `xai`, `lm_studio`, `zhipu`, `hf`, `dalle`, `runwayml`, `hailuo`) route to their canonical providers.
 
 ## Multi-Modal
 
 Beyond text LLMs, Prompture exposes drivers for adjacent modalities under the same `provider/model` routing:
 
 - **Embeddings** — OpenAI (`text-embedding-3-*`) and Ollama (`nomic-embed-text`)
-- **Image generation** — OpenAI DALL-E + GPT image, Google Imagen, Grok, Stability AI, Runway (`gen4_image`, `gen4_image_turbo`, `gpt_image_2`, `gemini_image3_pro`, `gemini_2.5_flash`)
-- **Video generation** — Grok Imagine Video; Runway text/image/video → video (`gen4.5`, `gen4_turbo`, `gen3a_turbo`, `gen4_aleph`, `veo3`, `veo3.1`, `veo3.1_fast`)
+- **Image generation** — OpenAI DALL-E + GPT image, Google Imagen, Grok, Stability AI, Runway (`gen4_image`, `gen4_image_turbo`, `gpt_image_2`, `gemini_image3_pro`, `gemini_2.5_flash`), Kling AI, Fal.ai
+- **Video generation** — Grok Imagine Video; Runway text/image/video → video (`gen4.5`, `gen4_turbo`, `gen3a_turbo`, `gen4_aleph`, `veo3`, `veo3.1`, `veo3.1_fast`); MiniMax / Hailuo; Kling AI; Fal.ai
 - **Text-to-speech** — OpenAI (`tts-1`), ElevenLabs, Runway (`eleven_multilingual_v2`)
 - **Sound effects** — Runway (`eleven_text_to_sound_v2`)
 - **Audio transforms** — Runway voice dubbing, voice isolation, speech-to-speech (`RunwayAudioTransformDriver`)

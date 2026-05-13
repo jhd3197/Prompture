@@ -20,14 +20,53 @@ def prepare_strict_schema(schema: dict[str, Any]) -> dict[str, Any]:
 
 
 def _patch_strict(node: dict[str, Any]) -> None:
-    """Recursively add strict-mode constraints to an object schema node."""
+    """Recursively add strict-mode constraints to an object schema node.
+
+    Walks ``properties``, ``items``, composite keywords (``anyOf`` /
+    ``oneOf`` / ``allOf``), and Pydantic's ``$defs`` registry — the last
+    matters because Pydantic v2 puts nested ``BaseModel`` schemas there
+    and references them via ``$ref``; without descending into ``$defs``
+    those nested objects keep their default open-properties semantics
+    and OpenAI's strict mode rejects the whole request with
+    ``'additionalProperties' is required to be supplied and to be false``.
+
+    Also strips sibling keywords from ``$ref`` nodes — Pydantic emits
+    things like ``{"$ref": "#/$defs/Foo", "description": "..."}`` for
+    referenced sub-models, and OpenAI strict mode rejects with
+    ``$ref cannot have keywords {'description'}``. Older JSON Schema
+    drafts ignored siblings of ``$ref``, so dropping them is lossless
+    for our purposes.
+    """
+    if not isinstance(node, dict):
+        return
+    if "$ref" in node and len(node) > 1:
+        ref_value = node["$ref"]
+        node.clear()
+        node["$ref"] = ref_value
+        return
     if node.get("type") == "object" and "properties" in node:
-        node.setdefault("additionalProperties", False)
-        node.setdefault("required", list(node["properties"].keys()))
+        node["additionalProperties"] = False
+        # Strict mode requires `required` to list *every* property — not
+        # just the ones Pydantic considers required (i.e. those without a
+        # default). Overwrite rather than setdefault so a partial Pydantic-
+        # generated list doesn't slip through and get rejected with
+        # "'required' is required to be supplied and to be an array
+        # including every key in properties".
+        node["required"] = list(node["properties"].keys())
         for prop in node["properties"].values():
             _patch_strict(prop)
-    elif node.get("type") == "array" and isinstance(node.get("items"), dict):
+    if node.get("type") == "array" and isinstance(node.get("items"), dict):
         _patch_strict(node["items"])
+    for keyword in ("anyOf", "oneOf", "allOf"):
+        for sub in node.get(keyword, []) or []:
+            _patch_strict(sub)
+    # Pydantic v2 nested model definitions live here. They're referenced
+    # via $ref from properties but never reached by walking properties
+    # alone — recurse explicitly.
+    for sub in (node.get("$defs") or {}).values():
+        _patch_strict(sub)
+    for sub in (node.get("definitions") or {}).values():
+        _patch_strict(sub)
 
 
 class CostMixin:
@@ -107,7 +146,7 @@ class CostMixin:
 
         caps = get_model_capabilities(provider, model)
 
-        tokens_param = "max_tokens"
+        tokens_param = _default_tokens_param(provider, model)
         supports_temperature = True
         context_window: int | None = None
         max_output_tokens: int | None = None
@@ -126,6 +165,29 @@ class CostMixin:
             "context_window": context_window,
             "max_output_tokens": max_output_tokens,
         }
+
+
+def _default_tokens_param(provider: str, model: str) -> str:
+    """Pick the per-call output-tokens parameter when the capabilities KB
+    has no entry for ``model``.
+
+    OpenAI's GPT-5 family and the o-series reasoning models (o1, o3, o4)
+    only accept ``max_completion_tokens`` — sending ``max_tokens`` 400s
+    with ``Unsupported parameter``. We name-detect those so brand-new
+    model IDs (e.g. ``gpt-5.4-mini``) work without waiting for a KB
+    update. Everything else stays on the legacy ``max_tokens`` default.
+    """
+    if provider != "openai":
+        return "max_tokens"
+    name = (model or "").split("/")[-1].lower()
+    if (
+        name.startswith("gpt-5")
+        or name.startswith("o1")
+        or name.startswith("o3")
+        or name.startswith("o4")
+    ):
+        return "max_completion_tokens"
+    return "max_tokens"
 
 
 class AudioCostMixin:
