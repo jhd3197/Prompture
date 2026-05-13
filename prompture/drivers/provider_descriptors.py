@@ -719,6 +719,36 @@ def _build_descriptors() -> list[ProviderDescriptor]:
         )
     )
 
+    # ── Ideogram (image gen only) ────────────────────────────────────
+    _ideogram_kw = {"api_key": "ideogram_api_key"}
+    descriptors.append(
+        ProviderDescriptor(
+            name="ideogram",
+            img_gen_sync=DriverSpec(
+                "ideogram_img_gen_driver.IdeogramImageGenDriver", _ideogram_kw, "ideogram_image_model"
+            ),
+            img_gen_async=DriverSpec(
+                "async_ideogram_img_gen_driver.AsyncIdeogramImageGenDriver",
+                _ideogram_kw,
+                "ideogram_image_model",
+            ),
+            display_name="Ideogram",
+            is_configured_check="ideogram_api_key",
+        )
+    )
+
+    # ── Black Forest Labs (BFL) — direct Flux access (image gen only) ──
+    _bfl_kw = {"api_key": "bfl_api_key"}
+    descriptors.append(
+        ProviderDescriptor(
+            name="bfl",
+            img_gen_sync=DriverSpec("bfl_img_gen_driver.BFLImageGenDriver", _bfl_kw, "bfl_image_model"),
+            img_gen_async=DriverSpec("async_bfl_img_gen_driver.AsyncBFLImageGenDriver", _bfl_kw, "bfl_image_model"),
+            display_name="Black Forest Labs",
+            is_configured_check="bfl_api_key",
+        )
+    )
+
     # ── Cohere (LLM + embeddings + rerank) ────────────────────────────
     _cohere_kw = {"api_key": "cohere_api_key"}
     descriptors.append(
@@ -845,6 +875,7 @@ def _build_descriptors() -> list[ProviderDescriptor]:
         ("mistralai", "mistral", {"llm"}),
         ("dream-machine", "luma", {"video_gen"}),
         ("lumalabs", "luma", {"video_gen"}),
+        ("flux", "bfl", {"img_gen"}),
     ]
 
     # Build a lookup of canonical descriptors by name.

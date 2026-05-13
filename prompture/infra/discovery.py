@@ -636,6 +636,20 @@ def get_available_image_gen_models(
         for model_id in RunwayImageGenDriver.KNOWN_MODELS:
             available.add(f"runway/{model_id}")
 
+    # Ideogram image gen models
+    if _cfg_value(env, "ideogram_api_key", "IDEOGRAM_API_KEY"):
+        from ..drivers.ideogram_img_gen_driver import IdeogramImageGenDriver
+
+        for model_id in IdeogramImageGenDriver.KNOWN_MODELS:
+            available.add(f"ideogram/{model_id}")
+
+    # Black Forest Labs (BFL) — direct Flux image gen models
+    if _cfg_value(env, "bfl_api_key", "BFL_API_KEY"):
+        from ..drivers.bfl_img_gen_driver import BFLImageGenDriver
+
+        for model_id in BFLImageGenDriver.KNOWN_MODELS:
+            available.add(f"bfl/{model_id}")
+
     # Dynamic discovery: check modalities_output from models.dev capabilities
     # for any models that the pricing dicts don't know about yet.
     from .model_rates import get_model_capabilities

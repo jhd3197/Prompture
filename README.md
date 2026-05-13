@@ -31,7 +31,7 @@ print(person.name)  # Maria
 ## Key Features
 
 - **Structured output** — JSON schema enforcement and direct Pydantic model population
-- **32+ providers** — OpenAI, Claude, Google, Groq, Grok, Azure, AWS Bedrock, Ollama, LM Studio, OpenRouter, HuggingFace, Moonshot, ModelScope, Z.ai, Vertex AI, AirLLM, CachiBot, Runway, MiniMax/Hailuo, Kling AI, Luma AI, Pika Labs, Fal.ai, Mistral AI, DeepSeek, Cohere, Voyage AI, Jina AI, Cartesia, Deepgram, AssemblyAI, generic OpenAI-compatible (Fireworks, Together, Cerebras, SambaNova, Perplexity, NVIDIA, DeepInfra, SiliconFlow), and generic HTTP
+- **34+ providers** — OpenAI, Claude, Google, Groq, Grok, Azure, AWS Bedrock, Ollama, LM Studio, OpenRouter, HuggingFace, Moonshot, ModelScope, Z.ai, Vertex AI, AirLLM, CachiBot, Runway, MiniMax/Hailuo, Kling AI, Luma AI, Pika Labs, Fal.ai, Ideogram, Black Forest Labs (Flux), Mistral AI, DeepSeek, Cohere, Voyage AI, Jina AI, Cartesia, Deepgram, AssemblyAI, generic OpenAI-compatible (Fireworks, Together, Cerebras, SambaNova, Perplexity, NVIDIA, DeepInfra, SiliconFlow), and generic HTTP
 - **Multi-modal** — Drivers for embeddings, rerank (Cohere, Voyage, Jina), image generation (DALL-E, Imagen, Grok, Stability, Runway), video generation (Grok Imagine Video, Runway text/image/video → video), text-to-speech (OpenAI, ElevenLabs, Cartesia Sonic, Deepgram Aura, Runway), sound effects, voice dubbing / isolation / conversion (Runway), and speech-to-text (Whisper, ElevenLabs, Deepgram Nova-3, AssemblyAI Universal-2)
 - **Multi-model fallback** — Try a list of models in sequence with per-attempt cost, token, and capability accounting
 - **Strategy cascade** — Auto-selects between provider-native JSON mode, tool-call extraction, and prompted repair so extraction works on any model
@@ -141,7 +141,7 @@ Model strings use `"provider/model"` format. The provider prefix routes to the c
 | `jina` | `jina/jina-embeddings-v3` (embedding), `jina/jina-reranker-v2-base-multilingual` (rerank) | Automatic |
 | `openai_compatible` | `openai_compatible/<profile>/<model>` — 8 curated profiles: `fireworks`, `together`, `cerebras`, `sambanova`, `perplexity`, `nvidia`, `deepinfra`, `siliconflow` (or pass an explicit `endpoint=` for anything else) | Automatic where pricing is known |
 
-Aliases (`anthropic`, `gemini`, `chatgpt`, `xai`, `lm_studio`, `zhipu`, `hf`, `dalle`, `runwayml`, `hailuo`, `mistralai`) route to their canonical providers.
+Aliases (`anthropic`, `gemini`, `chatgpt`, `xai`, `lm_studio`, `zhipu`, `hf`, `dalle`, `runwayml`, `hailuo`, `mistralai`, `flux`) route to their canonical providers.
 
 ## Multi-Modal
 
@@ -149,7 +149,7 @@ Beyond text LLMs, Prompture exposes drivers for adjacent modalities under the sa
 
 - **Embeddings** — OpenAI (`text-embedding-3-*`), Cohere (`embed-v4.0`), Voyage AI (`voyage-3.5`, `voyage-3-large`), Jina AI (`jina-embeddings-v3`), and Ollama (`nomic-embed-text`)
 - **Rerank** — Cohere (`rerank-v3.5`), Voyage AI (`rerank-2.5`), Jina AI (`jina-reranker-v2-base-multilingual`)
-- **Image generation** — OpenAI DALL-E + GPT image, Google Imagen, Grok, Stability AI, Runway (`gen4_image`, `gen4_image_turbo`, `gpt_image_2`, `gemini_image3_pro`, `gemini_2.5_flash`), Kling AI, Fal.ai
+- **Image generation** — OpenAI DALL-E + GPT image, Google Imagen, Grok, Stability AI, Runway (`gen4_image`, `gen4_image_turbo`, `gpt_image_2`, `gemini_image3_pro`, `gemini_2.5_flash`), Kling AI, Fal.ai, Ideogram (v3 — strong typography), Black Forest Labs / Flux (`flux-pro-1.1`, `flux-pro-1.1-ultra`, `flux-dev`, `flux-schnell`, `flux-kontext-pro`/`max` for editing)
 - **Video generation** — Grok Imagine Video; Runway text/image/video → video (`gen4.5`, `gen4_turbo`, `gen3a_turbo`, `gen4_aleph`, `veo3`, `veo3.1`, `veo3.1_fast`); MiniMax / Hailuo; Kling AI; Luma AI Dream Machine (`ray-2`, `ray-flash-2`, `ray-1-6`); Pika Labs (`pika-2.2`, `pika-2.1`, `pika-1.5`); Fal.ai
 - **Text-to-speech** — OpenAI (`tts-1`), ElevenLabs, Cartesia (`sonic-2`), Deepgram (`aura-2-thalia-en`), Runway (`eleven_multilingual_v2`)
 - **Sound effects** — Runway (`eleven_text_to_sound_v2`)

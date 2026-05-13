@@ -129,6 +129,14 @@ class Settings(BaseSettings):
     pika_api_key: Optional[str] = None  # nosec B105
     pika_video_model: str = "pika-2.2"
 
+    # Phase 7: Ideogram (image generation)
+    ideogram_api_key: Optional[str] = None  # nosec B105
+    ideogram_image_model: str = "ideogram-v3"
+
+    # Phase 7: Black Forest Labs (BFL) — direct Flux access
+    bfl_api_key: Optional[str] = None  # nosec B105
+    bfl_image_model: str = "flux-pro-1.1"
+
     # Mistral AI
     mistral_api_key: Optional[str] = None
     mistral_model: str = "mistral-large-latest"
