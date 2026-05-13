@@ -32,8 +32,8 @@ print(person.name)  # Maria
 
 - **Structured output** — JSON schema enforcement and direct Pydantic model population
 - **36+ providers** — OpenAI, Claude, Google, Groq, Grok, Azure, AWS Bedrock, Ollama, LM Studio, OpenRouter, HuggingFace, Moonshot, ModelScope, Z.ai, Vertex AI, AirLLM, CachiBot, Runway, MiniMax/Hailuo, Kling AI, Luma AI, Pika Labs, Fal.ai, Ideogram, Black Forest Labs (Flux), Mistral AI, DeepSeek, Cohere, Voyage AI, Jina AI, Nomic, Mixedbread (mxbai), Cartesia, Deepgram, AssemblyAI, generic OpenAI-compatible (Fireworks, Together, Cerebras, SambaNova, Perplexity, NVIDIA, DeepInfra, SiliconFlow, GitHub Models), and generic HTTP
-- **Multi-modal** — Drivers for embeddings, rerank (Cohere, Voyage, Jina), moderation (OpenAI, Mistral), image generation (DALL-E, Imagen, Grok, Stability, Runway), video generation (Grok Imagine Video, Runway text/image/video → video), text-to-speech (OpenAI, ElevenLabs, Cartesia Sonic, Deepgram Aura, Runway), sound effects, voice dubbing / isolation / conversion (Runway), and speech-to-text (Whisper, ElevenLabs, Deepgram Nova-3, AssemblyAI Universal-2)
-- **RAG document loaders** — Pluggable loaders for PDF, DOCX, HTML, Markdown, JSON / JSONL, CSV, EPUB, and XLSX with auto-detection by file extension and async siblings (chunkers + vector stores + retrievers coming in subsequent phases)
+- **Multi-modal** — Drivers for embeddings (OpenAI, Cohere, Voyage, Jina, Nomic, Mixedbread, Ollama), rerank (Cohere, Voyage, Jina, Mixedbread), moderation (OpenAI, Mistral), image generation (DALL-E, Imagen, Grok, Stability, Runway, Kling, Fal, Ideogram, Black Forest Labs / Flux), video generation (Grok Imagine Video, Runway text/image/video → video, MiniMax/Hailuo, Kling, Luma Dream Machine, Pika, Fal), text-to-speech (OpenAI, ElevenLabs, Cartesia Sonic, Deepgram Aura, Runway), sound effects, voice dubbing / isolation / conversion (Runway), and speech-to-text (Whisper, ElevenLabs, Deepgram Nova-3, AssemblyAI Universal-2)
+- **RAG stack** — Document loaders (PDF, DOCX, HTML, Markdown, JSON/JSONL, CSV, EPUB, XLSX), chunkers (character, recursive, token-aware via tiktoken, semantic, markdown-aware), vector stores (Chroma, Pinecone, Qdrant, pgvector, FAISS, Weaviate), retrievers (similarity, MMR, hybrid dense+BM25 via RRF), and an end-to-end `RAGPipeline` that composes loader → chunker → embedder → store → retriever → optional reranker → LLM
 - **Multi-model fallback** — Try a list of models in sequence with per-attempt cost, token, and capability accounting
 - **Strategy cascade** — Auto-selects between provider-native JSON mode, tool-call extraction, and prompted repair so extraction works on any model
 - **TOON input conversion** — 45-60% token savings when sending structured data via [Token-Oriented Object Notation](https://github.com/jhd3197/python-toon)
@@ -64,9 +64,30 @@ pip install prompture
 Optional extras:
 
 ```bash
-pip install prompture[redis]     # Redis cache backend
-pip install prompture[serve]     # FastAPI server mode
-pip install prompture[airllm]    # AirLLM local inference
+pip install prompture[redis]       # Redis cache backend
+pip install prompture[serve]       # FastAPI server mode
+pip install prompture[airllm]      # AirLLM local inference
+pip install prompture[bedrock]     # AWS Bedrock driver (boto3)
+pip install prompture[rag]         # Full RAG stack (all loaders, chunkers, vector stores, hybrid retrieval)
+```
+
+Fine-grained RAG extras (install only what you need):
+
+```bash
+pip install prompture[rag-pdf]         # PDF loader (pypdf)
+pip install prompture[rag-docx]        # DOCX loader (python-docx)
+pip install prompture[rag-html]        # HTML loader (beautifulsoup4 + markdownify + lxml)
+pip install prompture[rag-epub]        # EPUB loader (ebooklib)
+pip install prompture[rag-xlsx]        # XLSX loader (openpyxl)
+pip install prompture[rag-token]       # Token-aware chunker (tiktoken)
+pip install prompture[rag-semantic]    # Semantic chunker (numpy)
+pip install prompture[rag-hybrid]      # Hybrid retriever with BM25 (rank-bm25)
+pip install prompture[rag-vs-chroma]   # Chroma vector store
+pip install prompture[rag-vs-pinecone] # Pinecone vector store
+pip install prompture[rag-vs-qdrant]   # Qdrant vector store
+pip install prompture[rag-vs-pgvector] # pgvector / PostgreSQL
+pip install prompture[rag-vs-faiss]    # FAISS vector store (CPU build)
+pip install prompture[rag-vs-weaviate] # Weaviate vector store
 ```
 
 ## Configuration
