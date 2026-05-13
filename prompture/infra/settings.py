@@ -163,6 +163,17 @@ class Settings(BaseSettings):
     elevenlabs_tts_model: str = "eleven_multilingual_v2"
     elevenlabs_endpoint: str = "https://api.elevenlabs.io/v1"
 
+    # Phase 5: Audio providers (Cartesia, Deepgram, AssemblyAI)
+    cartesia_api_key: Optional[str] = None  # nosec B105
+    cartesia_tts_model: str = "sonic-2"
+
+    deepgram_api_key: Optional[str] = None  # nosec B105
+    deepgram_stt_model: str = "nova-3"
+    deepgram_tts_model: str = "aura-2-thalia-en"
+
+    assemblyai_api_key: Optional[str] = None  # nosec B105
+    assemblyai_stt_model: str = "universal"
+
     # Model rates cache
     model_rates_ttl_days: int = 7  # How often to refresh models.dev cache
 

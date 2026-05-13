@@ -518,6 +518,45 @@ def get_available_audio_models(
                 for model_id in ElevenLabsTTSDriver.AUDIO_PRICING:
                     available.add(f"elevenlabs/{model_id}")
 
+    # Cartesia TTS models
+    if _cfg_value(env, "cartesia_api_key", "CARTESIA_API_KEY") and (modality is None or modality == "tts"):
+        for model_id in (
+            "sonic-2",
+            "sonic-2-2025-03-07",
+            "sonic-turbo",
+            "sonic-english",
+            "sonic-multilingual",
+        ):
+            available.add(f"cartesia/{model_id}")
+
+    # Deepgram STT + TTS models
+    if _cfg_value(env, "deepgram_api_key", "DEEPGRAM_API_KEY"):
+        if modality is None or modality == "stt":
+            for model_id in (
+                "nova-3",
+                "nova-3-medical",
+                "nova-2",
+                "nova-2-meeting",
+                "nova-2-phonecall",
+                "enhanced",
+                "base",
+            ):
+                available.add(f"deepgram/{model_id}")
+        if modality is None or modality == "tts":
+            for model_id in (
+                "aura-2-thalia-en",
+                "aura-2-arcas-en",
+                "aura-2-perseus-en",
+                "aura-asteria-en",
+                "aura-luna-en",
+            ):
+                available.add(f"deepgram/{model_id}")
+
+    # AssemblyAI STT models
+    if _cfg_value(env, "assemblyai_api_key", "ASSEMBLYAI_API_KEY") and (modality is None or modality == "stt"):
+        for model_id in ("universal", "nano", "best", "slam-1"):
+            available.add(f"assemblyai/{model_id}")
+
     # Runway TTS + sound-effect models (no STT)
     runway_key = _cfg_value(env, "runway_api_key", "RUNWAY_API_KEY") or _cfg_value(
         env, "runwayml_api_secret", "RUNWAYML_API_SECRET"

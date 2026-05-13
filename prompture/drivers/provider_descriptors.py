@@ -478,6 +478,54 @@ def _build_descriptors() -> list[ProviderDescriptor]:
         )
     )
 
+    # ── Cartesia (TTS only) ──────────────────────────────────────────
+    _cartesia_kw = {"api_key": "cartesia_api_key"}
+    descriptors.append(
+        ProviderDescriptor(
+            name="cartesia",
+            tts_sync=DriverSpec("cartesia_tts_driver.CartesiaTTSDriver", _cartesia_kw, "cartesia_tts_model"),
+            tts_async=DriverSpec(
+                "async_cartesia_tts_driver.AsyncCartesiaTTSDriver", _cartesia_kw, "cartesia_tts_model"
+            ),
+            display_name="Cartesia",
+            is_configured_check="cartesia_api_key",
+        )
+    )
+
+    # ── Deepgram (STT + TTS) ─────────────────────────────────────────
+    _deepgram_kw = {"api_key": "deepgram_api_key"}
+    descriptors.append(
+        ProviderDescriptor(
+            name="deepgram",
+            stt_sync=DriverSpec("deepgram_stt_driver.DeepgramSTTDriver", _deepgram_kw, "deepgram_stt_model"),
+            stt_async=DriverSpec(
+                "async_deepgram_stt_driver.AsyncDeepgramSTTDriver", _deepgram_kw, "deepgram_stt_model"
+            ),
+            tts_sync=DriverSpec("deepgram_tts_driver.DeepgramTTSDriver", _deepgram_kw, "deepgram_tts_model"),
+            tts_async=DriverSpec(
+                "async_deepgram_tts_driver.AsyncDeepgramTTSDriver", _deepgram_kw, "deepgram_tts_model"
+            ),
+            display_name="Deepgram",
+            is_configured_check="deepgram_api_key",
+        )
+    )
+
+    # ── AssemblyAI (STT only) ────────────────────────────────────────
+    _assemblyai_kw = {"api_key": "assemblyai_api_key"}
+    descriptors.append(
+        ProviderDescriptor(
+            name="assemblyai",
+            stt_sync=DriverSpec("assemblyai_stt_driver.AssemblyAISTTDriver", _assemblyai_kw, "assemblyai_stt_model"),
+            stt_async=DriverSpec(
+                "async_assemblyai_stt_driver.AsyncAssemblyAISTTDriver",
+                _assemblyai_kw,
+                "assemblyai_stt_model",
+            ),
+            display_name="AssemblyAI",
+            is_configured_check="assemblyai_api_key",
+        )
+    )
+
     # ── Stability AI (image gen only) ────────────────────────────────
     _stab_kw = {"api_key": "stability_api_key", "endpoint": "stability_endpoint"}
     descriptors.append(
