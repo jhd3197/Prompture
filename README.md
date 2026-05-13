@@ -41,6 +41,7 @@ print(person.name)  # Maria
 - **Field registry** — 50+ predefined extraction fields with template variables and Pydantic integration
 - **Conversations** — Stateful multi-turn sessions with sync and async support
 - **Tool use** — Function calling and streaming across supported providers, with automatic prompt-based simulation for models without native tool support
+- **Deep agents** — Drop-in `DeepAgent` with planning (`write_todos`), virtual filesystem (`read_file` / `write_file` / `edit_file` / `ls` / `glob` / `grep`), sub-agent delegation (`task`), and automatic context summarization — no LangChain or LangGraph required
 - **Caching** — Built-in response cache with memory, SQLite, and Redis backends
 - **Plugin system** — Register custom drivers via entry points
 - **Usage tracking** — Token counts and cost calculation on every call
@@ -780,6 +781,87 @@ conv = Conversation("openai/gpt-4", tools=registry, simulated_tools=False)
 ```
 
 The simulation loop describes tools in the system prompt, asks the model to respond with JSON (`tool_call` or `final_answer`), executes tools, and feeds results back — all transparent to the caller.
+
+### Deep Agents
+
+`DeepAgent` extends `Agent` with four built-in capabilities inspired by the Claude Code / deep-research pattern — **with no LangChain or LangGraph dependency**. Each capability is independently toggleable and shares a single `DeepAgentState` that is snapshotted on the result.
+
+```python
+from prompture import create_deep_agent
+
+def web_search(query: str) -> str:
+    """Search the web."""
+    return search_provider.search(query)
+
+agent = create_deep_agent(
+    model="openai/gpt-4o",
+    tools=[web_search],
+)
+
+result = agent.run("Research the EU AI Act's deadlines for foundation models.")
+print(result.output_text)
+print(result.todos)   # The agent's plan, mutated as work progresses
+print(result.files)   # Notes/drafts the agent wrote to its virtual filesystem
+```
+
+**Planning** — A `write_todos` tool externalises multi-step plans. The agent calls it before complex tasks and marks items `in_progress` / `completed` as it works.
+
+**Virtual filesystem** — Six tools (`read_file`, `write_file`, `edit_file`, `ls`, `glob`, `grep`) backed by an in-memory `dict[str, str]` on the agent's state. Use it as a scratchpad for findings, drafts, and intermediate artifacts.
+
+**Sub-agents** — The `task` tool dispatches scoped subproblems to specialist sub-agents that run in isolation (no shared message history). Configure them with `SubAgentSpec`:
+
+```python
+from prompture import create_deep_agent, SubAgentSpec
+
+agent = create_deep_agent(
+    model="anthropic/claude-sonnet-4-6",
+    tools=[web_search],
+    subagents=[
+        SubAgentSpec(
+            name="fact_checker",
+            description="Verifies factual claims against primary sources.",
+            system_prompt="You are a rigorous fact-checker.",
+            model="groq/llama-3.1-70b",   # Cheaper model for verification
+        ),
+    ],
+)
+```
+
+**Automatic summarization** — When the most recent prompt exceeds `summarize_at_tokens`, older messages are collapsed into a single summary before the next driver call. Configurable threshold, retention window, and summariser model:
+
+```python
+agent = create_deep_agent(
+    model="openai/gpt-4o",
+    tools=[...],
+    enable_summarization=True,          # default
+    summarize_at_tokens=80_000,         # default
+    summarize_keep_last_n=6,            # default
+    summarizer_model="openai/gpt-4o-mini",  # optional, falls back to main model
+)
+```
+
+**Full configuration:**
+
+```python
+from prompture import Persona, create_deep_agent
+
+agent = create_deep_agent(
+    model="openai/gpt-4o",
+    tools=[web_search, fetch_url],
+    subagents=[SubAgentSpec(...)],
+    persona=Persona(name="analyst", system_prompt="..."),
+    enable_planning=True,                # default
+    enable_vfs=True,                     # default
+    enable_summarization=True,           # default
+    initial_files={"brief.md": "Research target: X."},
+    max_iterations=50,
+    max_tool_result_length=10_000,
+    budget_policy="hard_stop",
+    max_cost=2.00,
+)
+```
+
+`AsyncDeepAgent` / `create_async_deep_agent` mirror the sync API for async use. State lives on `agent.deep_state` (the `state` attribute is reserved for lifecycle on the underlying `Agent`). Reserved tool names (`write_todos`, `task`, `read_file`, `write_file`, `edit_file`, `ls`, `glob`, `grep`) take precedence over user tools; collisions emit a warning. See `examples/deep_agent_example.py` for a complete walkthrough.
 
 ### Budget Control
 

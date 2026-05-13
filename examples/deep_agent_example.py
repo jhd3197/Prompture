@@ -103,10 +103,7 @@ def fetch_url_stub(url: str) -> str:
 
 research_persona = Persona(
     name="research_analyst",
-    system_prompt=(
-        "You are a senior research analyst at a policy think tank. "
-        "Be rigorous and cite sources by URL."
-    ),
+    system_prompt=("You are a senior research analyst at a policy think tank. Be rigorous and cite sources by URL."),
     constraints=[
         "Never speculate without flagging the speculation.",
         "Prefer primary sources over secondary commentary.",
@@ -140,8 +137,7 @@ result2 = agent2.run(
 print(f"Final answer: {result2.output_text}")
 print(f"Sub-agent calls: {len(result2.sub_agent_calls)}")
 for record in result2.sub_agent_calls:
-    print(f"  {record.subagent_name} ({record.iterations} iter): "
-          f"{record.result_summary[:120]}...")
+    print(f"  {record.subagent_name} ({record.iterations} iter): {record.result_summary[:120]}...")
 print()
 
 
@@ -156,7 +152,7 @@ agent3 = create_deep_agent(
     model=MODEL,
     tools=[web_search_stub],
     enable_summarization=True,
-    summarize_at_tokens=3_000,   # trigger early for demo
+    summarize_at_tokens=3_000,  # trigger early for demo
     summarize_keep_last_n=4,
     max_iterations=15,
 )
@@ -169,8 +165,7 @@ try:
     print(f"Final answer (first 200 chars): {result3.output_text[:200]}...")
     print(f"Summary events: {len(result3.summary_events)}")
     for ev in result3.summary_events:
-        print(f"  collapsed {ev.summarized_message_count} messages -> "
-              f"{len(ev.summary_text)} char summary")
+        print(f"  collapsed {ev.summarized_message_count} messages -> {len(ev.summary_text)} char summary")
     print(f"Files: {list(result3.files.keys())}")
 except BudgetExceededError as e:
     print(f"Budget exceeded: {e}")
@@ -197,7 +192,7 @@ for event in stream:
     elif event.event_type.value == "tool_call":
         print(f"\n[tool_call] {event.data.get('name')}({event.data.get('arguments')})")
     elif event.event_type.value == "tool_result":
-        result_preview = str(event.data.get('result', ''))[:80]
+        result_preview = str(event.data.get("result", ""))[:80]
         print(f"[tool_result] {result_preview}...")
 print()
 final_result = stream.result

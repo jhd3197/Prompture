@@ -71,7 +71,7 @@ class AsyncConversation:
         fallback_models: list[str] | None = None,
         on_model_fallback: Callable[[str, str, Any], None] | None = None,
         env: ProviderEnvironment | None = None,
-        before_turn: Callable[["AsyncConversation", int], Any] | None = None,
+        before_turn: Callable[[AsyncConversation, int], Any] | None = None,
     ) -> None:
         if system_prompt is not None and persona is not None:
             raise ValueError("Cannot provide both 'system_prompt' and 'persona'. Use one or the other.")
@@ -144,7 +144,7 @@ class AsyncConversation:
 
         # Optional before_turn hook (sync or async callable). Fires before
         # each driver call inside the tool loop.
-        self._before_turn: Callable[["AsyncConversation", int], Any] | None = before_turn
+        self._before_turn: Callable[[AsyncConversation, int], Any] | None = before_turn
         self._last_prompt_tokens: int = 0
 
         # Persistence
@@ -811,7 +811,7 @@ class AsyncConversation:
             res = self._before_turn(self, self._last_prompt_tokens)
             if _inspect.isawaitable(res):
                 await res
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.exception("before_turn hook raised; continuing without mutation")
             return False
         return len(self._messages) != msg_count_before

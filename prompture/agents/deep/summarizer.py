@@ -182,13 +182,7 @@ class SummarizationMiddleware:
 
     def _call_summariser(self, rendered_history: str) -> tuple[str, dict[str, Any]]:
         """Invoke the summariser driver and return (summary_text, usage)."""
-        prompt = (
-            "Conversation fragment to summarise:\n\n"
-            "=====\n"
-            f"{rendered_history}\n"
-            "=====\n\n"
-            "Produce the summary now."
-        )
+        prompt = f"Conversation fragment to summarise:\n\n=====\n{rendered_history}\n=====\n\nProduce the summary now."
         messages = [
             {"role": "system", "content": SUMMARIZER_SYSTEM_PROMPT},
             {"role": "user", "content": prompt},
@@ -271,13 +265,7 @@ class AsyncSummarizationMiddleware:
         )
 
     async def _call_summariser(self, rendered_history: str) -> tuple[str, dict[str, Any]]:
-        prompt = (
-            "Conversation fragment to summarise:\n\n"
-            "=====\n"
-            f"{rendered_history}\n"
-            "=====\n\n"
-            "Produce the summary now."
-        )
+        prompt = f"Conversation fragment to summarise:\n\n=====\n{rendered_history}\n=====\n\nProduce the summary now."
         messages = [
             {"role": "system", "content": SUMMARIZER_SYSTEM_PROMPT},
             {"role": "user", "content": prompt},

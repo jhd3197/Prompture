@@ -48,10 +48,7 @@ def make_write_todos_tool(state: DeepAgentState) -> ToolDefinition:
         state.todos = new_todos
         n_done = sum(1 for t in new_todos if t.status == "completed")
         n_active = sum(1 for t in new_todos if t.status == "in_progress")
-        return (
-            f"Todo list updated: {len(new_todos)} item(s), "
-            f"{n_done} completed, {n_active} in progress."
-        )
+        return f"Todo list updated: {len(new_todos)} item(s), {n_done} completed, {n_active} in progress."
 
     return ToolDefinition(
         name="write_todos",

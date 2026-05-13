@@ -72,7 +72,7 @@ class Conversation:
         fallback_models: list[str] | None = None,
         on_model_fallback: Callable[[str, str, Any], None] | None = None,
         env: ProviderEnvironment | None = None,
-        before_turn: Callable[["Conversation", int], None] | None = None,
+        before_turn: Callable[[Conversation, int], None] | None = None,
     ) -> None:
         if system_prompt is not None and persona is not None:
             raise ValueError("Cannot provide both 'system_prompt' and 'persona'. Use one or the other.")
@@ -147,7 +147,7 @@ class Conversation:
         # loop. Used by DeepAgent for summarization. The hook receives
         # ``(conversation, last_prompt_tokens)`` and may mutate
         # ``conversation._messages`` directly.
-        self._before_turn: Callable[["Conversation", int], None] | None = before_turn
+        self._before_turn: Callable[[Conversation, int], None] | None = before_turn
         self._last_prompt_tokens: int = 0
 
         # Persistence
@@ -817,7 +817,7 @@ class Conversation:
         msg_count_before = len(self._messages)
         try:
             self._before_turn(self, self._last_prompt_tokens)
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.exception("before_turn hook raised; continuing without mutation")
             return False
         return len(self._messages) != msg_count_before

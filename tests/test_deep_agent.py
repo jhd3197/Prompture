@@ -57,9 +57,7 @@ class MockToolDriver(Driver):
 
     def _next(self):
         if self._idx >= len(self._responses):
-            raise AssertionError(
-                f"MockToolDriver ran out of responses after {self._idx} calls"
-            )
+            raise AssertionError(f"MockToolDriver ran out of responses after {self._idx} calls")
         resp = self._responses[self._idx]
         self._idx += 1
         return resp
@@ -150,9 +148,7 @@ class TestDeepAgentState:
     def test_reset_clears_everything(self):
         s = DeepAgentState(files={"a.md": "x"})
         s.todos.append(Todo(content="t1"))
-        s.sub_agent_calls.append(
-            SubAgentCallRecord(subagent_name="x", description="d", result_summary="r")
-        )
+        s.sub_agent_calls.append(SubAgentCallRecord(subagent_name="x", description="d", result_summary="r"))
         s.summary_events.append(
             SummaryEvent(triggered_at_message_index=1, summary_text="s", summarized_message_count=2)
         )
@@ -313,9 +309,7 @@ class TestVFS:
         s = DeepAgentState()
         tools = self._tools(s)
         tools["write_file"].function(file_path="a.md", content="foo bar baz")
-        result = tools["edit_file"].function(
-            file_path="a.md", old_string="bar", new_string="QUX"
-        )
+        result = tools["edit_file"].function(file_path="a.md", old_string="bar", new_string="QUX")
         assert "Replaced 1" in result
         assert s.files["a.md"] == "foo QUX baz"
 
@@ -323,9 +317,7 @@ class TestVFS:
         s = DeepAgentState()
         tools = self._tools(s)
         tools["write_file"].function(file_path="a.md", content="foo foo foo")
-        result = tools["edit_file"].function(
-            file_path="a.md", old_string="foo", new_string="BAR"
-        )
+        result = tools["edit_file"].function(file_path="a.md", old_string="foo", new_string="BAR")
         assert "Error" in result
         assert "3 times" in result
         # File is unchanged
@@ -335,17 +327,13 @@ class TestVFS:
         s = DeepAgentState()
         tools = self._tools(s)
         tools["write_file"].function(file_path="a.md", content="foo foo foo")
-        result = tools["edit_file"].function(
-            file_path="a.md", old_string="foo", new_string="BAR", replace_all=True
-        )
+        result = tools["edit_file"].function(file_path="a.md", old_string="foo", new_string="BAR", replace_all=True)
         assert "Replaced 3" in result
         assert s.files["a.md"] == "BAR BAR BAR"
 
     def test_edit_file_not_found(self):
         s = DeepAgentState()
-        out = self._tools(s)["edit_file"].function(
-            file_path="ghost.md", old_string="x", new_string="y"
-        )
+        out = self._tools(s)["edit_file"].function(file_path="ghost.md", old_string="x", new_string="y")
         assert "Error" in out
         assert "not found" in out
 
@@ -694,9 +682,7 @@ class TestDeepAgentEndToEnd:
         # Built-in wins, user's write_todos was dropped.
         write_todos_def = agent._tools.get("write_todos")
         assert write_todos_def is not None
-        result_msg = write_todos_def.function(
-            todos=[{"content": "t", "status": "pending"}]
-        )
+        result_msg = write_todos_def.function(todos=[{"content": "t", "status": "pending"}])
         assert "Todo list updated" in result_msg
 
     def test_subagents_inject_task_tool_and_prompt_section(self):

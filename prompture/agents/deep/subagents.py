@@ -65,9 +65,7 @@ def make_task_tool(
             raise ValueError(f"Duplicate sub-agent name: {s.name!r}")
         spec_by_name[s.name] = s
 
-    available_types = (
-        "\n".join(f"- **{s.name}**: {s.description}" for s in specs) if specs else "(none configured)"
-    )
+    available_types = "\n".join(f"- **{s.name}**: {s.description}" for s in specs) if specs else "(none configured)"
     description = TASK_TOOL_DESC_TEMPLATE.format(available_types=available_types)
 
     def task(description: str, subagent_type: str) -> str:
@@ -192,9 +190,7 @@ def make_async_task_tool(
             raise ValueError(f"Duplicate sub-agent name: {s.name!r}")
         spec_by_name[s.name] = s
 
-    available_types = (
-        "\n".join(f"- **{s.name}**: {s.description}" for s in specs) if specs else "(none configured)"
-    )
+    available_types = "\n".join(f"- **{s.name}**: {s.description}" for s in specs) if specs else "(none configured)"
     description = TASK_TOOL_DESC_TEMPLATE.format(available_types=available_types)
 
     async def task(description: str, subagent_type: str) -> str:
