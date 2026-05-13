@@ -522,7 +522,7 @@ def _build_descriptors() -> list[ProviderDescriptor]:
     # ── Kling AI (image + video) ─────────────────────────────────────
     _kling_kw = {
         "access_key": "kling_access_key",
-        "secret_key": "kling_secret_key",
+        "secret_key": "kling_secret_key",  # nosec B105 — settings attribute name, not a credential
         "endpoint": "kling_endpoint",
     }
     descriptors.append(
