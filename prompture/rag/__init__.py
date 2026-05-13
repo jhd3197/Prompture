@@ -1,7 +1,7 @@
 """Prompture RAG (Retrieval-Augmented Generation) layer.
 
-Phase 10 introduced the document loader subset of the RAG stack; Phase
-11 adds chunkers:
+Phase 10 introduced the document loader subset of the RAG stack;
+Phase 11 added chunkers; Phase 12 adds vector stores:
 
 * :class:`Document` — content + metadata container.
 * :class:`DocumentLoader` / :class:`AsyncDocumentLoader` — abstract base
@@ -12,11 +12,15 @@ Phase 10 introduced the document loader subset of the RAG stack; Phase
   (:class:`CharacterChunker`, :class:`RecursiveCharacterChunker`,
   :class:`TokenChunker`, :class:`SemanticChunker`,
   :class:`MarkdownChunker`).
+* :class:`VectorStore` / :class:`AsyncVectorStore` plus concrete adapters
+  (:class:`ChromaVectorStore`, :class:`PineconeVectorStore`,
+  :class:`QdrantVectorStore`, :class:`PgVectorStore`,
+  :class:`FAISSVectorStore`, :class:`WeaviateVectorStore`).
 * Name + extension-indexed registries exposing :func:`get_loader`,
-  :func:`get_loader_for_path`, :func:`get_chunker`, and async variants.
+  :func:`get_loader_for_path`, :func:`get_chunker`,
+  :func:`get_vectorstore`, and async variants.
 
-Subsequent phases will add vector stores (Phase 12) and retrievers /
-end-to-end pipelines (Phase 13).
+The next phase will add retrievers and end-to-end pipelines (Phase 13).
 """
 
 from .chunkers import (
@@ -61,6 +65,23 @@ from .loaders import (
     TextLoader,
     XLSXLoader,
 )
+from .vectorstores import (
+    ASYNC_VECTORSTORE_REGISTRY,
+    VECTORSTORE_REGISTRY,
+    AsyncVectorStore,
+    ChromaVectorStore,
+    FAISSVectorStore,
+    PgVectorStore,
+    PineconeVectorStore,
+    QdrantVectorStore,
+    VectorSearchResult,
+    VectorStore,
+    WeaviateVectorStore,
+    get_async_vectorstore,
+    get_vectorstore,
+    register_async_vectorstore,
+    register_vectorstore,
+)
 
 # ── Register built-in loaders ────────────────────────────────────────────────
 
@@ -89,35 +110,50 @@ del _name, _cls
 __all__ = [
     "ASYNC_CHUNKER_REGISTRY",
     "ASYNC_LOADER_REGISTRY",
+    "ASYNC_VECTORSTORE_REGISTRY",
     "CHUNKER_REGISTRY",
     "LOADER_REGISTRY",
+    "VECTORSTORE_REGISTRY",
     "AsyncDocumentLoader",
     "AsyncTextChunker",
+    "AsyncVectorStore",
     "CSVLoader",
     "CharacterChunker",
+    "ChromaVectorStore",
     "DOCXLoader",
     "Document",
     "DocumentLoader",
     "EPUBLoader",
+    "FAISSVectorStore",
     "HTMLLoader",
     "JSONLoader",
     "MarkdownChunker",
     "MarkdownLoader",
     "PDFLoader",
+    "PgVectorStore",
+    "PineconeVectorStore",
+    "QdrantVectorStore",
     "RecursiveCharacterChunker",
     "SemanticChunker",
     "TextChunker",
     "TextLoader",
     "TokenChunker",
+    "VectorSearchResult",
+    "VectorStore",
+    "WeaviateVectorStore",
     "XLSXLoader",
     "get_async_chunker",
     "get_async_loader",
     "get_async_loader_for_path",
+    "get_async_vectorstore",
     "get_chunker",
     "get_loader",
     "get_loader_for_path",
+    "get_vectorstore",
     "register_async_chunker",
     "register_async_loader",
+    "register_async_vectorstore",
     "register_chunker",
     "register_loader",
+    "register_vectorstore",
 ]

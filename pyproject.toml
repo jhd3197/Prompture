@@ -58,8 +58,14 @@ rag-epub = ["ebooklib>=0.18", "beautifulsoup4>=4.12.0"]
 rag-xlsx = ["openpyxl>=3.1.0"]
 rag-token = ["tiktoken>=0.5.0"]
 rag-semantic = ["numpy>=1.24.0"]
+rag-vs-chroma = ["chromadb>=0.4.0"]
+rag-vs-pinecone = ["pinecone-client>=3.0.0"]
+rag-vs-qdrant = ["qdrant-client>=1.7.0"]
+rag-vs-pgvector = ["psycopg2-binary>=2.9.0", "pgvector>=0.2.0"]
+rag-vs-faiss = ["faiss-cpu>=1.7.0"]
+rag-vs-weaviate = ["weaviate-client>=4.4.0"]
 rag = [
-    "prompture[rag-pdf,rag-docx,rag-html,rag-epub,rag-xlsx,rag-token,rag-semantic]",
+    "prompture[rag-pdf,rag-docx,rag-html,rag-epub,rag-xlsx,rag-token,rag-semantic,rag-vs-chroma,rag-vs-pinecone,rag-vs-qdrant,rag-vs-pgvector,rag-vs-faiss,rag-vs-weaviate]",
 ]
 
 [project.scripts]

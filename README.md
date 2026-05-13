@@ -416,8 +416,56 @@ pip install 'prompture[rag-semantic]'  # numpy for SemanticChunker (recommended)
 The `rag` umbrella extra now installs `rag-token` and `rag-semantic` in
 addition to the loader extras.
 
-> Coming in subsequent phases: **vector stores** (Phase 12), and
-> **retrievers + end-to-end pipelines** (Phase 13).
+### Vector Stores
+
+Six backend adapters share a unified `VectorStore` / `AsyncVectorStore`
+interface and return `VectorSearchResult` objects (with `document`,
+`score`, and optional `vector`). Distance / score conventions are
+normalized so **higher = more similar** regardless of backend.
+
+```python
+from prompture.rag import ChromaVectorStore, RecursiveCharacterChunker, get_loader_for_path
+from prompture.drivers import get_embedding_driver_for_model
+
+embedder = get_embedding_driver_for_model("openai/text-embedding-3-small")
+store = ChromaVectorStore(embedding_driver=embedder, persist_directory="./vector_db")
+
+docs = get_loader_for_path("doc.pdf").load("doc.pdf")
+chunks = RecursiveCharacterChunker(chunk_size=500).split_documents(docs)
+store.add_documents(chunks)
+
+results = store.similarity_search("how does X work?", k=5)
+for r in results:
+    print(r.score, r.document.content[:80])
+
+# MMR re-ranking for diversity (numpy-accelerated, pure-Python fallback)
+diverse = store.max_marginal_relevance_search("how does X work?", k=5, fetch_k=20)
+```
+
+Resolve a store from the registry by name:
+
+```python
+from prompture.rag import get_vectorstore
+
+store = get_vectorstore("qdrant", embedding_driver=embedder, url="http://localhost:6333", vector_size=1536)
+```
+
+#### Vector store optional extras
+
+| Extra | Backend | Notes |
+| ----- | ------- | ----- |
+| `prompture[rag-vs-chroma]` | `chromadb>=0.4` | Local ephemeral or `PersistentClient`. |
+| `prompture[rag-vs-pinecone]` | `pinecone-client>=3` | Managed Pinecone, v3 SDK. |
+| `prompture[rag-vs-qdrant]` | `qdrant-client>=1.7` | Local / Qdrant Cloud (HTTP or gRPC). |
+| `prompture[rag-vs-pgvector]` | `psycopg2-binary`, `pgvector` | PostgreSQL with `vector` extension. |
+| `prompture[rag-vs-faiss]` | `faiss-cpu>=1.7` | In-memory; optional disk persistence. |
+| `prompture[rag-vs-weaviate]` | `weaviate-client>=4.4` | Weaviate v4 client API. |
+
+The `rag` umbrella extra now installs all six vector-store extras in
+addition to the loader, token, and semantic-chunker extras.
+
+> Coming in the next phase: **retrievers + end-to-end pipelines**
+> (Phase 13).
 
 ## Usage
 
