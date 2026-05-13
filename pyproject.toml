@@ -75,14 +75,27 @@ prompture = "prompture.cli.cli:cli"
 [project.urls]
 Homepage = "https://github.com/jhd3197/prompture"
 
-# Entry point groups for plugin driver discovery
-# Third-party packages can register drivers by defining entry points in these groups:
+# Entry point groups for plugin driver discovery.
+#
+# Built-in providers are loaded internally via prompture.plugins.builtins and
+# are NOT registered here. External plugin packages register ProviderPlugin
+# subclasses via the "prompture.providers" group:
+#
+# [project.entry-points."prompture.providers"]
+# my_provider = "my_package.plugin:MyProviderPlugin"
+#
+# Legacy per-driver entry points (still loaded by registry.load_entry_point_drivers):
 #
 # [project.entry-points."prompture.drivers"]
 # my_provider = "my_package.drivers:create_driver"
 #
 # [project.entry-points."prompture.async_drivers"]
 # my_provider = "my_package.drivers:create_async_driver"
+
+# NOTE: We intentionally do NOT define a `[project.entry-points."prompture.providers"]`
+# table here. Built-in plugins are loaded from prompture.plugins.builtins
+# directly, and an empty entry-points table can confuse some installers.
+# External plugins declare their own table in their package's pyproject.toml.
 
 [tool.setuptools.packages.find]
 include = ["prompture*"]

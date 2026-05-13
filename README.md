@@ -982,6 +982,74 @@ except ValidationError:
     pass
 ```
 
+## Extending Prompture
+
+Prompture's provider registry is plugin-based. Every built-in provider
+(OpenAI, Claude, Google, etc.) is contributed by a `ProviderPlugin`
+instance registered in `prompture.plugins.builtins`. Third-party packages
+can register their own providers via the `prompture.providers` Python
+entry-point group — no fork required.
+
+### Plugin Architecture
+
+At import time, `prompture` discovers plugins from two sources:
+
+1. **Built-in plugins** — loaded from `prompture.plugins.builtins` directly.
+2. **External plugins** — discovered through the `prompture.providers`
+   entry-point group via `importlib.metadata.entry_points()`.
+
+Each plugin returns one or more `ProviderDescriptor` instances. Prompture
+then wires them up to the LLM, audio, image, video, embedding, rerank,
+and moderation driver registries.
+
+### Writing a Plugin
+
+Create a Python file that subclasses `ProviderPlugin`:
+
+```python
+# my_package/plugin.py
+from prompture.plugins import ProviderPlugin
+from prompture.drivers.provider_descriptors import (
+    ProviderDescriptor,
+    DriverSpec,
+)
+
+
+class MyProviderPlugin(ProviderPlugin):
+    name = "my_provider"
+    version = "0.1.0"
+
+    def descriptors(self):
+        return [
+            ProviderDescriptor(
+                name="my_provider",
+                llm_sync=DriverSpec(
+                    cls_path="my_package.driver.MyDriver",
+                    kwarg_map={"api_key": "my_provider_api_key"},
+                    default_model="my-model-1",
+                ),
+                display_name="My Provider",
+                is_configured_check="my_provider_api_key",
+            ),
+        ]
+```
+
+Then declare the entry point in your package's `pyproject.toml`:
+
+```toml
+[project.entry-points."prompture.providers"]
+my_provider = "my_package.plugin:MyProviderPlugin"
+```
+
+Once `pip install`-ed alongside Prompture, your provider becomes
+available automatically:
+
+```python
+from prompture import get_driver_for_model
+
+driver = get_driver_for_model("my_provider/my-model-1")
+```
+
 ## Development
 
 ```bash
