@@ -51,6 +51,14 @@ ingest = [
 redis = ["redis>=4.0"]
 serve = ["fastapi>=0.100", "uvicorn[standard]>=0.20", "sse-starlette>=1.6"]
 scaffold = ["jinja2>=3.0"]
+rag-pdf = ["pypdf>=4.0.0"]
+rag-docx = ["python-docx>=1.1.0"]
+rag-html = ["beautifulsoup4>=4.12.0", "markdownify>=0.11.0", "lxml>=5.0.0"]
+rag-epub = ["ebooklib>=0.18", "beautifulsoup4>=4.12.0"]
+rag-xlsx = ["openpyxl>=3.1.0"]
+rag = [
+    "prompture[rag-pdf,rag-docx,rag-html,rag-epub,rag-xlsx]",
+]
 
 [project.scripts]
 prompture = "prompture.cli.cli:cli"

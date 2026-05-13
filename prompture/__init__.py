@@ -9,6 +9,7 @@ try:
 except ImportError:  # tukuy not installed
     TukuyLLMBackend = None  # type: ignore[assignment,misc]
     create_tukuy_backend = None  # type: ignore[assignment]
+from . import rag
 from .cli import *
 from .drivers import *
 from .exceptions import (

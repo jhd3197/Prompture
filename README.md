@@ -33,6 +33,7 @@ print(person.name)  # Maria
 - **Structured output** — JSON schema enforcement and direct Pydantic model population
 - **36+ providers** — OpenAI, Claude, Google, Groq, Grok, Azure, AWS Bedrock, Ollama, LM Studio, OpenRouter, HuggingFace, Moonshot, ModelScope, Z.ai, Vertex AI, AirLLM, CachiBot, Runway, MiniMax/Hailuo, Kling AI, Luma AI, Pika Labs, Fal.ai, Ideogram, Black Forest Labs (Flux), Mistral AI, DeepSeek, Cohere, Voyage AI, Jina AI, Nomic, Mixedbread (mxbai), Cartesia, Deepgram, AssemblyAI, generic OpenAI-compatible (Fireworks, Together, Cerebras, SambaNova, Perplexity, NVIDIA, DeepInfra, SiliconFlow, GitHub Models), and generic HTTP
 - **Multi-modal** — Drivers for embeddings, rerank (Cohere, Voyage, Jina), moderation (OpenAI, Mistral), image generation (DALL-E, Imagen, Grok, Stability, Runway), video generation (Grok Imagine Video, Runway text/image/video → video), text-to-speech (OpenAI, ElevenLabs, Cartesia Sonic, Deepgram Aura, Runway), sound effects, voice dubbing / isolation / conversion (Runway), and speech-to-text (Whisper, ElevenLabs, Deepgram Nova-3, AssemblyAI Universal-2)
+- **RAG document loaders** — Pluggable loaders for PDF, DOCX, HTML, Markdown, JSON / JSONL, CSV, EPUB, and XLSX with auto-detection by file extension and async siblings (chunkers + vector stores + retrievers coming in subsequent phases)
 - **Multi-model fallback** — Try a list of models in sequence with per-attempt cost, token, and capability accounting
 - **Strategy cascade** — Auto-selects between provider-native JSON mode, tool-call extraction, and prompted repair so extraction works on any model
 - **TOON input conversion** — 45-60% token savings when sending structured data via [Token-Oriented Object Notation](https://github.com/jhd3197/python-toon)
@@ -289,6 +290,59 @@ Runnable examples:
 - `python examples/runway_image_generation_example.py`
 - `python examples/runway_video_generation_example.py`
 - `python examples/runway_audio_example.py`
+
+## RAG
+
+Prompture ships a Retrieval-Augmented Generation layer under `prompture.rag`.
+Phase 10 introduces the **document loader** primitives — chunkers, vector
+stores, and retrievers follow in subsequent phases.
+
+### Document Loaders
+
+Auto-detect a loader from a file extension and stream `Document` objects with
+content and metadata:
+
+```python
+from prompture.rag import get_loader_for_path
+
+loader = get_loader_for_path("document.pdf")
+docs = loader.load("document.pdf")
+for doc in docs:
+    print(doc.metadata["page"], doc.content[:200])
+```
+
+Built-in loaders: `TextLoader`, `PDFLoader`, `DOCXLoader`, `HTMLLoader`,
+`MarkdownLoader`, `JSONLoader`, `CSVLoader`, `EPUBLoader`, `XLSXLoader`.
+Each loader exposes its supported file extensions via `supported_extensions`
+and is also reachable by explicit name through `get_loader("pdf")`.
+
+Async siblings are available via `get_async_loader_for_path(...)`; they wrap
+sync loaders in `asyncio.to_thread` so file I/O stays off the event loop.
+
+Loaders accept options like `mode="single"` (PDF concatenate pages),
+`mode="markdown"` (HTML → Markdown via `markdownify`), `mode="by_heading"`
+(Markdown split on `#`/`##` boundaries), `jq_schema="items[].text"` (JSON
+dotted-path extraction), and `mode="rows"`/`"sheets"` for CSV / XLSX.
+
+#### Optional extras
+
+Parser dependencies are imported lazily so the base install stays small:
+
+```bash
+pip install 'prompture[rag]'       # everything (PDF, DOCX, HTML, EPUB, XLSX)
+pip install 'prompture[rag-pdf]'   # pypdf
+pip install 'prompture[rag-docx]'  # python-docx
+pip install 'prompture[rag-html]'  # beautifulsoup4 + markdownify + lxml
+pip install 'prompture[rag-epub]'  # ebooklib + beautifulsoup4
+pip install 'prompture[rag-xlsx]'  # openpyxl
+```
+
+`TextLoader`, `MarkdownLoader`, `JSONLoader`, and `CSVLoader` need no extras.
+Each loader raises an `ImportError` pointing at the right extra if its
+parser dep is missing.
+
+> Coming in subsequent phases: **chunkers** (Phase 11), **vector stores**
+> (Phase 12), and **retrievers + end-to-end pipelines** (Phase 13).
 
 ## Usage
 
