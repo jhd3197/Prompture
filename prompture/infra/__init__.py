@@ -35,6 +35,7 @@ from .discovery import (
     get_available_embedding_models,
     get_available_image_gen_models,
     get_available_models,
+    get_available_rerank_models,
     get_available_video_gen_models,
 )
 from .ledger import ModelUsageLedger, get_recently_used_models
@@ -91,6 +92,7 @@ __all__ = [
     "get_available_embedding_models",
     "get_available_image_gen_models",
     "get_available_models",
+    "get_available_rerank_models",
     "get_available_video_gen_models",
     "get_cache",
     "get_capabilities",

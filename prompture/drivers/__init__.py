@@ -34,6 +34,7 @@ from .async_azure_driver import AsyncAzureDriver
 from .async_base import AsyncDriver
 from .async_cachibot_driver import AsyncCachiBotDriver
 from .async_claude_driver import AsyncClaudeDriver
+from .async_cohere_rerank_driver import AsyncCohereRerankDriver
 from .async_elevenlabs_stt_driver import AsyncElevenLabsSTTDriver
 from .async_elevenlabs_tts_driver import AsyncElevenLabsTTSDriver
 from .async_embedding_base import AsyncEmbeddingDriver
@@ -45,6 +46,7 @@ from .async_grok_video_gen_driver import AsyncGrokVideoGenDriver
 from .async_groq_driver import AsyncGroqDriver
 from .async_hugging_driver import AsyncHuggingFaceDriver
 from .async_img_gen_base import AsyncImageGenDriver
+from .async_jina_rerank_driver import AsyncJinaRerankDriver
 from .async_lmstudio_driver import AsyncLMStudioDriver
 from .async_local_http_driver import AsyncLocalHTTPDriver
 from .async_modelscope_driver import AsyncModelScopeDriver
@@ -64,6 +66,7 @@ from .async_stability_img_gen_driver import AsyncStabilityImageGenDriver
 from .async_stt_base import AsyncSTTDriver
 from .async_tts_base import AsyncTTSDriver
 from .async_video_gen_base import AsyncVideoGenDriver
+from .async_voyage_rerank_driver import AsyncVoyageRerankDriver
 from .async_zai_driver import AsyncZaiDriver
 from .azure_config import (
     clear_azure_configs,
@@ -74,6 +77,7 @@ from .azure_config import (
 from .azure_driver import AzureDriver
 from .cachibot_driver import CachiBotDriver
 from .claude_driver import ClaudeDriver
+from .cohere_rerank_driver import CohereRerankDriver
 from .elevenlabs_stt_driver import ElevenLabsSTTDriver
 from .elevenlabs_tts_driver import ElevenLabsTTSDriver
 from .embedding_base import EMBEDDING_MODEL_DIMENSIONS, EmbeddingDriver
@@ -85,6 +89,7 @@ from .grok_video_gen_driver import GrokVideoGenDriver
 from .groq_driver import GroqDriver
 from .hugging_driver import HuggingFaceDriver
 from .img_gen_base import ImageGenDriver
+from .jina_rerank_driver import JinaRerankDriver
 from .lmstudio_driver import LMStudioDriver
 from .local_http_driver import LocalHTTPDriver
 from .modelscope_driver import ModelScopeDriver
@@ -108,36 +113,42 @@ from .registry import (
     get_async_driver_factory,
     get_async_embedding_driver_factory,
     get_async_img_gen_driver_factory,
+    get_async_rerank_driver_factory,
     get_async_stt_driver_factory,
     get_async_tts_driver_factory,
     get_async_video_gen_driver_factory,
     get_driver_factory,
     get_embedding_driver_factory,
     get_img_gen_driver_factory,
+    get_rerank_driver_factory,
     get_stt_driver_factory,
     get_tts_driver_factory,
     get_video_gen_driver_factory,
     is_async_driver_registered,
     is_async_embedding_driver_registered,
     is_async_img_gen_driver_registered,
+    is_async_rerank_driver_registered,
     is_async_stt_driver_registered,
     is_async_tts_driver_registered,
     is_async_video_gen_driver_registered,
     is_driver_registered,
     is_embedding_driver_registered,
     is_img_gen_driver_registered,
+    is_rerank_driver_registered,
     is_stt_driver_registered,
     is_tts_driver_registered,
     is_video_gen_driver_registered,
     list_registered_async_drivers,
     list_registered_async_embedding_drivers,
     list_registered_async_img_gen_drivers,
+    list_registered_async_rerank_drivers,
     list_registered_async_stt_drivers,
     list_registered_async_tts_drivers,
     list_registered_async_video_gen_drivers,
     list_registered_drivers,
     list_registered_embedding_drivers,
     list_registered_img_gen_drivers,
+    list_registered_rerank_drivers,
     list_registered_stt_drivers,
     list_registered_tts_drivers,
     list_registered_video_gen_drivers,
@@ -145,28 +156,33 @@ from .registry import (
     register_async_driver,
     register_async_embedding_driver,
     register_async_img_gen_driver,
+    register_async_rerank_driver,
     register_async_stt_driver,
     register_async_tts_driver,
     register_async_video_gen_driver,
     register_driver,
     register_embedding_driver,
     register_img_gen_driver,
+    register_rerank_driver,
     register_stt_driver,
     register_tts_driver,
     register_video_gen_driver,
     unregister_async_driver,
     unregister_async_embedding_driver,
     unregister_async_img_gen_driver,
+    unregister_async_rerank_driver,
     unregister_async_stt_driver,
     unregister_async_tts_driver,
     unregister_async_video_gen_driver,
     unregister_driver,
     unregister_embedding_driver,
     unregister_img_gen_driver,
+    unregister_rerank_driver,
     unregister_stt_driver,
     unregister_tts_driver,
     unregister_video_gen_driver,
 )
+from .rerank_base import AsyncRerankDriver, RerankDriver, RerankResult
 from .runway_audio_transform_driver import RunwayAudioTransformDriver
 from .runway_capabilities import (
     ALL_MODALITIES as RUNWAY_ALL_MODALITIES,
@@ -187,6 +203,7 @@ from .stability_img_gen_driver import StabilityImageGenDriver
 from .stt_base import STTDriver
 from .tts_base import TTSDriver
 from .video_gen_base import VideoGenDriver
+from .voyage_rerank_driver import VoyageRerankDriver
 from .zai_driver import ZaiDriver
 
 # Register all built-in drivers (LLM sync/async, STT, TTS, img_gen, video_gen, embedding)
@@ -217,6 +234,12 @@ from .embedding_registry import (
 from .img_gen_registry import (
     get_async_img_gen_driver_for_model,
     get_img_gen_driver_for_model,
+)
+from .rerank_registry import (
+    ASYNC_RERANK_DRIVER_REGISTRY,
+    RERANK_DRIVER_REGISTRY,
+    get_async_rerank_driver_for_model,
+    get_rerank_driver_for_model,
 )
 from .video_gen_registry import (
     get_async_video_gen_driver_for_model,
@@ -456,6 +479,7 @@ __all__ = [
     "ASYNC_DRIVER_REGISTRY",
     # Provider driver maps (for explicit-credential construction)
     "ASYNC_PROVIDER_DRIVER_MAP",
+    "ASYNC_RERANK_DRIVER_REGISTRY",
     # Legacy registry dicts (for backwards compatibility)
     "DRIVER_REGISTRY",
     # Embedding model dimension metadata
@@ -467,6 +491,7 @@ __all__ = [
     "PROVIDER_DRIVER_MAP",
     # Provider name mapping
     "PROVIDER_NAME_MAP",
+    "RERANK_DRIVER_REGISTRY",
     "RUNWAY_ALL_MODALITIES",
     "RUNWAY_ALL_OPERATIONS",
     "RUNWAY_MODEL_INFO",
@@ -477,6 +502,8 @@ __all__ = [
     "AsyncAzureDriver",
     "AsyncCachiBotDriver",
     "AsyncClaudeDriver",
+    # Async rerank drivers
+    "AsyncCohereRerankDriver",
     # Async base classes
     "AsyncDriver",
     # Async audio drivers
@@ -493,6 +520,7 @@ __all__ = [
     "AsyncGroqDriver",
     "AsyncHuggingFaceDriver",
     "AsyncImageGenDriver",
+    "AsyncJinaRerankDriver",
     "AsyncLMStudioDriver",
     "AsyncLocalHTTPDriver",
     "AsyncModelScopeDriver",
@@ -505,6 +533,7 @@ __all__ = [
     "AsyncOpenAISTTDriver",
     "AsyncOpenAITTSDriver",
     "AsyncOpenRouterDriver",
+    "AsyncRerankDriver",
     "AsyncRunwayImageGenDriver",
     "AsyncRunwayTTSDriver",
     "AsyncRunwayVideoGenDriver",
@@ -512,11 +541,14 @@ __all__ = [
     "AsyncStabilityImageGenDriver",
     "AsyncTTSDriver",
     "AsyncVideoGenDriver",
+    "AsyncVoyageRerankDriver",
     "AsyncZaiDriver",
     # Sync LLM drivers
     "AzureDriver",
     "CachiBotDriver",
     "ClaudeDriver",
+    # Sync rerank drivers
+    "CohereRerankDriver",
     # Sync audio drivers
     "ElevenLabsSTTDriver",
     "ElevenLabsTTSDriver",
@@ -532,6 +564,7 @@ __all__ = [
     "HuggingFaceDriver",
     # Image gen base class
     "ImageGenDriver",
+    "JinaRerankDriver",
     "LMStudioDriver",
     "LocalHTTPDriver",
     "ModelScopeDriver",
@@ -544,6 +577,9 @@ __all__ = [
     "OpenAISTTDriver",
     "OpenAITTSDriver",
     "OpenRouterDriver",
+    # Rerank base + result types
+    "RerankDriver",
+    "RerankResult",
     "RunwayAudioTransformDriver",
     "RunwayImageGenDriver",
     "RunwayTTSDriver",
@@ -553,6 +589,7 @@ __all__ = [
     "StabilityImageGenDriver",
     "TTSDriver",
     "VideoGenDriver",
+    "VoyageRerankDriver",
     "ZaiDriver",
     # Azure config API
     "clear_azure_configs",
@@ -566,6 +603,10 @@ __all__ = [
     "get_async_img_gen_driver_factory",
     # Image gen factory functions
     "get_async_img_gen_driver_for_model",
+    # Rerank registry query functions
+    "get_async_rerank_driver_factory",
+    # Rerank factory functions
+    "get_async_rerank_driver_for_model",
     # Audio registry query functions
     "get_async_stt_driver_factory",
     # Audio factory functions
@@ -583,6 +624,8 @@ __all__ = [
     "get_embedding_driver_for_model",
     "get_img_gen_driver_factory",
     "get_img_gen_driver_for_model",
+    "get_rerank_driver_factory",
+    "get_rerank_driver_for_model",
     "get_runway_model_info",
     "get_runway_models_by_modality",
     "get_runway_models_by_op",
@@ -596,24 +639,28 @@ __all__ = [
     "is_async_driver_registered",
     "is_async_embedding_driver_registered",
     "is_async_img_gen_driver_registered",
+    "is_async_rerank_driver_registered",
     "is_async_stt_driver_registered",
     "is_async_tts_driver_registered",
     "is_async_video_gen_driver_registered",
     "is_driver_registered",
     "is_embedding_driver_registered",
     "is_img_gen_driver_registered",
+    "is_rerank_driver_registered",
     "is_stt_driver_registered",
     "is_tts_driver_registered",
     "is_video_gen_driver_registered",
     "list_registered_async_drivers",
     "list_registered_async_embedding_drivers",
     "list_registered_async_img_gen_drivers",
+    "list_registered_async_rerank_drivers",
     "list_registered_async_stt_drivers",
     "list_registered_async_tts_drivers",
     "list_registered_async_video_gen_drivers",
     "list_registered_drivers",
     "list_registered_embedding_drivers",
     "list_registered_img_gen_drivers",
+    "list_registered_rerank_drivers",
     "list_registered_stt_drivers",
     "list_registered_tts_drivers",
     "list_registered_video_gen_drivers",
@@ -624,6 +671,7 @@ __all__ = [
     "register_async_driver",
     "register_async_embedding_driver",
     "register_async_img_gen_driver",
+    "register_async_rerank_driver",
     "register_async_stt_driver",
     "register_async_tts_driver",
     "register_async_video_gen_driver",
@@ -632,6 +680,7 @@ __all__ = [
     "register_driver",
     "register_embedding_driver",
     "register_img_gen_driver",
+    "register_rerank_driver",
     "register_stt_driver",
     "register_tts_driver",
     "register_video_gen_driver",
@@ -639,6 +688,7 @@ __all__ = [
     "unregister_async_driver",
     "unregister_async_embedding_driver",
     "unregister_async_img_gen_driver",
+    "unregister_async_rerank_driver",
     "unregister_async_stt_driver",
     "unregister_async_tts_driver",
     "unregister_async_video_gen_driver",
@@ -646,6 +696,7 @@ __all__ = [
     "unregister_driver",
     "unregister_embedding_driver",
     "unregister_img_gen_driver",
+    "unregister_rerank_driver",
     "unregister_stt_driver",
     "unregister_tts_driver",
     "unregister_video_gen_driver",

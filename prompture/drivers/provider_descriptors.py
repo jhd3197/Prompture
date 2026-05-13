@@ -64,6 +64,9 @@ class ProviderDescriptor:
     embedding_sync: DriverSpec | None = None
     embedding_async: DriverSpec | None = None
 
+    rerank_sync: DriverSpec | None = None
+    rerank_async: DriverSpec | None = None
+
     # Human-friendly name for display purposes (e.g. "OpenAI", "Google Gemini").
     # Aliases get None.
     display_name: str | None = None
@@ -634,6 +637,51 @@ def _build_descriptors() -> list[ProviderDescriptor]:
         )
     )
 
+    # ── Cohere (rerank) ───────────────────────────────────────────────
+    _cohere_kw = {"api_key": "cohere_api_key"}
+    descriptors.append(
+        ProviderDescriptor(
+            name="cohere",
+            rerank_sync=DriverSpec("cohere_rerank_driver.CohereRerankDriver", _cohere_kw, "rerank-v3.5"),
+            rerank_async=DriverSpec("async_cohere_rerank_driver.AsyncCohereRerankDriver", _cohere_kw, "rerank-v3.5"),
+            display_name="Cohere",
+            is_configured_check="cohere_api_key",
+            models_dev_name=None,
+        )
+    )
+
+    # ── Voyage AI (rerank) ────────────────────────────────────────────
+    _voyage_kw = {"api_key": "voyage_api_key"}
+    descriptors.append(
+        ProviderDescriptor(
+            name="voyage",
+            rerank_sync=DriverSpec("voyage_rerank_driver.VoyageRerankDriver", _voyage_kw, "rerank-2.5"),
+            rerank_async=DriverSpec("async_voyage_rerank_driver.AsyncVoyageRerankDriver", _voyage_kw, "rerank-2.5"),
+            display_name="Voyage AI",
+            is_configured_check="voyage_api_key",
+            models_dev_name=None,
+        )
+    )
+
+    # ── Jina AI (rerank) ──────────────────────────────────────────────
+    _jina_kw = {"api_key": "jina_api_key"}
+    descriptors.append(
+        ProviderDescriptor(
+            name="jina",
+            rerank_sync=DriverSpec(
+                "jina_rerank_driver.JinaRerankDriver", _jina_kw, "jina-reranker-v2-base-multilingual"
+            ),
+            rerank_async=DriverSpec(
+                "async_jina_rerank_driver.AsyncJinaRerankDriver",
+                _jina_kw,
+                "jina-reranker-v2-base-multilingual",
+            ),
+            display_name="Jina AI",
+            is_configured_check="jina_api_key",
+            models_dev_name=None,
+        )
+    )
+
     # ── Aliases ───────────────────────────────────────────────────────
     # Each alias specifies exactly which modalities it covers, matching
     # the original per-file registrations.  Format:
@@ -676,6 +724,8 @@ def _build_descriptors() -> list[ProviderDescriptor]:
             video_gen_async=canon.video_gen_async if "video_gen" in modalities else None,
             embedding_sync=canon.embedding_sync if "embedding" in modalities else None,
             embedding_async=canon.embedding_async if "embedding" in modalities else None,
+            rerank_sync=canon.rerank_sync if "rerank" in modalities else None,
+            rerank_async=canon.rerank_async if "rerank" in modalities else None,
             is_configured_check=canon.is_configured_check,
             is_configured_fn=canon.is_configured_fn,
             always_available=canon.always_available,
@@ -749,12 +799,14 @@ def register_all_builtin_drivers() -> None:
         register_async_driver,
         register_async_embedding_driver,
         register_async_img_gen_driver,
+        register_async_rerank_driver,
         register_async_stt_driver,
         register_async_tts_driver,
         register_async_video_gen_driver,
         register_driver,
         register_embedding_driver,
         register_img_gen_driver,
+        register_rerank_driver,
         register_stt_driver,
         register_tts_driver,
         register_video_gen_driver,
@@ -773,6 +825,8 @@ def register_all_builtin_drivers() -> None:
         "video_gen_async": register_async_video_gen_driver,
         "embedding_sync": register_embedding_driver,
         "embedding_async": register_async_embedding_driver,
+        "rerank_sync": register_rerank_driver,
+        "rerank_async": register_async_rerank_driver,
     }
 
     for desc in PROVIDER_DESCRIPTORS:

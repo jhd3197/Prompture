@@ -661,6 +661,46 @@ def get_available_video_gen_models(
     return sorted(available)
 
 
+def get_available_rerank_models(
+    *,
+    env: ProviderEnvironment | None = None,
+) -> list[str]:
+    """Auto-detect available rerank models based on configured API keys.
+
+    Checks which rerank providers are configured (Cohere, Voyage, Jina) and
+    returns their supported models.
+
+    Args:
+        env: Optional per-consumer environment for isolated API keys.
+            When ``None``, uses the global settings singleton.
+
+    Returns:
+        A sorted list of unique model strings (e.g. ``"cohere/rerank-v3.5"``).
+    """
+    available: set[str] = set()
+
+    # Cohere rerank models
+    if _cfg_value(env, "cohere_api_key", "COHERE_API_KEY"):
+        for model_id in ("rerank-v3.5", "rerank-english-v3.0", "rerank-multilingual-v3.0"):
+            available.add(f"cohere/{model_id}")
+
+    # Voyage AI rerank models
+    if _cfg_value(env, "voyage_api_key", "VOYAGE_API_KEY"):
+        for model_id in ("rerank-2.5", "rerank-2.5-lite", "rerank-2"):
+            available.add(f"voyage/{model_id}")
+
+    # Jina AI rerank models
+    if _cfg_value(env, "jina_api_key", "JINA_API_KEY"):
+        for model_id in (
+            "jina-reranker-v2-base-multilingual",
+            "jina-reranker-v1-base-en",
+            "jina-colbert-v2",
+        ):
+            available.add(f"jina/{model_id}")
+
+    return sorted(available)
+
+
 def get_available_embedding_models(
     *,
     env: ProviderEnvironment | None = None,

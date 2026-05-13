@@ -31,8 +31,8 @@ print(person.name)  # Maria
 ## Key Features
 
 - **Structured output** — JSON schema enforcement and direct Pydantic model population
-- **23+ providers** — OpenAI, Claude, Google, Groq, Grok, Azure, Ollama, LM Studio, OpenRouter, HuggingFace, Moonshot, ModelScope, Z.ai, Vertex AI, AirLLM, CachiBot, Runway, MiniMax/Hailuo, Kling AI, Fal.ai, Mistral AI, DeepSeek, generic OpenAI-compatible (Fireworks, Together, Cerebras, SambaNova, Perplexity, NVIDIA, DeepInfra, SiliconFlow), and generic HTTP
-- **Multi-modal** — Drivers for embeddings, image generation (DALL-E, Imagen, Grok, Stability, Runway), video generation (Grok Imagine Video, Runway text/image/video → video), text-to-speech (OpenAI, ElevenLabs, Runway), sound effects, voice dubbing / isolation / conversion (Runway), and speech-to-text (Whisper, ElevenLabs)
+- **26+ providers** — OpenAI, Claude, Google, Groq, Grok, Azure, Ollama, LM Studio, OpenRouter, HuggingFace, Moonshot, ModelScope, Z.ai, Vertex AI, AirLLM, CachiBot, Runway, MiniMax/Hailuo, Kling AI, Fal.ai, Mistral AI, DeepSeek, Cohere, Voyage AI, Jina AI, generic OpenAI-compatible (Fireworks, Together, Cerebras, SambaNova, Perplexity, NVIDIA, DeepInfra, SiliconFlow), and generic HTTP
+- **Multi-modal** — Drivers for embeddings, rerank (Cohere, Voyage, Jina), image generation (DALL-E, Imagen, Grok, Stability, Runway), video generation (Grok Imagine Video, Runway text/image/video → video), text-to-speech (OpenAI, ElevenLabs, Runway), sound effects, voice dubbing / isolation / conversion (Runway), and speech-to-text (Whisper, ElevenLabs)
 - **Multi-model fallback** — Try a list of models in sequence with per-attempt cost, token, and capability accounting
 - **Strategy cascade** — Auto-selects between provider-native JSON mode, tool-call extraction, and prompted repair so extraction works on any model
 - **TOON input conversion** — 45-60% token savings when sending structured data via [Token-Oriented Object Notation](https://github.com/jhd3197/python-toon)
@@ -142,6 +142,7 @@ Aliases (`anthropic`, `gemini`, `chatgpt`, `xai`, `lm_studio`, `zhipu`, `hf`, `d
 Beyond text LLMs, Prompture exposes drivers for adjacent modalities under the same `provider/model` routing:
 
 - **Embeddings** — OpenAI (`text-embedding-3-*`) and Ollama (`nomic-embed-text`)
+- **Rerank** — Cohere (`rerank-v3.5`), Voyage AI (`rerank-2.5`), Jina AI (`jina-reranker-v2-base-multilingual`)
 - **Image generation** — OpenAI DALL-E + GPT image, Google Imagen, Grok, Stability AI, Runway (`gen4_image`, `gen4_image_turbo`, `gpt_image_2`, `gemini_image3_pro`, `gemini_2.5_flash`), Kling AI, Fal.ai
 - **Video generation** — Grok Imagine Video; Runway text/image/video → video (`gen4.5`, `gen4_turbo`, `gen3a_turbo`, `gen4_aleph`, `veo3`, `veo3.1`, `veo3.1_fast`); MiniMax / Hailuo; Kling AI; Fal.ai
 - **Text-to-speech** — OpenAI (`tts-1`), ElevenLabs, Runway (`eleven_multilingual_v2`)
@@ -179,6 +180,30 @@ print(result["meta"]["request_id"], result["meta"]["cost"])
 For local smoke tests without waiting on the render, pass `{"poll": False}` to get the provider request ID. The async factory is available as `get_async_video_gen_driver_for_model()`.
 
 Runnable example: `python examples/grok_video_generation_example.py`.
+
+### Rerank
+
+Rerank providers take a query and a list of candidate documents and return them re-ordered by relevance. Set `COHERE_API_KEY`, `VOYAGE_API_KEY`, or `JINA_API_KEY`, then:
+
+```python
+from prompture.drivers.rerank_registry import get_rerank_driver_for_model
+
+driver = get_rerank_driver_for_model("cohere/rerank-v3.5")
+results = driver.rerank(
+    query="What is the capital of France?",
+    documents=[
+        "Berlin is the capital of Germany.",
+        "Paris is the capital of France.",
+        "Madrid is in Spain.",
+    ],
+    top_n=2,
+    return_documents=True,
+)
+for r in results:
+    print(r.index, r.relevance_score, r.document)
+```
+
+Discover configured rerank models with `get_available_rerank_models()`. The async factory is available as `get_async_rerank_driver_for_model()`.
 
 ### Runway
 

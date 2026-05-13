@@ -141,6 +141,11 @@ class Settings(BaseSettings):
     deepinfra_api_key: Optional[str] = None
     siliconflow_api_key: Optional[str] = None
 
+    # Phase 2: Rerank providers
+    cohere_api_key: Optional[str] = None
+    voyage_api_key: Optional[str] = None
+    jina_api_key: Optional[str] = None
+
     # ElevenLabs (audio)
     elevenlabs_api_key: Optional[str] = None
     elevenlabs_tts_model: str = "eleven_multilingual_v2"
