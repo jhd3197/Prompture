@@ -609,6 +609,7 @@ class TestCapabilitiesKB:
                 "cohere",
                 "voyage",
                 "jina",
+                "bedrock",
             ), f"({provider}, {model_id}) invalid api_type: {caps.api_type}"
             assert len(caps.modalities_input) > 0, f"({provider}, {model_id}) missing modalities_input"
             assert len(caps.modalities_output) > 0, f"({provider}, {model_id}) missing modalities_output"

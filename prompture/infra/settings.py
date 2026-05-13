@@ -152,6 +152,12 @@ class Settings(BaseSettings):
     voyage_embedding_model: str = "voyage-3.5"
     jina_embedding_model: str = "jina-embeddings-v3"
 
+    # Phase 4: AWS Bedrock
+    aws_access_key_id: Optional[str] = None  # nosec B105
+    aws_secret_access_key: Optional[str] = None  # nosec B105
+    aws_region: str = "us-east-1"
+    bedrock_model: str = "anthropic.claude-3-5-haiku-20241022-v1:0"
+
     # ElevenLabs (audio)
     elevenlabs_api_key: Optional[str] = None
     elevenlabs_tts_model: str = "eleven_multilingual_v2"

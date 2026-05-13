@@ -31,7 +31,7 @@ print(person.name)  # Maria
 ## Key Features
 
 - **Structured output** — JSON schema enforcement and direct Pydantic model population
-- **26+ providers** — OpenAI, Claude, Google, Groq, Grok, Azure, Ollama, LM Studio, OpenRouter, HuggingFace, Moonshot, ModelScope, Z.ai, Vertex AI, AirLLM, CachiBot, Runway, MiniMax/Hailuo, Kling AI, Fal.ai, Mistral AI, DeepSeek, Cohere, Voyage AI, Jina AI, generic OpenAI-compatible (Fireworks, Together, Cerebras, SambaNova, Perplexity, NVIDIA, DeepInfra, SiliconFlow), and generic HTTP
+- **27+ providers** — OpenAI, Claude, Google, Groq, Grok, Azure, AWS Bedrock, Ollama, LM Studio, OpenRouter, HuggingFace, Moonshot, ModelScope, Z.ai, Vertex AI, AirLLM, CachiBot, Runway, MiniMax/Hailuo, Kling AI, Fal.ai, Mistral AI, DeepSeek, Cohere, Voyage AI, Jina AI, generic OpenAI-compatible (Fireworks, Together, Cerebras, SambaNova, Perplexity, NVIDIA, DeepInfra, SiliconFlow), and generic HTTP
 - **Multi-modal** — Drivers for embeddings, rerank (Cohere, Voyage, Jina), image generation (DALL-E, Imagen, Grok, Stability, Runway), video generation (Grok Imagine Video, Runway text/image/video → video), text-to-speech (OpenAI, ElevenLabs, Runway), sound effects, voice dubbing / isolation / conversion (Runway), and speech-to-text (Whisper, ElevenLabs)
 - **Multi-model fallback** — Try a list of models in sequence with per-attempt cost, token, and capability accounting
 - **Strategy cascade** — Auto-selects between provider-native JSON mode, tool-call extraction, and prompted repair so extraction works on any model
@@ -117,6 +117,7 @@ Model strings use `"provider/model"` format. The provider prefix routes to the c
 | `groq` | `groq/llama2-70b-4096` | Automatic |
 | `grok` | `grok/grok-4-fast-reasoning` | Automatic |
 | `azure` | `azure/deployed-name` | Automatic |
+| `bedrock` | `bedrock/anthropic.claude-3-5-haiku-20241022-v1:0` (requires `pip install prompture[bedrock]`) | Automatic |
 | `openrouter` | `openrouter/anthropic/claude-2` | Automatic |
 | `moonshot` | `moonshot/kimi-k2` | Automatic |
 | `modelscope` | `modelscope/Qwen2.5-72B-Instruct` | Automatic |

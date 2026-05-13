@@ -688,6 +688,34 @@ def _build_descriptors() -> list[ProviderDescriptor]:
         )
     )
 
+    # ── AWS Bedrock (multi-vendor LLM) ────────────────────────────────
+    _bedrock_kw = {
+        "aws_access_key_id": "aws_access_key_id",
+        "aws_secret_access_key": "aws_secret_access_key",  # nosec B105 — settings attr name
+        "aws_region": "aws_region",
+    }
+    descriptors.append(
+        ProviderDescriptor(
+            name="bedrock",
+            **_llm(
+                "bedrock_driver",
+                "BedrockDriver",
+                "async_bedrock_driver",
+                "AsyncBedrockDriver",
+                _bedrock_kw,
+                "bedrock_model",
+            ),
+            display_name="AWS Bedrock",
+            is_configured_fn=_bedrock_is_configured,
+            list_models_kwargs=[
+                ("aws_access_key_id", "aws_access_key_id", "AWS_ACCESS_KEY_ID"),
+                ("aws_secret_access_key", "aws_secret_access_key", "AWS_SECRET_ACCESS_KEY"),
+                ("aws_region", "aws_region", "AWS_REGION"),
+            ],
+            models_dev_name="amazon-bedrock",
+        )
+    )
+
     # ── Jina AI (embeddings + rerank) ─────────────────────────────────
     _jina_kw = {"api_key": "jina_api_key"}
     descriptors.append(
@@ -813,6 +841,31 @@ def _azure_is_configured(env: Any = None) -> bool:
         pass
 
     return False
+
+
+def _bedrock_is_configured(env: Any = None) -> bool:
+    """Bedrock is configured if AWS creds are set or boto3 finds them in the chain."""
+    import os
+
+    from ..infra.settings import settings
+
+    if env is not None:
+        if env.resolve("aws_access_key_id") and env.resolve("aws_secret_access_key"):
+            return True
+    else:
+        if (getattr(settings, "aws_access_key_id", None) or os.getenv("AWS_ACCESS_KEY_ID")) and (
+            getattr(settings, "aws_secret_access_key", None) or os.getenv("AWS_SECRET_ACCESS_KEY")
+        ):
+            return True
+
+    # Fall back to boto3's standard credential chain (IAM role, ~/.aws/credentials, etc.)
+    try:
+        import boto3  # type: ignore[import-not-found]
+
+        session = boto3.Session()
+        return session.get_credentials() is not None
+    except Exception:
+        return False
 
 
 # ── Module-level singletons ───────────────────────────────────────────────
