@@ -149,7 +149,7 @@ def test_provider_descriptors_list_backwards_compatible():
 def test_get_driver_for_model_still_works():
     from prompture.drivers import get_driver_for_model
 
-    driver = get_driver_for_model("openai/gpt-4o-mini")
+    driver = get_driver_for_model("openai/gpt-4o-mini", api_key="sk-test")
     assert driver.__class__.__name__ == "OpenAIDriver"
 
 
