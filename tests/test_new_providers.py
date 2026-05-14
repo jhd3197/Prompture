@@ -72,7 +72,7 @@ class TestKlingImageGen:
 
     def test_build_body_v1_5_subject_mode(self):
         d = KlingImageGenDriver(access_key="ak", secret_key="sk", model="kling-v1-5")
-        path, body = d._build_body(
+        _path, body = d._build_body(
             "a cat",
             {"image": "https://example.com/x.png", "reference_mode": "subject"},
         )
@@ -111,7 +111,7 @@ class TestKlingVideoGen:
         assert body["duration"] == "5"
 
     def test_pro_mode_for_last_frame(self):
-        path, body = _build_video_body(
+        _path, body = _build_video_body(
             "wave",
             {"image": "https://x/y.png", "last_frame": "https://x/z.png", "duration": 5},
             "kling-v2-1",
@@ -120,7 +120,7 @@ class TestKlingVideoGen:
         assert "image_tail" in body
 
     def test_pro_mode_for_v2_6(self):
-        path, body = _build_video_body("x", {"duration": 5}, "kling-v2-6")
+        _path, body = _build_video_body("x", {"duration": 5}, "kling-v2-6")
         assert body["mode"] == "pro"
 
     def test_multi_image_video(self):
