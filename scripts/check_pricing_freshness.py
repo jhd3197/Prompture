@@ -1,11 +1,14 @@
 """Detect drift between local rate files and models.dev.
 
 The local files in ``prompture/infra/rates/*.json`` are hand-maintained
-capability/limit metadata for the LLM models prompture supports. This script
-compares each entry against the live models.dev catalog and reports stale
-fields plus models that exist upstream but aren't tracked locally.
+capability/limit metadata for the LLM models prompture supports — they are
+the primary source of truth; models.dev is a fallback. This script compares
+each entry against the live models.dev catalog and reports stale fields plus
+models that exist upstream but aren't tracked locally.
 
-Exit code 0 = no drift (or upstream unreachable). Non-zero = drift found.
+By default the script is informational and always exits 0 (drift is reported
+but not treated as a failure, since local data may intentionally diverge from
+models.dev). Pass ``--strict`` to exit non-zero on any drift or missing model.
 """
 
 from __future__ import annotations
@@ -94,6 +97,11 @@ def main() -> int:
         default=0,
         help="Skip drift checks for files modified within this many days (default: 0).",
     )
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Exit non-zero on any drift or missing model. Default is informational (always exit 0).",
+    )
     args = parser.parse_args()
 
     print("Checking pricing/capability freshness against models.dev...")
@@ -160,7 +168,11 @@ def main() -> int:
         if len(all_missing) > 50:
             print(f"... and {len(all_missing) - 50} more")
 
-    return 1 if (all_drifts or all_missing) else 0
+    if all_drifts or all_missing:
+        if args.strict:
+            return 1
+        print("\n(informational mode: drift reported but not failing — pass --strict to enforce)")
+    return 0
 
 
 if __name__ == "__main__":
