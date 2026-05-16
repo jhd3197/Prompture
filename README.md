@@ -45,6 +45,7 @@ print(person.name)  # Maria
 - **Web search** — Drop-in `web_search` tool with Tavily, Serper, Brave, and SearXNG backends; returns Markdown so the LLM can cite by URL
 - **OpenAI-compatible server** — `prompture serve` exposes `/v1/chat/completions`, `/v1/completions`, `/v1/embeddings`, `/v1/models`; point Claude Code, Codex, Cursor, Aider, or any OpenAI SDK at it and route to any of the 36+ providers
 - **Synthetic datasets** — `generate_qa_dataset()` turns documents into fine-tuning JSONL (Q&A, ShareGPT, or Alpaca) ready for Unsloth, Axolotl, or TRL
+- **Refusal detection** — `RefusalDetector` + `RefusalEvaluator` flag and score LLM refusals (5 categories, en/es markers, position-weighted confidence); useful for cross-provider alignment comparison and validating abliterated models
 - **Deep agents** — Drop-in `DeepAgent` with planning (`write_todos`), virtual filesystem (`read_file` / `write_file` / `edit_file` / `ls` / `glob` / `grep`), sub-agent delegation (`task`), and automatic context summarization — no LangChain or LangGraph required
 - **Caching** — Built-in response cache with memory, SQLite, and Redis backends
 - **Plugin system** — Register custom drivers via entry points
@@ -612,6 +613,56 @@ Output formats:
 The output JSONL is ready to feed into Unsloth, Axolotl, TRL, or any
 custom training loop.  Runnable example:
 `python examples/dataset_generation_example.py`.
+
+## Refusal Detection
+
+`prompture.refusal` flags and measures LLM refusals across any driver.
+Useful for comparing alignment across providers, filtering refusals in
+agents, or validating decensored / abliterated models (e.g. those
+produced with [Heretic](https://github.com/p-e-w/heretic)) by
+measuring refusal rate before and after the modification.
+
+```python
+from prompture import RefusalDetector, RefusalEvaluator
+
+# Single response
+detector = RefusalDetector()
+r = detector.detect("I'm sorry, but I cannot help with that.")
+print(r.is_refusal, r.confidence, r.category.value)
+# True 0.95 hard_refusal
+
+# Benchmark a driver
+report = RefusalEvaluator().evaluate_driver(
+    "ollama/llama3.1:8b",
+    prompts=["Explain photosynthesis.", "What is 7 * 8?", ...],
+)
+print(f"Refusal rate: {report.refusal_rate:.0%}")
+print(f"By category: {report.by_category}")
+for prompt, response, result in report.samples[:3]:
+    print(result.category.value, "→", response[:80])
+```
+
+Five categories with priority resolution:
+
+| Category | Example phrase | Triggers `is_refusal` by default? |
+|---|---|---|
+| `hard_refusal` | "I cannot help with that." | Yes |
+| `policy` | "As an AI…", "violates my guidelines" | Yes |
+| `soft_refusal` | "I'd rather not.", "not comfortable" | Yes |
+| `empty` | (no content) | Yes |
+| `deflection` | "Let me help with something else instead." | No |
+| `safety_disclaimer` | "I must caution that…" | No |
+
+The detector is a clean-room MIT implementation. English and Spanish
+markers ship by default; pass `custom_markers={"hard_refusal": [...]}`
+to extend.  Normalization handles markdown emphasis, typographic
+quotes/dashes, and leading filler ("Sure, but I cannot…").
+Position-weighted scoring downweights markers that appear late in a
+response, reducing false positives when a model *discusses* refusals
+instead of issuing one.  Async benchmarking via
+`RefusalEvaluator.evaluate_driver_async(..., concurrency=4)`.
+
+Runnable example: `python examples/refusal_detection_example.py`.
 
 ## Usage
 
