@@ -11,6 +11,7 @@ except ImportError:  # tukuy not installed
     create_tukuy_backend = None  # type: ignore[assignment]
 from . import plugins, rag
 from .cli import *
+from .tools import PythonSandboxTool, python_execute_tool
 from .drivers import *
 from .exceptions import (
     BudgetExceededError,

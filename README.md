@@ -41,6 +41,7 @@ print(person.name)  # Maria
 - **Field registry** — 50+ predefined extraction fields with template variables and Pydantic integration
 - **Conversations** — Stateful multi-turn sessions with sync and async support
 - **Tool use** — Function calling and streaming across supported providers, with automatic prompt-based simulation for models without native tool support
+- **Sandboxed Python execution** — Drop-in `python_execute` tool backed by Tukuy's `PythonSandbox` (import whitelist, path restrictions, timeout, memory limit, AST risk gate)
 - **Deep agents** — Drop-in `DeepAgent` with planning (`write_todos`), virtual filesystem (`read_file` / `write_file` / `edit_file` / `ls` / `glob` / `grep`), sub-agent delegation (`task`), and automatic context summarization — no LangChain or LangGraph required
 - **Caching** — Built-in response cache with memory, SQLite, and Redis backends
 - **Plugin system** — Register custom drivers via entry points
@@ -68,6 +69,7 @@ pip install prompture[redis]       # Redis cache backend
 pip install prompture[serve]       # FastAPI server mode
 pip install prompture[airllm]      # AirLLM local inference
 pip install prompture[bedrock]     # AWS Bedrock driver (boto3)
+pip install prompture[sandbox]     # Sandboxed Python execution tool (tukuy)
 pip install prompture[rag]         # Full RAG stack (all loaders, chunkers, vector stores, hybrid retrieval)
 ```
 
@@ -802,6 +804,66 @@ conv = Conversation("openai/gpt-4", tools=registry, simulated_tools=False)
 ```
 
 The simulation loop describes tools in the system prompt, asks the model to respond with JSON (`tool_call` or `final_answer`), executes tools, and feeds results back — all transparent to the caller.
+
+### Sandboxed Python execution
+
+`PythonSandboxTool` ships a ready-to-register `python_execute` tool backed
+by [Tukuy](https://github.com/jhd3197/Tukuy)'s `PythonSandbox`.  It runs
+LLM-authored code with:
+
+- **Curated `SAFE_IMPORTS` whitelist** (json, re, math, statistics,
+  datetime, csv, base64, hashlib, …) plus an always-blocked security
+  list (`os`, `subprocess`, `socket`, `ctypes`, `pickle`, `importlib`,
+  `pathlib`, `tempfile`, `asyncio`, …) that **cannot be re-enabled**.
+- **Per-directory read/write paths** — `open()` outside the whitelist
+  raises `PathViolationError`.
+- **Timeout and memory caps** — `SIGALRM` + `RLIMIT_AS` (Unix only;
+  Windows runs without enforcement, documented in the tool docstring).
+- **Minimal `__builtins__`** — no `eval`, `exec`, `__import__`, or
+  `compile` reachable from inside the sandbox.
+- **AST risk gate** (`tukuy.analyze_python`) — code that imports
+  dangerous modules or calls `exec`/`eval` raises `ApprovalRequired`
+  before it ever reaches the interpreter.
+
+```python
+from prompture import Agent, ToolRegistry, PythonSandboxTool
+
+registry = ToolRegistry()
+PythonSandboxTool().register_on(registry)
+
+agent = Agent(
+    "openai/gpt-4o",
+    system_prompt="Use python_execute for computations.",
+    tools=registry,
+)
+print(agent.run("Compute the stdev of [12, 17, 19, 23, 29, 31].").output)
+```
+
+Wire the agent's approval callback to `mark_approved` so HIGH-risk code
+proceeds after a user OK:
+
+```python
+sandbox = PythonSandboxTool()  # default threshold = RiskLevel.HIGH
+
+def on_approval(tool_name, action, details):
+    if confirm_with_user(details["code"]):
+        sandbox.mark_approved(details["code"])  # one-shot bypass of AST gate
+        return True
+    return False
+
+agent = Agent(
+    "openai/gpt-4o",
+    tools=[sandbox.to_tool_definition()],
+    callbacks=AgentCallbacks(on_approval_needed=on_approval),
+)
+```
+
+The runtime sandbox restrictions (blocked imports, paths, timeout,
+memory) still apply after approval — `mark_approved` only bypasses the
+AST risk gate.
+
+Install: `pip install prompture[sandbox]` (pulls in tukuy).
+Runnable example: `python examples/python_sandbox_example.py`.
 
 ### Deep Agents
 
