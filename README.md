@@ -43,6 +43,7 @@ print(person.name)  # Maria
 - **Tool use** — Function calling and streaming across supported providers, with automatic prompt-based simulation for models without native tool support
 - **Sandboxed Python execution** — Drop-in `python_execute` tool backed by Tukuy's `PythonSandbox` (import whitelist, path restrictions, timeout, memory limit, AST risk gate)
 - **Web search** — Drop-in `web_search` tool with Tavily, Serper, Brave, and SearXNG backends; returns Markdown so the LLM can cite by URL
+- **OpenAI-compatible server** — `prompture serve` exposes `/v1/chat/completions`, `/v1/completions`, `/v1/embeddings`, `/v1/models`; point Claude Code, Codex, Cursor, Aider, or any OpenAI SDK at it and route to any of the 36+ providers
 - **Deep agents** — Drop-in `DeepAgent` with planning (`write_todos`), virtual filesystem (`read_file` / `write_file` / `edit_file` / `ls` / `glob` / `grep`), sub-agent delegation (`task`), and automatic context summarization — no LangChain or LangGraph required
 - **Caching** — Built-in response cache with memory, SQLite, and Redis backends
 - **Plugin system** — Register custom drivers via entry points
@@ -1069,6 +1070,64 @@ prompture run <spec-file>
 ```
 
 Run spec-driven extraction suites for cross-model comparison.
+
+## OpenAI-Compatible Server
+
+`prompture serve` exposes an OpenAI-shaped API
+(`/v1/chat/completions`, `/v1/completions`, `/v1/embeddings`,
+`/v1/models`) backed by Prompture's driver registry.  Point any
+OpenAI SDK — or any tool that speaks the OpenAI API (Claude Code,
+Codex, Cursor, Aider, LangChain) — at it and route to any of the 36+
+supported providers under one endpoint.
+
+```bash
+pip install prompture[serve]
+prompture serve \
+  --model claude/claude-sonnet-4-6 \
+  --api-key sk-prompt-local \
+  --sandbox \
+  --web-search
+```
+
+Then in any OpenAI client:
+
+```python
+from openai import OpenAI
+client = OpenAI(base_url="http://localhost:9471/v1", api_key="sk-prompt-local")
+resp = client.chat.completions.create(
+    model="ollama/llama3.1:8b",          # any Prompture model string
+    messages=[{"role": "user", "content": "Hello!"}],
+)
+```
+
+Or wire an agent CLI to it directly:
+
+```bash
+export OPENAI_BASE_URL=http://localhost:9471/v1
+export OPENAI_API_KEY=sk-prompt-local
+claude    # or codex, aider, …
+```
+
+The `--sandbox` and `--web-search` flags register those tools
+**server-side** — the LLM uses them transparently and clients only
+see the final assistant message.  Client-supplied `tools[]` in the
+request body are forwarded to the driver as schemas; if the model
+returns `tool_calls`, they appear in the response shape so the
+client can execute locally.
+
+Selected flags:
+
+| Flag | Purpose |
+|---|---|
+| `--model` | Default model when the client omits it. |
+| `--api-key` | Require Bearer authentication. |
+| `--allow-models` | Comma-separated allowlist (`openai/gpt-4o,ollama/llama3.1:8b`). |
+| `--sandbox` | Register the `python_execute` server-side tool. |
+| `--web-search` | Register the `web_search` server-side tool. |
+| `--rate-limit` | Per-IP requests-per-minute cap. |
+| `--cors-origins` | CORS allowed origins. |
+
+Full example walkthrough: [`examples/openai_server_example.md`](examples/openai_server_example.md).
 
 ## Integrating Prompture into Your Project
 

@@ -1,25 +1,32 @@
-"""Built-in API server wrapping AsyncConversation.
+"""OpenAI-compatible API server wrapping Prompture's driver system.
 
-Provides a FastAPI application with chat, extraction, model listing,
-and an **OpenAI-compatible** ``/v1/chat/completions`` proxy endpoint.
-``fastapi``, ``uvicorn``, and ``sse-starlette`` are lazy-imported so
-the module is importable without them installed.
+Exposes a FastAPI application implementing the subset of OpenAI's API
+that drop-in clients (Claude Code, Codex, Cursor, Aider, LangChain,
+OpenAI SDK, …) need:
 
-The OpenAI-compatible endpoint lets any OpenAI SDK client (Python,
-Node, curl) talk to **any** Prompture-supported backend (Claude,
-Gemini, Groq, Ollama, etc.) through a single unified API::
+* ``POST /v1/chat/completions`` — streaming + non-streaming, with
+  optional server-side tool execution (sandbox / web search).
+* ``POST /v1/completions`` — legacy completions, thin wrapper around chat.
+* ``GET  /v1/models`` — list models discovered by Prompture.
+* ``POST /v1/embeddings`` — routes to ``get_embedding_driver_for_model``.
+
+Plus Prompture-native endpoints:
+
+* ``POST /v1/chat`` — message + conversation_id, multi-turn state.
+* ``POST /v1/extract`` — structured JSON extraction.
+* CRUD for in-memory conversations under ``/v1/conversations/...``.
+
+``fastapi``, ``uvicorn``, and ``sse-starlette`` are lazy-imported so the
+module is importable without them installed.
+
+Example::
 
     from openai import OpenAI
-    client = OpenAI(base_url="http://localhost:9471/v1", api_key="unused")
+    client = OpenAI(base_url="http://localhost:9471/v1", api_key="anything")
     resp = client.chat.completions.create(
-        model="claude/claude-sonnet-4-20250514",
+        model="claude/claude-sonnet-4-6",
         messages=[{"role": "user", "content": "Hello!"}],
     )
-
-Usage::
-
-    from prompture.server import create_app
-    app = create_app(model_name="openai/gpt-4o-mini")
 """
 
 import json
@@ -46,20 +53,20 @@ def create_app(
 
     Parameters:
         model_name: Default model string (``provider/model``).
-        system_prompt: Optional system prompt for new conversations.
+        system_prompt: Optional system prompt injected when the client
+            doesn't supply one in ``messages``.
         tools: Optional :class:`~prompture.tools_schema.ToolRegistry`.
+            When set, the chat endpoint runs the agent loop and executes
+            tools server-side — clients see only the final answer.
         cors_origins: CORS allowed origins.  ``["*"]`` to allow all.
-        api_key: Optional Bearer token for API authentication.
-            If set, all requests must include ``Authorization: Bearer <key>``.
+        api_key: Optional Bearer token for API authentication.  When
+            set, all requests must include ``Authorization: Bearer <key>``.
         max_conversations: Maximum in-memory conversations before oldest
             are evicted.  Defaults to 1000.
         allowed_models: Optional allowlist of model strings.  When set,
-            the OpenAI-compatible endpoint rejects models not in the list.
-        rate_limit: Maximum requests per minute per client IP.
-            ``None`` (default) disables rate limiting.
-
-    Returns:
-        A ``fastapi.FastAPI`` instance.
+            requests for models outside the list return 403.
+        rate_limit: Maximum requests per minute per client IP.  ``None``
+            (default) disables rate limiting.
     """
     try:
         from fastapi import Depends, FastAPI, HTTPException, Request
@@ -77,12 +84,15 @@ def create_app(
     async def _verify_api_key(request: Request) -> None:
         if api_key is None:
             return
+        # /health is always public
+        if request.url.path == "/health":
+            return
         auth = request.headers.get("Authorization", "")
         if auth != f"Bearer {api_key}":
             raise HTTPException(status_code=401, detail="Invalid or missing API key")
 
     if api_key is None:
-        logger.warning("Server starting without API key authentication — all requests will be accepted")
+        logger.warning("Server starting without API key authentication — set --api-key to require Bearer auth")
 
     # ---- Rate limiting dependency ----
 
@@ -96,16 +106,13 @@ def create_app(
         window = 60.0  # 1 minute
 
         bucket = _rate_buckets.setdefault(client_ip, [])
-        # Prune expired timestamps
         _rate_buckets[client_ip] = bucket = [t for t in bucket if now - t < window]
         if len(bucket) >= rate_limit:
             raise HTTPException(status_code=429, detail="Rate limit exceeded")
         bucket.append(now)
 
-    # ---- CORS warning ----
-
     if cors_origins and "*" in cors_origins:
-        logger.warning("CORS is configured to allow all origins ('*'). This is insecure for production deployments.")
+        logger.warning("CORS allows all origins ('*') — restrict to specific hosts in production.")
 
     # ---- Pydantic request/response models (Prompture native) ----
 
@@ -124,16 +131,12 @@ def create_app(
         text: str = Field(..., max_length=500_000)
         schema_def: dict[str, Any] = Field(..., alias="schema")
         conversation_id: Optional[str] = Field(None, max_length=64, pattern=r"^[a-zA-Z0-9_-]+$")
-
         model_config = {"populate_by_name": True}
 
     class ExtractResponse(BaseModel):
         json_object: dict[str, Any]
         conversation_id: str
         usage: dict[str, Any]
-
-    class ModelInfo(BaseModel):
-        models: list[str]
 
     class ConversationHistory(BaseModel):
         conversation_id: str
@@ -144,22 +147,46 @@ def create_app(
 
     class OAIMessage(BaseModel):
         role: str
-        content: Optional[str] = None
+        content: Optional[Any] = None  # str or list (multipart) — kept loose
+        name: Optional[str] = None
+        tool_call_id: Optional[str] = None
+        tool_calls: Optional[list[dict[str, Any]]] = None
 
     class OAIChatRequest(BaseModel):
         model: Optional[str] = None
-        messages: list[OAIMessage] = Field(..., max_length=200)
+        messages: list[OAIMessage] = Field(..., max_length=500)
         temperature: Optional[float] = None
         top_p: Optional[float] = None
         max_tokens: Optional[int] = None
         stream: bool = False
         n: int = 1
+        tools: Optional[list[dict[str, Any]]] = None
+        tool_choice: Optional[Any] = None
+        stop: Optional[Any] = None
+        presence_penalty: Optional[float] = None
+        frequency_penalty: Optional[float] = None
+        user: Optional[str] = None
+
+    class OAICompletionsRequest(BaseModel):
+        model: Optional[str] = None
+        prompt: Any  # str or list
+        temperature: Optional[float] = None
+        top_p: Optional[float] = None
+        max_tokens: Optional[int] = None
+        stream: bool = False
+        stop: Optional[Any] = None
+
+    class OAIEmbeddingsRequest(BaseModel):
+        model: Optional[str] = None
+        input: Any  # str or list[str]
+        encoding_format: Optional[str] = None
+        user: Optional[str] = None
 
     # ---- App ----
 
     app = FastAPI(
         title="Prompture API",
-        version="0.1.0",
+        version="0.2.0",
         dependencies=[Depends(_verify_api_key), Depends(_check_rate_limit)],
     )
 
@@ -172,14 +199,22 @@ def create_app(
             allow_headers=["*"],
         )
 
-    # In-memory conversation store (OrderedDict for eviction)
+    # In-memory conversation store
     _conversations: OrderedDict[str, AsyncConversation] = OrderedDict()
 
     tool_registry: Optional[ToolRegistry] = tools
 
+    # ---- Helpers ----
+
+    def _check_model_allowed(model: str) -> None:
+        if allowed_models is not None and model not in allowed_models:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Model '{model}' is not in the allowed models list",
+            )
+
     def _get_or_create_conversation(conv_id: Optional[str]) -> tuple[str, AsyncConversation]:
         if conv_id and conv_id in _conversations:
-            # Move to end (most recently used)
             _conversations.move_to_end(conv_id)
             return conv_id, _conversations[conv_id]
         new_id = conv_id or uuid.uuid4().hex[:12]
@@ -189,10 +224,92 @@ def create_app(
             tools=tool_registry,
         )
         _conversations[new_id] = conv
-        # Evict oldest conversations if over the limit
         while len(_conversations) > max_conversations:
             _conversations.popitem(last=False)
         return new_id, conv
+
+    def _seed_conversation_from_messages(
+        conv: AsyncConversation,
+        messages: list[OAIMessage],
+    ) -> tuple[str, Optional[str]]:
+        """Replay OpenAI ``messages[]`` into *conv*.
+
+        Returns ``(last_user_content, last_system_prompt)``.  The
+        conversation's internal message list is populated for everything
+        EXCEPT the final user message, which is returned for the caller
+        to pass to ``conv.ask()``.
+        """
+        # Find the index of the final user message.
+        final_user_idx: Optional[int] = None
+        for i in range(len(messages) - 1, -1, -1):
+            if messages[i].role == "user":
+                final_user_idx = i
+                break
+        if final_user_idx is None:
+            raise HTTPException(status_code=400, detail="At least one user message is required")
+
+        last_user_content = _flatten_content(messages[final_user_idx].content)
+        last_system: Optional[str] = None
+
+        for i, msg in enumerate(messages):
+            if i == final_user_idx:
+                continue
+            if msg.role == "system":
+                # Override the conversation's system prompt.
+                last_system = _flatten_content(msg.content)
+                continue
+            entry: dict[str, Any] = {"role": msg.role, "content": _flatten_content(msg.content)}
+            if msg.tool_calls:
+                entry["tool_calls"] = msg.tool_calls
+            if msg.tool_call_id:
+                entry["tool_call_id"] = msg.tool_call_id
+            if msg.name:
+                entry["name"] = msg.name
+            conv._messages.append(entry)
+
+        if last_system is not None:
+            conv._system_prompt = last_system
+
+        return last_user_content, last_system
+
+    def _flatten_content(content: Any) -> str:
+        """Reduce OpenAI multipart content arrays to a single string.
+
+        Anthropic / OpenAI ``messages`` can carry content as a list of
+        parts ``[{type: "text", text: "..."}, {type: "image_url", ...}]``.
+        For the v0 proxy we collapse text parts and drop everything
+        else (images on a future iteration).
+        """
+        if content is None:
+            return ""
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            parts: list[str] = []
+            for part in content:
+                if isinstance(part, dict):
+                    if part.get("type") == "text" and isinstance(part.get("text"), str):
+                        parts.append(part["text"])
+                elif isinstance(part, str):
+                    parts.append(part)
+            return "\n".join(parts)
+        return str(content)
+
+    def _build_options(req: OAIChatRequest) -> dict[str, Any]:
+        opts: dict[str, Any] = {}
+        if req.temperature is not None:
+            opts["temperature"] = req.temperature
+        if req.top_p is not None:
+            opts["top_p"] = req.top_p
+        if req.max_tokens is not None:
+            opts["max_tokens"] = req.max_tokens
+        if req.stop is not None:
+            opts["stop"] = req.stop
+        if req.presence_penalty is not None:
+            opts["presence_penalty"] = req.presence_penalty
+        if req.frequency_penalty is not None:
+            opts["frequency_penalty"] = req.frequency_penalty
+        return opts
 
     # ---- Health endpoint ----
 
@@ -200,14 +317,12 @@ def create_app(
     async def health() -> dict[str, str]:
         return {"status": "ok"}
 
-    # ---- Prompture native endpoints ----
+    # ---- Prompture-native endpoints (unchanged from v0.1) ----
 
     @app.post("/v1/chat", response_model=ChatResponse)
     async def chat(chat_req: ChatRequest) -> Any:
         conv_id, conv = _get_or_create_conversation(chat_req.conversation_id)
-
         if chat_req.stream:
-            # SSE streaming
             try:
                 from sse_starlette.sse import EventSourceResponse
             except ImportError:
@@ -217,9 +332,7 @@ def create_app(
                 ) from None
 
             async def event_generator() -> Any:
-                full_text = ""
                 async for chunk in conv.ask_stream(chat_req.message, chat_req.options):
-                    full_text += chunk
                     yield {"data": json.dumps({"text": chunk})}
                 yield {"data": json.dumps({"text": "", "done": True, "conversation_id": conv_id, "usage": conv.usage})}
 
@@ -259,68 +372,42 @@ def create_app(
         del _conversations[conversation_id]
         return {"status": "deleted", "conversation_id": conversation_id}
 
-    # ---- OpenAI-compatible proxy endpoints ----
+    # ---- OpenAI-compatible: /v1/chat/completions ----
 
     @app.post("/v1/chat/completions")
     async def openai_chat_completions(req: OAIChatRequest) -> Any:
-        """OpenAI-compatible ``/v1/chat/completions`` proxy.
+        """OpenAI Chat Completions — routes to any Prompture-supported backend.
 
-        Accepts the standard OpenAI chat format and routes the request
-        through Prompture's driver system to **any** configured backend
-        (Claude, Gemini, Groq, Ollama, etc.).
+        Streaming and non-streaming are supported.  When the server has
+        a configured ``tools`` registry (e.g. via ``--sandbox`` /
+        ``--web-search``), tool calls execute on the server and the
+        client only sees the final assistant message.
 
-        The ``model`` field accepts Prompture model strings
-        (``"provider/model"``).  If omitted, the server's default model
-        is used.
+        Client-supplied ``tools[]`` in the request body are forwarded
+        to the underlying driver where the driver supports it; tool
+        calls returned by the model are surfaced in the response so the
+        client can execute them locally and continue the conversation.
         """
         resolved_model = req.model or model_name
+        _check_model_allowed(resolved_model)
 
-        # Enforce model allowlist
-        if allowed_models is not None and resolved_model not in allowed_models:
-            raise HTTPException(
-                status_code=403,
-                detail=f"Model '{resolved_model}' is not in the allowed models list",
-            )
+        opts = _build_options(req)
+        # Forward client-supplied tools to the driver (best-effort —
+        # driver decides how to use them).  Note: when server-side
+        # tools are also configured, both sets coexist; the agent
+        # registry handles its own tools, the driver gets the rest.
+        if req.tools:
+            opts["tools"] = req.tools
+        if req.tool_choice is not None:
+            opts["tool_choice"] = req.tool_choice
 
-        # Separate system prompt from messages
-        sys_prompt: Optional[str] = system_prompt
-        user_messages: list[dict[str, Any]] = []
-        for msg in req.messages:
-            if msg.role == "system":
-                sys_prompt = msg.content
-            else:
-                user_messages.append({"role": msg.role, "content": msg.content or ""})
-
-        # Build driver options from OpenAI params
-        opts: dict[str, Any] = {}
-        if req.temperature is not None:
-            opts["temperature"] = req.temperature
-        if req.top_p is not None:
-            opts["top_p"] = req.top_p
-        if req.max_tokens is not None:
-            opts["max_tokens"] = req.max_tokens
-
-        # Find the last user message to pass to AsyncConversation.ask()
-        last_user_content = ""
-        for um in reversed(user_messages):
-            if um["role"] == "user":
-                last_user_content = um["content"]
-                break
-
-        if not last_user_content:
-            raise HTTPException(status_code=400, detail="At least one user message is required")
-
-        # Create a one-shot conversation for this request
         conv = AsyncConversation(
             model_name=resolved_model,
-            system_prompt=sys_prompt,
+            system_prompt=system_prompt,
             options=opts,
+            tools=tool_registry,
         )
-
-        # Seed prior turns (everything before the final user message)
-        if len(user_messages) > 1:
-            for prior_msg in user_messages[:-1]:
-                conv._messages.append(prior_msg)
+        last_user_content, _ = _seed_conversation_from_messages(conv, req.messages)
 
         completion_id = f"chatcmpl-{uuid.uuid4().hex[:24]}"
         created = int(time.time())
@@ -335,45 +422,40 @@ def create_app(
                 ) from None
 
             async def oai_stream() -> Any:
-                full_text = ""
+                # First chunk includes role.
+                first_chunk = {
+                    "id": completion_id,
+                    "object": "chat.completion.chunk",
+                    "created": created,
+                    "model": resolved_model,
+                    "choices": [{"index": 0, "delta": {"role": "assistant"}, "finish_reason": None}],
+                }
+                yield {"data": json.dumps(first_chunk)}
+
                 async for chunk in conv.ask_stream(last_user_content, opts if opts else None):
-                    full_text += chunk
                     data = {
                         "id": completion_id,
                         "object": "chat.completion.chunk",
                         "created": created,
                         "model": resolved_model,
-                        "choices": [
-                            {
-                                "index": 0,
-                                "delta": {"content": chunk},
-                                "finish_reason": None,
-                            }
-                        ],
+                        "choices": [{"index": 0, "delta": {"content": chunk}, "finish_reason": None}],
                     }
                     yield {"data": json.dumps(data)}
 
-                # Final chunk with finish_reason
                 usage = conv.usage
-                data = {
+                final = {
                     "id": completion_id,
                     "object": "chat.completion.chunk",
                     "created": created,
                     "model": resolved_model,
-                    "choices": [
-                        {
-                            "index": 0,
-                            "delta": {},
-                            "finish_reason": "stop",
-                        }
-                    ],
+                    "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
                     "usage": {
                         "prompt_tokens": usage.get("prompt_tokens", 0),
                         "completion_tokens": usage.get("completion_tokens", 0),
                         "total_tokens": usage.get("total_tokens", 0),
                     },
                 }
-                yield {"data": json.dumps(data)}
+                yield {"data": json.dumps(final)}
                 yield {"data": "[DONE]"}
 
             return EventSourceResponse(oai_stream(), media_type="text/event-stream")
@@ -382,22 +464,27 @@ def create_app(
         text = await conv.ask(last_user_content, opts if opts else None)
         usage = conv.usage
 
+        # Surface tool_calls from the last assistant message if the
+        # model emitted them without server-side execution.
+        assistant_tool_calls: Optional[list[dict[str, Any]]] = None
+        finish_reason = "stop"
+        if conv._messages:
+            last_msg = conv._messages[-1]
+            if last_msg.get("role") == "assistant" and last_msg.get("tool_calls"):
+                assistant_tool_calls = last_msg["tool_calls"]
+                finish_reason = "tool_calls"
+
+        message: dict[str, Any] = {"role": "assistant", "content": text}
+        if assistant_tool_calls:
+            message["tool_calls"] = assistant_tool_calls
+
         return JSONResponse(
             {
                 "id": completion_id,
                 "object": "chat.completion",
                 "created": created,
                 "model": resolved_model,
-                "choices": [
-                    {
-                        "index": 0,
-                        "message": {
-                            "role": "assistant",
-                            "content": text,
-                        },
-                        "finish_reason": "stop",
-                    }
-                ],
+                "choices": [{"index": 0, "message": message, "finish_reason": finish_reason}],
                 "usage": {
                     "prompt_tokens": usage.get("prompt_tokens", 0),
                     "completion_tokens": usage.get("completion_tokens", 0),
@@ -406,14 +493,116 @@ def create_app(
             }
         )
 
+    # ---- OpenAI-compatible: /v1/completions (legacy) ----
+
+    @app.post("/v1/completions")
+    async def openai_completions(req: OAICompletionsRequest) -> Any:
+        """Legacy completions — thin wrapper around chat."""
+        resolved_model = req.model or model_name
+        _check_model_allowed(resolved_model)
+
+        prompt_text = req.prompt if isinstance(req.prompt, str) else "\n".join(req.prompt)
+
+        opts: dict[str, Any] = {}
+        if req.temperature is not None:
+            opts["temperature"] = req.temperature
+        if req.top_p is not None:
+            opts["top_p"] = req.top_p
+        if req.max_tokens is not None:
+            opts["max_tokens"] = req.max_tokens
+        if req.stop is not None:
+            opts["stop"] = req.stop
+
+        conv = AsyncConversation(
+            model_name=resolved_model,
+            system_prompt=system_prompt,
+            options=opts,
+        )
+
+        completion_id = f"cmpl-{uuid.uuid4().hex[:24]}"
+        created = int(time.time())
+
+        if req.stream:
+            try:
+                from sse_starlette.sse import EventSourceResponse
+            except ImportError:
+                raise HTTPException(
+                    status_code=501,
+                    detail="Streaming requires sse-starlette: pip install prompture[serve]",
+                ) from None
+
+            async def oai_stream() -> Any:
+                async for chunk in conv.ask_stream(prompt_text, opts if opts else None):
+                    data = {
+                        "id": completion_id,
+                        "object": "text_completion",
+                        "created": created,
+                        "model": resolved_model,
+                        "choices": [{"index": 0, "text": chunk, "finish_reason": None, "logprobs": None}],
+                    }
+                    yield {"data": json.dumps(data)}
+                yield {"data": "[DONE]"}
+
+            return EventSourceResponse(oai_stream(), media_type="text/event-stream")
+
+        text = await conv.ask(prompt_text, opts if opts else None)
+        usage = conv.usage
+        return JSONResponse(
+            {
+                "id": completion_id,
+                "object": "text_completion",
+                "created": created,
+                "model": resolved_model,
+                "choices": [{"index": 0, "text": text, "finish_reason": "stop", "logprobs": None}],
+                "usage": {
+                    "prompt_tokens": usage.get("prompt_tokens", 0),
+                    "completion_tokens": usage.get("completion_tokens", 0),
+                    "total_tokens": usage.get("total_tokens", 0),
+                },
+            }
+        )
+
+    # ---- OpenAI-compatible: /v1/embeddings ----
+
+    @app.post("/v1/embeddings")
+    async def openai_embeddings(req: OAIEmbeddingsRequest) -> Any:
+        """Embeddings — routes to ``get_async_embedding_driver_for_model``."""
+        resolved_model = req.model or model_name
+        _check_model_allowed(resolved_model)
+
+        from ..drivers.embedding_registry import get_async_embedding_driver_for_model
+
+        try:
+            driver = get_async_embedding_driver_for_model(resolved_model)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"Unknown embedding model: {exc}") from exc
+
+        inputs = req.input if isinstance(req.input, list) else [req.input]
+        if not all(isinstance(x, str) for x in inputs):
+            raise HTTPException(status_code=400, detail="input must be string or list[str]")
+
+        result = await driver.embed(inputs, {})
+        meta = result.get("meta", {})
+
+        return JSONResponse(
+            {
+                "object": "list",
+                "data": [
+                    {"object": "embedding", "embedding": vec, "index": i} for i, vec in enumerate(result["embeddings"])
+                ],
+                "model": meta.get("model_name", resolved_model),
+                "usage": {
+                    "prompt_tokens": meta.get("total_tokens", 0),
+                    "total_tokens": meta.get("total_tokens", 0),
+                },
+            }
+        )
+
+    # ---- OpenAI-compatible: /v1/models ----
+
     @app.get("/v1/models")
     async def list_models() -> Any:
-        """List available models in OpenAI-compatible format.
-
-        Returns a response compatible with both the OpenAI SDK
-        (``data`` array of model objects) and the legacy Prompture
-        format (``models`` string list).
-        """
+        """List available models in OpenAI-compatible format."""
         from ..infra.discovery import get_available_models
 
         try:
@@ -422,22 +611,25 @@ def create_app(
         except Exception:
             model_names = [model_name]
 
-        model_objects = []
-        for name in model_names:
-            model_objects.append(
-                {
-                    "id": name,
-                    "object": "model",
-                    "created": 0,
-                    "owned_by": name.split("/")[0] if "/" in name else "prompture",
-                }
-            )
+        if allowed_models is not None:
+            allowlist = set(allowed_models)
+            model_names = [m for m in model_names if m in allowlist]
+
+        model_objects = [
+            {
+                "id": name,
+                "object": "model",
+                "created": 0,
+                "owned_by": name.split("/")[0] if "/" in name else "prompture",
+            }
+            for name in model_names
+        ]
 
         return JSONResponse(
             {
                 "object": "list",
                 "data": model_objects,
-                # Keep legacy field for backwards compatibility
+                # Legacy field kept for backwards compatibility.
                 "models": model_names,
             }
         )
