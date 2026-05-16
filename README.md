@@ -42,6 +42,7 @@ print(person.name)  # Maria
 - **Conversations** — Stateful multi-turn sessions with sync and async support
 - **Tool use** — Function calling and streaming across supported providers, with automatic prompt-based simulation for models without native tool support
 - **Sandboxed Python execution** — Drop-in `python_execute` tool backed by Tukuy's `PythonSandbox` (import whitelist, path restrictions, timeout, memory limit, AST risk gate)
+- **Web search** — Drop-in `web_search` tool with Tavily, Serper, Brave, and SearXNG backends; returns Markdown so the LLM can cite by URL
 - **Deep agents** — Drop-in `DeepAgent` with planning (`write_todos`), virtual filesystem (`read_file` / `write_file` / `edit_file` / `ls` / `glob` / `grep`), sub-agent delegation (`task`), and automatic context summarization — no LangChain or LangGraph required
 - **Caching** — Built-in response cache with memory, SQLite, and Redis backends
 - **Plugin system** — Register custom drivers via entry points
@@ -864,6 +865,39 @@ AST risk gate.
 
 Install: `pip install prompture[sandbox]` (pulls in tukuy).
 Runnable example: `python examples/python_sandbox_example.py`.
+
+### Web search
+
+`WebSearchTool` ships a ready-to-register `web_search` tool with four
+interchangeable backends:
+
+| Provider   | Env var                | Notes                                    |
+|------------|------------------------|------------------------------------------|
+| `tavily`   | `TAVILY_API_KEY`       | Default. AI-friendly snippets + answer.  |
+| `serper`   | `SERPER_API_KEY`       | Google Search API wrapper.               |
+| `brave`    | `BRAVE_SEARCH_API_KEY` | Independent index.                       |
+| `searxng`  | `SEARXNG_ENDPOINT`     | Self-hosted metasearch, no key required. |
+
+```python
+from prompture import Agent, ToolRegistry, WebSearchTool
+
+registry = ToolRegistry()
+WebSearchTool().register_on(registry)   # auto-pick from env
+
+agent = Agent(
+    "openai/gpt-4o",
+    system_prompt="Cite each fact you state with a URL.",
+    tools=registry,
+)
+print(agent.run("What's new in LangChain this month?").output)
+```
+
+Override the backend per call site by passing `provider="serper"` (or
+`brave`/`searxng`).  Results come back as Markdown so the LLM can cite
+each hit inline; Tavily's synthesised answer (when available) is
+prepended.
+
+Runnable example: `python examples/web_search_agent_example.py`.
 
 ### Deep Agents
 

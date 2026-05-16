@@ -227,6 +227,12 @@ class Settings(BaseSettings):
     cache_sqlite_path: Optional[str] = None
     cache_redis_url: Optional[str] = None
 
+    # Web search providers (used by prompture.tools.WebSearchTool)
+    tavily_api_key: Optional[str] = None
+    serper_api_key: Optional[str] = None
+    brave_search_api_key: Optional[str] = None
+    searxng_endpoint: Optional[str] = None
+
     # Document ingestion
     ingest_max_file_size: int = 52428800  # 50 MB
     ingest_pdf_backend: str = "pdfplumber"  # "pdfplumber" | "pypdf" | "pymupdf"

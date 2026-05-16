@@ -16,5 +16,12 @@ Example::
 """
 
 from .code_exec import PythonSandboxTool, python_execute_tool
+from .web_search import SearchResult, WebSearchTool, web_search_tool
 
-__all__ = ["PythonSandboxTool", "python_execute_tool"]
+__all__ = [
+    "PythonSandboxTool",
+    "SearchResult",
+    "WebSearchTool",
+    "python_execute_tool",
+    "web_search_tool",
+]
