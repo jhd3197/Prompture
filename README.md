@@ -44,6 +44,7 @@ print(person.name)  # Maria
 - **Sandboxed Python execution** — Drop-in `python_execute` tool backed by Tukuy's `PythonSandbox` (import whitelist, path restrictions, timeout, memory limit, AST risk gate)
 - **Web search** — Drop-in `web_search` tool with Tavily, Serper, Brave, and SearXNG backends; returns Markdown so the LLM can cite by URL
 - **OpenAI-compatible server** — `prompture serve` exposes `/v1/chat/completions`, `/v1/completions`, `/v1/embeddings`, `/v1/models`; point Claude Code, Codex, Cursor, Aider, or any OpenAI SDK at it and route to any of the 36+ providers
+- **Synthetic datasets** — `generate_qa_dataset()` turns documents into fine-tuning JSONL (Q&A, ShareGPT, or Alpaca) ready for Unsloth, Axolotl, or TRL
 - **Deep agents** — Drop-in `DeepAgent` with planning (`write_todos`), virtual filesystem (`read_file` / `write_file` / `edit_file` / `ls` / `glob` / `grep`), sub-agent delegation (`task`), and automatic context summarization — no LangChain or LangGraph required
 - **Caching** — Built-in response cache with memory, SQLite, and Redis backends
 - **Plugin system** — Register custom drivers via entry points
@@ -574,6 +575,43 @@ Use `AsyncRAGPipeline` (with `aquery`, `aextract`, `aingest`) when
 composing async-native subcomponents.  Install the full RAG stack via
 `pip install prompture[rag]` — this pulls in loaders, chunkers, all six
 vector-store backends, and the `rank-bm25` hybrid-retriever dependency.
+
+## Synthetic Datasets
+
+`generate_qa_dataset` composes RAG loaders + chunkers + structured
+extraction to turn any document corpus into a fine-tuning-ready
+JSONL/ShareGPT/Alpaca dataset:
+
+```python
+from prompture import generate_qa_dataset
+
+pairs = generate_qa_dataset(
+    "docs/**/*.pdf",
+    model="openai/gpt-4o-mini",
+    n_per_chunk=4,
+    output_path="training.jsonl",
+    output_format="sharegpt",   # 'jsonl' | 'sharegpt' | 'alpaca'
+)
+print(f"Generated {len(pairs)} pairs")
+```
+
+Accepts a file path, a glob, a list of paths, or a list of pre-loaded
+`Document` objects.  Each chunk goes through `extract_with_model` with a
+Pydantic batch schema so the LLM emits several distinct Q&A pairs in
+one call; results are de-duplicated by question.  An `agenerate_qa_dataset`
+async sibling with bounded concurrency is available too.
+
+Output formats:
+
+| Format     | Record shape                                                                                   |
+|------------|-----------------------------------------------------------------------------------------------|
+| `jsonl`    | `{"question": "...", "answer": "..."}`                                                        |
+| `sharegpt` | `{"conversations": [{"from": "human", "value": q}, {"from": "gpt", "value": a}]}` (Unsloth default) |
+| `alpaca`   | `{"instruction": "...", "input": "", "output": "..."}` (Axolotl / TRL / HF notebooks)         |
+
+The output JSONL is ready to feed into Unsloth, Axolotl, TRL, or any
+custom training loop.  Runnable example:
+`python examples/dataset_generation_example.py`.
 
 ## Usage
 

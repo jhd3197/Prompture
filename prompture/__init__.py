@@ -11,12 +11,15 @@ except ImportError:  # tukuy not installed
     create_tukuy_backend = None  # type: ignore[assignment]
 from . import plugins, rag
 from .cli import *
-from .tools import (
-    PythonSandboxTool,
-    SearchResult,
-    WebSearchTool,
-    python_execute_tool,
-    web_search_tool,
+from .dataset import (
+    ChatTurn,
+    InstructionPair,
+    QAPair,
+    agenerate_qa_dataset,
+    generate_qa_dataset,
+    to_alpaca,
+    to_jsonl,
+    to_sharegpt,
 )
 from .drivers import *
 from .exceptions import (
@@ -35,6 +38,13 @@ from .integrations import *
 from .media import *
 from .persistence import *
 from .pipeline import *
+from .tools import (
+    PythonSandboxTool,
+    SearchResult,
+    WebSearchTool,
+    python_execute_tool,
+    web_search_tool,
+)
 
 # Tukuy type re-exports (aliased to avoid collision with Prompture names)
 try:
