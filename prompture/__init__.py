@@ -46,6 +46,17 @@ from .refusal import (
     RefusalResult,
     is_refusal,
 )
+from .security import (
+    InjectionCategory,
+    InjectionResult,
+    PIICategory,
+    PIIMatch,
+    PIIRedactor,
+    PromptInjectionDetector,
+    RedactionResult,
+    is_prompt_injection,
+    redact_pii,
+)
 from .tools import (
     PythonSandboxTool,
     SearchResult,
