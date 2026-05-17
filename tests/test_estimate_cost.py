@@ -6,7 +6,6 @@ from unittest.mock import patch
 
 from prompture import CostEstimate, estimate_call_cost, estimate_cost, estimate_tokens
 
-
 # ---------------------------------------------------------------------------
 # token counting
 # ---------------------------------------------------------------------------
