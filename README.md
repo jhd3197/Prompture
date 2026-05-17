@@ -1122,6 +1122,32 @@ agent = create_deep_agent(
 
 `AsyncDeepAgent` / `create_async_deep_agent` mirror the sync API for async use. State lives on `agent.deep_state` (the `state` attribute is reserved for lifecycle on the underlying `Agent`). Reserved tool names (`write_todos`, `task`, `read_file`, `write_file`, `edit_file`, `ls`, `glob`, `grep`) take precedence over user tools; collisions emit a warning. See `examples/deep_agent_example.py` for a complete walkthrough.
 
+### Cost Pre-flight
+
+Forecast the cost of a call **before** making it.  Accepts either text
+(counted with `tiktoken` when installed, char-heuristic otherwise) or
+already-counted token integers:
+
+```python
+from prompture import estimate_call_cost
+
+est = estimate_call_cost(
+    "openai/gpt-4o-mini",
+    prompt="Summarise this 5,000-word essay...",
+    completion=300,
+)
+print(est.total_tokens, est.total_cost, est.token_counter)
+# 1287 0.000245 'tiktoken'
+
+if est.total_cost > 0.10:
+    raise RuntimeError(f"Too expensive: ${est.total_cost:.4f}")
+```
+
+Returns a `CostEstimate` with `input_tokens`, `output_tokens`,
+`input_cost`, `output_cost`, `total_cost`, `rates_available` (False
+when pricing data is missing — costs are zero in that case), and
+`token_counter` (`"tiktoken"` | `"heuristic"` | `"exact"`).
+
 ### Budget Control
 
 Set cost and token limits with policy-based enforcement:
