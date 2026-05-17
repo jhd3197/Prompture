@@ -106,9 +106,7 @@ class AsyncLMStudioDriver(AsyncDriver):
             try:
                 response_data = r.json()
             except Exception as e:
-                raise RuntimeError(
-                    f"AsyncLMStudioDriver got non-JSON response (HTTP {r.status_code}): {e}"
-                ) from e
+                raise RuntimeError(f"AsyncLMStudioDriver got non-JSON response (HTTP {r.status_code}): {e}") from e
 
         if "choices" not in response_data or not response_data["choices"]:
             raise ValueError(f"Unexpected response format: {response_data}")

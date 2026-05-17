@@ -233,3 +233,4 @@ PROMPTURE_FEATURES.md
 /examples/runway_image_outputs
 /examples/runway_audio_outputs
 /examples/runway_video_outputs
+.planning/*

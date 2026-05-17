@@ -278,8 +278,12 @@ class TestSequentialGroup:
         a.name = ""
         a.output_key = None
         a.run.return_value = AgentResult(
-            output="ok", output_text="ok", messages=[], usage={},
-            state=AgentState.idle, run_usage={},
+            output="ok",
+            output_text="ok",
+            messages=[],
+            usage={},
+            state=AgentState.idle,
+            run_usage={},
         )
         group = SequentialGroup([a])
         result = group.run("test")
@@ -316,7 +320,8 @@ class TestLoopGroup:
             return AgentResult(
                 output=str(counter["count"]),
                 output_text=str(counter["count"]),
-                messages=[], usage={},
+                messages=[],
+                usage={},
                 state=AgentState.idle,
                 run_usage={"total_tokens": 10, "total_cost": 0.001},
             )
@@ -529,10 +534,16 @@ class TestGroupAsAgent:
 class TestGroupResultSerialization:
     def test_export_round_trip(self):
         result = GroupResult(
-            agent_results={"a": AgentResult(
-                output="test", output_text="test", messages=[], usage={},
-                state=AgentState.idle, run_usage={"total_tokens": 10},
-            )},
+            agent_results={
+                "a": AgentResult(
+                    output="test",
+                    output_text="test",
+                    messages=[],
+                    usage={},
+                    state=AgentState.idle,
+                    run_usage={"total_tokens": 10},
+                )
+            },
             aggregate_usage={"total_tokens": 10, "total_cost": 0.001},
             shared_state={"key": "value"},
             elapsed_ms=100.0,

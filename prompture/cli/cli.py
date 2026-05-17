@@ -100,13 +100,60 @@ def test_suite(specfile: str, providers: str | None, models: str | None, fmt: st
 
 
 @cli.command()
-@click.option("--model", default="openai/gpt-4o-mini", help="Model string (provider/model).")
-@click.option("--system-prompt", default=None, help="System prompt for conversations.")
+@click.option("--model", default="openai/gpt-4o-mini", help="Default model string (provider/model).")
+@click.option("--system-prompt", default=None, help="System prompt injected when the client doesn't supply one.")
 @click.option("--host", default="0.0.0.0", help="Bind host.")
 @click.option("--port", default=9471, type=int, help="Bind port.")
 @click.option("--cors-origins", default=None, help="Comma-separated CORS origins (use * for all).")
-def serve(model: str, system_prompt: str, host: str, port: int, cors_origins: str) -> None:
-    """Start an API server wrapping AsyncConversation.
+@click.option("--api-key", default=None, help="Require Bearer authentication with this key.")
+@click.option(
+    "--allow-models",
+    default=None,
+    help="Comma-separated allowlist of model strings. Other models return 403.",
+)
+@click.option(
+    "--rate-limit",
+    type=int,
+    default=None,
+    help="Per-IP request-per-minute cap. Defaults to no rate limit.",
+)
+@click.option(
+    "--sandbox/--no-sandbox",
+    default=False,
+    help="Register the sandboxed python_execute tool server-side. Needs prompture[sandbox].",
+)
+@click.option(
+    "--web-search/--no-web-search",
+    default=False,
+    help="Register the web_search tool server-side. Needs a search provider key in env.",
+)
+@click.option(
+    "--max-conversations",
+    type=int,
+    default=1000,
+    help="Maximum in-memory conversations before oldest are evicted.",
+)
+def serve(
+    model: str,
+    system_prompt: str,
+    host: str,
+    port: int,
+    cors_origins: str,
+    api_key: str,
+    allow_models: str,
+    rate_limit: int,
+    sandbox: bool,
+    web_search: bool,
+    max_conversations: int,
+) -> None:
+    """Start the OpenAI-compatible API server.
+
+    Once running, point any OpenAI SDK at ``http://<host>:<port>/v1`` and
+    send requests for any Prompture-supported model.
+
+    Pass ``--sandbox`` and/or ``--web-search`` to register those tools
+    server-side — the LLM uses them transparently and clients only see
+    the final assistant message.
 
     Requires the 'serve' extra: pip install prompture[serve]
     """
@@ -116,16 +163,51 @@ def serve(model: str, system_prompt: str, host: str, port: int, cors_origins: st
         click.echo("Error: uvicorn not installed. Run: pip install prompture[serve]", err=True)
         raise SystemExit(1) from None
 
+    from ..agents.tools_schema import ToolRegistry
     from .server import create_app
 
     origins = [o.strip() for o in cors_origins.split(",")] if cors_origins else None
+    allowed = [m.strip() for m in allow_models.split(",")] if allow_models else None
+
+    tool_registry: object | None = None
+    if sandbox or web_search:
+        tool_registry = ToolRegistry()
+        if sandbox:
+            try:
+                from ..tools import PythonSandboxTool
+
+                PythonSandboxTool().register_on(tool_registry)
+                click.echo("Registered server-side tool: python_execute")
+            except ImportError as exc:
+                click.echo(
+                    f"Error: --sandbox requires the sandbox extra. {exc}",
+                    err=True,
+                )
+                raise SystemExit(1) from None
+        if web_search:
+            try:
+                from ..tools import WebSearchTool
+
+                ws = WebSearchTool()
+                ws.register_on(tool_registry)
+                click.echo(f"Registered server-side tool: web_search (provider={ws.provider})")
+            except Exception as exc:
+                click.echo(f"Error: --web-search failed to initialise. {exc}", err=True)
+                raise SystemExit(1) from None
+
     app = create_app(
         model_name=model,
         system_prompt=system_prompt,
+        tools=tool_registry,
         cors_origins=origins,
+        api_key=api_key,
+        allowed_models=allowed,
+        rate_limit=rate_limit,
+        max_conversations=max_conversations,
     )
 
-    click.echo(f"Starting Prompture server on {host}:{port} with model {model}")
+    auth = "Bearer auth required" if api_key else "no auth"
+    click.echo(f"Starting Prompture server on {host}:{port} model={model} ({auth})")
     uvicorn.run(app, host=host, port=port)
 
 

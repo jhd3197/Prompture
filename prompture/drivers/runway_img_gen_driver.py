@@ -58,11 +58,7 @@ _TEXT_TO_IMAGE_RATIOS: set[str] = {
 
 
 def _get_runway_api_key(api_key: str | None = None) -> str | None:
-    return (
-        api_key
-        or os.getenv("RUNWAY_API_KEY")
-        or os.getenv("RUNWAYML_API_SECRET")
-    )
+    return api_key or os.getenv("RUNWAY_API_KEY") or os.getenv("RUNWAYML_API_SECRET")
 
 
 def _normalize_reference_images(refs: Any) -> list[dict[str, str]]:
@@ -90,10 +86,7 @@ def _format_error(status_code: int, response: httpx.Response) -> str:
     detail = body.get("error") or body.get("message") or ""
     issues = body.get("issues") or []
     if issues:
-        parts = [
-            f"{(iss.get('path') or ['?'])[-1]}: {iss.get('message', '')}"
-            for iss in issues
-        ]
+        parts = [f"{(iss.get('path') or ['?'])[-1]}: {iss.get('message', '')}" for iss in issues]
         detail = f"{detail} [{'; '.join(parts)}]"
     return f"HTTP {status_code}: {detail}".strip()
 
@@ -137,9 +130,7 @@ class RunwayImageGenDriver(ImageCostMixin, ImageGenDriver):
     ):
         self.api_key = _get_runway_api_key(api_key)
         self.model = model
-        self.endpoint = (
-            endpoint or os.getenv("RUNWAY_ENDPOINT") or _DEFAULT_ENDPOINT
-        ).rstrip("/")
+        self.endpoint = (endpoint or os.getenv("RUNWAY_ENDPOINT") or _DEFAULT_ENDPOINT).rstrip("/")
 
     @classmethod
     def list_models(cls, *, api_key: str | None = None, **kw: object) -> list[str] | None:
@@ -161,15 +152,10 @@ class RunwayImageGenDriver(ImageCostMixin, ImageGenDriver):
             raise ValueError("prompt cannot be empty")
 
         model = options.get("model", self.model)
-        ratio = (
-            options.get("ratio")
-            or options.get("aspect_ratio")
-            or _DEFAULT_RATIOS.get(model, "1280:720")
-        )
+        ratio = options.get("ratio") or options.get("aspect_ratio") or _DEFAULT_RATIOS.get(model, "1280:720")
         if ratio not in _TEXT_TO_IMAGE_RATIOS:
             raise ValueError(
-                f"Unsupported ratio {ratio!r} for text_to_image. "
-                f"Accepted values: {sorted(_TEXT_TO_IMAGE_RATIOS)}"
+                f"Unsupported ratio {ratio!r} for text_to_image. Accepted values: {sorted(_TEXT_TO_IMAGE_RATIOS)}"
             )
 
         body: dict[str, Any] = {
@@ -181,9 +167,7 @@ class RunwayImageGenDriver(ImageCostMixin, ImageGenDriver):
         if model == "gpt_image_2":
             body["quality"] = options.get("quality", "high")
         elif options.get("quality") is not None:
-            raise ValueError(
-                f"'quality' is only supported by gpt_image_2 (got model={model!r})"
-            )
+            raise ValueError(f"'quality' is only supported by gpt_image_2 (got model={model!r})")
 
         refs = _normalize_reference_images(options.get("reference_images"))
         if refs:
@@ -215,9 +199,7 @@ class RunwayImageGenDriver(ImageCostMixin, ImageGenDriver):
             timeout: Max polling seconds. Defaults to 600.
         """
         if not self.api_key:
-            raise RuntimeError(
-                "RUNWAY_API_KEY (or RUNWAYML_API_SECRET) is not configured"
-            )
+            raise RuntimeError("RUNWAY_API_KEY (or RUNWAYML_API_SECRET) is not configured")
 
         model, body = self._build_body(prompt, options)
         headers = self._headers()

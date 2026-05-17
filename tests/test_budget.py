@@ -46,9 +46,7 @@ class MockDriver(Driver):
     def generate(self, prompt: str, options: dict[str, Any]) -> dict[str, Any]:
         return self._make_response()
 
-    def generate_messages(
-        self, messages: list[dict[str, Any]], options: dict[str, Any]
-    ) -> dict[str, Any]:
+    def generate_messages(self, messages: list[dict[str, Any]], options: dict[str, Any]) -> dict[str, Any]:
         return self._make_response()
 
     def _make_response(self) -> dict[str, Any]:

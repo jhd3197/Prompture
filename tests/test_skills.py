@@ -638,9 +638,7 @@ class TestAsyncFunctions:
 
     def test_discover_skills_async(self, skills_directory):
         """Test async skill discovery."""
-        skills = asyncio.run(
-            discover_skills_async(additional_paths=[skills_directory], register=False)
-        )
+        skills = asyncio.run(discover_skills_async(additional_paths=[skills_directory], register=False))
         assert len(skills) >= 2
         names = [s.name for s in skills]
         assert "skill-one" in names

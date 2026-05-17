@@ -49,13 +49,11 @@ def validate_driver_capabilities(cls: type) -> list[str]:
 
         if declared and not implemented:
             violations.append(
-                f"{flag}=True but {method_name} not overridden — "
-                f"auto-strategy will recommend an unsupported feature"
+                f"{flag}=True but {method_name} not overridden — auto-strategy will recommend an unsupported feature"
             )
         elif implemented and not declared:
             violations.append(
-                f"{method_name} overridden but {flag}=False — "
-                f"capability is hidden from auto-strategy selection"
+                f"{method_name} overridden but {flag}=False — capability is hidden from auto-strategy selection"
             )
     return violations
 
@@ -70,7 +68,5 @@ def assert_driver_capabilities(cls: type) -> None:
     violations = validate_driver_capabilities(cls)
     if violations:
         raise AssertionError(
-            "{} fails driver capability contract:\n  - {}".format(
-                cls.__name__, "\n  - ".join(violations)
-            )
+            "{} fails driver capability contract:\n  - {}".format(cls.__name__, "\n  - ".join(violations))
         )

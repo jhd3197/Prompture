@@ -48,9 +48,7 @@ class AsyncRunwayVideoGenDriver(VideoCostMixin, AsyncVideoGenDriver):
     ):
         self.api_key = _get_runway_api_key(api_key)
         self.model = model
-        self.endpoint = (
-            endpoint or os.getenv("RUNWAY_ENDPOINT") or _DEFAULT_ENDPOINT
-        ).rstrip("/")
+        self.endpoint = (endpoint or os.getenv("RUNWAY_ENDPOINT") or _DEFAULT_ENDPOINT).rstrip("/")
 
     @classmethod
     def list_models(cls, *, api_key: str | None = None, **kw: object) -> list[str] | None:
@@ -69,9 +67,7 @@ class AsyncRunwayVideoGenDriver(VideoCostMixin, AsyncVideoGenDriver):
 
     async def generate_video(self, prompt: str, options: dict[str, Any]) -> dict[str, Any]:
         if not self.api_key:
-            raise RuntimeError(
-                "RUNWAY_API_KEY (or RUNWAYML_API_SECRET) is not configured"
-            )
+            raise RuntimeError("RUNWAY_API_KEY (or RUNWAYML_API_SECRET) is not configured")
         if not prompt:
             raise ValueError("prompt cannot be empty")
 
@@ -83,9 +79,7 @@ class AsyncRunwayVideoGenDriver(VideoCostMixin, AsyncVideoGenDriver):
         async with httpx.AsyncClient(timeout=120.0) as client:
             resp = await client.post(f"{self.endpoint}{path}", headers=headers, json=body)
             if resp.status_code >= 400:
-                raise RuntimeError(
-                    f"Runway {mode} failed: {_format_error(resp.status_code, resp)}"
-                )
+                raise RuntimeError(f"Runway {mode} failed: {_format_error(resp.status_code, resp)}")
             task = resp.json()
             task_id = task.get("id")
             if not task_id:
@@ -117,9 +111,7 @@ class AsyncRunwayVideoGenDriver(VideoCostMixin, AsyncVideoGenDriver):
         while True:
             r = await client.get(f"{self.endpoint}/v1/tasks/{task_id}", headers=headers)
             if r.status_code >= 400:
-                raise RuntimeError(
-                    f"Runway task poll failed: {_format_error(r.status_code, r)}"
-                )
+                raise RuntimeError(f"Runway task poll failed: {_format_error(r.status_code, r)}")
             data = r.json()
             status = data.get("status")
             if status in _TERMINAL_OK:

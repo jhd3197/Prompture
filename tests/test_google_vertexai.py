@@ -236,7 +236,7 @@ class TestVertexAIIntegration:
         from prompture.drivers.google_vertexai_driver import GoogleVertexAIDriver
 
         driver = GoogleVertexAIDriver()
-        result = driver.generate("Return the JSON: {\"hello\": \"world\"}")
+        result = driver.generate('Return the JSON: {"hello": "world"}')
         assert "text" in result
         assert "meta" in result
         assert result["meta"]["prompt_tokens"] > 0

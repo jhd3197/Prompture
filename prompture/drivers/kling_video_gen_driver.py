@@ -154,9 +154,7 @@ class KlingVideoGenDriver(VideoCostMixin, VideoGenDriver):
         poll_endpoint = "multi-image2video" if is_multi else "image2video"
 
         with httpx.Client(timeout=120.0) as client:
-            resp = client.post(
-                f"{self.endpoint}{path}", headers=self._headers(token), json=body
-            )
+            resp = client.post(f"{self.endpoint}{path}", headers=self._headers(token), json=body)
             if resp.status_code >= 400:
                 raise RuntimeError(f"Kling video API error {resp.status_code}: {resp.text}")
             result = resp.json()
@@ -254,9 +252,7 @@ class KlingVideoGenDriver(VideoCostMixin, VideoGenDriver):
         body = {"model_name": "kling-motion", "aspect_ratio": None, "duration": str(duration)}
         return self._success_response(final, body, options, mode="motion_control")
 
-    def _poll_motion_upload(
-        self, client: httpx.Client, task_id: str, token: str, options: dict[str, Any]
-    ) -> str:
+    def _poll_motion_upload(self, client: httpx.Client, task_id: str, token: str, options: dict[str, Any]) -> str:
         deadline = time.monotonic() + float(options.get("timeout", 600))
         interval = float(options.get("poll_interval", 3))
         while True:
@@ -287,9 +283,7 @@ class KlingVideoGenDriver(VideoCostMixin, VideoGenDriver):
         deadline = time.monotonic() + float(options.get("timeout", 600))
         interval = float(options.get("poll_interval", 5))
         while True:
-            r = client.get(
-                f"{self.endpoint}/v1/videos/motion/{task_id}", headers=self._headers(token)
-            )
+            r = client.get(f"{self.endpoint}/v1/videos/motion/{task_id}", headers=self._headers(token))
             if r.status_code >= 400:
                 raise RuntimeError(f"Motion-create poll failed: {r.text}")
             d = r.json()
@@ -304,9 +298,7 @@ class KlingVideoGenDriver(VideoCostMixin, VideoGenDriver):
                 raise TimeoutError("Motion-create timed out")
             time.sleep(interval)
 
-    def _pending_response(
-        self, task_id: str, body: dict[str, Any], raw: dict[str, Any]
-    ) -> dict[str, Any]:
+    def _pending_response(self, task_id: str, body: dict[str, Any], raw: dict[str, Any]) -> dict[str, Any]:
         return {
             "videos": [],
             "meta": {
@@ -397,9 +389,7 @@ class AsyncKlingVideoGenDriver(VideoCostMixin, AsyncVideoGenDriver):
         poll_endpoint = "multi-image2video" if path.endswith("multi-image2video") else "image2video"
 
         async with httpx.AsyncClient(timeout=120.0) as client:
-            resp = await client.post(
-                f"{self.endpoint}{path}", headers=self._headers(token), json=body
-            )
+            resp = await client.post(f"{self.endpoint}{path}", headers=self._headers(token), json=body)
             if resp.status_code >= 400:
                 raise RuntimeError(f"Kling video API error {resp.status_code}: {resp.text}")
             result = resp.json()

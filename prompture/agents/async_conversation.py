@@ -71,6 +71,7 @@ class AsyncConversation:
         fallback_models: list[str] | None = None,
         on_model_fallback: Callable[[str, str, Any], None] | None = None,
         env: ProviderEnvironment | None = None,
+        before_turn: Callable[[AsyncConversation, int], Any] | None = None,
     ) -> None:
         if system_prompt is not None and persona is not None:
             raise ValueError("Cannot provide both 'system_prompt' and 'persona'. Use one or the other.")
@@ -140,6 +141,11 @@ class AsyncConversation:
 
         # Reasoning content from last response
         self._last_reasoning: str | None = None
+
+        # Optional before_turn hook (sync or async callable). Fires before
+        # each driver call inside the tool loop.
+        self._before_turn: Callable[[AsyncConversation, int], Any] | None = before_turn
+        self._last_prompt_tokens: int = 0
 
         # Persistence
         self._conversation_id = conversation_id or str(uuid.uuid4())
@@ -421,11 +427,14 @@ class AsyncConversation:
     def _accumulate_usage(self, meta: dict[str, Any]) -> None:
         delta_tokens = meta.get("total_tokens", 0)
         delta_cost = meta.get("cost", 0.0)
-        self._usage["prompt_tokens"] += meta.get("prompt_tokens", 0)
+        prompt_tokens = meta.get("prompt_tokens", 0)
+        self._usage["prompt_tokens"] += prompt_tokens
         self._usage["completion_tokens"] += meta.get("completion_tokens", 0)
         self._usage["total_tokens"] += delta_tokens
         self._usage["cost"] += delta_cost
         self._usage["turns"] += 1
+        if prompt_tokens:
+            self._last_prompt_tokens = prompt_tokens
         logger.debug(
             "[conversation] usage delta tokens=%d cost=%.6f | running total tokens=%d cost=%.6f turns=%d",
             delta_tokens,
@@ -492,6 +501,8 @@ class AsyncConversation:
 
         for _round in range(self._max_tool_rounds):
             self._check_budget()
+            if await self._run_before_turn():
+                msgs = self._build_messages_raw()
             resp = await self._driver.generate_messages_with_tools_with_hooks(msgs, tool_defs, merged)
 
             meta = resp.get("meta", {})
@@ -583,6 +594,8 @@ class AsyncConversation:
         msgs = self._build_messages_raw()
 
         for _round in range(self._max_tool_rounds):
+            if await self._run_before_turn():
+                msgs = self._build_messages_raw()
             resp = await self._driver.generate_messages_with_tools_with_hooks(msgs, tool_defs, merged)
 
             meta = resp.get("meta", {})
@@ -677,6 +690,7 @@ class AsyncConversation:
         self._messages.append({"role": "user", "content": user_content})
 
         for _round in range(self._max_tool_rounds):
+            await self._run_before_turn()
             msgs: list[dict[str, Any]] = []
             msgs.append({"role": "system", "content": augmented_system})
             msgs.extend(self._messages)
@@ -741,6 +755,7 @@ class AsyncConversation:
 
         for _round in range(self._max_tool_rounds):
             self._check_budget()
+            await self._run_before_turn()
             # Build messages with the augmented system prompt
             msgs: list[dict[str, Any]] = []
             msgs.append({"role": "system", "content": augmented_system})
@@ -783,6 +798,23 @@ class AsyncConversation:
             msgs.append({"role": "system", "content": self._system_prompt})
         msgs.extend(self._messages)
         return msgs
+
+    async def _run_before_turn(self) -> bool:
+        """Fire the optional before_turn hook (sync or async). Returns True
+        if the hook mutated ``self._messages``."""
+        import inspect as _inspect
+
+        if self._before_turn is None:
+            return False
+        msg_count_before = len(self._messages)
+        try:
+            res = self._before_turn(self, self._last_prompt_tokens)
+            if _inspect.isawaitable(res):
+                await res
+        except Exception:
+            logger.exception("before_turn hook raised; continuing without mutation")
+            return False
+        return len(self._messages) != msg_count_before
 
     # ------------------------------------------------------------------
     # Streaming

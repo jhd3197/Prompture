@@ -258,7 +258,10 @@ class TestConversationToolUse:
                 return self.generate_messages([], options)
 
             def generate_messages(self, messages, options):
-                return {"text": "ok", "meta": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "cost": 0.0}}
+                return {
+                    "text": "ok",
+                    "meta": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "cost": 0.0},
+                }
 
             def generate_messages_with_tools(self, messages, tools, options):
                 return {

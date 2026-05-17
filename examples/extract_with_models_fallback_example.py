@@ -42,10 +42,7 @@ class Person(BaseModel):
 
 
 # 2. Define the raw text to extract from
-text = (
-    "Maria is 32 years old and works as a software developer in New York. "
-    "She loves hiking and photography."
-)
+text = "Maria is 32 years old and works as a software developer in New York. She loves hiking and photography."
 
 # 3. Build a model fallback chain
 # The first entry is intentionally a non-existent model — its driver will

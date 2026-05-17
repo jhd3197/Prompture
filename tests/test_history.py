@@ -65,9 +65,11 @@ def sample_messages():
     """Create sample messages for testing."""
     return [
         {"role": "user", "content": "What is 2+2?"},
-        {"role": "assistant", "content": "Let me calculate that.", "tool_calls": [
-            {"id": "call_1", "function": {"name": "calculate", "arguments": '{"x": 2, "y": 2}'}}
-        ]},
+        {
+            "role": "assistant",
+            "content": "Let me calculate that.",
+            "tool_calls": [{"id": "call_1", "function": {"name": "calculate", "arguments": '{"x": 2, "y": 2}'}}],
+        },
         {"role": "tool", "content": "4", "tool_call_id": "call_1"},
         {"role": "assistant", "content": "The answer is 4."},
         {"role": "user", "content": "Thanks!"},
@@ -113,10 +115,7 @@ class TestFilterSteps:
 
     def test_filter_by_multiple_types(self, sample_steps):
         """Test filtering by multiple step types."""
-        filtered = filter_steps(
-            sample_steps,
-            step_type=[StepType.tool_call, StepType.tool_result]
-        )
+        filtered = filter_steps(sample_steps, step_type=[StepType.tool_call, StepType.tool_result])
         assert len(filtered) == 4
 
     def test_filter_by_tool_name(self, sample_steps):

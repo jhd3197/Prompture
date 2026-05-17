@@ -109,7 +109,10 @@ class GrokDriver(CostMixin, Driver):
 
         # Calculate cost via shared mixin (cache hits at cache_read rate)
         total_cost = self._calculate_cost(
-            "grok", model, prompt_tokens, completion_tokens,
+            "grok",
+            model,
+            prompt_tokens,
+            completion_tokens,
             cached_tokens=cached_prompt_tokens,
         )
 
@@ -189,7 +192,10 @@ class GrokDriver(CostMixin, Driver):
         total_tokens = usage.get("total_tokens", 0)
         cached_prompt_tokens = _extract_moonshot_cached_tokens(usage)
         total_cost = self._calculate_cost(
-            "grok", model, prompt_tokens, completion_tokens,
+            "grok",
+            model,
+            prompt_tokens,
+            completion_tokens,
             cached_tokens=cached_prompt_tokens,
         )
 

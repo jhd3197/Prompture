@@ -306,8 +306,11 @@ class TestConversationPersistence:
     def test_from_export_round_trip(self):
         driver = MockDriver(responses=["response"])
         conv = Conversation(
-            model_name="mock/model", driver=driver, system_prompt="sys",
-            options={"temperature": 0.5}, tags=["demo"],
+            model_name="mock/model",
+            driver=driver,
+            system_prompt="sys",
+            options={"temperature": 0.5},
+            tags=["demo"],
         )
         conv.ask("hello")
         data = conv.export()

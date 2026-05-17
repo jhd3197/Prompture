@@ -21,9 +21,7 @@ from prompture.groups.types import ErrorPolicy, GroupCallbacks
 # ---------------------------------------------------------------------------
 
 
-def _make_async_mock_agent(
-    name: str, output_text: str = "output", output_key: str | None = None
-) -> MagicMock:
+def _make_async_mock_agent(name: str, output_text: str = "output", output_key: str | None = None) -> MagicMock:
     """Create a MagicMock async agent that returns a predetermined AgentResult."""
     agent = MagicMock()
     agent.name = name
@@ -131,8 +129,12 @@ class TestParallelGroup:
         async def slow_run(prompt):
             await asyncio.sleep(10)
             return AgentResult(
-                output="late", output_text="late", messages=[], usage={},
-                state=AgentState.idle, run_usage={},
+                output="late",
+                output_text="late",
+                messages=[],
+                usage={},
+                state=AgentState.idle,
+                run_usage={},
             )
 
         slow = MagicMock()
@@ -252,7 +254,9 @@ class TestAsyncLoopGroup:
             return False
 
         group = AsyncLoopGroup(
-            [a], exit_condition=never_exit, max_iterations=5,
+            [a],
+            exit_condition=never_exit,
+            max_iterations=5,
             error_policy=ErrorPolicy.fail_fast,
         )
         result = await group.run("test")
@@ -283,6 +287,7 @@ class TestAsyncRouterAgent:
         mock_conv_class.return_value = mock_conv_instance
 
         import prompture.groups.async_groups as ag
+
         ag.__dict__.get("AsyncConversation")
 
         # Patch at module level

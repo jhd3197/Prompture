@@ -112,7 +112,10 @@ class GroqDriver(CostMixin, Driver):
 
         # Calculate cost via shared mixin (cache hits billed at cache_read rate)
         total_cost = self._calculate_cost(
-            "groq", model, prompt_tokens, completion_tokens,
+            "groq",
+            model,
+            prompt_tokens,
+            completion_tokens,
             cached_tokens=cached_prompt_tokens,
         )
 
@@ -182,7 +185,10 @@ class GroqDriver(CostMixin, Driver):
         total_tokens = getattr(usage, "total_tokens", 0)
         cached_prompt_tokens = _extract_openai_cached_tokens(usage)
         total_cost = self._calculate_cost(
-            "groq", model, prompt_tokens, completion_tokens,
+            "groq",
+            model,
+            prompt_tokens,
+            completion_tokens,
             cached_tokens=cached_prompt_tokens,
         )
 

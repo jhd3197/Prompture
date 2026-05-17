@@ -97,51 +97,65 @@ class TestAttrLayer:
 
 class TestModelResolver:
     def test_resolves_from_single_layer(self):
-        resolver = ModelResolver(layers=[
-            dict_layer({"default": "openai/gpt-4o"}),
-        ])
+        resolver = ModelResolver(
+            layers=[
+                dict_layer({"default": "openai/gpt-4o"}),
+            ]
+        )
         assert resolver.resolve("default") == "openai/gpt-4o"
 
     def test_first_layer_wins(self):
-        resolver = ModelResolver(layers=[
-            dict_layer({"default": "first-wins"}),
-            dict_layer({"default": "second-loses"}),
-        ])
+        resolver = ModelResolver(
+            layers=[
+                dict_layer({"default": "first-wins"}),
+                dict_layer({"default": "second-loses"}),
+            ]
+        )
         assert resolver.resolve("default") == "first-wins"
 
     def test_skips_empty_layer(self):
-        resolver = ModelResolver(layers=[
-            dict_layer({"default": ""}),  # empty → skip
-            dict_layer({"default": "second-wins"}),
-        ])
+        resolver = ModelResolver(
+            layers=[
+                dict_layer({"default": ""}),  # empty → skip
+                dict_layer({"default": "second-wins"}),
+            ]
+        )
         assert resolver.resolve("default") == "second-wins"
 
     def test_fallback_utility_to_default(self):
-        resolver = ModelResolver(layers=[
-            dict_layer({"default": "openai/gpt-4o"}),
-            # no "utility" in any layer
-        ])
+        resolver = ModelResolver(
+            layers=[
+                dict_layer({"default": "openai/gpt-4o"}),
+                # no "utility" in any layer
+            ]
+        )
         # utility falls back to default
         assert resolver.resolve("utility") == "openai/gpt-4o"
 
     def test_fallback_structured_to_default(self):
-        resolver = ModelResolver(layers=[
-            dict_layer({"default": "openai/gpt-4o"}),
-        ])
+        resolver = ModelResolver(
+            layers=[
+                dict_layer({"default": "openai/gpt-4o"}),
+            ]
+        )
         assert resolver.resolve("structured") == "openai/gpt-4o"
 
     def test_no_fallback_for_image(self):
-        resolver = ModelResolver(layers=[
-            dict_layer({"default": "openai/gpt-4o"}),
-        ])
+        resolver = ModelResolver(
+            layers=[
+                dict_layer({"default": "openai/gpt-4o"}),
+            ]
+        )
         with pytest.raises(NoModelConfiguredError, match="image"):
             resolver.resolve("image")
 
     def test_raises_when_all_layers_empty(self):
-        resolver = ModelResolver(layers=[
-            dict_layer({}),
-            dict_layer({"utility": ""}),
-        ])
+        resolver = ModelResolver(
+            layers=[
+                dict_layer({}),
+                dict_layer({"utility": ""}),
+            ]
+        )
         with pytest.raises(NoModelConfiguredError, match="default"):
             resolver.resolve("default")
 
@@ -155,23 +169,29 @@ class TestModelResolver:
         assert resolver.resolve_or("default", "fallback/model") == "fallback/model"
 
     def test_resolve_or_returns_resolved_value(self):
-        resolver = ModelResolver(layers=[
-            dict_layer({"default": "openai/gpt-4o"}),
-        ])
+        resolver = ModelResolver(
+            layers=[
+                dict_layer({"default": "openai/gpt-4o"}),
+            ]
+        )
         assert resolver.resolve_or("default", "fallback") == "openai/gpt-4o"
 
     def test_add_layer_appends_by_default(self):
-        resolver = ModelResolver(layers=[
-            dict_layer({"default": "first"}),
-        ])
+        resolver = ModelResolver(
+            layers=[
+                dict_layer({"default": "first"}),
+            ]
+        )
         resolver.add_layer(dict_layer({"default": "appended"}))
         # First layer still wins
         assert resolver.resolve("default") == "first"
 
     def test_add_layer_with_priority_zero_prepends(self):
-        resolver = ModelResolver(layers=[
-            dict_layer({"default": "original"}),
-        ])
+        resolver = ModelResolver(
+            layers=[
+                dict_layer({"default": "original"}),
+            ]
+        )
         resolver.add_layer(dict_layer({"default": "prepended"}), priority=0)
         # Prepended layer now wins
         assert resolver.resolve("default") == "prepended"
@@ -195,10 +215,12 @@ class TestMixedLayers:
     def test_dict_plus_attr_layers(self):
         """Dict layer (higher priority) + attr layer (lower priority)."""
         config = _MockConfig()
-        resolver = ModelResolver(layers=[
-            dict_layer({"utility": "override/fast-model"}),
-            attr_layer(config),
-        ])
+        resolver = ModelResolver(
+            layers=[
+                dict_layer({"utility": "override/fast-model"}),
+                attr_layer(config),
+            ]
+        )
         # utility resolved from dict layer (higher priority)
         assert resolver.resolve("utility") == "override/fast-model"
         # default resolved from attr layer (lower priority, dict has no "default")
@@ -206,6 +228,7 @@ class TestMixedLayers:
 
     def test_attr_layer_with_fallback(self):
         """Attr layer provides only 'default', utility falls back to it."""
+
         class OnlyDefault:
             model = "claude/claude-3-sonnet"
 

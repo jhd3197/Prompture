@@ -3,7 +3,17 @@
 from .agent import Agent, AgentIterator, StreamedAgentResult
 from .async_agent import AsyncAgent, AsyncAgentIterator, AsyncStreamedAgentResult
 from .async_conversation import AsyncConversation
+from .async_deep_agent import AsyncDeepAgent, create_async_deep_agent
 from .conversation import Conversation
+from .deep_agent import DeepAgent, create_deep_agent
+from .deep_state import (
+    DeepAgentResult,
+    DeepAgentState,
+    SubAgentCallRecord,
+    SubAgentSpec,
+    SummaryEvent,
+    Todo,
+)
 from .persona import (
     PERSONAS,
     Persona,
@@ -65,8 +75,12 @@ __all__ = [
     "AsyncAgent",
     "AsyncAgentIterator",
     "AsyncConversation",
+    "AsyncDeepAgent",
     "AsyncStreamedAgentResult",
     "Conversation",
+    "DeepAgent",
+    "DeepAgentResult",
+    "DeepAgentState",
     "GuardrailError",
     "ModelRetry",
     "Persona",
@@ -78,10 +92,16 @@ __all__ = [
     "StreamEvent",
     "StreamEventType",
     "StreamedAgentResult",
+    "SubAgentCallRecord",
+    "SubAgentSpec",
+    "SummaryEvent",
+    "Todo",
     "ToolDefinition",
     "ToolRegistry",
     "clear_persona_registry",
     "clear_skill_registry",
+    "create_async_deep_agent",
+    "create_deep_agent",
     "discover_skills",
     "discover_skills_async",
     "get_persona",

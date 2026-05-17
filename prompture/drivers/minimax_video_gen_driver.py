@@ -79,9 +79,7 @@ def _build_body(prompt: str, options: dict[str, Any], default_model: str) -> dic
         return {
             "model": "S2V-01",
             "prompt": prompt or "",
-            "subject_reference": [
-                {"type": "character", "image": [_normalize_image(subject_image)]}
-            ],
+            "subject_reference": [{"type": "character", "image": [_normalize_image(subject_image)]}],
         }
 
     model = _select_model(options.get("model", default_model), bool(image), bool(last_frame))
@@ -154,9 +152,7 @@ class MiniMaxVideoGenDriver(VideoCostMixin, VideoGenDriver):
         body = _build_body(prompt, options, self.model)
 
         with httpx.Client(timeout=120.0) as client:
-            resp = client.post(
-                f"{self.endpoint}/video_generation", headers=self._headers(), json=body
-            )
+            resp = client.post(f"{self.endpoint}/video_generation", headers=self._headers(), json=body)
             if resp.status_code >= 400:
                 raise RuntimeError(f"MiniMax API error {resp.status_code}: {resp.text}")
             result = resp.json()
@@ -178,9 +174,7 @@ class MiniMaxVideoGenDriver(VideoCostMixin, VideoGenDriver):
 
         video = video_from_url(video_url)
         duration = float(body.get("duration", 0))
-        cost = self._calculate_video_cost(
-            "minimax", body["model"], duration_seconds=duration, n=1
-        )
+        cost = self._calculate_video_cost("minimax", body["model"], duration_seconds=duration, n=1)
         return {
             "videos": [video],
             "meta": {
@@ -241,9 +235,7 @@ class MiniMaxVideoGenDriver(VideoCostMixin, VideoGenDriver):
             raise RuntimeError(f"MiniMax file response missing download_url: {data}")
         return url
 
-    def _pending_response(
-        self, task_id: str, body: dict[str, Any], raw: dict[str, Any]
-    ) -> dict[str, Any]:
+    def _pending_response(self, task_id: str, body: dict[str, Any], raw: dict[str, Any]) -> dict[str, Any]:
         return {
             "videos": [],
             "meta": {
@@ -297,9 +289,7 @@ class AsyncMiniMaxVideoGenDriver(VideoCostMixin, AsyncVideoGenDriver):
         body = _build_body(prompt, options, self.model)
 
         async with httpx.AsyncClient(timeout=120.0) as client:
-            resp = await client.post(
-                f"{self.endpoint}/video_generation", headers=self._headers(), json=body
-            )
+            resp = await client.post(f"{self.endpoint}/video_generation", headers=self._headers(), json=body)
             if resp.status_code >= 400:
                 raise RuntimeError(f"MiniMax API error {resp.status_code}: {resp.text}")
             result = resp.json()
@@ -322,9 +312,7 @@ class AsyncMiniMaxVideoGenDriver(VideoCostMixin, AsyncVideoGenDriver):
 
         video = video_from_url(video_url)
         duration = float(body.get("duration", 0))
-        cost = self._calculate_video_cost(
-            "minimax", body["model"], duration_seconds=duration, n=1
-        )
+        cost = self._calculate_video_cost("minimax", body["model"], duration_seconds=duration, n=1)
         return {
             "videos": [video],
             "meta": {

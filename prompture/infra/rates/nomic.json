@@ -1,0 +1,38 @@
+{
+  "nomic-embed-text-v1.5": {
+    "modality": "embedding",
+    "dimensions": 768,
+    "context_window": 8192,
+    "modalities_input": ["text"],
+    "modalities_output": ["embedding"],
+    "api_type": "nomic",
+    "cost": {
+      "input": 0.10,
+      "output": 0.0
+    }
+  },
+  "nomic-embed-text-v1": {
+    "modality": "embedding",
+    "dimensions": 768,
+    "context_window": 8192,
+    "modalities_input": ["text"],
+    "modalities_output": ["embedding"],
+    "api_type": "nomic",
+    "cost": {
+      "input": 0.10,
+      "output": 0.0
+    }
+  },
+  "nomic-embed-vision-v1.5": {
+    "modality": "embedding",
+    "dimensions": 768,
+    "context_window": 8192,
+    "modalities_input": ["text", "image"],
+    "modalities_output": ["embedding"],
+    "api_type": "nomic",
+    "cost": {
+      "input": 0.10,
+      "output": 0.0
+    }
+  }
+}

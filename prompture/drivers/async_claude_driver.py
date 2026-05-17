@@ -264,6 +264,12 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
             cache_creation_tokens=cache_create,
         )
         yield _build_anthropic_stream_done(
-            model, full_text, full_reasoning, prompt_tokens, completion_tokens, total_cost,
-            cached_prompt_tokens=cache_read, cache_creation_tokens=cache_create,
+            model,
+            full_text,
+            full_reasoning,
+            prompt_tokens,
+            completion_tokens,
+            total_cost,
+            cached_prompt_tokens=cache_read,
+            cache_creation_tokens=cache_create,
         )

@@ -1,0 +1,72 @@
+{
+  "jina-embeddings-v3": {
+    "modality": "embedding",
+    "dimensions": 1024,
+    "context_window": 8192,
+    "modalities_input": ["text"],
+    "modalities_output": ["embedding"],
+    "api_type": "jina",
+    "cost": {
+      "input": 0.02,
+      "output": 0.0
+    }
+  },
+  "jina-embeddings-v2-base-en": {
+    "modality": "embedding",
+    "dimensions": 768,
+    "context_window": 8192,
+    "modalities_input": ["text"],
+    "modalities_output": ["embedding"],
+    "api_type": "jina",
+    "cost": {
+      "input": 0.018,
+      "output": 0.0
+    }
+  },
+  "jina-clip-v2": {
+    "modality": "embedding",
+    "dimensions": 1024,
+    "context_window": 8192,
+    "modalities_input": ["text", "image"],
+    "modalities_output": ["embedding"],
+    "api_type": "jina",
+    "cost": {
+      "input": 0.02,
+      "output": 0.0
+    }
+  },
+  "jina-colbert-v2": {
+    "modality": "embedding",
+    "dimensions": 128,
+    "context_window": 8192,
+    "modalities_input": ["text"],
+    "modalities_output": ["embedding"],
+    "api_type": "jina",
+    "cost": {
+      "input": 0.02,
+      "output": 0.0
+    }
+  },
+  "jina-reranker-v2-base-multilingual": {
+    "modality": "rerank",
+    "api_type": "jina",
+    "modalities_input": ["text"],
+    "modalities_output": ["rerank"],
+    "cost": {
+      "input": 0.02,
+      "output": 0.0,
+      "per_million_tokens": 0.02
+    }
+  },
+  "jina-reranker-v1-base-en": {
+    "modality": "rerank",
+    "api_type": "jina",
+    "modalities_input": ["text"],
+    "modalities_output": ["rerank"],
+    "cost": {
+      "input": 0.02,
+      "output": 0.0,
+      "per_million_tokens": 0.02
+    }
+  }
+}

@@ -199,7 +199,10 @@ class AsyncMoonshotDriver(CostMixin, AsyncDriver):
                         text = reasoning_content
 
         total_cost = self._calculate_cost(
-            "moonshot", model, prompt_tokens, completion_tokens,
+            "moonshot",
+            model,
+            prompt_tokens,
+            completion_tokens,
             cached_tokens=cached_prompt_tokens,
         )
 
@@ -288,7 +291,10 @@ class AsyncMoonshotDriver(CostMixin, AsyncDriver):
         total_tokens = usage.get("total_tokens", 0)
         cached_prompt_tokens = _extract_moonshot_cached_tokens(usage)
         total_cost = self._calculate_cost(
-            "moonshot", model, prompt_tokens, completion_tokens,
+            "moonshot",
+            model,
+            prompt_tokens,
+            completion_tokens,
             cached_tokens=cached_prompt_tokens,
         )
 
@@ -421,7 +427,10 @@ class AsyncMoonshotDriver(CostMixin, AsyncDriver):
 
         total_tokens = prompt_tokens + completion_tokens
         total_cost = self._calculate_cost(
-            "moonshot", model, prompt_tokens, completion_tokens,
+            "moonshot",
+            model,
+            prompt_tokens,
+            completion_tokens,
             cached_tokens=cached_prompt_tokens,
         )
 

@@ -1,0 +1,38 @@
+{
+  "deepseek-chat": {
+    "supports_temperature": true,
+    "supports_tool_use": true,
+    "supports_structured_output": true,
+    "supports_vision": false,
+    "is_reasoning": false,
+    "context_window": 65536,
+    "max_output_tokens": 8192,
+    "modalities_input": ["text"],
+    "modalities_output": ["text"],
+    "api_type": "openai-compatible",
+    "tokens_param": "max_tokens",
+    "cost": {
+      "input": 0.27,
+      "output": 1.10,
+      "cache_read": 0.07
+    }
+  },
+  "deepseek-reasoner": {
+    "supports_temperature": false,
+    "supports_tool_use": false,
+    "supports_structured_output": false,
+    "supports_vision": false,
+    "is_reasoning": true,
+    "context_window": 65536,
+    "max_output_tokens": 8192,
+    "modalities_input": ["text"],
+    "modalities_output": ["text"],
+    "api_type": "openai-compatible",
+    "tokens_param": "max_tokens",
+    "cost": {
+      "input": 0.55,
+      "output": 2.19,
+      "cache_read": 0.14
+    }
+  }
+}

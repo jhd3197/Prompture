@@ -62,7 +62,6 @@ RUNWAY_MODEL_INFO: dict[str, RunwayModelInfo] = {
         "endpoints": ["/v1/text_to_image"],
         "cost": "$0.05 per image",
     },
-
     # ── Video ───────────────────────────────────────────────────────
     "gen4.5": {
         "modality": "video",
@@ -106,7 +105,6 @@ RUNWAY_MODEL_INFO: dict[str, RunwayModelInfo] = {
         "endpoints": ["/v1/text_to_video", "/v1/image_to_video"],
         "cost": "$0.12 per second",
     },
-
     # ── Audio ───────────────────────────────────────────────────────
     "eleven_multilingual_v2": {
         "modality": "audio",
@@ -141,9 +139,7 @@ RUNWAY_MODEL_INFO: dict[str, RunwayModelInfo] = {
 }
 
 
-ALL_OPERATIONS: list[str] = sorted(
-    {op for info in RUNWAY_MODEL_INFO.values() for op in info["operations"]}
-)
+ALL_OPERATIONS: list[str] = sorted({op for info in RUNWAY_MODEL_INFO.values() for op in info["operations"]})
 ALL_MODALITIES: list[str] = sorted({info["modality"] for info in RUNWAY_MODEL_INFO.values()})
 
 
@@ -167,24 +163,12 @@ def get_runway_models_by_op(operation: str) -> list[str]:
         ['gen4.5', 'veo3', 'veo3.1', 'veo3.1_fast']
     """
     if operation not in ALL_OPERATIONS:
-        raise ValueError(
-            f"Unknown operation {operation!r}. Known: {ALL_OPERATIONS}"
-        )
-    return sorted(
-        model_id
-        for model_id, info in RUNWAY_MODEL_INFO.items()
-        if operation in info["operations"]
-    )
+        raise ValueError(f"Unknown operation {operation!r}. Known: {ALL_OPERATIONS}")
+    return sorted(model_id for model_id, info in RUNWAY_MODEL_INFO.items() if operation in info["operations"])
 
 
 def get_runway_models_by_modality(modality: str) -> list[str]:
     """Return Runway model ids in the given modality (``image``/``video``/``audio``)."""
     if modality not in ALL_MODALITIES:
-        raise ValueError(
-            f"Unknown modality {modality!r}. Known: {ALL_MODALITIES}"
-        )
-    return sorted(
-        model_id
-        for model_id, info in RUNWAY_MODEL_INFO.items()
-        if info["modality"] == modality
-    )
+        raise ValueError(f"Unknown modality {modality!r}. Known: {ALL_MODALITIES}")
+    return sorted(model_id for model_id, info in RUNWAY_MODEL_INFO.items() if info["modality"] == modality)

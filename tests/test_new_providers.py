@@ -7,10 +7,6 @@ against the real APIs would require credentials and are not included.
 
 from __future__ import annotations
 
-import asyncio
-from unittest.mock import patch
-
-import httpx
 import pytest
 
 from prompture.drivers.fal_img_gen_driver import (
@@ -24,7 +20,6 @@ from prompture.drivers.fal_video_gen_driver import (
     FalVideoGenDriver,
     _build_video_input,
 )
-from prompture.drivers.async_kling_img_gen_driver import AsyncKlingImageGenDriver
 from prompture.drivers.kling_img_gen_driver import (
     KlingImageGenDriver,
     generate_kling_jwt,
@@ -43,7 +38,6 @@ from prompture.drivers.minimax_video_gen_driver import (
     _resolution,
     _select_model,
 )
-
 
 # ───────────────────────── Kling ────────────────────────────
 
@@ -78,7 +72,7 @@ class TestKlingImageGen:
 
     def test_build_body_v1_5_subject_mode(self):
         d = KlingImageGenDriver(access_key="ak", secret_key="sk", model="kling-v1-5")
-        path, body = d._build_body(
+        _path, body = d._build_body(
             "a cat",
             {"image": "https://example.com/x.png", "reference_mode": "subject"},
         )
@@ -111,15 +105,13 @@ class TestKlingImageGen:
 
 class TestKlingVideoGen:
     def test_build_image_to_video(self):
-        path, body = _build_video_body(
-            "wave", {"image": "https://x/y.png", "duration": 5}, "kling-v2-1"
-        )
+        path, body = _build_video_body("wave", {"image": "https://x/y.png", "duration": 5}, "kling-v2-1")
         assert path == "/v1/videos/image2video"
         assert body["mode"] == "std"
         assert body["duration"] == "5"
 
     def test_pro_mode_for_last_frame(self):
-        path, body = _build_video_body(
+        _path, body = _build_video_body(
             "wave",
             {"image": "https://x/y.png", "last_frame": "https://x/z.png", "duration": 5},
             "kling-v2-1",
@@ -128,7 +120,7 @@ class TestKlingVideoGen:
         assert "image_tail" in body
 
     def test_pro_mode_for_v2_6(self):
-        path, body = _build_video_body("x", {"duration": 5}, "kling-v2-6")
+        _path, body = _build_video_body("x", {"duration": 5}, "kling-v2-6")
         assert body["mode"] == "pro"
 
     def test_multi_image_video(self):
@@ -173,9 +165,7 @@ class TestMiniMaxHelpers:
         assert body["subject_reference"][0]["type"] == "character"
 
     def test_build_body_i2v(self):
-        body = _build_body(
-            "x", {"image": "https://x/img.png", "aspect_ratio": "9:16"}, "MiniMax-Hailuo-2.3"
-        )
+        body = _build_body("x", {"image": "https://x/img.png", "aspect_ratio": "9:16"}, "MiniMax-Hailuo-2.3")
         assert body["first_frame_image"] == "https://x/img.png"
         assert body["aspect_ratio"] == "9:16"
 

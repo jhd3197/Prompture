@@ -1,11 +1,14 @@
 """Detect drift between local rate files and models.dev.
 
 The local files in ``prompture/infra/rates/*.json`` are hand-maintained
-capability/limit metadata for the LLM models prompture supports. This script
-compares each entry against the live models.dev catalog and reports stale
-fields plus models that exist upstream but aren't tracked locally.
+capability/limit metadata for the LLM models prompture supports — they are
+the primary source of truth; models.dev is a fallback. This script compares
+each entry against the live models.dev catalog and reports stale fields plus
+models that exist upstream but aren't tracked locally.
 
-Exit code 0 = no drift (or upstream unreachable). Non-zero = drift found.
+By default the script is informational and always exits 0 (drift is reported
+but not treated as a failure, since local data may intentionally diverge from
+models.dev). Pass ``--strict`` to exit non-zero on any drift or missing model.
 """
 
 from __future__ import annotations
@@ -53,9 +56,7 @@ def _remote_limit(entry: dict[str, Any], path: tuple[str, str]) -> Any:
     return node
 
 
-def _compare_model(
-    provider: str, model_id: str, local: dict[str, Any], remote: dict[str, Any]
-) -> list[str]:
+def _compare_model(provider: str, model_id: str, local: dict[str, Any], remote: dict[str, Any]) -> list[str]:
     drifts: list[str] = []
     for local_field, path in _LIMIT_FIELDS.items():
         if local_field not in local:
@@ -66,8 +67,7 @@ def _compare_model(
         try:
             if int(local[local_field]) != int(remote_val):
                 drifts.append(
-                    f"{provider}/{model_id}: {local_field} local={local[local_field]} "
-                    f"remote={remote_val} (stale)"
+                    f"{provider}/{model_id}: {local_field} local={local[local_field]} remote={remote_val} (stale)"
                 )
         except (TypeError, ValueError):
             continue
@@ -76,8 +76,7 @@ def _compare_model(
             continue
         if bool(local[local_field]) != bool(remote[remote_key]):
             drifts.append(
-                f"{provider}/{model_id}: {local_field} local={local[local_field]} "
-                f"remote={remote[remote_key]} (stale)"
+                f"{provider}/{model_id}: {local_field} local={local[local_field]} remote={remote[remote_key]} (stale)"
             )
     return drifts
 
@@ -93,6 +92,11 @@ def main() -> int:
         type=int,
         default=0,
         help="Skip drift checks for files modified within this many days (default: 0).",
+    )
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Exit non-zero on any drift or missing model. Default is informational (always exit 0).",
     )
     args = parser.parse_args()
 
@@ -139,9 +143,7 @@ def main() -> int:
 
         for remote_id in remote_models:
             if remote_id not in local:
-                all_missing.append(
-                    f"{provider}/{remote_id}: in models.dev but not in local rates"
-                )
+                all_missing.append(f"{provider}/{remote_id}: in models.dev but not in local rates")
 
     print("\n=== Freshness Report ===")
     print(f"Stale fields: {len(all_drifts)}")
@@ -160,7 +162,11 @@ def main() -> int:
         if len(all_missing) > 50:
             print(f"... and {len(all_missing) - 50} more")
 
-    return 1 if (all_drifts or all_missing) else 0
+    if all_drifts or all_missing:
+        if args.strict:
+            return 1
+        print("\n(informational mode: drift reported but not failing — pass --strict to enforce)")
+    return 0
 
 
 if __name__ == "__main__":

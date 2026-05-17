@@ -121,10 +121,86 @@ class Settings(BaseSettings):
     fal_image_model: str = "fal-ai/flux/dev"
     fal_video_model: str = "fal-ai/kling-video/v2.6/pro/image-to-video"
 
+    # Luma AI (Dream Machine — video generation)
+    luma_api_key: Optional[str] = None  # nosec B105
+    luma_video_model: str = "ray-2"
+
+    # Pika Labs (video generation)
+    pika_api_key: Optional[str] = None  # nosec B105
+    pika_video_model: str = "pika-2.2"
+
+    # Phase 7: Ideogram (image generation)
+    ideogram_api_key: Optional[str] = None  # nosec B105
+    ideogram_image_model: str = "ideogram-v3"
+
+    # Phase 7: Black Forest Labs (BFL) — direct Flux access
+    bfl_api_key: Optional[str] = None  # nosec B105
+    bfl_image_model: str = "flux-pro-1.1"
+
+    # Mistral AI
+    mistral_api_key: Optional[str] = None
+    mistral_model: str = "mistral-large-latest"
+
+    # DeepSeek
+    deepseek_api_key: Optional[str] = None
+    deepseek_model: str = "deepseek-chat"
+
+    # OpenAI-compatible aggregators (used via the openai_compatible driver
+    # with a `profile=` arg). Each setting is consumed lazily — only the
+    # profile you actually use needs its key set.
+    fireworks_api_key: Optional[str] = None
+    together_api_key: Optional[str] = None
+    cerebras_api_key: Optional[str] = None
+    sambanova_api_key: Optional[str] = None
+    perplexity_api_key: Optional[str] = None
+    nvidia_api_key: Optional[str] = None
+    deepinfra_api_key: Optional[str] = None
+    siliconflow_api_key: Optional[str] = None
+
+    # Phase 2: Rerank providers
+    cohere_api_key: Optional[str] = None
+    voyage_api_key: Optional[str] = None
+    jina_api_key: Optional[str] = None
+
+    # Phase 3: Cohere LLM + Cohere/Voyage/Jina embedding model defaults
+    cohere_model: str = "command-r-plus"
+    cohere_embedding_model: str = "embed-v4.0"
+    voyage_embedding_model: str = "voyage-3.5"
+    jina_embedding_model: str = "jina-embeddings-v3"
+
+    # Phase 4: AWS Bedrock
+    aws_access_key_id: Optional[str] = None  # nosec B105
+    aws_secret_access_key: Optional[str] = None  # nosec B105
+    aws_region: str = "us-east-1"
+    bedrock_model: str = "anthropic.claude-3-5-haiku-20241022-v1:0"
+
     # ElevenLabs (audio)
     elevenlabs_api_key: Optional[str] = None
     elevenlabs_tts_model: str = "eleven_multilingual_v2"
     elevenlabs_endpoint: str = "https://api.elevenlabs.io/v1"
+
+    # Phase 5: Audio providers (Cartesia, Deepgram, AssemblyAI)
+    cartesia_api_key: Optional[str] = None  # nosec B105
+    cartesia_tts_model: str = "sonic-2"
+
+    deepgram_api_key: Optional[str] = None  # nosec B105
+    deepgram_stt_model: str = "nova-3"
+    deepgram_tts_model: str = "aura-2-thalia-en"
+
+    assemblyai_api_key: Optional[str] = None  # nosec B105
+    assemblyai_stt_model: str = "universal"
+
+    # Phase 8: Nomic, Mixedbread, GitHub Models
+    nomic_api_key: Optional[str] = None  # nosec B105
+    nomic_embedding_model: str = "nomic-embed-text-v1.5"
+
+    mixedbread_api_key: Optional[str] = None  # nosec B105
+    mxbai_embedding_model: str = "mxbai-embed-large-v1"
+    mxbai_rerank_model: str = "mxbai-rerank-large-v1"
+
+    # GitHub Models — used through the openai_compatible driver
+    # (profile=github_models). A GitHub Personal Access Token.
+    github_token: Optional[str] = None  # nosec B105
 
     # Model rates cache
     model_rates_ttl_days: int = 7  # How often to refresh models.dev cache
@@ -150,6 +226,12 @@ class Settings(BaseSettings):
     cache_memory_maxsize: int = 256
     cache_sqlite_path: Optional[str] = None
     cache_redis_url: Optional[str] = None
+
+    # Web search providers (used by prompture.tools.WebSearchTool)
+    tavily_api_key: Optional[str] = None
+    serper_api_key: Optional[str] = None
+    brave_search_api_key: Optional[str] = None
+    searxng_endpoint: Optional[str] = None
 
     # Document ingestion
     ingest_max_file_size: int = 52428800  # 50 MB

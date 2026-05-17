@@ -9,7 +9,18 @@ try:
 except ImportError:  # tukuy not installed
     TukuyLLMBackend = None  # type: ignore[assignment,misc]
     create_tukuy_backend = None  # type: ignore[assignment]
+from . import plugins, rag
 from .cli import *
+from .dataset import (
+    ChatTurn,
+    InstructionPair,
+    QAPair,
+    agenerate_qa_dataset,
+    generate_qa_dataset,
+    to_alpaca,
+    to_jsonl,
+    to_sharegpt,
+)
 from .drivers import *
 from .exceptions import (
     BudgetExceededError,
@@ -27,6 +38,32 @@ from .integrations import *
 from .media import *
 from .persistence import *
 from .pipeline import *
+from .refusal import (
+    RefusalCategory,
+    RefusalDetector,
+    RefusalEvaluator,
+    RefusalReport,
+    RefusalResult,
+    is_refusal,
+)
+from .security import (
+    InjectionCategory,
+    InjectionResult,
+    PIICategory,
+    PIIMatch,
+    PIIRedactor,
+    PromptInjectionDetector,
+    RedactionResult,
+    is_prompt_injection,
+    redact_pii,
+)
+from .tools import (
+    PythonSandboxTool,
+    SearchResult,
+    WebSearchTool,
+    python_execute_tool,
+    web_search_tool,
+)
 
 # Tukuy type re-exports (aliased to avoid collision with Prompture names)
 try:

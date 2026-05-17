@@ -100,16 +100,19 @@ class TestExtractEndpoint:
 
         mock_driver.generate_messages = mock_gen
 
-        resp = client.post("/v1/extract", json={
-            "text": "John is 30 years old.",
-            "schema": {
-                "type": "object",
-                "properties": {
-                    "name": {"type": "string"},
-                    "age": {"type": "integer"},
+        resp = client.post(
+            "/v1/extract",
+            json={
+                "text": "John is 30 years old.",
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "age": {"type": "integer"},
+                    },
                 },
             },
-        })
+        )
         assert resp.status_code == 200
         data = resp.json()
         assert "json_object" in data

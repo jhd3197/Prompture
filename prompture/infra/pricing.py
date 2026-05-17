@@ -84,10 +84,7 @@ def register_pricing_source(source: PricingSource, *, replace: bool = False) -> 
         if replace:
             _sources[:] = [s for s in _sources if s.name != source.name]
         elif any(s.name == source.name for s in _sources):
-            raise ValueError(
-                f"Pricing source '{source.name}' is already registered. "
-                "Pass replace=True to overwrite."
-            )
+            raise ValueError(f"Pricing source '{source.name}' is already registered. Pass replace=True to overwrite.")
         _sources.append(source)
         _sources.sort(key=lambda s: (s.priority, s.name))
         # User explicitly registered something — suppress lazy defaults

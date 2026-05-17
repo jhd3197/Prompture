@@ -153,15 +153,11 @@ class GoogleVertexAIDriver(CostMixin, Driver):
     ):
         if _is_claude_model(model):
             if AnthropicVertex is None:
-                raise RuntimeError(
-                    "anthropic package is not installed. "
-                    "Install it with: pip install anthropic[vertex]"
-                )
+                raise RuntimeError("anthropic package is not installed. Install it with: pip install anthropic[vertex]")
         else:
             if genai is None:
                 raise RuntimeError(
-                    "google-genai package is not installed. "
-                    "Install it with: pip install prompture[google]"
+                    "google-genai package is not installed. Install it with: pip install prompture[google]"
                 )
 
         self.api_key = api_key or os.getenv("GOOGLE_VERTEX_API_KEY")
@@ -180,9 +176,7 @@ class GoogleVertexAIDriver(CostMixin, Driver):
         self._gemini_client: Any = None
         self._claude_client: Any = None
         if _is_claude_model(model):
-            self._claude_client = self._build_claude_client(
-                self.project_id, self.location, self.access_token
-            )
+            self._claude_client = self._build_claude_client(self.project_id, self.location, self.access_token)
         else:
             self._gemini_client = self._build_gemini_client(self.api_key, self.project_id, self.location)
 
@@ -195,9 +189,7 @@ class GoogleVertexAIDriver(CostMixin, Driver):
 
     def _get_claude_client(self) -> Any:
         if self._claude_client is None:
-            self._claude_client = self._build_claude_client(
-                self.project_id, self.location, self.access_token
-            )
+            self._claude_client = self._build_claude_client(self.project_id, self.location, self.access_token)
         return self._claude_client
 
     # ── Cost helpers ──────────────────────────────────────────────────
@@ -214,8 +206,7 @@ class GoogleVertexAIDriver(CostMixin, Driver):
             est_prompt = prompt_chars / 4
             est_completion = completion_chars / 4
             return round(
-                (est_prompt / 1_000_000) * live_rates["input"]
-                + (est_completion / 1_000_000) * live_rates["output"],
+                (est_prompt / 1_000_000) * live_rates["input"] + (est_completion / 1_000_000) * live_rates["output"],
                 6,
             )
         return 0.0
@@ -258,8 +249,10 @@ class GoogleVertexAIDriver(CostMixin, Driver):
     def _prepare_messages(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if _is_claude_model(self.model):
             from .vision_helpers import _prepare_claude_vision_messages
+
             return _prepare_claude_vision_messages(messages)
         from .vision_helpers import _prepare_google_vision_messages
+
         return _prepare_google_vision_messages(messages)
 
     @staticmethod
@@ -345,10 +338,14 @@ class GoogleVertexAIDriver(CostMixin, Driver):
                         result_content = {"result": result_content}
                 if not isinstance(result_content, dict):
                     result_content = {"result": str(result_content)}
-                contents.append({
-                    "role": "user",
-                    "parts": [types.Part(function_response=types.FunctionResponse(name=name, response=result_content))],
-                })
+                contents.append(
+                    {
+                        "role": "user",
+                        "parts": [
+                            types.Part(function_response=types.FunctionResponse(name=name, response=result_content))
+                        ],
+                    }
+                )
             else:
                 if msg.get("_vision_parts"):
                     contents.append({"role": "user", "parts": content})
@@ -374,9 +371,7 @@ class GoogleVertexAIDriver(CostMixin, Driver):
     #  CLAUDE BACKEND (via anthropic[vertex])
     # ══════════════════════════════════════════════════════════════════
 
-    def _claude_generate(
-        self, messages: list[dict[str, Any]], options: dict[str, Any]
-    ) -> dict[str, Any]:
+    def _claude_generate(self, messages: list[dict[str, Any]], options: dict[str, Any]) -> dict[str, Any]:
         client = self._get_claude_client()
         opts = {**{"temperature": 0.0, "max_tokens": 4096}, **options}
         model = opts.get("model", self.model)
@@ -446,11 +441,13 @@ class GoogleVertexAIDriver(CostMixin, Driver):
         for t in tools:
             if "type" in t and t["type"] == "function":
                 fn = t["function"]
-                anthropic_tools.append({
-                    "name": fn["name"],
-                    "description": fn.get("description", ""),
-                    "input_schema": fn.get("parameters", {"type": "object", "properties": {}}),
-                })
+                anthropic_tools.append(
+                    {
+                        "name": fn["name"],
+                        "description": fn.get("description", ""),
+                        "input_schema": fn.get("parameters", {"type": "object", "properties": {}}),
+                    }
+                )
             elif "input_schema" in t:
                 anthropic_tools.append(t)
             else:
@@ -556,9 +553,7 @@ class GoogleVertexAIDriver(CostMixin, Driver):
     #  GEMINI BACKEND (via google-genai)
     # ══════════════════════════════════════════════════════════════════
 
-    def _gemini_generate(
-        self, messages: list[dict[str, Any]], options: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
+    def _gemini_generate(self, messages: list[dict[str, Any]], options: dict[str, Any] | None = None) -> dict[str, Any]:
         gen_input, config_dict = self._build_gemini_generation_args(messages, options)
 
         try:
@@ -587,9 +582,7 @@ class GoogleVertexAIDriver(CostMixin, Driver):
         tools: list[dict[str, Any]],
         options: dict[str, Any],
     ) -> dict[str, Any]:
-        gen_input, config_dict = self._build_gemini_generation_args(
-            self._prepare_messages(messages), options
-        )
+        gen_input, config_dict = self._build_gemini_generation_args(self._prepare_messages(messages), options)
 
         function_declarations = []
         for t in tools:
@@ -633,11 +626,13 @@ class GoogleVertexAIDriver(CostMixin, Driver):
                         text += part.text
                     if hasattr(part, "function_call") and part.function_call is not None and part.function_call.name:
                         fc = part.function_call
-                        tool_calls_out.append({
-                            "id": str(uuid.uuid4()),
-                            "name": fc.name,
-                            "arguments": dict(fc.args) if fc.args else {},
-                        })
+                        tool_calls_out.append(
+                            {
+                                "id": str(uuid.uuid4()),
+                                "name": fc.name,
+                                "arguments": dict(fc.args) if fc.args else {},
+                            }
+                        )
                 finish_reason = getattr(candidate, "finish_reason", None)
                 if finish_reason is not None:
                     stop_reason = {1: "stop", 2: "max_tokens", 3: "safety", 4: "recitation", 5: "other"}.get(
@@ -653,9 +648,7 @@ class GoogleVertexAIDriver(CostMixin, Driver):
     def _gemini_generate_stream(
         self, messages: list[dict[str, Any]], options: dict[str, Any]
     ) -> Iterator[dict[str, Any]]:
-        gen_input, config_dict = self._build_gemini_generation_args(
-            self._prepare_messages(messages), options
-        )
+        gen_input, config_dict = self._build_gemini_generation_args(self._prepare_messages(messages), options)
 
         try:
             config = types.GenerateContentConfig(**config_dict)

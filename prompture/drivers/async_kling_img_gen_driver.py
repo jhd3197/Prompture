@@ -12,9 +12,9 @@ from ..infra.cost_mixin import ImageCostMixin
 from ..media.image import image_from_url
 from .async_img_gen_base import AsyncImageGenDriver
 from .kling_img_gen_driver import (
+    _DEFAULT_ENDPOINT,
     KlingImageGenDriver,
     _get_kling_credentials,
-    _DEFAULT_ENDPOINT,
     generate_kling_jwt,
 )
 
@@ -40,6 +40,7 @@ class AsyncKlingImageGenDriver(ImageCostMixin, AsyncImageGenDriver):
         endpoint: str | None = None,
     ):
         import os
+
         ak, sk = _get_kling_credentials(access_key, secret_key)
         self.access_key = ak
         self.secret_key = sk
@@ -69,9 +70,7 @@ class AsyncKlingImageGenDriver(ImageCostMixin, AsyncImageGenDriver):
         is_multi = path.endswith("multi-image2image")
 
         async with httpx.AsyncClient(timeout=120.0) as client:
-            resp = await client.post(
-                f"{self.endpoint}{path}", headers=self._headers(token), json=body
-            )
+            resp = await client.post(f"{self.endpoint}{path}", headers=self._headers(token), json=body)
             if resp.status_code >= 400:
                 raise RuntimeError(f"Kling API error {resp.status_code}: {resp.text}")
             result = resp.json()
@@ -106,9 +105,7 @@ class AsyncKlingImageGenDriver(ImageCostMixin, AsyncImageGenDriver):
             )
 
         urls = [
-            img["url"]
-            for img in (final.get("data", {}).get("task_result", {}).get("images") or [])
-            if img.get("url")
+            img["url"] for img in (final.get("data", {}).get("task_result", {}).get("images") or []) if img.get("url")
         ]
         images = [image_from_url(u) for u in urls]
         cost = self._calculate_image_cost(
@@ -140,6 +137,7 @@ class AsyncKlingImageGenDriver(ImageCostMixin, AsyncImageGenDriver):
         base = "multi-image2image" if multi else "generations"
         path = f"/v1/images/{base}/{task_id}"
         import time as _t
+
         deadline = _t.monotonic() + timeout_seconds
         while True:
             r = await client.get(f"{self.endpoint}{path}", headers=self._headers(token))

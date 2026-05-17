@@ -54,9 +54,7 @@ class AsyncRunwayTTSDriver(AudioCostMixin, AsyncTTSDriver):
     ):
         self.api_key = _get_runway_api_key(api_key)
         self.model = model
-        self.endpoint = (
-            endpoint or os.getenv("RUNWAY_ENDPOINT") or _DEFAULT_ENDPOINT
-        ).rstrip("/")
+        self.endpoint = (endpoint or os.getenv("RUNWAY_ENDPOINT") or _DEFAULT_ENDPOINT).rstrip("/")
 
     @classmethod
     def list_models(cls, *, api_key: str | None = None, **kw: object) -> list[str] | None:

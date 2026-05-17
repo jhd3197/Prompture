@@ -119,9 +119,7 @@ class KlingImageGenDriver(ImageCostMixin, ImageGenDriver):
 
     def _token(self) -> str:
         if not self.access_key or not self.secret_key:
-            raise RuntimeError(
-                "KLING_ACCESS_KEY and KLING_SECRET_KEY must be configured"
-            )
+            raise RuntimeError("KLING_ACCESS_KEY and KLING_SECRET_KEY must be configured")
         return generate_kling_jwt(self.access_key, self.secret_key)
 
     def _headers(self, token: str) -> dict[str, str]:
@@ -142,9 +140,7 @@ class KlingImageGenDriver(ImageCostMixin, ImageGenDriver):
 
         subject_images = options.get("subject_images")
         if subject_images:
-            return self._build_multi_image_body(
-                prompt, model, ratio, resolution, subject_images, options
-            )
+            return self._build_multi_image_body(prompt, model, ratio, resolution, subject_images, options)
 
         body: dict[str, Any] = {
             "model_name": model,
@@ -162,16 +158,10 @@ class KlingImageGenDriver(ImageCostMixin, ImageGenDriver):
                 ref_mode = options.get("reference_mode", "subject")
                 body["image_reference"] = ref_mode
                 if ref_mode == "subject":
-                    body["face_reference_intensity"] = (
-                        float(options.get("face_intensity", 65)) / 100
-                    )
-                    body["subject_reference_intensity"] = (
-                        float(options.get("subject_intensity", 50)) / 100
-                    )
+                    body["face_reference_intensity"] = float(options.get("face_intensity", 65)) / 100
+                    body["subject_reference_intensity"] = float(options.get("subject_intensity", 50)) / 100
                 elif ref_mode == "face":
-                    body["face_reference_intensity"] = (
-                        float(options.get("face_intensity", 42)) / 100
-                    )
+                    body["face_reference_intensity"] = float(options.get("face_intensity", 42)) / 100
         return "/v1/images/generations", body
 
     def _build_multi_image_body(
@@ -191,9 +181,7 @@ class KlingImageGenDriver(ImageCostMixin, ImageGenDriver):
             "aspect_ratio": ratio,
             "image_size": resolution,
             "n": int(options.get("n", 1)),
-            "subject_image_list": [
-                {"subject_image": _normalize_image(img)} for img in subject_images[:4]
-            ],
+            "subject_image_list": [{"subject_image": _normalize_image(img)} for img in subject_images[:4]],
         }
         if options.get("scene_image"):
             body["scene_image"] = _normalize_image(options["scene_image"])
@@ -209,9 +197,7 @@ class KlingImageGenDriver(ImageCostMixin, ImageGenDriver):
         is_multi = path.endswith("multi-image2image")
 
         with httpx.Client(timeout=120.0) as client:
-            resp = client.post(
-                f"{self.endpoint}{path}", headers=self._headers(token), json=body
-            )
+            resp = client.post(f"{self.endpoint}{path}", headers=self._headers(token), json=body)
             if resp.status_code >= 400:
                 raise RuntimeError(f"Kling API error {resp.status_code}: {resp.text}")
             result = resp.json()
@@ -233,7 +219,9 @@ class KlingImageGenDriver(ImageCostMixin, ImageGenDriver):
                 timeout_seconds=float(options.get("timeout", 120)),
             )
 
-        urls = [img["url"] for img in (final.get("data", {}).get("task_result", {}).get("images") or []) if img.get("url")]
+        urls = [
+            img["url"] for img in (final.get("data", {}).get("task_result", {}).get("images") or []) if img.get("url")
+        ]
         images = [image_from_url(u) for u in urls]
         cost = self._calculate_image_cost(
             "kling", body["model_name"], size=str(body["image_size"]), n=max(len(images), 1)
@@ -281,9 +269,7 @@ class KlingImageGenDriver(ImageCostMixin, ImageGenDriver):
                 raise TimeoutError(f"Kling image task {task_id} timed out (status={status})")
             time.sleep(poll_interval)
 
-    def _pending_response(
-        self, task_id: str, body: dict[str, Any], raw: dict[str, Any]
-    ) -> dict[str, Any]:
+    def _pending_response(self, task_id: str, body: dict[str, Any], raw: dict[str, Any]) -> dict[str, Any]:
         return {
             "images": [],
             "meta": {

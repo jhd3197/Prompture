@@ -36,18 +36,20 @@ def _make_success_result(model_cls=PersonModel, data=None):
     data = data or {"name": "Juan", "age": 30, "city": "Lima"}
     import json
 
-    return ExtractResult({
-        "json_string": json.dumps(data),
-        "json_object": data,
-        "model": model_cls(**data),
-        "usage": {
-            "prompt_tokens": 100,
-            "completion_tokens": 50,
-            "total_tokens": 150,
-            "cost": 0.001,
-            "model_name": "test/model",
-        },
-    })
+    return ExtractResult(
+        {
+            "json_string": json.dumps(data),
+            "json_object": data,
+            "model": model_cls(**data),
+            "usage": {
+                "prompt_tokens": 100,
+                "completion_tokens": 50,
+                "total_tokens": 150,
+                "cost": 0.001,
+                "model_name": "test/model",
+            },
+        }
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -117,9 +119,7 @@ class TestStrategySelection:
         mock_get_driver.return_value = _make_driver(json_mode=True, json_schema=True)
         mock_extract.return_value = _make_success_result()
 
-        result = extract_with_models(
-            PersonModel, "Juan is 30", models=["openai/gpt-4"]
-        )
+        result = extract_with_models(PersonModel, "Juan is 30", models=["openai/gpt-4"])
 
         assert result["strategy_used"] == "single"
         mock_extract.assert_called_once()
@@ -131,9 +131,7 @@ class TestStrategySelection:
         mock_get_driver.return_value = _make_driver(json_mode=True, json_schema=False)
         mock_extract.return_value = _make_success_result()
 
-        result = extract_with_models(
-            PersonModel, "Juan is 30", models=["groq/llama"]
-        )
+        result = extract_with_models(PersonModel, "Juan is 30", models=["groq/llama"])
 
         assert result["strategy_used"] == "single"
 
@@ -143,9 +141,7 @@ class TestStrategySelection:
         mock_get_driver.return_value = _make_driver(json_mode=False, json_schema=False)
         mock_stepwise.return_value = _make_success_result()
 
-        result = extract_with_models(
-            PersonModel, "Juan is 30", models=["weak/model"]
-        )
+        result = extract_with_models(PersonModel, "Juan is 30", models=["weak/model"])
 
         assert result["strategy_used"] == "stepwise"
         mock_stepwise.assert_called_once()
@@ -226,9 +222,7 @@ class TestTracking:
         mock_get_driver.return_value = _make_driver(json_mode=True, json_schema=False)
         mock_extract.return_value = _make_success_result()
 
-        result = extract_with_models(
-            PersonModel, "Juan is 30", models=["groq/llama"]
-        )
+        result = extract_with_models(PersonModel, "Juan is 30", models=["groq/llama"])
 
         caps = result["attempts"][0]["capabilities"]
         assert caps["json_mode"] is True
@@ -240,9 +234,7 @@ class TestTracking:
         mock_get_driver.return_value = _make_driver()
         mock_extract.return_value = _make_success_result()
 
-        result = extract_with_models(
-            PersonModel, "Juan is 30", models=["openai/gpt-4"]
-        )
+        result = extract_with_models(PersonModel, "Juan is 30", models=["openai/gpt-4"])
 
         assert "duration_ms" in result["attempts"][0]
         assert isinstance(result["attempts"][0]["duration_ms"], float)
@@ -253,9 +245,7 @@ class TestTracking:
         mock_get_driver.return_value = _make_driver()
         mock_extract.return_value = _make_success_result()
 
-        result = extract_with_models(
-            PersonModel, "Juan is 30", models=["openai/gpt-4"]
-        )
+        result = extract_with_models(PersonModel, "Juan is 30", models=["openai/gpt-4"])
 
         assert "model" in result
         assert "selected_model" in result
@@ -275,9 +265,7 @@ class TestTracking:
         mock_get_driver.return_value = _make_driver()
         mock_extract.return_value = _make_success_result()
 
-        result = extract_with_models(
-            PersonModel, "Juan is 30", models=["openai/gpt-4"]
-        )
+        result = extract_with_models(PersonModel, "Juan is 30", models=["openai/gpt-4"])
 
         assert isinstance(result, ExtractResult)
         assert result.selected_model == "openai/gpt-4"
@@ -343,9 +331,7 @@ class TestFieldResults:
         }
         mock_stepwise.return_value = stepwise_result
 
-        result = extract_with_models(
-            PersonModel, "Juan is 30", models=["weak/model"]
-        )
+        result = extract_with_models(PersonModel, "Juan is 30", models=["weak/model"])
 
         assert "field_results" in result
         assert result["field_results"]["name"]["status"] == "success"

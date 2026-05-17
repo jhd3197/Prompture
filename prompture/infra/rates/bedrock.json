@@ -1,0 +1,308 @@
+{
+  "anthropic.claude-3-5-sonnet-20240620-v1:0": {
+    "supports_temperature": true,
+    "supports_tool_use": true,
+    "supports_structured_output": false,
+    "supports_vision": true,
+    "is_reasoning": false,
+    "context_window": 200000,
+    "max_output_tokens": 8192,
+    "modalities_input": ["text", "image"],
+    "modalities_output": ["text"],
+    "api_type": "bedrock",
+    "tokens_param": "max_tokens",
+    "cost": {
+      "input": 3.00,
+      "output": 15.00
+    }
+  },
+  "anthropic.claude-3-5-sonnet-20241022-v2:0": {
+    "supports_temperature": true,
+    "supports_tool_use": true,
+    "supports_structured_output": false,
+    "supports_vision": true,
+    "is_reasoning": false,
+    "context_window": 200000,
+    "max_output_tokens": 8192,
+    "modalities_input": ["text", "image"],
+    "modalities_output": ["text"],
+    "api_type": "bedrock",
+    "tokens_param": "max_tokens",
+    "cost": {
+      "input": 3.00,
+      "output": 15.00
+    }
+  },
+  "anthropic.claude-3-5-haiku-20241022-v1:0": {
+    "supports_temperature": true,
+    "supports_tool_use": true,
+    "supports_structured_output": false,
+    "supports_vision": true,
+    "is_reasoning": false,
+    "context_window": 200000,
+    "max_output_tokens": 8192,
+    "modalities_input": ["text", "image"],
+    "modalities_output": ["text"],
+    "api_type": "bedrock",
+    "tokens_param": "max_tokens",
+    "cost": {
+      "input": 0.80,
+      "output": 4.00
+    }
+  },
+  "anthropic.claude-3-haiku-20240307-v1:0": {
+    "supports_temperature": true,
+    "supports_tool_use": true,
+    "supports_structured_output": false,
+    "supports_vision": true,
+    "is_reasoning": false,
+    "context_window": 200000,
+    "max_output_tokens": 4096,
+    "modalities_input": ["text", "image"],
+    "modalities_output": ["text"],
+    "api_type": "bedrock",
+    "tokens_param": "max_tokens",
+    "cost": {
+      "input": 0.25,
+      "output": 1.25
+    }
+  },
+  "anthropic.claude-3-opus-20240229-v1:0": {
+    "supports_temperature": true,
+    "supports_tool_use": true,
+    "supports_structured_output": false,
+    "supports_vision": true,
+    "is_reasoning": false,
+    "context_window": 200000,
+    "max_output_tokens": 4096,
+    "modalities_input": ["text", "image"],
+    "modalities_output": ["text"],
+    "api_type": "bedrock",
+    "tokens_param": "max_tokens",
+    "cost": {
+      "input": 15.00,
+      "output": 75.00
+    }
+  },
+  "anthropic.claude-sonnet-4-20250514-v1:0": {
+    "supports_temperature": true,
+    "supports_tool_use": true,
+    "supports_structured_output": false,
+    "supports_vision": true,
+    "is_reasoning": true,
+    "context_window": 200000,
+    "max_output_tokens": 64000,
+    "modalities_input": ["text", "image"],
+    "modalities_output": ["text"],
+    "api_type": "bedrock",
+    "tokens_param": "max_tokens",
+    "cost": {
+      "input": 3.00,
+      "output": 15.00
+    }
+  },
+  "meta.llama3-1-8b-instruct-v1:0": {
+    "supports_temperature": true,
+    "supports_tool_use": false,
+    "supports_structured_output": false,
+    "supports_vision": false,
+    "is_reasoning": false,
+    "context_window": 128000,
+    "max_output_tokens": 2048,
+    "modalities_input": ["text"],
+    "modalities_output": ["text"],
+    "api_type": "bedrock",
+    "tokens_param": "max_gen_len",
+    "cost": {
+      "input": 0.22,
+      "output": 0.22
+    }
+  },
+  "meta.llama3-1-70b-instruct-v1:0": {
+    "supports_temperature": true,
+    "supports_tool_use": false,
+    "supports_structured_output": false,
+    "supports_vision": false,
+    "is_reasoning": false,
+    "context_window": 128000,
+    "max_output_tokens": 2048,
+    "modalities_input": ["text"],
+    "modalities_output": ["text"],
+    "api_type": "bedrock",
+    "tokens_param": "max_gen_len",
+    "cost": {
+      "input": 0.72,
+      "output": 0.72
+    }
+  },
+  "meta.llama3-1-405b-instruct-v1:0": {
+    "supports_temperature": true,
+    "supports_tool_use": false,
+    "supports_structured_output": false,
+    "supports_vision": false,
+    "is_reasoning": false,
+    "context_window": 128000,
+    "max_output_tokens": 2048,
+    "modalities_input": ["text"],
+    "modalities_output": ["text"],
+    "api_type": "bedrock",
+    "tokens_param": "max_gen_len",
+    "cost": {
+      "input": 5.32,
+      "output": 16.00
+    }
+  },
+  "mistral.mistral-large-2407-v1:0": {
+    "supports_temperature": true,
+    "supports_tool_use": false,
+    "supports_structured_output": false,
+    "supports_vision": false,
+    "is_reasoning": false,
+    "context_window": 128000,
+    "max_output_tokens": 8192,
+    "modalities_input": ["text"],
+    "modalities_output": ["text"],
+    "api_type": "bedrock",
+    "tokens_param": "max_tokens",
+    "cost": {
+      "input": 2.00,
+      "output": 6.00
+    }
+  },
+  "mistral.mistral-small-2402-v1:0": {
+    "supports_temperature": true,
+    "supports_tool_use": false,
+    "supports_structured_output": false,
+    "supports_vision": false,
+    "is_reasoning": false,
+    "context_window": 32000,
+    "max_output_tokens": 8192,
+    "modalities_input": ["text"],
+    "modalities_output": ["text"],
+    "api_type": "bedrock",
+    "tokens_param": "max_tokens",
+    "cost": {
+      "input": 1.00,
+      "output": 3.00
+    }
+  },
+  "cohere.command-r-plus-v1:0": {
+    "supports_temperature": true,
+    "supports_tool_use": false,
+    "supports_structured_output": false,
+    "supports_vision": false,
+    "is_reasoning": false,
+    "context_window": 128000,
+    "max_output_tokens": 4096,
+    "modalities_input": ["text"],
+    "modalities_output": ["text"],
+    "api_type": "bedrock",
+    "tokens_param": "max_tokens",
+    "cost": {
+      "input": 3.00,
+      "output": 15.00
+    }
+  },
+  "cohere.command-r-v1:0": {
+    "supports_temperature": true,
+    "supports_tool_use": false,
+    "supports_structured_output": false,
+    "supports_vision": false,
+    "is_reasoning": false,
+    "context_window": 128000,
+    "max_output_tokens": 4096,
+    "modalities_input": ["text"],
+    "modalities_output": ["text"],
+    "api_type": "bedrock",
+    "tokens_param": "max_tokens",
+    "cost": {
+      "input": 0.50,
+      "output": 1.50
+    }
+  },
+  "amazon.titan-text-express-v1": {
+    "supports_temperature": true,
+    "supports_tool_use": false,
+    "supports_structured_output": false,
+    "supports_vision": false,
+    "is_reasoning": false,
+    "context_window": 8000,
+    "max_output_tokens": 8000,
+    "modalities_input": ["text"],
+    "modalities_output": ["text"],
+    "api_type": "bedrock",
+    "tokens_param": "maxTokenCount",
+    "cost": {
+      "input": 0.20,
+      "output": 0.60
+    }
+  },
+  "amazon.titan-text-lite-v1": {
+    "supports_temperature": true,
+    "supports_tool_use": false,
+    "supports_structured_output": false,
+    "supports_vision": false,
+    "is_reasoning": false,
+    "context_window": 4000,
+    "max_output_tokens": 4000,
+    "modalities_input": ["text"],
+    "modalities_output": ["text"],
+    "api_type": "bedrock",
+    "tokens_param": "maxTokenCount",
+    "cost": {
+      "input": 0.15,
+      "output": 0.20
+    }
+  },
+  "amazon.nova-pro-v1:0": {
+    "supports_temperature": true,
+    "supports_tool_use": true,
+    "supports_structured_output": false,
+    "supports_vision": true,
+    "is_reasoning": false,
+    "context_window": 300000,
+    "max_output_tokens": 5000,
+    "modalities_input": ["text", "image"],
+    "modalities_output": ["text"],
+    "api_type": "bedrock",
+    "tokens_param": "max_tokens",
+    "cost": {
+      "input": 0.80,
+      "output": 3.20
+    }
+  },
+  "amazon.nova-lite-v1:0": {
+    "supports_temperature": true,
+    "supports_tool_use": true,
+    "supports_structured_output": false,
+    "supports_vision": true,
+    "is_reasoning": false,
+    "context_window": 300000,
+    "max_output_tokens": 5000,
+    "modalities_input": ["text", "image"],
+    "modalities_output": ["text"],
+    "api_type": "bedrock",
+    "tokens_param": "max_tokens",
+    "cost": {
+      "input": 0.06,
+      "output": 0.24
+    }
+  },
+  "amazon.nova-micro-v1:0": {
+    "supports_temperature": true,
+    "supports_tool_use": true,
+    "supports_structured_output": false,
+    "supports_vision": false,
+    "is_reasoning": false,
+    "context_window": 128000,
+    "max_output_tokens": 5000,
+    "modalities_input": ["text"],
+    "modalities_output": ["text"],
+    "api_type": "bedrock",
+    "tokens_param": "max_tokens",
+    "cost": {
+      "input": 0.035,
+      "output": 0.14
+    }
+  }
+}

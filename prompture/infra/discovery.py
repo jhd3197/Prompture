@@ -518,6 +518,45 @@ def get_available_audio_models(
                 for model_id in ElevenLabsTTSDriver.AUDIO_PRICING:
                     available.add(f"elevenlabs/{model_id}")
 
+    # Cartesia TTS models
+    if _cfg_value(env, "cartesia_api_key", "CARTESIA_API_KEY") and (modality is None or modality == "tts"):
+        for model_id in (
+            "sonic-2",
+            "sonic-2-2025-03-07",
+            "sonic-turbo",
+            "sonic-english",
+            "sonic-multilingual",
+        ):
+            available.add(f"cartesia/{model_id}")
+
+    # Deepgram STT + TTS models
+    if _cfg_value(env, "deepgram_api_key", "DEEPGRAM_API_KEY"):
+        if modality is None or modality == "stt":
+            for model_id in (
+                "nova-3",
+                "nova-3-medical",
+                "nova-2",
+                "nova-2-meeting",
+                "nova-2-phonecall",
+                "enhanced",
+                "base",
+            ):
+                available.add(f"deepgram/{model_id}")
+        if modality is None or modality == "tts":
+            for model_id in (
+                "aura-2-thalia-en",
+                "aura-2-arcas-en",
+                "aura-2-perseus-en",
+                "aura-asteria-en",
+                "aura-luna-en",
+            ):
+                available.add(f"deepgram/{model_id}")
+
+    # AssemblyAI STT models
+    if _cfg_value(env, "assemblyai_api_key", "ASSEMBLYAI_API_KEY") and (modality is None or modality == "stt"):
+        for model_id in ("universal", "nano", "best", "slam-1"):
+            available.add(f"assemblyai/{model_id}")
+
     # Runway TTS + sound-effect models (no STT)
     runway_key = _cfg_value(env, "runway_api_key", "RUNWAY_API_KEY") or _cfg_value(
         env, "runwayml_api_secret", "RUNWAYML_API_SECRET"
@@ -597,6 +636,20 @@ def get_available_image_gen_models(
         for model_id in RunwayImageGenDriver.KNOWN_MODELS:
             available.add(f"runway/{model_id}")
 
+    # Ideogram image gen models
+    if _cfg_value(env, "ideogram_api_key", "IDEOGRAM_API_KEY"):
+        from ..drivers.ideogram_img_gen_driver import IdeogramImageGenDriver
+
+        for model_id in IdeogramImageGenDriver.KNOWN_MODELS:
+            available.add(f"ideogram/{model_id}")
+
+    # Black Forest Labs (BFL) — direct Flux image gen models
+    if _cfg_value(env, "bfl_api_key", "BFL_API_KEY"):
+        from ..drivers.bfl_img_gen_driver import BFLImageGenDriver
+
+        for model_id in BFLImageGenDriver.KNOWN_MODELS:
+            available.add(f"bfl/{model_id}")
+
     # Dynamic discovery: check modalities_output from models.dev capabilities
     # for any models that the pricing dicts don't know about yet.
     from .model_rates import get_model_capabilities
@@ -645,6 +698,20 @@ def get_available_video_gen_models(
         for model_id in RunwayVideoGenDriver.KNOWN_MODELS:
             available.add(f"runway/{model_id}")
 
+    # Luma AI (Dream Machine) video gen models
+    if _cfg_value(env, "luma_api_key", "LUMA_API_KEY"):
+        from ..drivers.luma_video_gen_driver import LumaVideoGenDriver
+
+        for model_id in LumaVideoGenDriver.KNOWN_MODELS:
+            available.add(f"luma/{model_id}")
+
+    # Pika Labs video gen models
+    if _cfg_value(env, "pika_api_key", "PIKA_API_KEY"):
+        from ..drivers.pika_video_gen_driver import PikaVideoGenDriver
+
+        for model_id in PikaVideoGenDriver.KNOWN_MODELS:
+            available.add(f"pika/{model_id}")
+
     # Dynamic discovery: check modalities_output from models.dev capabilities
     # for any models that the built-in video drivers don't know about yet.
     from .model_rates import get_model_capabilities
@@ -657,6 +724,94 @@ def get_available_video_gen_models(
         caps = get_model_capabilities(provider, model_id)
         if caps and "video" in caps.modalities_output:
             available.add(model_str)
+
+    return sorted(available)
+
+
+def get_available_rerank_models(
+    *,
+    env: ProviderEnvironment | None = None,
+) -> list[str]:
+    """Auto-detect available rerank models based on configured API keys.
+
+    Checks which rerank providers are configured (Cohere, Voyage, Jina) and
+    returns their supported models.
+
+    Args:
+        env: Optional per-consumer environment for isolated API keys.
+            When ``None``, uses the global settings singleton.
+
+    Returns:
+        A sorted list of unique model strings (e.g. ``"cohere/rerank-v3.5"``).
+    """
+    available: set[str] = set()
+
+    # Cohere rerank models
+    if _cfg_value(env, "cohere_api_key", "COHERE_API_KEY"):
+        for model_id in ("rerank-v3.5", "rerank-english-v3.0", "rerank-multilingual-v3.0"):
+            available.add(f"cohere/{model_id}")
+
+    # Voyage AI rerank models
+    if _cfg_value(env, "voyage_api_key", "VOYAGE_API_KEY"):
+        for model_id in ("rerank-2.5", "rerank-2.5-lite", "rerank-2"):
+            available.add(f"voyage/{model_id}")
+
+    # Jina AI rerank models
+    if _cfg_value(env, "jina_api_key", "JINA_API_KEY"):
+        for model_id in (
+            "jina-reranker-v2-base-multilingual",
+            "jina-reranker-v1-base-en",
+            "jina-colbert-v2",
+        ):
+            available.add(f"jina/{model_id}")
+
+    # Mixedbread rerank models
+    if _cfg_value(env, "mixedbread_api_key", "MIXEDBREAD_API_KEY"):
+        for model_id in (
+            "mxbai-rerank-large-v1",
+            "mxbai-rerank-base-v1",
+            "mxbai-rerank-xsmall-v1",
+        ):
+            available.add(f"mixedbread/{model_id}")
+
+    return sorted(available)
+
+
+def get_available_moderation_models(
+    *,
+    env: ProviderEnvironment | None = None,
+) -> list[str]:
+    """Auto-detect available moderation models based on configured API keys.
+
+    Checks which moderation providers are configured (OpenAI, Mistral) and
+    returns their supported models.
+
+    Args:
+        env: Optional per-consumer environment for isolated API keys.
+            When ``None``, uses the global settings singleton.
+
+    Returns:
+        A sorted list of unique model strings (e.g. ``"openai/omni-moderation-latest"``).
+    """
+    available: set[str] = set()
+
+    # OpenAI moderation models
+    if _cfg_value(env, "openai_api_key", "OPENAI_API_KEY"):
+        for model_id in (
+            "omni-moderation-latest",
+            "omni-moderation-2024-09-26",
+            "text-moderation-latest",
+            "text-moderation-stable",
+        ):
+            available.add(f"openai/{model_id}")
+
+    # Mistral moderation models
+    if _cfg_value(env, "mistral_api_key", "MISTRAL_API_KEY"):
+        for model_id in (
+            "mistral-moderation-latest",
+            "mistral-moderation-2411",
+        ):
+            available.add(f"mistral/{model_id}")
 
     return sorted(available)
 
@@ -676,7 +831,10 @@ def get_available_embedding_models(
     Returns:
         A sorted list of unique model strings (e.g. ``"openai/text-embedding-3-small"``).
     """
+    from ..drivers.cohere_embedding_driver import CohereEmbeddingDriver
+    from ..drivers.jina_embedding_driver import JinaEmbeddingDriver
     from ..drivers.openai_embedding_driver import OpenAIEmbeddingDriver
+    from ..drivers.voyage_embedding_driver import VoyageEmbeddingDriver
 
     available: set[str] = set()
 
@@ -684,6 +842,35 @@ def get_available_embedding_models(
     if _cfg_value(env, "openai_api_key", "OPENAI_API_KEY"):
         for model_id in OpenAIEmbeddingDriver.EMBEDDING_PRICING:
             available.add(f"openai/{model_id}")
+
+    # Cohere embedding models (requires cohere_api_key)
+    if _cfg_value(env, "cohere_api_key", "COHERE_API_KEY"):
+        for model_id in CohereEmbeddingDriver.EMBEDDING_PRICING:
+            available.add(f"cohere/{model_id}")
+
+    # Voyage AI embedding models (requires voyage_api_key)
+    if _cfg_value(env, "voyage_api_key", "VOYAGE_API_KEY"):
+        for model_id in VoyageEmbeddingDriver.EMBEDDING_PRICING:
+            available.add(f"voyage/{model_id}")
+
+    # Jina AI embedding models (requires jina_api_key)
+    if _cfg_value(env, "jina_api_key", "JINA_API_KEY"):
+        for model_id in JinaEmbeddingDriver.EMBEDDING_PRICING:
+            available.add(f"jina/{model_id}")
+
+    # Nomic embedding models (requires nomic_api_key)
+    if _cfg_value(env, "nomic_api_key", "NOMIC_API_KEY"):
+        from ..drivers.nomic_embedding_driver import NomicEmbeddingDriver
+
+        for model_id in NomicEmbeddingDriver.EMBEDDING_PRICING:
+            available.add(f"nomic/{model_id}")
+
+    # Mixedbread embedding models (requires mixedbread_api_key)
+    if _cfg_value(env, "mixedbread_api_key", "MIXEDBREAD_API_KEY"):
+        from ..drivers.mxbai_embedding_driver import MxbaiEmbeddingDriver
+
+        for model_id in MxbaiEmbeddingDriver.EMBEDDING_PRICING:
+            available.add(f"mixedbread/{model_id}")
 
     # Ollama embedding models (always available — local)
     available.add("ollama/nomic-embed-text")

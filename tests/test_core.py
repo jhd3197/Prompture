@@ -557,29 +557,20 @@ class TestCleanJsonTextPreamble:
     def test_multiline_preamble_before_fence(self):
         """Multiple lines of preamble before fence."""
         input_text = (
-            "I extracted the following information.\n"
-            "Please review:\n\n"
-            '```json\n{"name": "Juan", "age": 28}\n```'
+            'I extracted the following information.\nPlease review:\n\n```json\n{"name": "Juan", "age": 28}\n```'
         )
         result = clean_json_text(input_text)
         assert result == '{"name": "Juan", "age": 28}'
 
     def test_preamble_and_postamble_around_fence(self):
         """Both preamble and postamble around fence."""
-        input_text = (
-            "Here is the extracted data:\n"
-            '```json\n{"key": "value"}\n```\n'
-            "Hope this helps!"
-        )
+        input_text = 'Here is the extracted data:\n```json\n{"key": "value"}\n```\nHope this helps!'
         result = clean_json_text(input_text)
         assert result == '{"key": "value"}'
 
     def test_preamble_with_braces_prefers_fence(self):
         """When preamble contains braces, fence extraction should win over brace fallback."""
-        input_text = (
-            'The object {foo} was found.\n'
-            '```json\n{"actual": "data"}\n```'
-        )
+        input_text = 'The object {foo} was found.\n```json\n{"actual": "data"}\n```'
         result = clean_json_text(input_text)
         assert result == '{"actual": "data"}'
 

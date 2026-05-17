@@ -79,10 +79,7 @@ def _extract_anthropic_system_and_messages(
                 api_messages
                 and api_messages[-1].get("role") == "user"
                 and isinstance(api_messages[-1].get("content"), list)
-                and all(
-                    isinstance(b, dict) and b.get("type") == "tool_result"
-                    for b in api_messages[-1]["content"]
-                )
+                and all(isinstance(b, dict) and b.get("type") == "tool_result" for b in api_messages[-1]["content"])
             ):
                 api_messages[-1]["content"].append(result_block)
             else:
@@ -495,6 +492,12 @@ class ClaudeDriver(CostMixin, Driver):
             cache_creation_tokens=cache_create,
         )
         yield _build_anthropic_stream_done(
-            model, full_text, full_reasoning, prompt_tokens, completion_tokens, total_cost,
-            cached_prompt_tokens=cache_read, cache_creation_tokens=cache_create,
+            model,
+            full_text,
+            full_reasoning,
+            prompt_tokens,
+            completion_tokens,
+            total_cost,
+            cached_prompt_tokens=cache_read,
+            cache_creation_tokens=cache_create,
         )

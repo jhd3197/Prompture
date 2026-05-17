@@ -62,9 +62,16 @@ class TestStreaming:
         chunks = [
             {"type": "delta", "text": "Hello"},
             {"type": "delta", "text": " world"},
-            {"type": "done", "text": "Hello world", "meta": {
-                "prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15, "cost": 0.001,
-            }},
+            {
+                "type": "done",
+                "text": "Hello world",
+                "meta": {
+                    "prompt_tokens": 10,
+                    "completion_tokens": 5,
+                    "total_tokens": 15,
+                    "cost": 0.001,
+                },
+            },
         ]
 
         driver = MockStreamDriver(chunks)
@@ -76,9 +83,16 @@ class TestStreaming:
     def test_ask_stream_records_history(self):
         chunks = [
             {"type": "delta", "text": "Test"},
-            {"type": "done", "text": "Test", "meta": {
-                "prompt_tokens": 5, "completion_tokens": 2, "total_tokens": 7, "cost": 0.0,
-            }},
+            {
+                "type": "done",
+                "text": "Test",
+                "meta": {
+                    "prompt_tokens": 5,
+                    "completion_tokens": 2,
+                    "total_tokens": 7,
+                    "cost": 0.0,
+                },
+            },
         ]
 
         driver = MockStreamDriver(chunks)
@@ -97,9 +111,16 @@ class TestStreaming:
     def test_ask_stream_accumulates_usage(self):
         chunks = [
             {"type": "delta", "text": "X"},
-            {"type": "done", "text": "X", "meta": {
-                "prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15, "cost": 0.002,
-            }},
+            {
+                "type": "done",
+                "text": "X",
+                "meta": {
+                    "prompt_tokens": 10,
+                    "completion_tokens": 5,
+                    "total_tokens": 15,
+                    "cost": 0.002,
+                },
+            },
         ]
 
         driver = MockStreamDriver(chunks)
@@ -124,9 +145,16 @@ class TestStreaming:
         chunks = [
             {"type": "delta", "text": "A"},
             {"type": "delta", "text": "B"},
-            {"type": "done", "text": "AB", "meta": {
-                "prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2, "cost": 0.0,
-            }},
+            {
+                "type": "done",
+                "text": "AB",
+                "meta": {
+                    "prompt_tokens": 1,
+                    "completion_tokens": 1,
+                    "total_tokens": 2,
+                    "cost": 0.0,
+                },
+            },
         ]
 
         deltas = []
@@ -155,9 +183,16 @@ class TestStreamingMultipleTurns:
         """Can alternate between streaming and regular asks."""
         chunks = [
             {"type": "delta", "text": "streamed"},
-            {"type": "done", "text": "streamed", "meta": {
-                "prompt_tokens": 5, "completion_tokens": 3, "total_tokens": 8, "cost": 0.0,
-            }},
+            {
+                "type": "done",
+                "text": "streamed",
+                "meta": {
+                    "prompt_tokens": 5,
+                    "completion_tokens": 3,
+                    "total_tokens": 8,
+                    "cost": 0.0,
+                },
+            },
         ]
 
         class HybridDriver(Driver):
@@ -194,9 +229,16 @@ class TestStreamingCallbacks:
         return [
             {"type": "delta", "text": "Hello"},
             {"type": "delta", "text": " world"},
-            {"type": "done", "text": "Hello world", "meta": {
-                "prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15, "cost": 0.001,
-            }},
+            {
+                "type": "done",
+                "text": "Hello world",
+                "meta": {
+                    "prompt_tokens": 10,
+                    "completion_tokens": 5,
+                    "total_tokens": 15,
+                    "cost": 0.001,
+                },
+            },
         ]
 
     def test_ask_stream_fires_on_response_callback(self):
