@@ -122,6 +122,7 @@ PRODUCT_SCHEMA = {
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
+
 def _header(title: str) -> None:
     print(f"\n{'=' * 70}")
     print(f"  {title}")
@@ -152,6 +153,7 @@ def _usage(usage: dict) -> None:
 
 
 # ── Test 1: Basic JSON Extraction ────────────────────────────────────────────
+
 
 def test_extract(model_name: str) -> bool:
     """Test extract_and_jsonify with a basic schema."""
@@ -186,6 +188,7 @@ def test_extract(model_name: str) -> bool:
 
 # ── Test 2: Pydantic Model Extraction ────────────────────────────────────────
 
+
 def test_pydantic(model_name: str) -> bool:
     """Test extract_with_model using a Pydantic BaseModel."""
     _subheader(f"extract_with_model (Pydantic)  [{model_name}]")
@@ -215,6 +218,7 @@ def test_pydantic(model_name: str) -> bool:
 
 
 # ── Test 3: Stepwise Extraction ──────────────────────────────────────────────
+
 
 def test_stepwise(model_name: str) -> bool:
     """Test stepwise_extract_with_model (field-by-field extraction)."""
@@ -252,6 +256,7 @@ def test_stepwise(model_name: str) -> bool:
 
 # ── Test 4: Conversation ─────────────────────────────────────────────────────
 
+
 def test_conversation(model_name: str) -> bool:
     """Test multi-turn Conversation with message history."""
     _subheader(f"Conversation (multi-turn)  [{model_name}]")
@@ -287,6 +292,7 @@ def test_conversation(model_name: str) -> bool:
 
 
 # ── Test 5: Agent with Tools ─────────────────────────────────────────────────
+
 
 def test_agent(model_name: str) -> bool:
     """Test Agent with tool calling (function calling)."""
@@ -338,6 +344,7 @@ def test_agent(model_name: str) -> bool:
 
 # ── Test 6: TOON Input (Token Savings) ───────────────────────────────────────
 
+
 def test_toon(model_name: str) -> bool:
     """Test extract_from_data with TOON token compression."""
     _subheader(f"extract_from_data (TOON)  [{model_name}]")
@@ -357,9 +364,13 @@ def test_toon(model_name: str) -> bool:
 
         assert "total_products" in obj, "Missing 'total_products'"
 
-        _pass(f"Extracted: total={obj.get('total_products')}, avg_price={obj.get('average_price')}, top={obj.get('highest_rated')}")
-        _info(f"Token savings: {savings['percentage_saved']}% "
-              f"(JSON: ~{savings['estimated_json_tokens']} -> TOON: ~{savings['estimated_toon_tokens']} tokens)")
+        _pass(
+            f"Extracted: total={obj.get('total_products')}, avg_price={obj.get('average_price')}, top={obj.get('highest_rated')}"
+        )
+        _info(
+            f"Token savings: {savings['percentage_saved']}% "
+            f"(JSON: ~{savings['estimated_json_tokens']} -> TOON: ~{savings['estimated_toon_tokens']} tokens)"
+        )
         _usage(result["usage"])
         _info(f"Elapsed: {elapsed:.2f}s")
 
@@ -371,6 +382,7 @@ def test_toon(model_name: str) -> bool:
 
 
 # ── Test 7: Discovery ────────────────────────────────────────────────────────
+
 
 def test_discovery() -> bool:
     """Test get_available_models to list detected providers and models."""
@@ -390,7 +402,9 @@ def test_discovery() -> bool:
 
         _pass(f"Found {len(models)} models across {len(by_provider)} providers")
         for provider, provider_models in sorted(by_provider.items()):
-            _info(f"  [{provider}] {len(provider_models)} model(s): {', '.join(provider_models[:3])}{'...' if len(provider_models) > 3 else ''}")
+            _info(
+                f"  [{provider}] {len(provider_models)} model(s): {', '.join(provider_models[:3])}{'...' if len(provider_models) > 3 else ''}"
+            )
 
         return True
 
@@ -442,21 +456,25 @@ Examples:
         """,
     )
     parser.add_argument(
-        "--provider", "-p",
+        "--provider",
+        "-p",
         help="Test a single provider (e.g., openai, claude, ollama, google)",
     )
     parser.add_argument(
-        "--model", "-m",
+        "--model",
+        "-m",
         help="Test a specific model (e.g., openai/gpt-4o-mini, claude/claude-haiku-4-5-20251001)",
     )
     parser.add_argument(
-        "--tests", "-t",
+        "--tests",
+        "-t",
         nargs="+",
         choices=[*list(ALL_TESTS.keys()), "discovery"],
         help="Run only specific tests (default: all)",
     )
     parser.add_argument(
-        "--quick", "-q",
+        "--quick",
+        "-q",
         action="store_true",
         help="Quick mode: run only basic extraction test",
     )

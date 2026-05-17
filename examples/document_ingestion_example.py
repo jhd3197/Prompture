@@ -187,8 +187,7 @@ def example_document_chunking():
         print(f"Number of chunks: {len(chunks)}")
         print("\nChunk details:")
         for chunk in chunks:
-            print(f"  Chunk {chunk.chunk_index + 1}/{chunk.total_chunks}: "
-                  f"{len(chunk.text)} chars")
+            print(f"  Chunk {chunk.chunk_index + 1}/{chunk.total_chunks}: {len(chunk.text)} chars")
             print(f"    First 50 chars: {chunk.text[:50]}...")
 
         print("\n✅ Successfully chunked large document")
@@ -288,8 +287,7 @@ def example_multiple_file_types():
 
         try:
             doc = ingest(temp_path)
-            print(f"  {ext:6} → {doc.file_type:10} parser "
-                  f"({doc.char_count} chars extracted)")
+            print(f"  {ext:6} → {doc.file_type:10} parser ({doc.char_count} chars extracted)")
         finally:
             Path(temp_path).unlink()
 

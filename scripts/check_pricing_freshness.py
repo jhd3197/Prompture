@@ -56,9 +56,7 @@ def _remote_limit(entry: dict[str, Any], path: tuple[str, str]) -> Any:
     return node
 
 
-def _compare_model(
-    provider: str, model_id: str, local: dict[str, Any], remote: dict[str, Any]
-) -> list[str]:
+def _compare_model(provider: str, model_id: str, local: dict[str, Any], remote: dict[str, Any]) -> list[str]:
     drifts: list[str] = []
     for local_field, path in _LIMIT_FIELDS.items():
         if local_field not in local:
@@ -69,8 +67,7 @@ def _compare_model(
         try:
             if int(local[local_field]) != int(remote_val):
                 drifts.append(
-                    f"{provider}/{model_id}: {local_field} local={local[local_field]} "
-                    f"remote={remote_val} (stale)"
+                    f"{provider}/{model_id}: {local_field} local={local[local_field]} remote={remote_val} (stale)"
                 )
         except (TypeError, ValueError):
             continue
@@ -79,8 +76,7 @@ def _compare_model(
             continue
         if bool(local[local_field]) != bool(remote[remote_key]):
             drifts.append(
-                f"{provider}/{model_id}: {local_field} local={local[local_field]} "
-                f"remote={remote[remote_key]} (stale)"
+                f"{provider}/{model_id}: {local_field} local={local[local_field]} remote={remote[remote_key]} (stale)"
             )
     return drifts
 
@@ -147,9 +143,7 @@ def main() -> int:
 
         for remote_id in remote_models:
             if remote_id not in local:
-                all_missing.append(
-                    f"{provider}/{remote_id}: in models.dev but not in local rates"
-                )
+                all_missing.append(f"{provider}/{remote_id}: in models.dev but not in local rates")
 
     print("\n=== Freshness Report ===")
     print(f"Stale fields: {len(all_drifts)}")

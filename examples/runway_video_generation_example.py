@@ -115,8 +115,10 @@ def run_video_to_video() -> None:
     # i2v output, then the external fallback.
     source = chained.get("t2v_url") or chained.get("i2v_url") or FALLBACK_VIDEO_URL
     source_label = (
-        "t2v output" if source == chained.get("t2v_url")
-        else "i2v output" if source == chained.get("i2v_url")
+        "t2v output"
+        if source == chained.get("t2v_url")
+        else "i2v output"
+        if source == chained.get("i2v_url")
         else "external URL"
     )
 
