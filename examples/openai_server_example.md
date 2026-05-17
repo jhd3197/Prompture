@@ -80,6 +80,69 @@ resp = client.embeddings.create(
 print(resp.data[0].embedding[:5])
 ```
 
+## Vision
+
+Send images as OpenAI multipart content parts — the server forwards
+them to any vision-capable Prompture driver:
+
+```python
+resp = client.chat.completions.create(
+    model="claude/claude-sonnet-4-6",
+    messages=[
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "What's in this image?"},
+                {"type": "image_url", "image_url": {"url": "https://example.com/cat.png"}},
+            ],
+        }
+    ],
+)
+```
+
+Data URIs (`data:image/png;base64,...`) and HTTPS URLs both work.
+
+## Image generation
+
+```python
+resp = client.images.generate(
+    model="openai/dall-e-3",
+    prompt="A neon-lit Tokyo alleyway at night in the rain",
+    size="1024x1024",
+    quality="hd",
+    n=1,
+)
+print(resp.data[0].url)            # response_format="url" (default)
+# resp.data[0].b64_json            # when response_format="b64_json"
+```
+
+Routes to `get_async_img_gen_driver_for_model` — works with DALL-E,
+Imagen, Stability, Runway, Flux, Ideogram, Kling, Fal, and so on.
+
+## Text-to-speech
+
+```python
+audio = client.audio.speech.create(
+    model="openai/tts-1",
+    voice="alloy",
+    input="Hello from Prompture.",
+)
+with open("hello.mp3", "wb") as f:
+    f.write(audio.content)
+```
+
+## Speech-to-text
+
+```python
+with open("clip.wav", "rb") as f:
+    tx = client.audio.transcriptions.create(
+        model="openai/whisper-1",
+        file=f,
+        language="en",
+    )
+print(tx.text)
+```
+
 ## List available models
 
 ```python

@@ -419,6 +419,252 @@ class TestBearerAuth:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Vision content parts
+# ---------------------------------------------------------------------------
+
+
+class TestVisionContent:
+    def test_image_url_part_forwarded_to_driver(self, client, mock_driver):
+        # Patch ask() so we can capture how the conversation forwarded
+        # the images argument.
+        from prompture.agents.async_conversation import AsyncConversation
+
+        captured: dict[str, Any] = {}
+
+        original_ask = AsyncConversation.ask
+
+        async def _capturing_ask(self, content, options=None, images=None, **kw):
+            captured["content"] = content
+            captured["images"] = images
+            return await original_ask(self, content, options=options, images=images, **kw)
+
+        with patch.object(AsyncConversation, "ask", _capturing_ask):
+            resp = client.post(
+                "/v1/chat/completions",
+                json={
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": "What's in this image?"},
+                                {
+                                    "type": "image_url",
+                                    "image_url": {"url": "https://example.com/cat.png"},
+                                },
+                            ],
+                        }
+                    ],
+                },
+            )
+        assert resp.status_code == 200, resp.text
+        assert captured["images"] == ["https://example.com/cat.png"]
+        assert "What's in this image?" in captured["content"]
+
+    def test_text_only_passes_no_images(self, client, mock_driver):
+        from prompture.agents.async_conversation import AsyncConversation
+
+        captured: dict[str, Any] = {}
+        original_ask = AsyncConversation.ask
+
+        async def _capturing_ask(self, content, options=None, images=None, **kw):
+            captured["images"] = images
+            return await original_ask(self, content, options=options, images=images, **kw)
+
+        with patch.object(AsyncConversation, "ask", _capturing_ask):
+            client.post(
+                "/v1/chat/completions",
+                json={"messages": [{"role": "user", "content": "Plain text only."}]},
+            )
+        assert captured["images"] in (None, [])
+
+
+# ---------------------------------------------------------------------------
+# /v1/images/generations
+# ---------------------------------------------------------------------------
+
+
+class _MockAsyncImageGenDriver:
+    """Stand-in async image-generation driver."""
+
+    def __init__(self, with_url: bool = True):
+        self.with_url = with_url
+
+    async def generate_image(self, prompt: str, options: dict[str, Any]) -> dict[str, Any]:
+        from prompture.media.image import ImageContent
+
+        img = ImageContent(
+            data="ZmFrZS1iNjQ=",  # 'fake-b64'
+            media_type="image/png",
+            source_type="url" if self.with_url else "base64",
+            url="https://example.com/generated.png" if self.with_url else None,
+        )
+        return {
+            "images": [img for _ in range(options.get("n", 1))],
+            "meta": {
+                "image_count": options.get("n", 1),
+                "model_name": "mock/img",
+                "cost": 0.04,
+                "revised_prompt": "revised: " + prompt,
+            },
+        }
+
+
+class TestImagesGenerations:
+    def test_url_response_format(self, client):
+        with patch(
+            "prompture.drivers.img_gen_registry.get_async_img_gen_driver_for_model",
+            return_value=_MockAsyncImageGenDriver(with_url=True),
+        ):
+            resp = client.post(
+                "/v1/images/generations",
+                json={
+                    "model": "mock/img",
+                    "prompt": "A cat in a top hat",
+                    "n": 2,
+                    "response_format": "url",
+                },
+            )
+        assert resp.status_code == 200, resp.text
+        data = resp.json()
+        assert data["model"] == "mock/img"
+        assert len(data["data"]) == 2
+        assert data["data"][0]["url"].startswith("https://")
+        assert data["data"][0]["revised_prompt"].startswith("revised:")
+
+    def test_b64_response_format(self, client):
+        with patch(
+            "prompture.drivers.img_gen_registry.get_async_img_gen_driver_for_model",
+            return_value=_MockAsyncImageGenDriver(with_url=True),
+        ):
+            resp = client.post(
+                "/v1/images/generations",
+                json={
+                    "model": "mock/img",
+                    "prompt": "A cat in a top hat",
+                    "response_format": "b64_json",
+                },
+            )
+        assert resp.status_code == 200
+        assert resp.json()["data"][0]["b64_json"] == "ZmFrZS1iNjQ="
+
+    def test_data_uri_fallback_when_no_url(self, client):
+        with patch(
+            "prompture.drivers.img_gen_registry.get_async_img_gen_driver_for_model",
+            return_value=_MockAsyncImageGenDriver(with_url=False),
+        ):
+            resp = client.post(
+                "/v1/images/generations",
+                json={"model": "mock/img", "prompt": "x"},
+            )
+        assert resp.status_code == 200
+        assert resp.json()["data"][0]["url"].startswith("data:image/png;base64,")
+
+    def test_unknown_model_returns_400(self, client):
+        with patch(
+            "prompture.drivers.img_gen_registry.get_async_img_gen_driver_for_model",
+            side_effect=ValueError("no such provider"),
+        ):
+            resp = client.post(
+                "/v1/images/generations",
+                json={"model": "nope/x", "prompt": "y"},
+            )
+        assert resp.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# /v1/audio/speech
+# ---------------------------------------------------------------------------
+
+
+class _MockAsyncTTSDriver:
+    async def synthesize(self, text: str, options: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "audio": b"FAKE-AUDIO-BYTES",
+            "media_type": "audio/mpeg",
+            "meta": {"cost": 0.0001, "model_name": "mock/tts"},
+        }
+
+
+class TestAudioSpeech:
+    def test_returns_audio_bytes(self, client):
+        with patch(
+            "prompture.drivers.audio_registry.get_async_tts_driver_for_model",
+            return_value=_MockAsyncTTSDriver(),
+        ):
+            resp = client.post(
+                "/v1/audio/speech",
+                json={"model": "mock/tts", "input": "Hello world.", "voice": "alloy"},
+            )
+        assert resp.status_code == 200
+        assert resp.headers["content-type"].startswith("audio/")
+        assert resp.content == b"FAKE-AUDIO-BYTES"
+
+    def test_unknown_model_returns_400(self, client):
+        with patch(
+            "prompture.drivers.audio_registry.get_async_tts_driver_for_model",
+            side_effect=ValueError("no tts here"),
+        ):
+            resp = client.post(
+                "/v1/audio/speech",
+                json={"model": "nope/x", "input": "hi"},
+            )
+        assert resp.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# /v1/audio/transcriptions
+# ---------------------------------------------------------------------------
+
+
+class _MockAsyncSTTDriver:
+    async def transcribe(self, audio: bytes, options: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "text": f"transcribed {len(audio)} bytes",
+            "language": options.get("language", "en"),
+            "segments": [],
+            "meta": {"cost": 0.0001},
+        }
+
+
+class TestAudioTranscriptions:
+    def test_json_response(self, client):
+        with patch(
+            "prompture.drivers.audio_registry.get_async_stt_driver_for_model",
+            return_value=_MockAsyncSTTDriver(),
+        ):
+            resp = client.post(
+                "/v1/audio/transcriptions",
+                data={"model": "mock/stt", "language": "en"},
+                files={"file": ("clip.wav", b"AUDIODATA", "audio/wav")},
+            )
+        assert resp.status_code == 200, resp.text
+        data = resp.json()
+        assert data["text"].startswith("transcribed")
+        assert data["language"] == "en"
+
+    def test_text_response_format(self, client):
+        with patch(
+            "prompture.drivers.audio_registry.get_async_stt_driver_for_model",
+            return_value=_MockAsyncSTTDriver(),
+        ):
+            resp = client.post(
+                "/v1/audio/transcriptions",
+                data={"model": "mock/stt", "response_format": "text"},
+                files={"file": ("clip.wav", b"AUDIODATA", "audio/wav")},
+            )
+        assert resp.status_code == 200
+        assert resp.text.startswith("transcribed")
+
+    def test_missing_file_returns_422(self, client):
+        # No 'file' field — FastAPI multipart validation rejects.
+        resp = client.post(
+            "/v1/audio/transcriptions",
+            data={"model": "mock/stt"},
+        )
+        assert resp.status_code in (400, 422)
+
+
 class TestModelAllowlist:
     def test_blocks_disallowed_model(self, mock_driver):
         app = create_app(

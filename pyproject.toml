@@ -50,7 +50,7 @@ ingest = [
     "openpyxl>=3.1.0",
 ]
 redis = ["redis>=4.0"]
-serve = ["fastapi>=0.100", "uvicorn[standard]>=0.20", "sse-starlette>=1.6"]
+serve = ["fastapi>=0.100", "uvicorn[standard]>=0.20", "sse-starlette>=1.6", "python-multipart>=0.0.9"]
 scaffold = ["jinja2>=3.0"]
 rag-pdf = ["pypdf>=4.0.0"]
 rag-docx = ["python-docx>=1.1.0"]

@@ -182,6 +182,23 @@ def create_app(
         encoding_format: Optional[str] = None
         user: Optional[str] = None
 
+    class OAIImageGenRequest(BaseModel):
+        model: Optional[str] = None
+        prompt: str
+        n: int = 1
+        size: Optional[str] = "1024x1024"
+        quality: Optional[str] = "standard"
+        style: Optional[str] = None
+        response_format: Optional[str] = "url"  # "url" | "b64_json"
+        user: Optional[str] = None
+
+    class OAISpeechRequest(BaseModel):
+        model: Optional[str] = None
+        input: str = Field(..., max_length=4096)
+        voice: Optional[str] = None
+        response_format: Optional[str] = None  # mp3, opus, wav, ...
+        speed: Optional[float] = None
+
     # ---- App ----
 
     app = FastAPI(
@@ -231,13 +248,13 @@ def create_app(
     def _seed_conversation_from_messages(
         conv: AsyncConversation,
         messages: list[OAIMessage],
-    ) -> tuple[str, Optional[str]]:
+    ) -> tuple[str, list[Any]]:
         """Replay OpenAI ``messages[]`` into *conv*.
 
-        Returns ``(last_user_content, last_system_prompt)``.  The
+        Returns ``(last_user_content, last_user_images)``.  The
         conversation's internal message list is populated for everything
-        EXCEPT the final user message, which is returned for the caller
-        to pass to ``conv.ask()``.
+        EXCEPT the final user message, which is returned so the caller
+        can pass it (with any extracted images) to ``conv.ask()``.
         """
         # Find the index of the final user message.
         final_user_idx: Optional[int] = None
@@ -248,7 +265,9 @@ def create_app(
         if final_user_idx is None:
             raise HTTPException(status_code=400, detail="At least one user message is required")
 
-        last_user_content = _flatten_content(messages[final_user_idx].content)
+        final_msg = messages[final_user_idx]
+        last_user_content = _flatten_content(final_msg.content)
+        last_user_images = _extract_images(final_msg.content)
         last_system: Optional[str] = None
 
         for i, msg in enumerate(messages):
@@ -270,15 +289,13 @@ def create_app(
         if last_system is not None:
             conv._system_prompt = last_system
 
-        return last_user_content, last_system
+        return last_user_content, last_user_images
 
     def _flatten_content(content: Any) -> str:
-        """Reduce OpenAI multipart content arrays to a single string.
+        """Reduce OpenAI multipart content arrays to a single text string.
 
-        Anthropic / OpenAI ``messages`` can carry content as a list of
-        parts ``[{type: "text", text: "..."}, {type: "image_url", ...}]``.
-        For the v0 proxy we collapse text parts and drop everything
-        else (images on a future iteration).
+        Drops image_url parts here — they're extracted separately by
+        :func:`_extract_images` and forwarded via ``options["images"]``.
         """
         if content is None:
             return ""
@@ -294,6 +311,27 @@ def create_app(
                     parts.append(part)
             return "\n".join(parts)
         return str(content)
+
+    def _extract_images(content: Any) -> list[Any]:
+        """Pull image_url parts out of an OpenAI multipart message.
+
+        Returns a list of Prompture :class:`ImageInput`-compatible
+        values (URL strings or data URIs).  Vision-capable drivers
+        accept these directly via ``options["images"]``.
+        """
+        if not isinstance(content, list):
+            return []
+        images: list[Any] = []
+        for part in content:
+            if not isinstance(part, dict):
+                continue
+            if part.get("type") != "image_url":
+                continue
+            url_field = part.get("image_url")
+            url = url_field.get("url") if isinstance(url_field, dict) else url_field
+            if isinstance(url, str) and url:
+                images.append(url)
+        return images
 
     def _build_options(req: OAIChatRequest) -> dict[str, Any]:
         opts: dict[str, Any] = {}
@@ -407,7 +445,7 @@ def create_app(
             options=opts,
             tools=tool_registry,
         )
-        last_user_content, _ = _seed_conversation_from_messages(conv, req.messages)
+        last_user_content, last_user_images = _seed_conversation_from_messages(conv, req.messages)
 
         completion_id = f"chatcmpl-{uuid.uuid4().hex[:24]}"
         created = int(time.time())
@@ -432,7 +470,11 @@ def create_app(
                 }
                 yield {"data": json.dumps(first_chunk)}
 
-                async for chunk in conv.ask_stream(last_user_content, opts if opts else None):
+                async for chunk in conv.ask_stream(
+                    last_user_content,
+                    opts if opts else None,
+                    images=last_user_images or None,
+                ):
                     data = {
                         "id": completion_id,
                         "object": "chat.completion.chunk",
@@ -461,7 +503,11 @@ def create_app(
             return EventSourceResponse(oai_stream(), media_type="text/event-stream")
 
         # Non-streaming
-        text = await conv.ask(last_user_content, opts if opts else None)
+        text = await conv.ask(
+            last_user_content,
+            opts if opts else None,
+            images=last_user_images or None,
+        )
         usage = conv.usage
 
         # Surface tool_calls from the last assistant message if the
@@ -595,6 +641,143 @@ def create_app(
                     "prompt_tokens": meta.get("total_tokens", 0),
                     "total_tokens": meta.get("total_tokens", 0),
                 },
+            }
+        )
+
+    # ---- OpenAI-compatible: /v1/images/generations ----
+
+    @app.post("/v1/images/generations")
+    async def openai_images_generations(req: OAIImageGenRequest) -> Any:
+        """Image generation — routes to ``get_async_img_gen_driver_for_model``."""
+        resolved_model = req.model or model_name
+        _check_model_allowed(resolved_model)
+
+        from ..drivers.img_gen_registry import get_async_img_gen_driver_for_model
+
+        try:
+            driver = get_async_img_gen_driver_for_model(resolved_model)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"Unknown image model: {exc}") from exc
+
+        opts: dict[str, Any] = {"n": req.n}
+        if req.size:
+            opts["size"] = req.size
+        if req.quality:
+            opts["quality"] = req.quality
+        if req.style:
+            opts["style"] = req.style
+
+        result = await driver.generate_image(req.prompt, opts)
+        images = result.get("images", [])
+        meta = result.get("meta", {})
+        want_b64 = req.response_format == "b64_json"
+
+        data: list[dict[str, Any]] = []
+        for img in images:
+            entry: dict[str, Any] = {}
+            url = getattr(img, "url", None)
+            b64 = getattr(img, "data", None)
+            if want_b64 and b64:
+                entry["b64_json"] = b64
+            elif url:
+                entry["url"] = url
+            elif b64:
+                # No URL available — fall back to a data URI so the
+                # client still receives something usable.
+                media_type = getattr(img, "media_type", "image/png")
+                entry["url"] = f"data:{media_type};base64,{b64}"
+            if meta.get("revised_prompt"):
+                entry["revised_prompt"] = meta["revised_prompt"]
+            data.append(entry)
+
+        return JSONResponse(
+            {
+                "created": int(time.time()),
+                "data": data,
+                "model": meta.get("model_name", resolved_model),
+            }
+        )
+
+    # ---- OpenAI-compatible: /v1/audio/speech (TTS) ----
+
+    @app.post("/v1/audio/speech")
+    async def openai_audio_speech(req: OAISpeechRequest) -> Any:
+        """Text-to-speech — routes to ``get_async_tts_driver_for_model``."""
+        from fastapi.responses import Response
+
+        resolved_model = req.model or model_name
+        _check_model_allowed(resolved_model)
+
+        from ..drivers.audio_registry import get_async_tts_driver_for_model
+
+        try:
+            driver = get_async_tts_driver_for_model(resolved_model)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"Unknown TTS model: {exc}") from exc
+
+        opts: dict[str, Any] = {}
+        if req.voice:
+            opts["voice"] = req.voice
+        if req.response_format:
+            opts["format"] = req.response_format
+        if req.speed is not None:
+            opts["speed"] = req.speed
+
+        result = await driver.synthesize(req.input, opts)
+        audio_bytes = result.get("audio", b"")
+        media_type = result.get("media_type", "audio/mpeg")
+
+        if not isinstance(audio_bytes, (bytes, bytearray)):
+            raise HTTPException(status_code=502, detail="Driver returned non-bytes audio payload")
+
+        return Response(content=audio_bytes, media_type=media_type)
+
+    # ---- OpenAI-compatible: /v1/audio/transcriptions (STT) ----
+
+    from fastapi import File, Form, UploadFile
+
+    @app.post("/v1/audio/transcriptions")
+    async def openai_audio_transcriptions(
+        file: UploadFile = File(...),  # noqa: B008 — FastAPI dependency idiom
+        model: str = Form(default=""),
+        language: Optional[str] = Form(default=None),
+        prompt: Optional[str] = Form(default=None),
+        response_format: Optional[str] = Form(default=None),
+    ) -> Any:
+        """Speech-to-text — routes to ``get_async_stt_driver_for_model``.
+
+        Accepts ``multipart/form-data`` with the standard OpenAI fields:
+        ``file`` (audio binary), ``model``, ``language``, ``prompt``,
+        ``response_format`` (``"json"`` or ``"text"``).  Requires
+        ``python-multipart`` (pulled in by ``prompture[serve]``).
+        """
+        resolved_model = model or model_name
+        _check_model_allowed(resolved_model)
+
+        from ..drivers.audio_registry import get_async_stt_driver_for_model
+
+        try:
+            driver = get_async_stt_driver_for_model(resolved_model)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"Unknown STT model: {exc}") from exc
+
+        audio_bytes = await file.read()
+        opts: dict[str, Any] = {}
+        if language:
+            opts["language"] = language
+        if prompt:
+            opts["prompt"] = prompt
+
+        result = await driver.transcribe(audio_bytes, opts)
+        if response_format == "text":
+            from fastapi.responses import PlainTextResponse
+
+            return PlainTextResponse(result.get("text", ""))
+        return JSONResponse(
+            {
+                "text": result.get("text", ""),
+                "language": result.get("language"),
+                "segments": result.get("segments", []),
             }
         )
 
