@@ -48,6 +48,7 @@ from .coding_agents import (
     CodingAgentCommand,
     CodingAgentRunResult,
     arun_coding_agent,
+    astream_coding_agent,
     build_coding_agent_command,
     run_coding_agent,
 )
@@ -121,6 +122,7 @@ __all__ = [
     "UsageSession",
     "VideoCostMixin",
     "arun_coding_agent",
+    "astream_coding_agent",
     "build_coding_agent_command",
     "clear_discovery_cache",
     "clear_overrides",

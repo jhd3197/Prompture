@@ -313,11 +313,7 @@ class TestStructuredOutput:
                 _json.dumps(
                     {
                         "type": "assistant",
-                        "message": {
-                            "content": [
-                                {"type": "tool_use", "name": "Read", "input": {"path": "a.py"}}
-                            ]
-                        },
+                        "message": {"content": [{"type": "tool_use", "name": "Read", "input": {"path": "a.py"}}]},
                     }
                 ),
                 _json.dumps(
@@ -438,3 +434,167 @@ class TestCodingAgentRunner:
         assert result.ok is True
         assert result.output == "done"
         mock_run.assert_called_once()
+
+
+class TestStreaming:
+    """Tests for astream_coding_agent."""
+
+    @staticmethod
+    def _fake_proc(stdout_lines: list[str], returncode: int = 0, stderr: bytes = b""):
+        class _FakeStdout:
+            def __init__(self, lines):
+                self._iter = iter(lines)
+
+            def __aiter__(self):
+                return self
+
+            async def __anext__(self):
+                try:
+                    return next(self._iter)
+                except StopIteration:
+                    raise StopAsyncIteration from None
+
+        class _FakeStderr:
+            def __init__(self, data: bytes):
+                self._data = data
+
+            async def read(self) -> bytes:
+                return self._data
+
+        class _FakeProc:
+            def __init__(self):
+                self.stdout = _FakeStdout([(line + "\n").encode() for line in stdout_lines])
+                self.stderr = _FakeStderr(stderr)
+                self.returncode = None
+                self._rc = returncode
+
+            async def wait(self):
+                self.returncode = self._rc
+                return self._rc
+
+            def terminate(self):
+                pass
+
+            def kill(self):
+                pass
+
+        async def _factory(*args, **kwargs):
+            return _FakeProc()
+
+        return _factory
+
+    @patch(
+        "prompture.infra.coding_agents.resolve_coding_agent_executable",
+        return_value=_executable("/usr/local/bin/claude"),
+    )
+    def test_astream_yields_typed_events(self, _mock_resolve, tmp_path):
+        import asyncio
+        import json as _json
+
+        from prompture.infra import astream_coding_agent
+
+        lines = [
+            _json.dumps({"type": "system", "subtype": "init", "session_id": "s1"}),
+            _json.dumps(
+                {
+                    "type": "assistant",
+                    "message": {"content": [{"type": "text", "text": "Hi"}]},
+                }
+            ),
+            _json.dumps(
+                {
+                    "type": "result",
+                    "is_error": False,
+                    "result": "ok",
+                    "total_cost_usd": 0.002,
+                    "usage": {"input_tokens": 10, "output_tokens": 5},
+                }
+            ),
+        ]
+
+        async def _run():
+            collected = []
+            with patch(
+                "prompture.infra.coding_agents.asyncio.create_subprocess_exec",
+                side_effect=self._fake_proc(lines),
+            ):
+                async for ev in astream_coding_agent(
+                    "claude",
+                    "hi",
+                    cwd=tmp_path,
+                    approval_mode="auto",
+                ):
+                    collected.append(ev)
+            return collected
+
+        events = asyncio.run(_run())
+
+        assert [e.type for e in events] == ["system", "message", "done"]
+        assert events[-1].cost_usd == 0.002
+
+    @patch(
+        "prompture.infra.coding_agents.resolve_coding_agent_executable",
+        return_value=_executable("/usr/local/bin/claude"),
+    )
+    def test_astream_yields_error_on_nonzero_exit(self, _mock_resolve, tmp_path):
+        import asyncio
+
+        from prompture.infra import astream_coding_agent
+
+        async def _run():
+            collected = []
+            with patch(
+                "prompture.infra.coding_agents.asyncio.create_subprocess_exec",
+                side_effect=self._fake_proc([], returncode=1, stderr=b"boom"),
+            ):
+                async for ev in astream_coding_agent(
+                    "claude",
+                    "x",
+                    cwd=tmp_path,
+                    approval_mode="auto",
+                ):
+                    collected.append(ev)
+            return collected
+
+        events = asyncio.run(_run())
+        assert len(events) == 1
+        assert events[0].type == "error"
+        assert "exited with code 1" in (events[0].error or "")
+
+    @patch(
+        "prompture.infra.coding_agents.resolve_coding_agent_executable",
+        return_value=(None, False, "node: not found"),
+    )
+    def test_astream_yields_error_on_health_check_failure(self, _mock_resolve, tmp_path):
+        import asyncio
+
+        from prompture.infra import astream_coding_agent
+
+        async def _run():
+            collected = []
+            async for ev in astream_coding_agent(
+                "claude",
+                "x",
+                cwd=tmp_path,
+                approval_mode="auto",
+            ):
+                collected.append(ev)
+            return collected
+
+        events = asyncio.run(_run())
+        assert [e.type for e in events] == ["error"]
+        assert "health check failed" in (events[0].error or "")
+
+    def test_astream_rejects_unsupported_agent(self, tmp_path):
+        import asyncio
+
+        import pytest
+
+        from prompture.infra import astream_coding_agent
+
+        async def _run():
+            async for _ev in astream_coding_agent("codex", "x", cwd=tmp_path):
+                pass
+
+        with pytest.raises(ValueError, match="output_format='json'"):
+            asyncio.run(_run())

@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import dataclasses
 import os
 import subprocess
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import AsyncIterator, Mapping, Sequence
 from pathlib import Path
 from typing import Literal
 
@@ -361,3 +362,111 @@ def run_coding_agent(
 async def arun_coding_agent(*args: object, **kwargs: object) -> CodingAgentRunResult:
     """Async wrapper around :func:`run_coding_agent`."""
     return await asyncio.to_thread(run_coding_agent, *args, **kwargs)
+
+
+async def astream_coding_agent(
+    agent: str,
+    task: str,
+    *,
+    cwd: str | os.PathLike[str] | None = None,
+    approval_mode: ApprovalMode = "default",
+    binary: str | None = None,
+    agent_paths: Mapping[str, str] | None = None,
+    model: str | None = None,
+    extra_args: Sequence[str] | None = None,
+    env: Mapping[str, str] | None = None,
+    verify_binary: bool = True,
+    verify_timeout: int = 5,
+) -> AsyncIterator[CodingAgentEvent]:
+    """Stream :class:`CodingAgentEvent` instances from a coding-agent CLI as they arrive.
+
+    Only supports agents whose spec sets ``parse_events`` (Claude Code today).
+    Always uses ``output_format='json'`` because streaming raw text isn't
+    structured enough to be useful event-by-event.
+
+    Cancelling the generator (e.g. via ``async for`` break) terminates the
+    underlying subprocess.
+    """
+    agent_id = _normalize_agent(agent)
+    mode = _normalize_approval_mode(approval_mode)
+    fmt = _normalize_output_format(agent_id, "json")
+    task_text = task.strip()
+    if not task_text:
+        raise ValueError("task must not be empty")
+
+    spec = get_spec(agent_id)
+    parser = spec.parse_events if spec is not None else None
+    if parser is None:
+        raise ValueError(f"Streaming requires a structured-output parser; agent '{agent_id}' has none")
+
+    cwd_str = _resolve_cwd(cwd)
+    args_extra = list(extra_args or [])
+
+    if verify_binary:
+        executable, error = await asyncio.to_thread(
+            _resolve_healthy_executable,
+            agent_id,
+            binary=binary,
+            agent_paths=agent_paths,
+            verify_timeout=verify_timeout,
+        )
+        if executable is None:
+            yield CodingAgentEvent(
+                type="error",
+                error=f"{agent_id} CLI health check failed: {error}",
+            )
+            return
+    else:
+        executable = _resolve_executable(agent_id, binary=binary, agent_paths=agent_paths)
+        if executable is None:
+            path_overrides = agent_paths or {}
+            binary_name = binary or path_overrides.get(agent_id) or agent_id
+            yield CodingAgentEvent(
+                type="error",
+                error=f"'{binary_name}' is not installed or not on PATH",
+            )
+            return
+
+    command = _build_command_from_executable(
+        agent_id,
+        task_text,
+        executable=executable,
+        cwd_str=cwd_str,
+        approval_mode=mode,
+        model=model,
+        extra_args=args_extra,
+        output_format=fmt,
+    )
+
+    child_env = None if env is None else {**os.environ, **dict(env)}
+    proc = await asyncio.create_subprocess_exec(
+        *command.argv,
+        cwd=command.cwd,
+        env=child_env,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    assert proc.stdout is not None
+    try:
+        async for raw in proc.stdout:
+            line = raw.decode(errors="replace").rstrip()
+            if not line:
+                continue
+            for event in parser([line]):
+                yield event
+        rc = await proc.wait()
+        if rc != 0:
+            stderr_bytes = await proc.stderr.read() if proc.stderr is not None else b""
+            yield CodingAgentEvent(
+                type="error",
+                error=f"{agent_id} exited with code {rc}: {stderr_bytes.decode(errors='replace').strip()[:500]}",
+            )
+    finally:
+        if proc.returncode is None:
+            with contextlib.suppress(ProcessLookupError, OSError):
+                proc.terminate()
+                try:
+                    await asyncio.wait_for(proc.wait(), timeout=3)
+                except asyncio.TimeoutError:
+                    proc.kill()
+                    await proc.wait()
