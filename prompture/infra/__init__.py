@@ -29,6 +29,16 @@ from .capabilities import (
     register_model,
     register_provider,
 )
+from .coding_agent_specs import (
+    CODING_AGENT_SPECS,
+    CodingAgentSpec,
+)
+from .coding_agent_specs import (
+    get_spec as get_coding_agent_spec,
+)
+from .coding_agent_specs import (
+    supported_agent_ids as supported_coding_agent_ids,
+)
 from .coding_agents import (
     ApprovalMode,
     CodingAgentCommand,
@@ -79,6 +89,7 @@ from .settings import settings
 from .tracker import configure_tracker, get_tracker
 
 __all__ = [
+    "CODING_AGENT_SPECS",
     "ApprovalMode",
     "AudioCostMixin",
     "BudgetPolicy",
@@ -88,6 +99,7 @@ __all__ = [
     "CodingAgentExecutable",
     "CodingAgentInfo",
     "CodingAgentRunResult",
+    "CodingAgentSpec",
     "CostEstimate",
     "DriverCallbacks",
     "EmbeddingCostMixin",
@@ -127,6 +139,7 @@ __all__ = [
     "get_cache",
     "get_capabilities",
     "get_coding_agent_executable_candidates",
+    "get_coding_agent_spec",
     "get_compatibility_matrix",
     "get_model_capabilities",
     "get_model_info",
@@ -143,6 +156,7 @@ __all__ = [
     "resolve_coding_agent_executable",
     "run_coding_agent",
     "settings",
+    "supported_coding_agent_ids",
     "verify_coding_agent_binary",
     "verify_coding_agent_executable",
 ]

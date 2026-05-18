@@ -18,6 +18,7 @@ from typing import Any, Literal, overload
 
 from ..drivers.provider_descriptors import PROVIDER_DESCRIPTOR_MAP, ProviderDescriptor, _resolve_cls
 from .cache import MemoryCacheBackend
+from .coding_agent_specs import CODING_AGENT_SPECS, get_spec
 from .provider_env import ProviderEnvironment
 from .settings import settings
 
@@ -120,20 +121,9 @@ class CodingAgentExecutable:
     source: str = "PATH"
 
 
-_CODING_AGENT_SPECS: dict[str, tuple[str, str]] = {
-    "claude": ("Claude Code", "claude"),
-    "codex": ("Codex CLI", "codex"),
-    "gemini": ("Gemini CLI", "gemini"),
-}
-
 _WINDOWS_CLI_EXTENSIONS = (".cmd", ".ps1", ".bat")
 _WINDOWS_CMD_EXTENSIONS = (".cmd", ".bat")
 _CODING_AGENT_HEALTH_TIMEOUT = 5
-_CODING_AGENT_NPM_PACKAGES: dict[str, tuple[str, ...]] = {
-    "claude": ("@anthropic-ai/claude-code",),
-    "codex": ("@openai/codex",),
-    "gemini": ("@google/gemini-cli",),
-}
 _NODE_CLI_ENTRYPOINT_FALLBACKS = (
     Path("dist") / "index.js",
     Path("bin") / "cli.js",
@@ -373,7 +363,8 @@ def _node_package_candidates_from_dir(
     base_dir: Path,
 ) -> list[CodingAgentExecutable]:
     executables: list[CodingAgentExecutable] = []
-    packages = _CODING_AGENT_NPM_PACKAGES.get(agent_id, ())
+    spec = get_spec(agent_id)
+    packages = spec.npm_packages if spec else ()
     if not packages:
         return executables
 
@@ -381,7 +372,7 @@ def _node_package_candidates_from_dir(
     if not node_paths:
         return executables
 
-    command_name = _CODING_AGENT_SPECS.get(agent_id, (agent_id, agent_id))[1]
+    command_name = spec.default_binary if spec else agent_id
     for package_name in packages:
         package_dirs = _npm_package_dir_candidates(base_dir, package_name)
         if not package_dirs:
@@ -635,7 +626,9 @@ def get_available_coding_agents(
     configured_paths = agent_paths or {}
     agents: list[CodingAgentInfo] = []
 
-    for agent_id, (display_name, default_binary) in _CODING_AGENT_SPECS.items():
+    for agent_id, spec in CODING_AGENT_SPECS.items():
+        display_name = spec.display_name
+        default_binary = spec.default_binary
         custom_binary = configured_paths.get(agent_id, "")
         binary_name = custom_binary or default_binary
         executable, healthy, error = resolve_coding_agent_executable(

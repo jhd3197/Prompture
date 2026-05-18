@@ -11,15 +11,15 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Literal
 
+from .coding_agent_specs import CODING_AGENT_SPECS, get_spec
 from .discovery import (
     CodingAgentExecutable,
     resolve_coding_agent_executable,
 )
 
-CodingAgentId = Literal["claude", "codex", "gemini"]
+CodingAgentId = str
 ApprovalMode = Literal["default", "auto", "yolo"]
 
-_SUPPORTED_AGENTS = {"claude", "codex", "gemini"}
 _SUPPORTED_APPROVAL_MODES = {"default", "auto", "yolo"}
 
 
@@ -54,8 +54,8 @@ class CodingAgentRunResult:
 
 def _normalize_agent(agent: str) -> str:
     normalized = agent.strip().lower()
-    if normalized not in _SUPPORTED_AGENTS:
-        available = ", ".join(sorted(_SUPPORTED_AGENTS))
+    if normalized not in CODING_AGENT_SPECS:
+        available = ", ".join(sorted(CODING_AGENT_SPECS))
         raise ValueError(f"Unsupported coding agent '{agent}'. Available: {available}")
     return normalized
 
@@ -73,61 +73,6 @@ def _resolve_cwd(cwd: str | os.PathLike[str] | None) -> str:
     if not path.is_dir():
         raise ValueError(f"Working directory does not exist: {path}")
     return str(path)
-
-
-def _build_claude_args(
-    task: str,
-    *,
-    approval_mode: ApprovalMode,
-    model: str | None,
-    extra_args: Sequence[str],
-) -> list[str]:
-    args = ["--print", "--output-format", "text"]
-    if model:
-        args.extend(["--model", model])
-    if approval_mode == "auto":
-        args.extend(["--permission-mode", "dontAsk"])
-    elif approval_mode == "yolo":
-        args.append("--dangerously-skip-permissions")
-    args.extend(extra_args)
-    args.append(task)
-    return args
-
-
-def _build_codex_args(
-    task: str,
-    *,
-    approval_mode: ApprovalMode,
-    model: str | None,
-    extra_args: Sequence[str],
-) -> list[str]:
-    args = ["exec"]
-    if model:
-        args.extend(["--model", model])
-    if approval_mode == "auto":
-        args.extend(["--sandbox", "workspace-write", "--ask-for-approval", "never"])
-    elif approval_mode == "yolo":
-        args.append("--dangerously-bypass-approvals-and-sandbox")
-    args.extend(extra_args)
-    args.append(task)
-    return args
-
-
-def _build_gemini_args(
-    task: str,
-    *,
-    approval_mode: ApprovalMode,
-    model: str | None,
-    extra_args: Sequence[str],
-) -> list[str]:
-    args: list[str] = []
-    if model:
-        args.extend(["--model", model])
-    if approval_mode in {"auto", "yolo"}:
-        args.append("-y")
-    args.extend(extra_args)
-    args.append(task)
-    return args
 
 
 def build_coding_agent_command(
@@ -225,12 +170,10 @@ def _build_command_from_executable(
     model: str | None,
     extra_args: Sequence[str],
 ) -> CodingAgentCommand:
-    if agent_id == "claude":
-        args = _build_claude_args(task_text, approval_mode=approval_mode, model=model, extra_args=extra_args)
-    elif agent_id == "codex":
-        args = _build_codex_args(task_text, approval_mode=approval_mode, model=model, extra_args=extra_args)
-    else:
-        args = _build_gemini_args(task_text, approval_mode=approval_mode, model=model, extra_args=extra_args)
+    spec = get_spec(agent_id)
+    if spec is None:
+        raise ValueError(f"Unsupported coding agent '{agent_id}'")
+    args = spec.build_args(task_text, approval_mode=approval_mode, model=model, extra_args=extra_args)
 
     return CodingAgentCommand(
         agent=agent_id,

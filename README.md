@@ -1212,7 +1212,7 @@ agents = get_available_coding_agents(verify=True)
 print(agents)
 
 result = run_coding_agent(
-    "codex",  # or "claude" / "gemini"
+    "codex",  # or "claude" / "gemini" / "qwen"
     "Add focused tests for the discovery helper.",
     cwd=".",
     approval_mode="auto",  # avoids repeated approval prompts where supported
@@ -1235,9 +1235,12 @@ default before launching the task; pass `verify_binary=False` only if you
 explicitly want to skip that preflight.
 
 Discovery checks normal PATH installs and npm-style installs for Claude Code
-(`@anthropic-ai/claude-code`), Codex CLI (`@openai/codex`), and Gemini CLI
-(`@google/gemini-cli`). If a shim is present but broken, verified discovery can
-fall back to the package entrypoint plus a working `node` or `node.exe`.
+(`@anthropic-ai/claude-code`), Codex CLI (`@openai/codex`), Gemini CLI
+(`@google/gemini-cli`), and Qwen Code (`@qwen-code/qwen-code`, a gemini-cli
+fork). If a shim is present but broken, verified discovery can fall back to
+the package entrypoint plus a working `node` or `node.exe`. To register an
+additional agent, add a `CodingAgentSpec` to
+`prompture.infra.coding_agent_specs.CODING_AGENT_SPECS`.
 
 Apps can use the server endpoint too:
 

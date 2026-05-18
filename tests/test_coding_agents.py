@@ -106,6 +106,54 @@ class TestCodingAgentCommands:
 
         assert command.argv == ["/usr/local/bin/gemini", "-y", "summarize the repo"]
 
+    @patch(
+        "prompture.infra.coding_agents.resolve_coding_agent_executable",
+        return_value=_executable("/usr/local/bin/qwen"),
+    )
+    def test_qwen_auto_and_model_command(self, _mock_resolve, tmp_path):
+        """Qwen Code is a gemini-cli fork and uses the same arg shape."""
+        command = build_coding_agent_command(
+            "qwen",
+            "explain this file",
+            cwd=tmp_path,
+            approval_mode="auto",
+            model="qwen3-coder-plus",
+        )
+
+        assert command.argv == [
+            "/usr/local/bin/qwen",
+            "--model",
+            "qwen3-coder-plus",
+            "-y",
+            "explain this file",
+        ]
+
+    def test_unknown_agent_rejected(self, tmp_path):
+        """Unknown agent ids fail fast with a helpful list of valid options."""
+        import pytest
+
+        with pytest.raises(ValueError, match="Unsupported coding agent"):
+            build_coding_agent_command("aider", "do a thing", cwd=tmp_path)
+
+
+class TestCodingAgentSpecs:
+    """Registry-level sanity checks."""
+
+    def test_registry_includes_qwen(self):
+        from prompture.infra import CODING_AGENT_SPECS, get_coding_agent_spec
+
+        assert "qwen" in CODING_AGENT_SPECS
+        spec = get_coding_agent_spec("qwen")
+        assert spec is not None
+        assert spec.display_name == "Qwen Code"
+        assert spec.default_binary == "qwen"
+        assert spec.npm_packages == ("@qwen-code/qwen-code",)
+
+    def test_get_spec_returns_none_for_unknown(self):
+        from prompture.infra import get_coding_agent_spec
+
+        assert get_coding_agent_spec("nonesuch") is None
+
 
 class TestCodingAgentRunner:
     """Tests for running coding-agent commands without invoking real CLIs."""
