@@ -31,6 +31,7 @@ from .capabilities import (
 )
 from .coding_agent_events import (
     CodingAgentEvent,
+    detect_question,
     parse_claude_stream_json_lines,
     parse_codex_json_lines,
 )
@@ -131,6 +132,7 @@ __all__ = [
     "configure_logging",
     "configure_tracker",
     "create_tukuy_backend",
+    "detect_question",
     "display_available_models",
     "enforce_budget",
     "estimate_call_cost",

@@ -1264,6 +1264,98 @@ Before launching the task, the binary is health-checked by default so a
 broken shim fails fast with a clear error rather than hanging or producing
 opaque output. Pass `verify_binary=False` to skip the preflight.
 
+#### Structured output
+
+Claude Code (`--output-format stream-json`) and Codex (`exec --json`) emit a
+JSON event stream that Prompture normalises into a typed `CodingAgentEvent`
+union — `system`, `message`, `tool_call`, `tool_result`, `done`, `error`. Pass
+`output_format="json"` to get parsed events, cost, and token counts on the
+result:
+
+```python
+result = run_coding_agent(
+    "claude",
+    "Find every TODO that references issue #42 and summarise them.",
+    cwd=".",
+    approval_mode="auto",
+    output_format="json",
+)
+print(f"${result.cost_usd:.4f} — {result.input_tokens} in / {result.output_tokens} out")
+for event in result.events:
+    if event.type == "tool_call":
+        print("→", event.tool_name, event.tool_input)
+    elif event.type == "message":
+        print(event.text)
+```
+
+For live progress, use `astream_coding_agent` — an async generator that yields
+events as the CLI emits them:
+
+```python
+from prompture import astream_coding_agent
+
+async for event in astream_coding_agent("claude", "refactor X", cwd="."):
+    if event.type == "tool_call":
+        ui.show_pending(event.tool_name, event.tool_input)
+    elif event.type == "done":
+        ui.show_cost(event.cost_usd)
+```
+
+Streaming requires an agent whose spec provides a parser (Claude Code and
+Codex today). Cancelling the iterator terminates the underlying subprocess.
+
+#### Detecting clarifying questions
+
+Coding agents often pause to ask the user a clarifying question ("which
+approach do you want?", "should I delete this file?") instead of acting. In
+non-interactive mode this manifests as a final assistant message that ends in
+a question. Prompture's event parser detects question patterns and emits a
+typed `question` event alongside the `message`, with extracted numbered /
+bulleted / lettered choices when present:
+
+```python
+result = run_coding_agent("claude", "refactor X", cwd=".", output_format="json")
+if (q := result.asked_question):
+    print("Agent asked:", q.text)
+    if q.choices:
+        for i, choice in enumerate(q.choices, 1):
+            print(f"  {i}. {choice}")
+    # …then re-run with extra_args=["The answer is option 2"] to continue.
+```
+
+The same `detect_question(text)` helper is exported for callers that want to
+run their own heuristic over arbitrary agent text.
+
+#### Budget tracking
+
+Pass a `UsageSession` and coding-agent runs participate in the same per-model
+cost / token / latency summary as direct LLM calls:
+
+```python
+from prompture import UsageSession, run_coding_agent
+
+session = UsageSession()
+run_coding_agent("claude", "task 1", cwd=".", output_format="json", session=session)
+run_coding_agent("claude", "task 2", cwd=".", output_format="json", session=session)
+print(session.summary()["formatted"])
+# Session: 3,200 tokens across 2 call(s) costing $0.0421 | …
+```
+
+#### Binary path overrides
+
+When a CLI isn't on PATH, or you want to pin a specific install, set the
+matching `CODING_AGENT_BIN_*` env var (or field in `Settings`) and discovery
+will pick it up without threading the path through every call. Hyphenated ids
+use underscores in the variable name:
+
+```bash
+export CODING_AGENT_BIN_CLAUDE=/opt/claude/claude
+export CODING_AGENT_BIN_CURSOR_AGENT="/c/Program Files/Cursor/resources/app/bin/cursor-agent.exe"
+```
+
+Explicit `agent_paths={"claude": "..."}` kwargs still override settings when
+needed.
+
 #### From the CLI
 
 ```bash
@@ -1275,12 +1367,24 @@ prompture code-agent aider  --auto-approve --model gpt-4o "Rename foo to bar acr
 
 #### From the server
 
-`prompture serve` exposes the same discovery as an HTTP endpoint so any app
-talking to the OpenAI-compatible server can also list local agents:
+`prompture serve` exposes coding-agent discovery and execution as HTTP
+endpoints so any app talking to the OpenAI-compatible server can also drive a
+local agent:
 
 ```bash
+# Discover
 curl "http://localhost:9471/v1/coding-agents"
 curl "http://localhost:9471/v1/coding-agents?verify=false"
+
+# Run, blocking
+curl -X POST "http://localhost:9471/v1/coding-agents/run" \
+  -H "content-type: application/json" \
+  -d '{"agent": "claude", "task": "summarise CHANGELOG.md", "approval_mode": "auto", "output_format": "json"}'
+
+# Run, SSE-streaming live events
+curl -N -X POST "http://localhost:9471/v1/coding-agents/run" \
+  -H "content-type: application/json" \
+  -d '{"agent": "claude", "task": "refactor X", "approval_mode": "auto", "stream": true}'
 ```
 
 #### Adding a new agent

@@ -95,6 +95,14 @@ class CodingAgentRunResult:
         """Whether the command completed successfully."""
         return self.returncode == 0 and not self.timed_out
 
+    @property
+    def asked_question(self) -> CodingAgentEvent | None:
+        """The last ``question`` event in the stream, if the agent paused to ask."""
+        for ev in reversed(self.events):
+            if ev.type == "question":
+                return ev
+        return None
+
 
 def _normalize_agent(agent: str) -> str:
     normalized = agent.strip().lower()

@@ -812,3 +812,80 @@ class TestSessionCapture:
         assert sess.call_count == 1
         assert sess.cost == 0.0
         assert sess.total_tokens == 0
+
+
+class TestAskedQuestionProperty:
+    @patch("prompture.infra.coding_agents.subprocess.run")
+    @patch(
+        "prompture.infra.coding_agents.resolve_coding_agent_executable",
+        return_value=_executable("/usr/local/bin/claude"),
+    )
+    def test_asked_question_surfaces_last_question_event(self, _mock_resolve, mock_run, tmp_path):
+        import json as _json
+
+        stream = "\n".join(
+            [
+                _json.dumps(
+                    {
+                        "type": "assistant",
+                        "message": {
+                            "content": [
+                                {"type": "text", "text": "Which approach do you want?\n1. Foo\n2. Bar"}
+                            ]
+                        },
+                    }
+                ),
+                _json.dumps(
+                    {
+                        "type": "result",
+                        "is_error": False,
+                        "result": "I need a decision before continuing.",
+                    }
+                ),
+            ]
+        )
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=["/usr/local/bin/claude"], returncode=0, stdout=stream, stderr=""
+        )
+
+        result = run_coding_agent(
+            "claude",
+            "do a thing",
+            cwd=tmp_path,
+            approval_mode="auto",
+            output_format="json",
+        )
+
+        q = result.asked_question
+        assert q is not None
+        assert q.type == "question"
+        assert q.choices == ("Foo", "Bar")
+
+    @patch("prompture.infra.coding_agents.subprocess.run")
+    @patch(
+        "prompture.infra.coding_agents.resolve_coding_agent_executable",
+        return_value=_executable("/usr/local/bin/claude"),
+    )
+    def test_asked_question_is_none_when_no_question(self, _mock_resolve, mock_run, tmp_path):
+        import json as _json
+
+        stream = _json.dumps(
+            {
+                "type": "result",
+                "is_error": False,
+                "result": "Done.",
+            }
+        )
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=["/usr/local/bin/claude"], returncode=0, stdout=stream, stderr=""
+        )
+
+        result = run_coding_agent(
+            "claude",
+            "task",
+            cwd=tmp_path,
+            approval_mode="auto",
+            output_format="json",
+        )
+
+        assert result.asked_question is None

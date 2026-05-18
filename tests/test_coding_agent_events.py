@@ -331,3 +331,124 @@ class TestCodexJSONParser:
     def test_envelope_without_msg_is_dropped(self):
         events = list(parse_codex_json_lines(_lines({"id": "1"})))
         assert events == []
+
+
+class TestQuestionDetection:
+    def test_simple_question_mark_triggers(self):
+        from prompture.infra.coding_agent_events import detect_question
+
+        is_q, choices = detect_question("Should we proceed with option A?")
+        assert is_q is True
+        assert choices is None
+
+    def test_phrase_trigger_without_question_mark(self):
+        from prompture.infra.coding_agent_events import detect_question
+
+        is_q, _ = detect_question("Let me know which one you'd prefer.")
+        assert is_q is True
+
+    def test_numbered_choices_extracted(self):
+        from prompture.infra.coding_agent_events import detect_question
+
+        text = (
+            "Which approach do you want?\n"
+            "1. Refactor the whole module\n"
+            "2. Add a thin wrapper\n"
+            "3. Leave it as-is"
+        )
+        is_q, choices = detect_question(text)
+        assert is_q is True
+        assert choices == (
+            "Refactor the whole module",
+            "Add a thin wrapper",
+            "Leave it as-is",
+        )
+
+    def test_bulleted_choices_extracted(self):
+        from prompture.infra.coding_agent_events import detect_question
+
+        text = "Do you want me to:\n- delete the file\n- archive it instead\n- skip it"
+        is_q, choices = detect_question(text)
+        assert is_q is True
+        assert choices == ("delete the file", "archive it instead", "skip it")
+
+    def test_no_question_when_just_a_statement(self):
+        from prompture.infra.coding_agent_events import detect_question
+
+        is_q, choices = detect_question("Updated the README and ran the tests.")
+        assert is_q is False
+        assert choices is None
+
+    def test_single_bullet_is_not_choices(self):
+        from prompture.infra.coding_agent_events import detect_question
+
+        # One bullet alone doesn't count — needs at least two consecutive.
+        is_q, choices = detect_question("Should I proceed?\n- yes")
+        assert is_q is True
+        assert choices is None
+
+    def test_empty_text_returns_false(self):
+        from prompture.infra.coding_agent_events import detect_question
+
+        assert detect_question("") == (False, None)
+        assert detect_question(None) == (False, None)
+
+    def test_claude_message_with_question_emits_question_event(self):
+        from prompture.infra.coding_agent_events import parse_claude_stream_json_lines
+
+        events = list(
+            parse_claude_stream_json_lines(
+                _lines(
+                    {
+                        "type": "assistant",
+                        "message": {
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": "Which file would you like me to start with?",
+                                }
+                            ]
+                        },
+                    }
+                )
+            )
+        )
+        assert [e.type for e in events] == ["message", "question"]
+        assert events[1].text == "Which file would you like me to start with?"
+
+    def test_codex_message_with_choices_emits_question_with_choices(self):
+        events = list(
+            parse_codex_json_lines(
+                _lines(
+                    {
+                        "msg": {
+                            "type": "agent_message",
+                            "message": (
+                                "Do you want me to:\n"
+                                "1. Update the schema\n"
+                                "2. Skip the migration"
+                            ),
+                        }
+                    }
+                )
+            )
+        )
+        assert [e.type for e in events] == ["message", "question"]
+        assert events[1].choices == ("Update the schema", "Skip the migration")
+
+    def test_claude_done_text_question_emits_after_done(self):
+        from prompture.infra.coding_agent_events import parse_claude_stream_json_lines
+
+        events = list(
+            parse_claude_stream_json_lines(
+                _lines(
+                    {
+                        "type": "result",
+                        "is_error": False,
+                        "result": "Should I commit these changes?",
+                        "total_cost_usd": 0.001,
+                    }
+                )
+            )
+        )
+        assert [e.type for e in events] == ["done", "question"]

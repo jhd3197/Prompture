@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import re
 from collections.abc import Iterable, Iterator, Mapping
 from typing import Any, Literal
 
@@ -19,6 +20,7 @@ EventType = Literal[
     "message",
     "tool_call",
     "tool_result",
+    "question",
     "done",
     "error",
 ]
@@ -38,6 +40,7 @@ class CodingAgentEvent:
     output_tokens: int | None = None
     duration_ms: int | None = None
     error: str | None = None
+    choices: tuple[str, ...] | None = None
     raw: Mapping[str, Any] | None = None
 
 
@@ -79,6 +82,9 @@ def _claude_event_to_events(obj: Mapping[str, Any]) -> Iterator[CodingAgentEvent
             error=text if is_error else None,
             raw=obj,
         )
+        question = _question_event_for_text(text, obj)
+        if question is not None:
+            yield question
         return
     if kind in ("assistant", "user"):
         message = obj.get("message") if isinstance(obj.get("message"), dict) else {}
@@ -91,6 +97,9 @@ def _claude_event_to_events(obj: Mapping[str, Any]) -> Iterator[CodingAgentEvent
             part_type = part.get("type")
             if part_type == "text" and isinstance(part.get("text"), str):
                 yield CodingAgentEvent(type="message", text=part["text"], raw=obj)
+                question = _question_event_for_text(part["text"], obj)
+                if question is not None:
+                    yield question
             elif part_type == "tool_use":
                 yield CodingAgentEvent(
                     type="tool_call",
@@ -156,6 +165,9 @@ def _codex_event_to_events(obj: Mapping[str, Any]) -> Iterator[CodingAgentEvent]
         text = msg.get("message")
         if isinstance(text, str):
             yield CodingAgentEvent(type="message", text=text, raw=obj)
+            question = _question_event_for_text(text, obj)
+            if question is not None:
+                yield question
         return
     if kind == "agent_message_delta":
         delta = msg.get("delta")
@@ -216,6 +228,66 @@ def _codex_event_to_events(obj: Mapping[str, Any]) -> Iterator[CodingAgentEvent]
             raw=obj,
         )
         return
+
+
+_QUESTION_PHRASE_RE = re.compile(
+    r"\b(would you like|do you want|should i|which (?:one|option|of|approach)|"
+    r"can you (?:clarify|confirm|specify)|please (?:clarify|confirm|specify|choose)|"
+    r"how would you like|what would you like|let me know which)",
+    re.IGNORECASE,
+)
+
+_CHOICE_LINE_RE = re.compile(
+    r"^\s*(?:"
+    r"(?P<num>\d+)[.\):]\s+|"     # 1. foo  1) foo  1: foo
+    r"[-*•]\s+|"                  # - foo   * foo   • foo
+    r"\([a-zA-Z]\)\s+|"           # (a) foo
+    r"[a-zA-Z][.\)]\s+"           # a) foo  a. foo
+    r")(?P<body>.+\S)\s*$"
+)
+
+
+def detect_question(text: str | None) -> tuple[bool, tuple[str, ...] | None]:
+    """Return ``(is_question, choices)`` for an assistant message text.
+
+    A message is treated as a question when it ends in ``?`` or contains a
+    question-phrase trigger ("do you want", "would you like", …). Choices
+    are extracted from numbered, bulleted, or lettered list lines — at least
+    two such lines must appear together for them to count as choices.
+    """
+    if not text:
+        return False, None
+    stripped = text.rstrip()
+    if not stripped:
+        return False, None
+
+    is_question = stripped.endswith("?") or bool(_QUESTION_PHRASE_RE.search(stripped))
+
+    choices: list[str] = []
+    consecutive: list[str] = []
+    for raw_line in stripped.splitlines():
+        match = _CHOICE_LINE_RE.match(raw_line)
+        if match:
+            consecutive.append(match.group("body").strip())
+        else:
+            if len(consecutive) >= 2:
+                choices.extend(consecutive)
+            consecutive = []
+    if len(consecutive) >= 2:
+        choices.extend(consecutive)
+
+    # Choices in the absence of a `?` or phrase trigger don't make a question.
+    if choices and not is_question:
+        is_question = True
+
+    return is_question, tuple(choices) if choices else None
+
+
+def _question_event_for_text(text: str | None, raw: Mapping[str, Any] | None) -> CodingAgentEvent | None:
+    is_q, choices = detect_question(text)
+    if not is_q:
+        return None
+    return CodingAgentEvent(type="question", text=text, choices=choices, raw=raw)
 
 
 def _safe_float(value: Any) -> float | None:
