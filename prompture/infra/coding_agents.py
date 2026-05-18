@@ -18,7 +18,42 @@ from .discovery import (
     CodingAgentExecutable,
     resolve_coding_agent_executable,
 )
+from .session import UsageSession
 from .settings import settings as _global_settings
+
+
+def _record_into_session(
+    session: UsageSession,
+    *,
+    agent_id: str,
+    model: str | None,
+    cost_usd: float | None,
+    input_tokens: int | None,
+    output_tokens: int | None,
+    duration_seconds: float,
+) -> None:
+    """Feed a coding-agent run into an existing UsageSession.
+
+    Builds the response_info shape that ``UsageSession.record`` expects so
+    coding-agent calls show up in the same per-model summary as direct LLM
+    calls. ``driver`` is namespaced as ``coding-agent/<agent>[:model]``.
+    """
+    in_tok = int(input_tokens) if input_tokens is not None else 0
+    out_tok = int(output_tokens) if output_tokens is not None else 0
+    driver_name = f"coding-agent/{agent_id}"
+    if model:
+        driver_name = f"{driver_name}:{model}"
+    response_info = {
+        "driver": driver_name,
+        "meta": {
+            "prompt_tokens": in_tok,
+            "completion_tokens": out_tok,
+            "total_tokens": in_tok + out_tok,
+            "cost": float(cost_usd) if cost_usd is not None else 0.0,
+        },
+        "elapsed_ms": duration_seconds * 1000.0,
+    }
+    session.record(response_info)
 
 CodingAgentId = str
 ApprovalMode = Literal["default", "auto", "yolo"]
@@ -263,6 +298,7 @@ def run_coding_agent(
     verify_binary: bool = True,
     verify_timeout: int = 5,
     output_format: OutputFormat = "text",
+    session: UsageSession | None = None,
 ) -> CodingAgentRunResult:
     """Run a local coding-agent CLI and return its output.
 
@@ -369,6 +405,19 @@ def run_coding_agent(
     if len(output) > max_output_chars:
         output = output[:max_output_chars] + f"\n\n... (truncated at {max_output_chars} chars)"
 
+    elapsed = time.monotonic() - start
+
+    if session is not None and not timed_out:
+        _record_into_session(
+            session,
+            agent_id=agent_id,
+            model=model,
+            cost_usd=cost_usd,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            duration_seconds=elapsed,
+        )
+
     return CodingAgentRunResult(
         agent=command.agent,
         command=command.argv,
@@ -376,7 +425,7 @@ def run_coding_agent(
         returncode=returncode,
         output=output,
         timed_out=timed_out,
-        duration_seconds=time.monotonic() - start,
+        duration_seconds=elapsed,
         events=events,
         cost_usd=cost_usd,
         input_tokens=input_tokens,

@@ -704,3 +704,111 @@ class TestSettingsAgentPaths:
             _s.coding_agent_bin_cursor_agent = original
 
         assert mock_resolve.call_args.args[1] == "/opt/cursor-agent"
+
+
+class TestSessionCapture:
+    """Tests for recording coding-agent runs into UsageSession."""
+
+    @patch("prompture.infra.coding_agents.subprocess.run")
+    @patch(
+        "prompture.infra.coding_agents.resolve_coding_agent_executable",
+        return_value=_executable("/usr/local/bin/claude"),
+    )
+    def test_session_receives_cost_and_tokens(self, _mock_resolve, mock_run, tmp_path):
+        import json as _json
+
+        from prompture.infra import UsageSession
+
+        stream = "\n".join(
+            [
+                _json.dumps({"type": "system", "subtype": "init"}),
+                _json.dumps(
+                    {
+                        "type": "result",
+                        "is_error": False,
+                        "result": "ok",
+                        "total_cost_usd": 0.05,
+                        "duration_ms": 1000,
+                        "usage": {"input_tokens": 200, "output_tokens": 80},
+                    }
+                ),
+            ]
+        )
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=["/usr/local/bin/claude"],
+            returncode=0,
+            stdout=stream,
+            stderr="",
+        )
+
+        sess = UsageSession()
+        result = run_coding_agent(
+            "claude",
+            "do a thing",
+            cwd=tmp_path,
+            approval_mode="auto",
+            output_format="json",
+            model="sonnet",
+            session=sess,
+        )
+
+        assert result.ok is True
+        assert sess.call_count == 1
+        assert sess.prompt_tokens == 200
+        assert sess.completion_tokens == 80
+        assert sess.total_tokens == 280
+        assert sess.cost == 0.05
+        # Per-model bucket uses the namespaced driver key.
+        assert any(k.startswith("coding-agent/claude") for k in sess.summary()["per_model"])
+
+    @patch("prompture.infra.coding_agents.subprocess.run")
+    @patch(
+        "prompture.infra.coding_agents.resolve_coding_agent_executable",
+        return_value=_executable("/usr/local/bin/claude"),
+    )
+    def test_session_skipped_on_timeout(self, _mock_resolve, mock_run, tmp_path):
+        """A timed-out run should not pollute the session counters."""
+        import subprocess as _sp
+
+        from prompture.infra import UsageSession
+
+        mock_run.side_effect = _sp.TimeoutExpired(cmd=["claude"], timeout=1)
+
+        sess = UsageSession()
+        result = run_coding_agent(
+            "claude",
+            "x",
+            cwd=tmp_path,
+            approval_mode="auto",
+            session=sess,
+        )
+
+        assert result.timed_out is True
+        assert sess.call_count == 0
+        assert sess.cost == 0.0
+
+    @patch("prompture.infra.coding_agents.subprocess.run")
+    @patch(
+        "prompture.infra.coding_agents.resolve_coding_agent_executable",
+        return_value=_executable("/usr/local/bin/claude"),
+    )
+    def test_session_records_zero_for_text_mode(self, _mock_resolve, mock_run, tmp_path):
+        """A text-mode call still bumps call_count but with zero tokens/cost."""
+        from prompture.infra import UsageSession
+
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=["/usr/local/bin/claude"], returncode=0, stdout="hi", stderr=""
+        )
+
+        sess = UsageSession()
+        run_coding_agent(
+            "claude",
+            "x",
+            cwd=tmp_path,
+            approval_mode="auto",
+            session=sess,
+        )
+
+        assert sess.call_count == 1
+        assert sess.cost == 0.0
+        assert sess.total_tokens == 0
