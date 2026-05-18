@@ -183,7 +183,10 @@ def build_coding_agent_command(
     """Build the subprocess command for a local coding-agent CLI.
 
     Args:
-        agent: ``"claude"``, ``"codex"``, or ``"gemini"``.
+        agent: Any agent id registered in
+            :data:`prompture.infra.CODING_AGENT_SPECS` — Claude Code, Codex,
+            Gemini, Qwen, Aider, OpenCode, Cursor Agent, Crush today, plus
+            anything callers have registered.
         task: Prompt/task to hand to the coding agent.
         cwd: Working directory for the coding agent. Defaults to the current
             process directory.

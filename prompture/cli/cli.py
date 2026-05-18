@@ -64,8 +64,15 @@ def coding_agents(json_output: bool, verify: bool) -> None:
         click.echo(f"{agent.id:<7} {status:<9} {source:<12} {agent.binary}{detail}")
 
 
+def _supported_coding_agent_ids() -> list[str]:
+    """Source the choice list for the `code-agent` command from the spec registry."""
+    from ..infra import supported_coding_agent_ids
+
+    return list(supported_coding_agent_ids())
+
+
 @cli.command("code-agent")
-@click.argument("agent", type=click.Choice(["claude", "codex", "gemini"]))
+@click.argument("agent", type=click.Choice(_supported_coding_agent_ids()))
 @click.argument("task", nargs=-1, required=True)
 @click.option("--cwd", default=".", type=click.Path(exists=True, file_okay=False), help="Working directory.")
 @click.option("--model", default=None, help="Model passed through to the agent CLI.")
@@ -89,7 +96,11 @@ def code_agent(
     verify: bool,
     dry_run: bool,
 ) -> None:
-    """Run Claude Code, Codex CLI, or Gemini CLI from Prompture."""
+    """Run a supported coding-agent CLI from Prompture.
+
+    Agent ids are sourced from ``CODING_AGENT_SPECS`` — currently Claude Code,
+    Codex CLI, Gemini CLI, Qwen Code, Aider, OpenCode, Cursor Agent, and Crush.
+    """
     from ..infra import build_coding_agent_command, run_coding_agent
 
     if auto_approve and yolo:

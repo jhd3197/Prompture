@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import functools
 import hashlib
 import json
 import logging
@@ -248,7 +249,16 @@ def _resolved_paths_for_binary(binary: str) -> list[str]:
     return _dedupe(paths)
 
 
-def _npm_global_prefixes() -> list[Path]:
+@functools.lru_cache(maxsize=1)
+def _npm_global_prefixes_cached() -> tuple[Path, ...]:
+    """Shell out to ``npm prefix -g`` at most once per process.
+
+    Discovery is invoked many times across a process lifetime (CLI command,
+    health-check loop, server endpoint), and the npm global prefix is stable
+    inside a single process. Cache the result so we don't re-spawn npm for
+    every coding-agent lookup. Callers can :meth:`cache_clear` if they ever
+    need to force a refresh.
+    """
     prefixes: list[Path] = []
     for npm_binary in _resolved_paths_for_binary("npm"):
         try:
@@ -266,7 +276,11 @@ def _npm_global_prefixes() -> list[Path]:
         prefix = completed.stdout.strip()
         if prefix:
             prefixes.append(Path(_manual_windows_to_wsl_path(prefix)))
-    return list(dict.fromkeys(prefixes))
+    return tuple(dict.fromkeys(prefixes))
+
+
+def _npm_global_prefixes() -> list[Path]:
+    return list(_npm_global_prefixes_cached())
 
 
 def _package_path(package_name: str) -> Path:
@@ -403,6 +417,10 @@ def _node_package_candidates_from_shim(
     agent_id: str,
     shim_path: str,
 ) -> list[CodingAgentExecutable]:
+    spec = get_spec(agent_id)
+    if spec is None or not spec.npm_packages:
+        return []
+
     path = Path(shim_path)
     bases = [path.parent]
     with suppress(OSError):
@@ -450,6 +468,13 @@ def _extra_node_package_candidates(
     agent_id: str,
     binary: str,
 ) -> list[CodingAgentExecutable]:
+    # Skip the entire npm-prefix probe for agents that don't ship via npm
+    # (aider via pip, cursor-agent from the Cursor installer, crush from
+    # brew/scoop, etc.). Avoids an `npm prefix -g` subprocess per resolution.
+    spec = get_spec(agent_id)
+    if spec is None or not spec.npm_packages:
+        return []
+
     candidates: list[CodingAgentExecutable] = []
     if _looks_like_path(binary):
         path = Path(_manual_windows_to_wsl_path(os.path.expanduser(os.path.expandvars(binary))))
@@ -609,9 +634,11 @@ def get_available_coding_agents(
     """Auto-detect installed coding-agent CLIs.
 
     Args:
-        agent_paths: Optional explicit binary paths by agent id. Supported ids
-            are ``"claude"``, ``"codex"``, and ``"gemini"``. Explicit paths
-            override PATH discovery for that agent.
+        agent_paths: Optional explicit binary paths by agent id. Any id
+            registered in :data:`CODING_AGENT_SPECS` is accepted (Claude,
+            Codex, Gemini, Qwen, Aider, OpenCode, Cursor Agent, Crush today,
+            plus anything callers have added). Explicit paths override PATH
+            discovery for that agent.
         include_unavailable: When ``True`` (default), return all known agents
             with ``available=False`` for missing CLIs. When ``False``, return
             only discovered agents.
