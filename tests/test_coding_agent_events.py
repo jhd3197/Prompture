@@ -7,6 +7,7 @@ import json
 from prompture.infra.coding_agent_events import (
     CodingAgentEvent,
     parse_claude_stream_json_lines,
+    parse_codex_json_lines,
 )
 
 
@@ -242,3 +243,91 @@ class TestClaudeStreamJSONParser:
         assert done.cost_usd == 0.001
         assert done.input_tokens == 10
         assert done.output_tokens == 5
+
+
+class TestCodexJSONParser:
+    def test_task_started_is_system_event(self):
+        events = list(parse_codex_json_lines(_lines({"id": "1", "msg": {"type": "task_started", "model": "gpt-5"}})))
+        assert [e.type for e in events] == ["system"]
+
+    def test_agent_message_emits_message_event(self):
+        events = list(
+            parse_codex_json_lines(_lines({"msg": {"type": "agent_message", "message": "hello"}}))
+        )
+        assert events == [CodingAgentEvent(type="message", text="hello", raw=events[0].raw)]
+
+    def test_agent_message_delta_emits_partial_message(self):
+        events = list(
+            parse_codex_json_lines(_lines({"msg": {"type": "agent_message_delta", "delta": "Hel"}}))
+        )
+        assert [e.type for e in events] == ["message"]
+        assert events[0].text == "Hel"
+
+    def test_empty_delta_is_skipped(self):
+        events = list(
+            parse_codex_json_lines(_lines({"msg": {"type": "agent_message_delta", "delta": ""}}))
+        )
+        assert events == []
+
+    def test_exec_command_begin_is_tool_call(self):
+        events = list(
+            parse_codex_json_lines(
+                _lines({"msg": {"type": "exec_command_begin", "call_id": "c1", "command": ["ls", "-la"]}})
+            )
+        )
+        assert events[0].type == "tool_call"
+        assert events[0].tool_name == "exec"
+        assert events[0].tool_input == {"command": ["ls", "-la"]}
+
+    def test_exec_command_end_merges_stdout_stderr(self):
+        events = list(
+            parse_codex_json_lines(
+                _lines(
+                    {
+                        "msg": {
+                            "type": "exec_command_end",
+                            "call_id": "c1",
+                            "exit_code": 0,
+                            "stdout": "file1",
+                            "stderr": "warn",
+                        }
+                    }
+                )
+            )
+        )
+        assert events[0].type == "tool_result"
+        assert events[0].tool_output == "file1\nwarn"
+
+    def test_task_complete_emits_done_with_tokens(self):
+        events = list(
+            parse_codex_json_lines(
+                _lines(
+                    {
+                        "msg": {
+                            "type": "task_complete",
+                            "last_agent_message": "All done.",
+                            "token_usage": {"input_tokens": 100, "output_tokens": 200},
+                        }
+                    }
+                )
+            )
+        )
+        assert events[0].type == "done"
+        assert events[0].text == "All done."
+        assert events[0].input_tokens == 100
+        assert events[0].output_tokens == 200
+
+    def test_explicit_error_event(self):
+        events = list(
+            parse_codex_json_lines(_lines({"msg": {"type": "error", "message": "rate limit"}}))
+        )
+        assert events[0].type == "error"
+        assert events[0].error == "rate limit"
+
+    def test_unknown_type_is_dropped(self):
+        events = list(parse_codex_json_lines(_lines({"msg": {"type": "heartbeat"}})))
+        assert events == []
+
+    def test_envelope_without_msg_is_dropped(self):
+        events = list(parse_codex_json_lines(_lines({"id": "1"})))
+        assert events == []

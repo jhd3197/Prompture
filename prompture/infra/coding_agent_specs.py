@@ -12,7 +12,11 @@ import dataclasses
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from typing import Literal
 
-from .coding_agent_events import CodingAgentEvent, parse_claude_stream_json_lines
+from .coding_agent_events import (
+    CodingAgentEvent,
+    parse_claude_stream_json_lines,
+    parse_codex_json_lines,
+)
 
 ApprovalMode = Literal["default", "auto", "yolo"]
 OutputFormat = Literal["text", "json"]
@@ -69,6 +73,8 @@ def _build_codex_args(
     output_format: OutputFormat = "text",
 ) -> list[str]:
     args = ["exec"]
+    if output_format == "json":
+        args.append("--json")
     if model:
         args.extend(["--model", model])
     if approval_mode == "auto":
@@ -184,6 +190,7 @@ CODING_AGENT_SPECS: dict[str, CodingAgentSpec] = {
         default_binary="codex",
         npm_packages=("@openai/codex",),
         build_args=_build_codex_args,
+        parse_events=parse_codex_json_lines,
     ),
     "gemini": CodingAgentSpec(
         id="gemini",

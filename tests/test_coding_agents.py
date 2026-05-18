@@ -277,20 +277,38 @@ class TestStructuredOutput:
 
     @patch(
         "prompture.infra.coding_agents.resolve_coding_agent_executable",
-        return_value=_executable("/usr/local/bin/codex"),
+        return_value=_executable("/usr/local/bin/gemini"),
     )
     def test_json_mode_rejected_for_unsupported_agent(self, _mock_resolve, tmp_path):
+        """Gemini has no parse_events yet, so requesting json should fail loudly."""
         import pytest
 
         from prompture.infra import build_coding_agent_command
 
         with pytest.raises(ValueError, match="does not support output_format='json'"):
             build_coding_agent_command(
-                "codex",
+                "gemini",
                 "do a thing",
                 cwd=tmp_path,
                 output_format="json",
             )
+
+    @patch(
+        "prompture.infra.coding_agents.resolve_coding_agent_executable",
+        return_value=_executable("/usr/local/bin/codex"),
+    )
+    def test_codex_json_mode_adds_json_flag(self, _mock_resolve, tmp_path):
+        from prompture.infra import build_coding_agent_command
+
+        command = build_coding_agent_command(
+            "codex",
+            "do a thing",
+            cwd=tmp_path,
+            approval_mode="auto",
+            output_format="json",
+        )
+        assert "--json" in command.argv
+        assert command.argv[-1] == "do a thing"
 
     @patch("prompture.infra.coding_agents.subprocess.run")
     @patch(
@@ -586,6 +604,7 @@ class TestStreaming:
         assert "health check failed" in (events[0].error or "")
 
     def test_astream_rejects_unsupported_agent(self, tmp_path):
+        """Agents without a parser (e.g. gemini today) cannot be streamed."""
         import asyncio
 
         import pytest
@@ -593,7 +612,7 @@ class TestStreaming:
         from prompture.infra import astream_coding_agent
 
         async def _run():
-            async for _ev in astream_coding_agent("codex", "x", cwd=tmp_path):
+            async for _ev in astream_coding_agent("gemini", "x", cwd=tmp_path):
                 pass
 
         with pytest.raises(ValueError, match="output_format='json'"):

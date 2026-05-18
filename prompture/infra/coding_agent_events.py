@@ -120,6 +120,104 @@ def _flatten_tool_result(content: Any) -> str | None:
     return None
 
 
+def parse_codex_json_lines(lines: Iterable[str]) -> Iterator[CodingAgentEvent]:
+    """Yield :class:`CodingAgentEvent` per ``codex exec --json`` line.
+
+    Codex emits one JSON object per event with shape
+    ``{"id": "...", "msg": {"type": ..., ...}}``. We translate the subset
+    of event types that have analogues in the normalised event model.
+    """
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        try:
+            obj = json.loads(stripped)
+        except json.JSONDecodeError:
+            yield CodingAgentEvent(
+                type="error",
+                error=f"invalid JSON line: {stripped[:200]}",
+            )
+            continue
+        if not isinstance(obj, dict):
+            continue
+        yield from _codex_event_to_events(obj)
+
+
+def _codex_event_to_events(obj: Mapping[str, Any]) -> Iterator[CodingAgentEvent]:
+    msg = obj.get("msg") if isinstance(obj.get("msg"), dict) else None
+    if msg is None:
+        return
+    kind = msg.get("type")
+    if kind == "task_started":
+        yield CodingAgentEvent(type="system", raw=obj)
+        return
+    if kind == "agent_message":
+        text = msg.get("message")
+        if isinstance(text, str):
+            yield CodingAgentEvent(type="message", text=text, raw=obj)
+        return
+    if kind == "agent_message_delta":
+        delta = msg.get("delta")
+        if isinstance(delta, str) and delta:
+            yield CodingAgentEvent(type="message", text=delta, raw=obj)
+        return
+    if kind == "exec_command_begin":
+        command = msg.get("command")
+        yield CodingAgentEvent(
+            type="tool_call",
+            tool_name="exec",
+            tool_input={"command": command} if command is not None else None,
+            raw=obj,
+        )
+        return
+    if kind == "exec_command_end":
+        chunks = []
+        for key in ("stdout", "stderr"):
+            value = msg.get(key)
+            if isinstance(value, str) and value:
+                chunks.append(value)
+        yield CodingAgentEvent(
+            type="tool_result",
+            tool_output="\n".join(chunks) if chunks else None,
+            raw=obj,
+        )
+        return
+    if kind in ("mcp_tool_call_begin",):
+        yield CodingAgentEvent(
+            type="tool_call",
+            tool_name=msg.get("tool") if isinstance(msg.get("tool"), str) else None,
+            tool_input=msg.get("arguments") if isinstance(msg.get("arguments"), dict) else None,
+            raw=obj,
+        )
+        return
+    if kind in ("mcp_tool_call_end",):
+        result = msg.get("result")
+        yield CodingAgentEvent(
+            type="tool_result",
+            tool_output=result if isinstance(result, str) else None,
+            raw=obj,
+        )
+        return
+    if kind == "task_complete":
+        usage = msg.get("token_usage") if isinstance(msg.get("token_usage"), dict) else {}
+        yield CodingAgentEvent(
+            type="done",
+            text=msg.get("last_agent_message") if isinstance(msg.get("last_agent_message"), str) else None,
+            input_tokens=_safe_int(usage.get("input_tokens")),
+            output_tokens=_safe_int(usage.get("output_tokens")),
+            raw=obj,
+        )
+        return
+    if kind == "error":
+        yield CodingAgentEvent(
+            type="error",
+            error=msg.get("message") if isinstance(msg.get("message"), str) else "codex error",
+            raw=obj,
+        )
+        return
+
+
 def _safe_float(value: Any) -> float | None:
     if isinstance(value, (int, float)):
         return float(value)

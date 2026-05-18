@@ -32,6 +32,7 @@ from .capabilities import (
 from .coding_agent_events import (
     CodingAgentEvent,
     parse_claude_stream_json_lines,
+    parse_codex_json_lines,
 )
 from .coding_agent_specs import (
     CODING_AGENT_SPECS,
@@ -156,6 +157,7 @@ __all__ = [
     "get_tracker",
     "override_capabilities",
     "parse_claude_stream_json_lines",
+    "parse_codex_json_lines",
     "refresh_rates_cache",
     "register_model",
     "register_provider",
