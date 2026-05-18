@@ -1203,69 +1203,93 @@ get_available_video_gen_models()        # ['runway/gen4.5', 'runway/gen4_aleph',
 get_available_audio_models(modality="tts")  # ['runway/eleven_multilingual_v2', ...]
 ```
 
-Prompture can also discover and run local coding-agent CLIs for app integrations:
+### Local coding-agent CLIs
+
+Prompture detects and runs the major terminal coding agents — Claude Code,
+Codex, Gemini, Qwen Code, Aider, OpenCode, Cursor Agent, and Crush — through
+one unified interface. Useful when an app wants to delegate code-editing
+tasks to whatever agent the user already has installed, without reimplementing
+the per-CLI flag dance for each one.
+
+| Agent | Binary | Install | Provider |
+|---|---|---|---|
+| Claude Code | `claude` | `npm i -g @anthropic-ai/claude-code` | Anthropic |
+| Codex CLI | `codex` | `npm i -g @openai/codex` | OpenAI |
+| Gemini CLI | `gemini` | `npm i -g @google/gemini-cli` | Google |
+| Qwen Code | `qwen` | `npm i -g @qwen-code/qwen-code` | Alibaba (gemini-cli fork) |
+| Aider | `aider` | `pip install aider-chat` | model-agnostic |
+| OpenCode | `opencode` | `npm i -g opencode-ai` | model-agnostic (sst) |
+| Cursor Agent | `cursor-agent` | Cursor installer | Cursor / Anysphere |
+| Crush | `crush` | `brew install charmbracelet/tap/crush` | model-agnostic (Charm) |
+
+#### Discover
 
 ```python
-from prompture import get_available_coding_agents, run_coding_agent
+from prompture import get_available_coding_agents
 
-agents = get_available_coding_agents(verify=True)
-print(agents)
-
-result = run_coding_agent(
-    "codex",  # claude, codex, gemini, qwen, aider, opencode, cursor-agent, crush
-    "Add focused tests for the discovery helper.",
-    cwd=".",
-    approval_mode="auto",  # avoids repeated approval prompts where supported
-)
-print(result.output)
+for agent in get_available_coding_agents(verify=True):
+    print(agent.id, agent.available, agent.binary, agent.source)
 ```
 
-The same integration is available from the CLI:
+`verify=True` runs a `--version` health check on each resolved binary and
+reports the failure reason for broken PATH shims — common after Node version
+switches on Windows or WSL. Discovery resolves both PATH installs and the
+underlying `node_modules` package entrypoint, so a working agent can still be
+found when the npm shim is broken.
+
+#### Run
+
+```python
+from prompture import run_coding_agent
+
+result = run_coding_agent(
+    "claude",  # claude, codex, gemini, qwen, aider, opencode, cursor-agent, crush
+    "Add focused tests for the discovery helper.",
+    cwd=".",
+    approval_mode="auto",   # default | auto | yolo
+    model="sonnet",         # optional, passed to CLIs that support --model
+    timeout=600,
+)
+print(result.output)
+print("ok:", result.ok, "exit:", result.returncode, "duration:", result.duration_seconds)
+```
+
+Approval modes:
+
+- **`default`** — run interactively; the CLI asks for approvals as it edits or runs commands.
+- **`auto`** — skip approval prompts but stay within the CLI's normal sandboxing where it has one (codex `--sandbox workspace-write`, gemini/qwen `-y`, aider `--yes-always`, crush `--yolo`). Claude Code has no intermediate mode, so `auto` maps to `--dangerously-skip-permissions` there.
+- **`yolo`** — every CLI's full bypass: claude `--dangerously-skip-permissions`, codex `--dangerously-bypass-approvals-and-sandbox`, gemini/qwen `-y`, crush `--yolo`. Use only inside an environment whose blast radius you already trust.
+
+Before launching the task, the binary is health-checked by default so a
+broken shim fails fast with a clear error rather than hanging or producing
+opaque output. Pass `verify_binary=False` to skip the preflight.
+
+#### From the CLI
 
 ```bash
 prompture coding-agents --verify
-prompture code-agent codex --auto-approve "Add tests for the pricing cache"
 prompture code-agent claude --auto-approve "Review this package for release blockers"
+prompture code-agent codex  --auto-approve "Add tests for the pricing cache"
+prompture code-agent aider  --auto-approve --model gpt-4o "Rename foo to bar across the package"
 ```
 
-Use `verify=True` (or `prompture coding-agents --verify`) when PATH may contain
-broken shims; Prompture runs a quick `--version` health check and reports the
-failure reason. Actual `run_coding_agent(...)` calls also health-check by
-default before launching the task; pass `verify_binary=False` only if you
-explicitly want to skip that preflight.
+#### From the server
 
-Supported agents:
-
-| Agent | Binary | Install |
-|---|---|---|
-| Claude Code | `claude` | npm `@anthropic-ai/claude-code` |
-| Codex CLI | `codex` | npm `@openai/codex` |
-| Gemini CLI | `gemini` | npm `@google/gemini-cli` |
-| Qwen Code | `qwen` | npm `@qwen-code/qwen-code` (gemini-cli fork) |
-| Aider | `aider` | `pip install aider-chat` |
-| OpenCode | `opencode` | npm `opencode-ai` |
-| Cursor Agent | `cursor-agent` | Cursor installer |
-| Crush | `crush` | brew / scoop / Go install |
-
-Discovery checks normal PATH installs and npm-style installs (`node_modules`
-package entrypoints). If a shim is present but broken, verified discovery can
-fall back to the package entrypoint plus a working `node` or `node.exe`. To
-register an additional agent, add a `CodingAgentSpec` to
-`prompture.infra.coding_agent_specs.CODING_AGENT_SPECS`.
-
-Apps can use the server endpoint too:
+`prompture serve` exposes the same discovery as an HTTP endpoint so any app
+talking to the OpenAI-compatible server can also list local agents:
 
 ```bash
 curl "http://localhost:9471/v1/coding-agents"
 curl "http://localhost:9471/v1/coding-agents?verify=false"
 ```
 
-For fully unattended sandboxed environments, `approval_mode="yolo"` maps to
-each CLI's dangerous bypass flag:
+#### Adding a new agent
 
-```python
-run_coding_agent("codex", "Fix the failing tests", approval_mode="yolo")
-```
+Drop a `CodingAgentSpec` into
+`prompture.infra.coding_agent_specs.CODING_AGENT_SPECS` with a `build_args`
+callable that produces the CLI's argv from a task, approval mode, model, and
+extra args. Discovery, health checks, command construction, the CLI, and the
+server endpoint all read from this registry — no other changes are needed.
 
 ### Logging and Debugging
 
