@@ -133,7 +133,10 @@ indent-style = "space"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
-markers = ["integration: marks tests that use real LLM APIs"]
+markers = [
+    "integration: marks tests that use real LLM APIs",
+    "coding_agent_live: marks tests that shell out to a real coding-agent CLI",
+]
 addopts = "-v"
 asyncio_mode = "auto"
 
