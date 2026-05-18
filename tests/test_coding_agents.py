@@ -617,3 +617,90 @@ class TestStreaming:
 
         with pytest.raises(ValueError, match="output_format='json'"):
             asyncio.run(_run())
+
+
+class TestSettingsAgentPaths:
+    """Tests for picking up agent binary paths from settings/env."""
+
+    @patch("prompture.infra.coding_agents.resolve_coding_agent_executable")
+    def test_settings_binary_is_used_when_no_explicit_path(self, mock_resolve, tmp_path):
+        """A coding_agent_bin_<id> setting is honoured by resolve when no kwarg given."""
+        from prompture.infra import build_coding_agent_command
+        from prompture.infra.settings import settings as _s
+
+        exe = CodingAgentExecutable(
+            binary="/opt/aider/aider",
+            argv=("/opt/aider/aider",),
+            display="/opt/aider/aider",
+        )
+        mock_resolve.return_value = (exe, True, None)
+
+        original = _s.coding_agent_bin_aider
+        _s.coding_agent_bin_aider = "/opt/aider/aider"
+        try:
+            command = build_coding_agent_command(
+                "aider",
+                "do a thing",
+                cwd=tmp_path,
+                approval_mode="auto",
+            )
+        finally:
+            _s.coding_agent_bin_aider = original
+
+        # Resolver was asked for the path the user configured in settings.
+        assert mock_resolve.call_args.args[1] == "/opt/aider/aider"
+        assert command.argv[0] == "/opt/aider/aider"
+
+    @patch("prompture.infra.coding_agents.resolve_coding_agent_executable")
+    def test_explicit_kwarg_overrides_settings(self, mock_resolve, tmp_path):
+        """An explicit agent_paths kwarg wins over the settings default."""
+        from prompture.infra import build_coding_agent_command
+        from prompture.infra.settings import settings as _s
+
+        exe = CodingAgentExecutable(
+            binary="/from/kwarg/aider",
+            argv=("/from/kwarg/aider",),
+            display="/from/kwarg/aider",
+        )
+        mock_resolve.return_value = (exe, True, None)
+
+        original = _s.coding_agent_bin_aider
+        _s.coding_agent_bin_aider = "/from/settings/aider"
+        try:
+            build_coding_agent_command(
+                "aider",
+                "task",
+                cwd=tmp_path,
+                approval_mode="auto",
+                agent_paths={"aider": "/from/kwarg/aider"},
+            )
+        finally:
+            _s.coding_agent_bin_aider = original
+
+        assert mock_resolve.call_args.args[1] == "/from/kwarg/aider"
+
+    @patch("prompture.infra.coding_agents.resolve_coding_agent_executable")
+    def test_cursor_agent_hyphen_id_maps_to_underscore_setting(self, mock_resolve, tmp_path):
+        from prompture.infra import build_coding_agent_command
+        from prompture.infra.settings import settings as _s
+
+        exe = CodingAgentExecutable(
+            binary="/opt/cursor-agent",
+            argv=("/opt/cursor-agent",),
+            display="/opt/cursor-agent",
+        )
+        mock_resolve.return_value = (exe, True, None)
+
+        original = _s.coding_agent_bin_cursor_agent
+        _s.coding_agent_bin_cursor_agent = "/opt/cursor-agent"
+        try:
+            build_coding_agent_command(
+                "cursor-agent",
+                "task",
+                cwd=tmp_path,
+                approval_mode="auto",
+            )
+        finally:
+            _s.coding_agent_bin_cursor_agent = original
+
+        assert mock_resolve.call_args.args[1] == "/opt/cursor-agent"

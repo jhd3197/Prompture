@@ -233,6 +233,16 @@ class Settings(BaseSettings):
     brave_search_api_key: Optional[str] = None
     searxng_endpoint: Optional[str] = None
 
+    # Coding-agent CLI binary overrides (env var: CODING_AGENT_BIN_<UPPER>)
+    coding_agent_bin_claude: Optional[str] = None
+    coding_agent_bin_codex: Optional[str] = None
+    coding_agent_bin_gemini: Optional[str] = None
+    coding_agent_bin_qwen: Optional[str] = None
+    coding_agent_bin_aider: Optional[str] = None
+    coding_agent_bin_opencode: Optional[str] = None
+    coding_agent_bin_cursor_agent: Optional[str] = None
+    coding_agent_bin_crush: Optional[str] = None
+
     # Document ingestion
     ingest_max_file_size: int = 52428800  # 50 MB
     ingest_pdf_backend: str = "pdfplumber"  # "pdfplumber" | "pypdf" | "pymupdf"

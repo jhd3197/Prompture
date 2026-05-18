@@ -18,6 +18,7 @@ from .discovery import (
     CodingAgentExecutable,
     resolve_coding_agent_executable,
 )
+from .settings import settings as _global_settings
 
 CodingAgentId = str
 ApprovalMode = Literal["default", "auto", "yolo"]
@@ -91,6 +92,30 @@ def _normalize_output_format(agent_id: str, output_format: str) -> OutputFormat:
     return normalized  # type: ignore[return-value]
 
 
+def _settings_agent_paths() -> dict[str, str]:
+    """Read ``coding_agent_bin_<id>`` settings (with underscore for hyphenated ids)."""
+    result: dict[str, str] = {}
+    for agent_id in CODING_AGENT_SPECS:
+        attr = f"coding_agent_bin_{agent_id.replace('-', '_')}"
+        value = getattr(_global_settings, attr, None)
+        if isinstance(value, str) and value:
+            result[agent_id] = value
+    return result
+
+
+def _merge_agent_paths(
+    explicit: Mapping[str, str] | None,
+) -> Mapping[str, str]:
+    """Combine settings/env-derived defaults with caller-supplied overrides.
+
+    Explicit kwargs win over settings; settings win over PATH lookup.
+    """
+    defaults = _settings_agent_paths()
+    if not explicit:
+        return defaults
+    return {**defaults, **dict(explicit)}
+
+
 def _resolve_cwd(cwd: str | os.PathLike[str] | None) -> str:
     path = Path(cwd or os.getcwd()).expanduser().resolve()
     if not path.is_dir():
@@ -135,7 +160,7 @@ def build_coding_agent_command(
 
     executable = _resolve_executable(agent_id, binary=binary, agent_paths=agent_paths)
     if not executable:
-        path_overrides = agent_paths or {}
+        path_overrides = _merge_agent_paths(agent_paths)
         binary_name = binary or path_overrides.get(agent_id) or agent_id
         raise RuntimeError(f"'{binary_name}' is not installed or not on PATH")
 
@@ -160,7 +185,7 @@ def _resolve_executable(
     binary: str | None = None,
     agent_paths: Mapping[str, str] | None = None,
 ) -> CodingAgentExecutable | None:
-    path_overrides = agent_paths or {}
+    path_overrides = _merge_agent_paths(agent_paths)
     binary_name = binary or path_overrides.get(agent_id) or agent_id
     executable, _healthy, _error = resolve_coding_agent_executable(agent_id, binary_name)
     return executable
@@ -173,7 +198,7 @@ def _resolve_healthy_executable(
     agent_paths: Mapping[str, str] | None = None,
     verify_timeout: int = 5,
 ) -> tuple[CodingAgentExecutable | None, str | None]:
-    path_overrides = agent_paths or {}
+    path_overrides = _merge_agent_paths(agent_paths)
     binary_name = binary or path_overrides.get(agent_id) or agent_id
     executable, healthy, error = resolve_coding_agent_executable(
         agent_id,
@@ -419,7 +444,7 @@ async def astream_coding_agent(
     else:
         executable = _resolve_executable(agent_id, binary=binary, agent_paths=agent_paths)
         if executable is None:
-            path_overrides = agent_paths or {}
+            path_overrides = _merge_agent_paths(agent_paths)
             binary_name = binary or path_overrides.get(agent_id) or agent_id
             yield CodingAgentEvent(
                 type="error",
