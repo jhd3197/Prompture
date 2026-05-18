@@ -29,6 +29,10 @@ from .capabilities import (
     register_model,
     register_provider,
 )
+from .coding_agent_events import (
+    CodingAgentEvent,
+    parse_claude_stream_json_lines,
+)
 from .coding_agent_specs import (
     CODING_AGENT_SPECS,
     CodingAgentSpec,
@@ -96,6 +100,7 @@ __all__ = [
     "BudgetState",
     "CacheBackend",
     "CodingAgentCommand",
+    "CodingAgentEvent",
     "CodingAgentExecutable",
     "CodingAgentInfo",
     "CodingAgentRunResult",
@@ -148,6 +153,7 @@ __all__ = [
     "get_recently_used_models",
     "get_tracker",
     "override_capabilities",
+    "parse_claude_stream_json_lines",
     "refresh_rates_cache",
     "register_model",
     "register_provider",
