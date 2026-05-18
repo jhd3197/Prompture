@@ -1,5 +1,6 @@
 import json
 import os
+from unittest.mock import patch
 
 import pytest
 from click.testing import CliRunner
@@ -59,3 +60,38 @@ def test_run_command(tmp_path):
     # Additional assertions on the structure of the output data could be added
     # For example:
     assert "results" in output_data
+
+
+def test_coding_agents_command_lists_agents():
+    """The coding-agents command prints discovery results."""
+    runner = CliRunner()
+    result = runner.invoke(cli, ["coding-agents"])
+
+    assert result.exit_code == 0
+    assert "claude" in result.output
+    assert "codex" in result.output
+    assert "gemini" in result.output
+
+
+def test_code_agent_dry_run_auto_approve(tmp_path):
+    """Dry-run shows the resolved coding-agent command without executing it."""
+    runner = CliRunner()
+    with patch("prompture.infra.coding_agents.resolve_coding_agent_binary", return_value="/usr/local/bin/codex"):
+        result = runner.invoke(
+            cli,
+            [
+                "code-agent",
+                "codex",
+                "--cwd",
+                str(tmp_path),
+                "--auto-approve",
+                "--dry-run",
+                "fix",
+                "the",
+                "tests",
+            ],
+        )
+
+    assert result.exit_code == 0
+    assert "/usr/local/bin/codex exec" in result.output
+    assert "--ask-for-approval never" in result.output

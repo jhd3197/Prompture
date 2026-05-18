@@ -29,6 +29,14 @@ from .capabilities import (
     register_model,
     register_provider,
 )
+from .coding_agents import (
+    ApprovalMode,
+    CodingAgentCommand,
+    CodingAgentRunResult,
+    arun_coding_agent,
+    build_coding_agent_command,
+    run_coding_agent,
+)
 from .cost_mixin import AudioCostMixin, EmbeddingCostMixin, VideoCostMixin
 from .discovery import (
     CodingAgentInfo,
@@ -66,11 +74,14 @@ from .settings import settings
 from .tracker import configure_tracker, get_tracker
 
 __all__ = [
+    "ApprovalMode",
     "AudioCostMixin",
     "BudgetPolicy",
     "BudgetState",
     "CacheBackend",
+    "CodingAgentCommand",
     "CodingAgentInfo",
+    "CodingAgentRunResult",
     "CostEstimate",
     "DriverCallbacks",
     "EmbeddingCostMixin",
@@ -86,6 +97,8 @@ __all__ = [
     "TukuyLLMBackend",
     "UsageSession",
     "VideoCostMixin",
+    "arun_coding_agent",
+    "build_coding_agent_command",
     "clear_discovery_cache",
     "clear_overrides",
     "configure_cache",
@@ -120,5 +133,6 @@ __all__ = [
     "register_provider",
     "resolve_budget_policy",
     "resolve_coding_agent_binary",
+    "run_coding_agent",
     "settings",
 ]

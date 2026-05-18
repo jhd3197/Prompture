@@ -1,4 +1,5 @@
 import json
+import shlex
 
 import click
 
@@ -37,6 +38,87 @@ def _build_drivers(providers: list[str]) -> dict[str, object]:
         except Exception as exc:
             click.echo(f"Warning: could not load driver for '{name}': {exc}", err=True)
     return drivers
+
+
+@cli.command("coding-agents")
+@click.option("--json", "json_output", is_flag=True, help="Output machine-readable JSON.")
+def coding_agents(json_output: bool) -> None:
+    """List detected local coding-agent CLIs."""
+    from dataclasses import asdict
+
+    from ..infra import get_available_coding_agents
+
+    agents = get_available_coding_agents()
+    if json_output:
+        click.echo(json.dumps([asdict(agent) for agent in agents], indent=2))
+        return
+
+    for agent in agents:
+        status = "available" if agent.available else "missing"
+        source = "custom" if agent.custom_path else "PATH"
+        click.echo(f"{agent.id:<7} {status:<9} {source:<6} {agent.binary}")
+
+
+@cli.command("code-agent")
+@click.argument("agent", type=click.Choice(["claude", "codex", "gemini"]))
+@click.argument("task", nargs=-1, required=True)
+@click.option("--cwd", default=".", type=click.Path(exists=True, file_okay=False), help="Working directory.")
+@click.option("--model", default=None, help="Model passed through to the agent CLI.")
+@click.option("--binary", default=None, help="Explicit binary path for this run.")
+@click.option("--auto-approve", is_flag=True, help="Avoid repeated approval prompts where the CLI supports it.")
+@click.option("--yolo", is_flag=True, help="Use the CLI's dangerous no-approval/no-sandbox mode.")
+@click.option("--timeout", default=600, type=int, help="Timeout in seconds.")
+@click.option("--max-output", default=50000, type=int, help="Maximum output characters to print.")
+@click.option("--dry-run", is_flag=True, help="Print the resolved command without running it.")
+def code_agent(
+    agent: str,
+    task: tuple[str, ...],
+    cwd: str,
+    model: str | None,
+    binary: str | None,
+    auto_approve: bool,
+    yolo: bool,
+    timeout: int,
+    max_output: int,
+    dry_run: bool,
+) -> None:
+    """Run Claude Code, Codex CLI, or Gemini CLI from Prompture."""
+    from ..infra import build_coding_agent_command, run_coding_agent
+
+    if auto_approve and yolo:
+        click.echo("Error: choose either --auto-approve or --yolo, not both.", err=True)
+        raise SystemExit(2)
+
+    approval_mode = "yolo" if yolo else ("auto" if auto_approve else "default")
+    task_text = " ".join(task).strip()
+
+    if dry_run:
+        command = build_coding_agent_command(
+            agent,
+            task_text,
+            cwd=cwd,
+            approval_mode=approval_mode,
+            binary=binary,
+            model=model,
+        )
+        click.echo(shlex.join(command.argv))
+        return
+
+    result = run_coding_agent(
+        agent,
+        task_text,
+        cwd=cwd,
+        approval_mode=approval_mode,
+        binary=binary,
+        model=model,
+        timeout=timeout,
+        max_output_chars=max_output,
+    )
+
+    if result.output:
+        click.echo(result.output)
+    if not result.ok:
+        raise SystemExit(result.returncode if result.returncode > 0 else 1)
 
 
 @cli.command("test-suite")

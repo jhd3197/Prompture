@@ -1203,13 +1203,36 @@ get_available_video_gen_models()        # ['runway/gen4.5', 'runway/gen4_aleph',
 get_available_audio_models(modality="tts")  # ['runway/eleven_multilingual_v2', ...]
 ```
 
-Prompture can also discover local coding-agent CLIs for app integrations:
+Prompture can also discover and run local coding-agent CLIs for app integrations:
 
 ```python
-from prompture import get_available_coding_agents
+from prompture import get_available_coding_agents, run_coding_agent
 
 agents = get_available_coding_agents()
-# [CodingAgentInfo(id='claude', available=True, ...), ...]
+print(agents)
+
+result = run_coding_agent(
+    "codex",  # or "claude" / "gemini"
+    "Add focused tests for the discovery helper.",
+    cwd=".",
+    approval_mode="auto",  # avoids repeated approval prompts where supported
+)
+print(result.output)
+```
+
+The same integration is available from the CLI:
+
+```bash
+prompture coding-agents
+prompture code-agent codex --auto-approve "Add tests for the pricing cache"
+prompture code-agent claude --auto-approve "Review this package for release blockers"
+```
+
+For fully unattended sandboxed environments, `approval_mode="yolo"` maps to
+each CLI's dangerous bypass flag:
+
+```python
+run_coding_agent("codex", "Fix the failing tests", approval_mode="yolo")
 ```
 
 ### Logging and Debugging
