@@ -1,4 +1,5 @@
 <p align="center">
+  <img width="800" alt="prompture" src="https://github.com/user-attachments/assets/005f8019-b5f0-4128-9605-dd672693c46b" />
   <h1 align="center">Prompture</h1>
   <p align="center">Structured JSON extraction from any LLM. Schema-enforced, Pydantic-native, multi-provider.</p>
 </p>
