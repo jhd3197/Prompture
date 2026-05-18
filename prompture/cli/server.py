@@ -8,6 +8,9 @@ OpenAI SDK, …) need:
   optional server-side tool execution (sandbox / web search).
 * ``POST /v1/completions`` — legacy completions, thin wrapper around chat.
 * ``GET  /v1/models`` — list models discovered by Prompture.
+* ``GET  /v1/coding-agents`` — list local coding-agent CLIs.
+* ``POST /v1/coding-agents/run`` — run a local coding-agent CLI; SSE-streams
+  normalised events when ``stream=true``.
 * ``POST /v1/embeddings`` — routes to ``get_embedding_driver_for_model``.
 
 Plus Prompture-native endpoints:
@@ -782,6 +785,104 @@ def create_app(
         )
 
     # ---- OpenAI-compatible: /v1/models ----
+
+    @app.get("/v1/coding-agents")
+    async def list_coding_agents(verify: bool = True) -> Any:
+        """List available local coding-agent CLIs."""
+        from dataclasses import asdict
+
+        from ..infra.discovery import get_available_coding_agents
+
+        agents = get_available_coding_agents(verify=verify)
+        agent_objects: list[dict[str, Any]] = []
+        for agent in agents:
+            item = asdict(agent)
+            item["object"] = "coding_agent"
+            agent_objects.append(item)
+
+        return JSONResponse(
+            {
+                "object": "list",
+                "data": agent_objects,
+                # Legacy/simple field for small app integrations.
+                "coding_agents": [agent["id"] for agent in agent_objects if agent["available"]],
+            }
+        )
+
+    class CodingAgentRunRequest(BaseModel):
+        agent: str
+        task: str
+        cwd: Optional[str] = None
+        approval_mode: str = "default"
+        model: Optional[str] = None
+        extra_args: Optional[list[str]] = None
+        timeout: int = 600
+        stream: bool = False
+        output_format: str = "text"
+        session_id: Optional[str] = None
+
+    @app.post("/v1/coding-agents/run")
+    async def run_coding_agent_endpoint(req: CodingAgentRunRequest, _: None = Depends(_verify_api_key)) -> Any:
+        """Run a local coding-agent CLI and return its output.
+
+        When ``stream=true`` the response is an SSE stream of normalised
+        :class:`CodingAgentEvent` objects (requires ``output_format='json'``,
+        which is forced on); when ``stream=false`` the agent runs to
+        completion and the JSON body mirrors :class:`CodingAgentRunResult`.
+        """
+        from dataclasses import asdict
+
+        from ..infra.coding_agents import arun_coding_agent, astream_coding_agent
+
+        if req.stream:
+            try:
+                from sse_starlette.sse import EventSourceResponse
+            except ImportError as exc:
+                raise HTTPException(
+                    status_code=501,
+                    detail="Streaming requires sse-starlette: pip install prompture[serve]",
+                ) from exc
+
+            async def event_generator() -> Any:
+                try:
+                    async for event in astream_coding_agent(
+                        req.agent,
+                        req.task,
+                        cwd=req.cwd,
+                        approval_mode=req.approval_mode,  # type: ignore[arg-type]
+                        model=req.model,
+                        extra_args=req.extra_args,
+                        session_id=req.session_id,
+                    ):
+                        yield {"data": json.dumps(asdict(event), default=str)}
+                except ValueError as exc:
+                    yield {"data": json.dumps({"type": "error", "error": str(exc)})}
+                yield {"data": json.dumps({"type": "stream_end"})}
+
+            return EventSourceResponse(event_generator(), media_type="text/event-stream")
+
+        try:
+            result = await arun_coding_agent(
+                req.agent,
+                req.task,
+                cwd=req.cwd,
+                approval_mode=req.approval_mode,
+                model=req.model,
+                extra_args=req.extra_args,
+                timeout=req.timeout,
+                output_format=req.output_format,
+                session_id=req.session_id,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+        payload = asdict(result)
+        # tuples → lists; dataclass events are already dicts via asdict
+        payload["events"] = list(payload.get("events") or [])
+        payload["object"] = "coding_agent_run"
+        return JSONResponse(payload)
 
     @app.get("/v1/models")
     async def list_models() -> Any:

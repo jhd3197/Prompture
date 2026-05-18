@@ -1,4 +1,6 @@
 import os
+import subprocess
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -7,11 +9,16 @@ from prompture.drivers.elevenlabs_stt_driver import ElevenLabsSTTDriver
 from prompture.drivers.elevenlabs_tts_driver import ElevenLabsTTSDriver
 from prompture.drivers.ollama_driver import OllamaDriver
 from prompture.infra.discovery import (
+    CodingAgentInfo,
     _discovery_cache,
     clear_discovery_cache,
     display_available_models,
     get_available_audio_models,
+    get_available_coding_agents,
     get_available_models,
+    get_coding_agent_executable_candidates,
+    resolve_coding_agent_binary,
+    resolve_coding_agent_executable,
 )
 
 
@@ -59,6 +66,205 @@ class TestDiscovery:
         models = get_available_models()
         # Should not crash, just not include ollama models (unless some other provider is active)
         assert not any(m.startswith("ollama/") for m in models)
+
+
+class TestCodingAgentDiscovery:
+    """Tests for local coding-agent CLI discovery."""
+
+    @patch("prompture.infra.discovery.shutil.which")
+    def test_detects_known_agent_binaries(self, mock_which):
+        """Claude and Codex are marked available when their CLIs resolve."""
+        paths = {
+            "claude": "/usr/local/bin/claude",
+            "codex": "/usr/local/bin/codex",
+        }
+        mock_which.side_effect = lambda binary: paths.get(binary)
+
+        agents = get_available_coding_agents()
+        by_id = {agent.id: agent for agent in agents}
+
+        assert isinstance(by_id["claude"], CodingAgentInfo)
+        assert by_id["claude"].available is True
+        assert by_id["claude"].binary == "/usr/local/bin/claude"
+        assert by_id["codex"].available is True
+        assert by_id["gemini"].available is False
+        assert by_id["gemini"].binary == "gemini"
+
+    @patch("prompture.infra.discovery.shutil.which")
+    def test_can_return_only_available_agents(self, mock_which):
+        """Unavailable CLIs are omitted when requested."""
+        mock_which.side_effect = lambda binary: "/usr/local/bin/codex" if binary == "codex" else None
+
+        agents = get_available_coding_agents(include_unavailable=False)
+
+        assert [agent.id for agent in agents] == ["codex"]
+
+    @patch("prompture.infra.discovery.shutil.which")
+    def test_custom_agent_paths_override_default_binaries(self, mock_which):
+        """Explicit paths are resolved and marked as custom."""
+        mock_which.side_effect = lambda binary: binary if binary == "/opt/claude/bin/claude" else None
+
+        agents = get_available_coding_agents(agent_paths={"claude": "/opt/claude/bin/claude"})
+        by_id = {agent.id: agent for agent in agents}
+
+        assert by_id["claude"].available is True
+        assert by_id["claude"].binary == "/opt/claude/bin/claude"
+        assert by_id["claude"].custom_path is True
+        assert by_id["codex"].custom_path is False
+
+    @patch("prompture.infra.discovery.platform.system", return_value="Windows")
+    @patch("prompture.infra.discovery.shutil.which")
+    def test_resolve_coding_agent_binary_prefers_windows_wrappers(self, mock_which, _mock_system):
+        """Windows resolution checks npm wrapper extensions before the bare shim."""
+        mock_which.side_effect = lambda binary: f"C:/tools/{binary}" if binary == "codex.cmd" else None
+
+        resolved = resolve_coding_agent_binary("codex")
+
+        assert resolved == "C:/tools/codex.cmd"
+        mock_which.assert_called_once_with("codex.cmd")
+
+    @patch("prompture.infra.discovery._path_for_windows_executable", return_value="C:\\tools\\gemini.cmd")
+    @patch("prompture.infra.discovery._resolved_paths_for_binary")
+    def test_discovers_windows_cmd_wrapper_candidate(self, mock_paths, _mock_windows_path, tmp_path):
+        """Windows npm wrappers can be invoked through cmd.exe from WSL."""
+        wrapper = tmp_path / "gemini.cmd"
+        wrapper.write_text("@ECHO off\r\n", encoding="utf-8")
+        cmd = "/mnt/c/Windows/System32/cmd.exe"
+        mock_paths.side_effect = lambda binary: (
+            [str(wrapper)] if binary == "gemini" else [cmd] if binary == "cmd.exe" else []
+        )
+
+        candidates = get_coding_agent_executable_candidates("gemini", "gemini")
+
+        assert candidates[0].source == "windows-cmd"
+        assert candidates[0].argv == (cmd, "/d", "/s", "/c", "C:\\tools\\gemini.cmd")
+
+    @patch("prompture.infra.discovery.subprocess.run")
+    @patch("prompture.infra.discovery.shutil.which")
+    def test_verify_marks_working_cli_healthy(self, mock_which, mock_run):
+        """verify=True records a successful health check."""
+        mock_which.side_effect = lambda binary: "/usr/local/bin/codex" if binary == "codex" else None
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=["/usr/local/bin/codex", "--version"],
+            returncode=0,
+            stdout="codex 1.0.0",
+            stderr="",
+        )
+
+        agents = get_available_coding_agents(verify=True)
+        by_id = {agent.id: agent for agent in agents}
+
+        assert by_id["codex"].available is True
+        assert by_id["codex"].verified is True
+        assert by_id["codex"].healthy is True
+        assert by_id["codex"].error is None
+
+    @patch("prompture.infra.discovery.subprocess.run")
+    @patch("prompture.infra.discovery.shutil.which")
+    def test_verify_marks_broken_cli_unavailable(self, mock_which, mock_run):
+        """A resolved PATH shim is unavailable when the health check fails."""
+        mock_which.side_effect = lambda binary: "/usr/local/bin/gemini" if binary == "gemini" else None
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=["/usr/local/bin/gemini", "--version"],
+            returncode=127,
+            stdout="",
+            stderr="node: not found\n",
+        )
+
+        agents = get_available_coding_agents(verify=True)
+        by_id = {agent.id: agent for agent in agents}
+
+        assert by_id["gemini"].available is False
+        assert by_id["gemini"].verified is True
+        assert by_id["gemini"].healthy is False
+        assert by_id["gemini"].error == "node: not found"
+
+    @patch("prompture.infra.discovery.subprocess.run")
+    @patch("prompture.infra.discovery.shutil.which")
+    def test_verify_include_unavailable_false_omits_broken_cli(self, mock_which, mock_run):
+        """include_unavailable=False returns only health-checked usable CLIs."""
+        mock_which.side_effect = lambda binary: "/usr/local/bin/gemini" if binary == "gemini" else None
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=["/usr/local/bin/gemini", "--version"],
+            returncode=127,
+            stdout="",
+            stderr="node: not found\n",
+        )
+
+        agents = get_available_coding_agents(verify=True, include_unavailable=False)
+
+        assert agents == []
+
+    @pytest.mark.parametrize(
+        ("agent_id", "package_name", "command_name"),
+        [
+            ("claude", "@anthropic-ai/claude-code", "claude"),
+            ("codex", "@openai/codex", "codex"),
+            ("gemini", "@google/gemini-cli", "gemini"),
+        ],
+    )
+    @patch("prompture.infra.discovery._resolved_paths_for_binary")
+    def test_discovers_node_package_entrypoints_for_supported_agents(
+        self,
+        mock_paths,
+        tmp_path,
+        agent_id,
+        package_name,
+        command_name,
+    ):
+        """Supported agents can use an npm package entrypoint, not only the shim."""
+        shim = tmp_path / command_name
+        shim.write_text("#!/bin/sh\nexec node cli.js\n", encoding="utf-8")
+        node = tmp_path / "node"
+        node.write_text("#!/bin/sh\n", encoding="utf-8")
+        package_dir = tmp_path / "node_modules" / Path(*package_name.split("/"))
+        package_entry = package_dir / "dist" / "index.js"
+        package_entry.parent.mkdir(parents=True)
+        package_entry.write_text("console.log('gemini')\n", encoding="utf-8")
+        (package_dir / "package.json").write_text(
+            f'{{"bin": {{"{command_name}": "dist/index.js"}}}}',
+            encoding="utf-8",
+        )
+        mock_paths.side_effect = lambda binary: (
+            [str(shim)] if binary == command_name else [str(node)] if binary == "node" else []
+        )
+
+        candidates = get_coding_agent_executable_candidates(agent_id, command_name)
+
+        assert any(candidate.argv[0] == str(shim) for candidate in candidates)
+        assert any(
+            candidate.argv[:3] == (str(node), "--no-warnings=DEP0040", str(package_entry))
+            and candidate.source == f"npm:{package_name}"
+            for candidate in candidates
+        )
+
+    @patch("prompture.infra.discovery.subprocess.run")
+    @patch("prompture.infra.discovery._resolved_paths_for_binary")
+    def test_resolve_coding_agent_executable_picks_first_healthy_candidate(self, mock_paths, mock_run, tmp_path):
+        """Verified resolution skips a broken shim and returns a healthy fallback."""
+        shim = tmp_path / "gemini"
+        shim.write_text("#!/bin/sh\nexec node cli.js\n", encoding="utf-8")
+        node = tmp_path / "node"
+        node.write_text("#!/bin/sh\n", encoding="utf-8")
+        package_entry = tmp_path / "node_modules" / "@google" / "gemini-cli" / "dist" / "index.js"
+        package_entry.parent.mkdir(parents=True)
+        package_entry.write_text("console.log('gemini')\n", encoding="utf-8")
+        mock_paths.side_effect = lambda binary: (
+            [str(shim)] if binary == "gemini" else [str(node)] if binary == "node" else []
+        )
+        mock_run.side_effect = [
+            subprocess.CompletedProcess(
+                args=[str(shim), "--version"], returncode=127, stdout="", stderr="node: not found\n"
+            ),
+            subprocess.CompletedProcess(args=[str(node), "--version"], returncode=0, stdout="0.35.3\n", stderr=""),
+        ]
+
+        executable, healthy, error = resolve_coding_agent_executable("gemini", "gemini", verify=True)
+
+        assert healthy is True
+        assert error is None
+        assert executable is not None
+        assert executable.argv[0] == str(node)
 
 
 class TestAudioDiscovery:

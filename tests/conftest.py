@@ -18,6 +18,12 @@ def pytest_addoption(parser):
         default=False,
         help="Run tests marked with @pytest.mark.integration (requires live LLM access)",
     )
+    parser.addoption(
+        "--run-coding-agent-live",
+        action="store_true",
+        default=False,
+        help="Run tests marked with @pytest.mark.coding_agent_live (shells out to real CLIs)",
+    )
 
 
 @pytest.fixture
@@ -70,6 +76,10 @@ def integration_driver(request):
 def pytest_configure(config):
     """Configure pytest markers."""
     config.addinivalue_line("markers", "integration: marks tests that use real LLM APIs")
+    config.addinivalue_line(
+        "markers",
+        "coding_agent_live: marks tests that shell out to a real coding-agent CLI",
+    )
 
 
 def pytest_collection_modifyitems(config, items):
@@ -79,14 +89,17 @@ def pytest_collection_modifyitems(config, items):
         "true",
         "yes",
     }
+    run_coding_agent_live = config.getoption("--run-coding-agent-live") or os.getenv(
+        "RUN_CODING_AGENT_LIVE_TESTS", ""
+    ).lower() in {"1", "true", "yes"}
 
-    if run_integration:
-        return
-
-    skip_marker = pytest.mark.skip(reason="use --run-integration to run these tests")
+    skip_integration = pytest.mark.skip(reason="use --run-integration to run these tests")
+    skip_live = pytest.mark.skip(reason="use --run-coding-agent-live to shell out to real CLIs")
     for item in items:
-        if "integration" in item.keywords:
-            item.add_marker(skip_marker)
+        if "integration" in item.keywords and not run_integration:
+            item.add_marker(skip_integration)
+        if "coding_agent_live" in item.keywords and not run_coding_agent_live:
+            item.add_marker(skip_live)
 
 
 def assert_valid_usage_metadata(meta: dict[str, Any]):

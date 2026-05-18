@@ -29,17 +29,50 @@ from .capabilities import (
     register_model,
     register_provider,
 )
+from .coding_agent_events import (
+    CodingAgentEvent,
+    detect_question,
+    parse_claude_stream_json_lines,
+    parse_codex_json_lines,
+)
+from .coding_agent_specs import (
+    CODING_AGENT_SPECS,
+    CodingAgentSpec,
+)
+from .coding_agent_specs import (
+    get_spec as get_coding_agent_spec,
+)
+from .coding_agent_specs import (
+    supported_agent_ids as supported_coding_agent_ids,
+)
+from .coding_agents import (
+    ApprovalMode,
+    CodingAgentCommand,
+    CodingAgentRunResult,
+    arun_coding_agent,
+    astream_coding_agent,
+    build_coding_agent_command,
+    run_coding_agent,
+)
 from .cost_mixin import AudioCostMixin, EmbeddingCostMixin, VideoCostMixin
 from .discovery import (
+    CodingAgentExecutable,
+    CodingAgentInfo,
     clear_discovery_cache,
     display_available_models,
     get_available_audio_models,
+    get_available_coding_agents,
     get_available_embedding_models,
     get_available_image_gen_models,
     get_available_models,
     get_available_moderation_models,
     get_available_rerank_models,
     get_available_video_gen_models,
+    get_coding_agent_executable_candidates,
+    resolve_coding_agent_binary,
+    resolve_coding_agent_executable,
+    verify_coding_agent_binary,
+    verify_coding_agent_executable,
 )
 from .ledger import ModelUsageLedger, get_recently_used_models
 from .logging import JSONFormatter, configure_logging
@@ -63,10 +96,18 @@ from .settings import settings
 from .tracker import configure_tracker, get_tracker
 
 __all__ = [
+    "CODING_AGENT_SPECS",
+    "ApprovalMode",
     "AudioCostMixin",
     "BudgetPolicy",
     "BudgetState",
     "CacheBackend",
+    "CodingAgentCommand",
+    "CodingAgentEvent",
+    "CodingAgentExecutable",
+    "CodingAgentInfo",
+    "CodingAgentRunResult",
+    "CodingAgentSpec",
     "CostEstimate",
     "DriverCallbacks",
     "EmbeddingCostMixin",
@@ -82,18 +123,23 @@ __all__ = [
     "TukuyLLMBackend",
     "UsageSession",
     "VideoCostMixin",
+    "arun_coding_agent",
+    "astream_coding_agent",
+    "build_coding_agent_command",
     "clear_discovery_cache",
     "clear_overrides",
     "configure_cache",
     "configure_logging",
     "configure_tracker",
     "create_tukuy_backend",
+    "detect_question",
     "display_available_models",
     "enforce_budget",
     "estimate_call_cost",
     "estimate_cost",
     "estimate_tokens",
     "get_available_audio_models",
+    "get_available_coding_agents",
     "get_available_embedding_models",
     "get_available_image_gen_models",
     "get_available_models",
@@ -102,6 +148,8 @@ __all__ = [
     "get_available_video_gen_models",
     "get_cache",
     "get_capabilities",
+    "get_coding_agent_executable_candidates",
+    "get_coding_agent_spec",
     "get_compatibility_matrix",
     "get_model_capabilities",
     "get_model_info",
@@ -110,9 +158,17 @@ __all__ = [
     "get_recently_used_models",
     "get_tracker",
     "override_capabilities",
+    "parse_claude_stream_json_lines",
+    "parse_codex_json_lines",
     "refresh_rates_cache",
     "register_model",
     "register_provider",
     "resolve_budget_policy",
+    "resolve_coding_agent_binary",
+    "resolve_coding_agent_executable",
+    "run_coding_agent",
     "settings",
+    "supported_coding_agent_ids",
+    "verify_coding_agent_binary",
+    "verify_coding_agent_executable",
 ]

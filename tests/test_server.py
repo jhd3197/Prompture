@@ -15,6 +15,7 @@ pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient
 
 from prompture.cli.server import create_app
+from prompture.infra.discovery import CodingAgentInfo
 
 # ---------------------------------------------------------------------------
 # Mock async driver
@@ -158,3 +159,120 @@ class TestModelsEndpoint:
         data = resp.json()
         assert "models" in data
         assert isinstance(data["models"], list)
+
+
+class TestCodingAgentsEndpoint:
+    def test_list_coding_agents(self, client):
+        """The server exposes verified coding-agent discovery."""
+        with patch(
+            "prompture.infra.discovery.get_available_coding_agents",
+            return_value=[
+                CodingAgentInfo(
+                    id="codex",
+                    name="Codex CLI",
+                    available=True,
+                    binary="/usr/local/bin/codex",
+                    verified=True,
+                    healthy=True,
+                )
+            ],
+        ) as mock_discovery:
+            resp = client.get("/v1/coding-agents")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["object"] == "list"
+        assert data["coding_agents"] == ["codex"]
+        assert data["data"][0]["object"] == "coding_agent"
+        assert data["data"][0]["id"] == "codex"
+        mock_discovery.assert_called_once_with(verify=True)
+
+    def test_list_coding_agents_can_skip_verification(self, client):
+        """Apps can request cheap PATH-only discovery when needed."""
+        with patch("prompture.infra.discovery.get_available_coding_agents", return_value=[]) as mock_discovery:
+            resp = client.get("/v1/coding-agents?verify=false")
+
+        assert resp.status_code == 200
+        mock_discovery.assert_called_once_with(verify=False)
+
+
+class TestCodingAgentRunEndpoint:
+    def test_run_endpoint_returns_result_payload(self, client):
+        """POST /v1/coding-agents/run returns the serialized CodingAgentRunResult."""
+        from prompture.infra.coding_agents import CodingAgentRunResult
+
+        fake_result = CodingAgentRunResult(
+            agent="claude",
+            command=["claude", "--print", "hi"],
+            cwd="/tmp",
+            returncode=0,
+            output="hello",
+            duration_seconds=1.5,
+            cost_usd=0.002,
+            input_tokens=10,
+            output_tokens=5,
+        )
+
+        async def _fake_arun(*args, **kwargs):
+            return fake_result
+
+        with patch("prompture.infra.coding_agents.arun_coding_agent", side_effect=_fake_arun):
+            resp = client.post(
+                "/v1/coding-agents/run",
+                json={"agent": "claude", "task": "say hi"},
+            )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["object"] == "coding_agent_run"
+        assert data["agent"] == "claude"
+        assert data["output"] == "hello"
+        assert data["cost_usd"] == 0.002
+
+    def test_run_endpoint_validation_error_returns_400(self, client):
+        async def _raise(*args, **kwargs):
+            raise ValueError("bad agent")
+
+        with patch("prompture.infra.coding_agents.arun_coding_agent", side_effect=_raise):
+            resp = client.post(
+                "/v1/coding-agents/run",
+                json={"agent": "nonesuch", "task": "x"},
+            )
+
+        assert resp.status_code == 400
+        assert "bad agent" in resp.json()["detail"]
+
+    def test_run_endpoint_missing_binary_returns_404(self, client):
+        async def _raise(*args, **kwargs):
+            raise RuntimeError("'claude' is not installed or not on PATH")
+
+        with patch("prompture.infra.coding_agents.arun_coding_agent", side_effect=_raise):
+            resp = client.post(
+                "/v1/coding-agents/run",
+                json={"agent": "claude", "task": "x"},
+            )
+
+        assert resp.status_code == 404
+        assert "not installed" in resp.json()["detail"]
+
+    def test_run_endpoint_streams_sse_events(self, client):
+        """When stream=true, the endpoint emits SSE-framed events."""
+        from prompture.infra.coding_agent_events import CodingAgentEvent
+
+        async def _fake_stream(*args, **kwargs):
+            yield CodingAgentEvent(type="system", raw={"hi": "there"})
+            yield CodingAgentEvent(type="message", text="hello")
+            yield CodingAgentEvent(type="done", cost_usd=0.001, input_tokens=4, output_tokens=2)
+
+        with patch("prompture.infra.coding_agents.astream_coding_agent", side_effect=_fake_stream):
+            resp = client.post(
+                "/v1/coding-agents/run",
+                json={"agent": "claude", "task": "hi", "stream": True},
+            )
+
+        assert resp.status_code == 200
+        body = resp.text
+        assert "type" in body
+        assert '"message"' in body
+        assert '"done"' in body
+        assert "stream_end" in body

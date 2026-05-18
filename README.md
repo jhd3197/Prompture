@@ -43,7 +43,7 @@ print(person.name)  # Maria
 - **Tool use** — Function calling and streaming across supported providers, with automatic prompt-based simulation for models without native tool support
 - **Sandboxed Python execution** — Drop-in `python_execute` tool backed by Tukuy's `PythonSandbox` (import whitelist, path restrictions, timeout, memory limit, AST risk gate)
 - **Web search** — Drop-in `web_search` tool with Tavily, Serper, Brave, and SearXNG backends; returns Markdown so the LLM can cite by URL
-- **OpenAI-compatible server** — `prompture serve` exposes `/v1/chat/completions`, `/v1/completions`, `/v1/embeddings`, `/v1/models`; point Claude Code, Codex, Cursor, Aider, or any OpenAI SDK at it and route to any of the 36+ providers
+- **OpenAI-compatible server** — `prompture serve` exposes `/v1/chat/completions`, `/v1/completions`, `/v1/embeddings`, `/v1/models`, and `/v1/coding-agents`; point Claude Code, Codex, Cursor, Aider, or any OpenAI SDK at it and route to any of the 36+ providers
 - **Synthetic datasets** — `generate_qa_dataset()` turns documents into fine-tuning JSONL (Q&A, ShareGPT, or Alpaca) ready for Unsloth, Axolotl, or TRL
 - **Refusal detection** — `RefusalDetector` + `RefusalEvaluator` flag and score LLM refusals (5 categories, en/es markers, position-weighted confidence); useful for cross-provider alignment comparison and validating abliterated models
 - **Input safety** — `PromptInjectionDetector` (jailbreak, role-hijack, delimiter attacks, encoded payloads) + `PIIRedactor` (emails, phones, Luhn-checked cards, SSN, IBAN, IPs, API keys, embedded URL credentials)
@@ -1203,6 +1203,198 @@ get_available_video_gen_models()        # ['runway/gen4.5', 'runway/gen4_aleph',
 get_available_audio_models(modality="tts")  # ['runway/eleven_multilingual_v2', ...]
 ```
 
+### Local coding-agent CLIs
+
+Prompture detects and runs the major terminal coding agents — Claude Code,
+Codex, Gemini, Qwen Code, Aider, OpenCode, Cursor Agent, and Crush — through
+one unified interface. Useful when an app wants to delegate code-editing
+tasks to whatever agent the user already has installed, without reimplementing
+the per-CLI flag dance for each one.
+
+| Agent | Binary | Install | Provider |
+|---|---|---|---|
+| Claude Code | `claude` | `npm i -g @anthropic-ai/claude-code` | Anthropic |
+| Codex CLI | `codex` | `npm i -g @openai/codex` | OpenAI |
+| Gemini CLI | `gemini` | `npm i -g @google/gemini-cli` | Google |
+| Qwen Code | `qwen` | `npm i -g @qwen-code/qwen-code` | Alibaba (gemini-cli fork) |
+| Aider | `aider` | `pip install aider-chat` | model-agnostic |
+| OpenCode | `opencode` | `npm i -g opencode-ai` | model-agnostic (sst) |
+| Cursor Agent | `cursor-agent` | Cursor installer | Cursor / Anysphere |
+| Crush | `crush` | `brew install charmbracelet/tap/crush` | model-agnostic (Charm) |
+
+#### Discover
+
+```python
+from prompture import get_available_coding_agents
+
+for agent in get_available_coding_agents(verify=True):
+    print(agent.id, agent.available, agent.binary, agent.source)
+```
+
+`verify=True` runs a `--version` health check on each resolved binary and
+reports the failure reason for broken PATH shims — common after Node version
+switches on Windows or WSL. Discovery resolves both PATH installs and the
+underlying `node_modules` package entrypoint, so a working agent can still be
+found when the npm shim is broken.
+
+#### Run
+
+```python
+from prompture import run_coding_agent
+
+result = run_coding_agent(
+    "claude",  # claude, codex, gemini, qwen, aider, opencode, cursor-agent, crush
+    "Add focused tests for the discovery helper.",
+    cwd=".",
+    approval_mode="auto",   # default | auto | yolo
+    model="sonnet",         # optional, passed to CLIs that support --model
+    timeout=600,
+)
+print(result.output)
+print("ok:", result.ok, "exit:", result.returncode, "duration:", result.duration_seconds)
+```
+
+Approval modes:
+
+- **`default`** — run interactively; the CLI asks for approvals as it edits or runs commands.
+- **`auto`** — skip approval prompts but stay within the CLI's normal sandboxing where it has one (codex `--sandbox workspace-write`, gemini/qwen `-y`, aider `--yes-always`, crush `--yolo`). Claude Code has no intermediate mode, so `auto` maps to `--dangerously-skip-permissions` there.
+- **`yolo`** — every CLI's full bypass: claude `--dangerously-skip-permissions`, codex `--dangerously-bypass-approvals-and-sandbox`, gemini/qwen `-y`, crush `--yolo`. Use only inside an environment whose blast radius you already trust.
+
+Before launching the task, the binary is health-checked by default so a
+broken shim fails fast with a clear error rather than hanging or producing
+opaque output. Pass `verify_binary=False` to skip the preflight.
+
+#### Structured output
+
+Claude Code (`--output-format stream-json`) and Codex (`exec --json`) emit a
+JSON event stream that Prompture normalises into a typed `CodingAgentEvent`
+union — `system`, `message`, `tool_call`, `tool_result`, `done`, `error`. Pass
+`output_format="json"` to get parsed events, cost, and token counts on the
+result:
+
+```python
+result = run_coding_agent(
+    "claude",
+    "Find every TODO that references issue #42 and summarise them.",
+    cwd=".",
+    approval_mode="auto",
+    output_format="json",
+)
+print(f"${result.cost_usd:.4f} — {result.input_tokens} in / {result.output_tokens} out")
+for event in result.events:
+    if event.type == "tool_call":
+        print("→", event.tool_name, event.tool_input)
+    elif event.type == "message":
+        print(event.text)
+```
+
+For live progress, use `astream_coding_agent` — an async generator that yields
+events as the CLI emits them:
+
+```python
+from prompture import astream_coding_agent
+
+async for event in astream_coding_agent("claude", "refactor X", cwd="."):
+    if event.type == "tool_call":
+        ui.show_pending(event.tool_name, event.tool_input)
+    elif event.type == "done":
+        ui.show_cost(event.cost_usd)
+```
+
+Streaming requires an agent whose spec provides a parser (Claude Code and
+Codex today). Cancelling the iterator terminates the underlying subprocess.
+
+#### Detecting clarifying questions
+
+Coding agents often pause to ask the user a clarifying question ("which
+approach do you want?", "should I delete this file?") instead of acting. In
+non-interactive mode this manifests as a final assistant message that ends in
+a question. Prompture's event parser detects question patterns and emits a
+typed `question` event alongside the `message`, with extracted numbered /
+bulleted / lettered choices when present:
+
+```python
+result = run_coding_agent("claude", "refactor X", cwd=".", output_format="json")
+if (q := result.asked_question):
+    print("Agent asked:", q.text)
+    if q.choices:
+        for i, choice in enumerate(q.choices, 1):
+            print(f"  {i}. {choice}")
+    # …then re-run with extra_args=["The answer is option 2"] to continue.
+```
+
+The same `detect_question(text)` helper is exported for callers that want to
+run their own heuristic over arbitrary agent text.
+
+#### Budget tracking
+
+Pass a `UsageSession` and coding-agent runs participate in the same per-model
+cost / token / latency summary as direct LLM calls:
+
+```python
+from prompture import UsageSession, run_coding_agent
+
+session = UsageSession()
+run_coding_agent("claude", "task 1", cwd=".", output_format="json", session=session)
+run_coding_agent("claude", "task 2", cwd=".", output_format="json", session=session)
+print(session.summary()["formatted"])
+# Session: 3,200 tokens across 2 call(s) costing $0.0421 | …
+```
+
+#### Binary path overrides
+
+When a CLI isn't on PATH, or you want to pin a specific install, set the
+matching `CODING_AGENT_BIN_*` env var (or field in `Settings`) and discovery
+will pick it up without threading the path through every call. Hyphenated ids
+use underscores in the variable name:
+
+```bash
+export CODING_AGENT_BIN_CLAUDE=/opt/claude/claude
+export CODING_AGENT_BIN_CURSOR_AGENT="/c/Program Files/Cursor/resources/app/bin/cursor-agent.exe"
+```
+
+Explicit `agent_paths={"claude": "..."}` kwargs still override settings when
+needed.
+
+#### From the CLI
+
+```bash
+prompture coding-agents --verify
+prompture code-agent claude --auto-approve "Review this package for release blockers"
+prompture code-agent codex  --auto-approve "Add tests for the pricing cache"
+prompture code-agent aider  --auto-approve --model gpt-4o "Rename foo to bar across the package"
+```
+
+#### From the server
+
+`prompture serve` exposes coding-agent discovery and execution as HTTP
+endpoints so any app talking to the OpenAI-compatible server can also drive a
+local agent:
+
+```bash
+# Discover
+curl "http://localhost:9471/v1/coding-agents"
+curl "http://localhost:9471/v1/coding-agents?verify=false"
+
+# Run, blocking
+curl -X POST "http://localhost:9471/v1/coding-agents/run" \
+  -H "content-type: application/json" \
+  -d '{"agent": "claude", "task": "summarise CHANGELOG.md", "approval_mode": "auto", "output_format": "json"}'
+
+# Run, SSE-streaming live events
+curl -N -X POST "http://localhost:9471/v1/coding-agents/run" \
+  -H "content-type: application/json" \
+  -d '{"agent": "claude", "task": "refactor X", "approval_mode": "auto", "stream": true}'
+```
+
+#### Adding a new agent
+
+Drop a `CodingAgentSpec` into
+`prompture.infra.coding_agent_specs.CODING_AGENT_SPECS` with a `build_args`
+callable that produces the CLI's argv from a task, approval mode, model, and
+extra args. Discovery, health checks, command construction, the CLI, and the
+server endpoint all read from this registry — no other changes are needed.
+
 ### Logging and Debugging
 
 ```python
@@ -1242,7 +1434,7 @@ Run spec-driven extraction suites for cross-model comparison.
 
 `prompture serve` exposes an OpenAI-shaped API
 (`/v1/chat/completions`, `/v1/completions`, `/v1/embeddings`,
-`/v1/models`) backed by Prompture's driver registry.  Point any
+`/v1/models`, `/v1/coding-agents`) backed by Prompture's driver registry.  Point any
 OpenAI SDK — or any tool that speaks the OpenAI API (Claude Code,
 Codex, Cursor, Aider, LangChain) — at it and route to any of the 36+
 supported providers under one endpoint.
