@@ -2,12 +2,20 @@ import subprocess
 from unittest.mock import patch
 
 from prompture.infra import build_coding_agent_command, run_coding_agent
+from prompture.infra.discovery import CodingAgentExecutable
+
+
+def _executable(path: str) -> tuple[CodingAgentExecutable, bool, None]:
+    return CodingAgentExecutable(binary=path, argv=(path,), display=path), True, None
 
 
 class TestCodingAgentCommands:
     """Tests for coding-agent command construction."""
 
-    @patch("prompture.infra.coding_agents.resolve_coding_agent_binary", return_value="/usr/local/bin/codex")
+    @patch(
+        "prompture.infra.coding_agents.resolve_coding_agent_executable",
+        return_value=_executable("/usr/local/bin/codex"),
+    )
     def test_codex_auto_approve_command(self, _mock_resolve, tmp_path):
         """Codex auto mode uses non-interactive exec with workspace approvals disabled."""
         command = build_coding_agent_command(
@@ -27,7 +35,10 @@ class TestCodingAgentCommands:
             "fix the tests",
         ]
 
-    @patch("prompture.infra.coding_agents.resolve_coding_agent_binary", return_value="/usr/local/bin/codex")
+    @patch(
+        "prompture.infra.coding_agents.resolve_coding_agent_executable",
+        return_value=_executable("/usr/local/bin/codex"),
+    )
     def test_codex_yolo_command(self, _mock_resolve, tmp_path):
         """Codex yolo mode uses the explicit dangerous bypass flag."""
         command = build_coding_agent_command(
@@ -39,7 +50,10 @@ class TestCodingAgentCommands:
 
         assert "--dangerously-bypass-approvals-and-sandbox" in command.argv
 
-    @patch("prompture.infra.coding_agents.resolve_coding_agent_binary", return_value="/usr/local/bin/claude")
+    @patch(
+        "prompture.infra.coding_agents.resolve_coding_agent_executable",
+        return_value=_executable("/usr/local/bin/claude"),
+    )
     def test_claude_auto_and_model_command(self, _mock_resolve, tmp_path):
         """Claude auto mode runs non-interactively with dontAsk permissions."""
         command = build_coding_agent_command(
@@ -62,7 +76,10 @@ class TestCodingAgentCommands:
             "review this repository",
         ]
 
-    @patch("prompture.infra.coding_agents.resolve_coding_agent_binary", return_value="/usr/local/bin/claude")
+    @patch(
+        "prompture.infra.coding_agents.resolve_coding_agent_executable",
+        return_value=_executable("/usr/local/bin/claude"),
+    )
     def test_claude_yolo_command(self, _mock_resolve, tmp_path):
         """Claude yolo mode uses Claude Code's dangerous skip-permissions flag."""
         command = build_coding_agent_command(
@@ -74,7 +91,10 @@ class TestCodingAgentCommands:
 
         assert "--dangerously-skip-permissions" in command.argv
 
-    @patch("prompture.infra.coding_agents.resolve_coding_agent_binary", return_value="/usr/local/bin/gemini")
+    @patch(
+        "prompture.infra.coding_agents.resolve_coding_agent_executable",
+        return_value=_executable("/usr/local/bin/gemini"),
+    )
     def test_gemini_auto_command(self, _mock_resolve, tmp_path):
         """Gemini auto mode passes yes mode through to the CLI."""
         command = build_coding_agent_command(
@@ -91,7 +111,10 @@ class TestCodingAgentRunner:
     """Tests for running coding-agent commands without invoking real CLIs."""
 
     @patch("prompture.infra.coding_agents.subprocess.run")
-    @patch("prompture.infra.coding_agents.resolve_coding_agent_binary", return_value="/usr/local/bin/codex")
+    @patch(
+        "prompture.infra.coding_agents.resolve_coding_agent_executable",
+        return_value=_executable("/usr/local/bin/codex"),
+    )
     def test_run_coding_agent_returns_result(self, _mock_resolve, mock_run, tmp_path):
         """Runner captures subprocess output and metadata."""
         mock_run.return_value = subprocess.CompletedProcess(
@@ -107,4 +130,42 @@ class TestCodingAgentRunner:
         assert result.agent == "codex"
         assert result.output == "done"
         assert result.returncode == 0
+        mock_run.assert_called_once()
+
+    @patch("prompture.infra.coding_agents.subprocess.run")
+    @patch(
+        "prompture.infra.coding_agents.resolve_coding_agent_executable",
+        return_value=(
+            None,
+            False,
+            "node: not found",
+        ),
+    )
+    def test_run_coding_agent_verifies_before_running_task(self, _mock_resolve, mock_run, tmp_path):
+        """Runner fails early when PATH resolves to a broken CLI shim."""
+        result = run_coding_agent("gemini", "fix bug", cwd=tmp_path, approval_mode="auto")
+
+        assert result.ok is False
+        assert result.returncode == -1
+        assert result.output == "gemini CLI health check failed: node: not found"
+        mock_run.assert_not_called()
+
+    @patch("prompture.infra.coding_agents.subprocess.run")
+    @patch(
+        "prompture.infra.coding_agents.resolve_coding_agent_executable",
+        return_value=_executable("/usr/local/bin/codex"),
+    )
+    def test_run_coding_agent_can_skip_verification(self, _mock_resolve, mock_run, tmp_path):
+        """Callers can skip the preflight check when they need raw subprocess behavior."""
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=["/usr/local/bin/codex"],
+            returncode=0,
+            stdout="done",
+            stderr="",
+        )
+
+        result = run_coding_agent("codex", "fix bug", cwd=tmp_path, verify_binary=False)
+
+        assert result.ok is True
+        assert result.output == "done"
         mock_run.assert_called_once()

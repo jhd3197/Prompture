@@ -39,6 +39,7 @@ from .coding_agents import (
 )
 from .cost_mixin import AudioCostMixin, EmbeddingCostMixin, VideoCostMixin
 from .discovery import (
+    CodingAgentExecutable,
     CodingAgentInfo,
     clear_discovery_cache,
     display_available_models,
@@ -50,7 +51,11 @@ from .discovery import (
     get_available_moderation_models,
     get_available_rerank_models,
     get_available_video_gen_models,
+    get_coding_agent_executable_candidates,
     resolve_coding_agent_binary,
+    resolve_coding_agent_executable,
+    verify_coding_agent_binary,
+    verify_coding_agent_executable,
 )
 from .ledger import ModelUsageLedger, get_recently_used_models
 from .logging import JSONFormatter, configure_logging
@@ -80,6 +85,7 @@ __all__ = [
     "BudgetState",
     "CacheBackend",
     "CodingAgentCommand",
+    "CodingAgentExecutable",
     "CodingAgentInfo",
     "CodingAgentRunResult",
     "CostEstimate",
@@ -120,6 +126,7 @@ __all__ = [
     "get_available_video_gen_models",
     "get_cache",
     "get_capabilities",
+    "get_coding_agent_executable_candidates",
     "get_compatibility_matrix",
     "get_model_capabilities",
     "get_model_info",
@@ -133,6 +140,9 @@ __all__ = [
     "register_provider",
     "resolve_budget_policy",
     "resolve_coding_agent_binary",
+    "resolve_coding_agent_executable",
     "run_coding_agent",
     "settings",
+    "verify_coding_agent_binary",
+    "verify_coding_agent_executable",
 ]

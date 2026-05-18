@@ -11,7 +11,10 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Literal
 
-from .discovery import resolve_coding_agent_binary
+from .discovery import (
+    CodingAgentExecutable,
+    resolve_coding_agent_executable,
+)
 
 CodingAgentId = Literal["claude", "codex", "gemini"]
 ApprovalMode = Literal["default", "auto", "yolo"]
@@ -160,28 +163,81 @@ def build_coding_agent_command(
     if not task_text:
         raise ValueError("task must not be empty")
 
-    path_overrides = agent_paths or {}
-    binary_name = binary or path_overrides.get(agent_id) or agent_id
-    resolved_binary = resolve_coding_agent_binary(binary_name)
-    if not resolved_binary:
+    executable = _resolve_executable(agent_id, binary=binary, agent_paths=agent_paths)
+    if not executable:
+        path_overrides = agent_paths or {}
+        binary_name = binary or path_overrides.get(agent_id) or agent_id
         raise RuntimeError(f"'{binary_name}' is not installed or not on PATH")
 
     cwd_str = _resolve_cwd(cwd)
     args_extra = list(extra_args or [])
 
+    return _build_command_from_executable(
+        agent_id,
+        task_text,
+        executable=executable,
+        cwd_str=cwd_str,
+        approval_mode=mode,
+        model=model,
+        extra_args=args_extra,
+    )
+
+
+def _resolve_executable(
+    agent_id: str,
+    *,
+    binary: str | None = None,
+    agent_paths: Mapping[str, str] | None = None,
+) -> CodingAgentExecutable | None:
+    path_overrides = agent_paths or {}
+    binary_name = binary or path_overrides.get(agent_id) or agent_id
+    executable, _healthy, _error = resolve_coding_agent_executable(agent_id, binary_name)
+    return executable
+
+
+def _resolve_healthy_executable(
+    agent_id: str,
+    *,
+    binary: str | None = None,
+    agent_paths: Mapping[str, str] | None = None,
+    verify_timeout: int = 5,
+) -> tuple[CodingAgentExecutable | None, str | None]:
+    path_overrides = agent_paths or {}
+    binary_name = binary or path_overrides.get(agent_id) or agent_id
+    executable, healthy, error = resolve_coding_agent_executable(
+        agent_id,
+        binary_name,
+        verify=True,
+        verify_timeout=verify_timeout,
+    )
+    if healthy:
+        return executable, None
+    return None, error
+
+
+def _build_command_from_executable(
+    agent_id: str,
+    task_text: str,
+    *,
+    executable: CodingAgentExecutable,
+    cwd_str: str,
+    approval_mode: ApprovalMode,
+    model: str | None,
+    extra_args: Sequence[str],
+) -> CodingAgentCommand:
     if agent_id == "claude":
-        args = _build_claude_args(task_text, approval_mode=mode, model=model, extra_args=args_extra)
+        args = _build_claude_args(task_text, approval_mode=approval_mode, model=model, extra_args=extra_args)
     elif agent_id == "codex":
-        args = _build_codex_args(task_text, approval_mode=mode, model=model, extra_args=args_extra)
+        args = _build_codex_args(task_text, approval_mode=approval_mode, model=model, extra_args=extra_args)
     else:
-        args = _build_gemini_args(task_text, approval_mode=mode, model=model, extra_args=args_extra)
+        args = _build_gemini_args(task_text, approval_mode=approval_mode, model=model, extra_args=extra_args)
 
     return CodingAgentCommand(
         agent=agent_id,
-        argv=[resolved_binary, *args],
-        binary=resolved_binary,
+        argv=[*executable.argv, *args],
+        binary=executable.binary,
         cwd=cwd_str,
-        approval_mode=mode,
+        approval_mode=approval_mode,
     )
 
 
@@ -203,26 +259,64 @@ def run_coding_agent(
     timeout: int = 600,
     max_output_chars: int = 50000,
     env: Mapping[str, str] | None = None,
+    verify_binary: bool = True,
+    verify_timeout: int = 5,
 ) -> CodingAgentRunResult:
     """Run a local coding-agent CLI and return its output.
 
     This is intentionally a thin subprocess wrapper. It does not sandbox the
     agent itself; use ``approval_mode="yolo"`` only inside an environment you
-    already trust to contain the blast radius.
+    already trust to contain the blast radius. By default, the resolved binary
+    is health-checked before the agent task starts so broken PATH shims fail
+    early with a clear message.
     """
-    command = build_coding_agent_command(
-        agent,
-        task,
-        cwd=cwd,
-        approval_mode=approval_mode,
-        binary=binary,
-        agent_paths=agent_paths,
-        model=model,
-        extra_args=extra_args,
-    )
+    agent_id = _normalize_agent(agent)
+    mode = _normalize_approval_mode(approval_mode)
+    task_text = task.strip()
+    if not task_text:
+        raise ValueError("task must not be empty")
+    cwd_str = _resolve_cwd(cwd)
+    args_extra = list(extra_args or [])
+    start = time.monotonic()
+
+    if verify_binary:
+        executable, error = _resolve_healthy_executable(
+            agent_id,
+            binary=binary,
+            agent_paths=agent_paths,
+            verify_timeout=verify_timeout,
+        )
+        if executable is None:
+            return CodingAgentRunResult(
+                agent=agent_id,
+                command=[],
+                cwd=cwd_str,
+                returncode=-1,
+                output=f"{agent_id} CLI health check failed: {error}",
+                duration_seconds=time.monotonic() - start,
+            )
+        command = _build_command_from_executable(
+            agent_id,
+            task_text,
+            executable=executable,
+            cwd_str=cwd_str,
+            approval_mode=mode,
+            model=model,
+            extra_args=args_extra,
+        )
+    else:
+        command = build_coding_agent_command(
+            agent_id,
+            task_text,
+            cwd=cwd_str,
+            approval_mode=mode,
+            binary=binary,
+            agent_paths=agent_paths,
+            model=model,
+            extra_args=args_extra,
+        )
 
     child_env = None if env is None else {**os.environ, **dict(env)}
-    start = time.monotonic()
     try:
         completed = subprocess.run(
             command.argv,

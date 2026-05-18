@@ -42,21 +42,26 @@ def _build_drivers(providers: list[str]) -> dict[str, object]:
 
 @cli.command("coding-agents")
 @click.option("--json", "json_output", is_flag=True, help="Output machine-readable JSON.")
-def coding_agents(json_output: bool) -> None:
+@click.option("--verify", is_flag=True, help="Run a lightweight health check for each detected CLI.")
+def coding_agents(json_output: bool, verify: bool) -> None:
     """List detected local coding-agent CLIs."""
     from dataclasses import asdict
 
     from ..infra import get_available_coding_agents
 
-    agents = get_available_coding_agents()
+    agents = get_available_coding_agents(verify=verify)
     if json_output:
         click.echo(json.dumps([asdict(agent) for agent in agents], indent=2))
         return
 
     for agent in agents:
-        status = "available" if agent.available else "missing"
-        source = "custom" if agent.custom_path else "PATH"
-        click.echo(f"{agent.id:<7} {status:<9} {source:<6} {agent.binary}")
+        if verify:
+            status = "healthy" if agent.available else "failed"
+        else:
+            status = "available" if agent.available else "missing"
+        source = "custom" if agent.custom_path else (agent.source or "missing")
+        detail = f"  {agent.error}" if agent.error else ""
+        click.echo(f"{agent.id:<7} {status:<9} {source:<12} {agent.binary}{detail}")
 
 
 @cli.command("code-agent")
@@ -69,6 +74,7 @@ def coding_agents(json_output: bool) -> None:
 @click.option("--yolo", is_flag=True, help="Use the CLI's dangerous no-approval/no-sandbox mode.")
 @click.option("--timeout", default=600, type=int, help="Timeout in seconds.")
 @click.option("--max-output", default=50000, type=int, help="Maximum output characters to print.")
+@click.option("--verify/--no-verify", default=True, help="Health-check the CLI before running.")
 @click.option("--dry-run", is_flag=True, help="Print the resolved command without running it.")
 def code_agent(
     agent: str,
@@ -80,6 +86,7 @@ def code_agent(
     yolo: bool,
     timeout: int,
     max_output: int,
+    verify: bool,
     dry_run: bool,
 ) -> None:
     """Run Claude Code, Codex CLI, or Gemini CLI from Prompture."""
@@ -113,6 +120,7 @@ def code_agent(
         model=model,
         timeout=timeout,
         max_output_chars=max_output,
+        verify_binary=verify,
     )
 
     if result.output:

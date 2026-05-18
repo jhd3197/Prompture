@@ -4,12 +4,16 @@ from __future__ import annotations
 
 import dataclasses
 import hashlib
+import json
 import logging
 import os
 import platform
 import shutil
+import subprocess
 import sys
 from collections.abc import Mapping
+from contextlib import suppress
+from pathlib import Path
 from typing import Any, Literal, overload
 
 from ..drivers.provider_descriptors import PROVIDER_DESCRIPTOR_MAP, ProviderDescriptor, _resolve_cls
@@ -100,6 +104,20 @@ class CodingAgentInfo:
     available: bool
     binary: str
     custom_path: bool = False
+    source: str | None = None
+    verified: bool = False
+    healthy: bool | None = None
+    error: str | None = None
+
+
+@dataclasses.dataclass(frozen=True)
+class CodingAgentExecutable:
+    """A concrete way to invoke a coding-agent CLI."""
+
+    binary: str
+    argv: tuple[str, ...]
+    display: str
+    source: str = "PATH"
 
 
 _CODING_AGENT_SPECS: dict[str, tuple[str, str]] = {
@@ -109,6 +127,19 @@ _CODING_AGENT_SPECS: dict[str, tuple[str, str]] = {
 }
 
 _WINDOWS_CLI_EXTENSIONS = (".cmd", ".ps1", ".bat")
+_WINDOWS_CMD_EXTENSIONS = (".cmd", ".bat")
+_CODING_AGENT_HEALTH_TIMEOUT = 5
+_CODING_AGENT_NPM_PACKAGES: dict[str, tuple[str, ...]] = {
+    "claude": ("@anthropic-ai/claude-code",),
+    "codex": ("@openai/codex",),
+    "gemini": ("@google/gemini-cli",),
+}
+_NODE_CLI_ENTRYPOINT_FALLBACKS = (
+    Path("dist") / "index.js",
+    Path("bin") / "cli.js",
+    Path("cli.js"),
+    Path("index.js"),
+)
 
 
 def resolve_coding_agent_binary(binary: str) -> str | None:
@@ -135,10 +166,454 @@ def resolve_coding_agent_binary(binary: str) -> str | None:
     return None
 
 
+def _dedupe(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for value in values:
+        if value and value not in seen:
+            seen.add(value)
+            out.append(value)
+    return out
+
+
+def _looks_like_path(value: str) -> bool:
+    return (
+        os.path.sep in value
+        or (os.path.altsep is not None and os.path.altsep in value)
+        or (len(value) > 2 and value[1] == ":" and value[2] in "\\/")
+    )
+
+
+def _manual_windows_to_wsl_path(value: str) -> str:
+    if len(value) > 2 and value[1] == ":" and value[2] in "\\/":
+        drive = value[0].lower()
+        rest = value[3:].replace("\\", "/")
+        return f"/mnt/{drive}/{rest}"
+    return value
+
+
+def _manual_wsl_to_windows_path(value: Path) -> str:
+    text = str(value)
+    if text.startswith("/mnt/") and len(text) > 6 and text[6] == "/":
+        drive = text[5].upper()
+        rest = text[7:].replace("/", "\\")
+        return f"{drive}:\\{rest}"
+    return text
+
+
+def _path_for_windows_executable(path: Path) -> str:
+    """Convert WSL /mnt paths for Windows executables when possible."""
+    if shutil.which("wslpath"):
+        try:
+            completed = subprocess.run(
+                ["wslpath", "-w", str(path)],
+                capture_output=True,
+                text=True,
+                timeout=1,
+                check=False,
+            )
+            if completed.returncode == 0 and completed.stdout.strip():
+                return completed.stdout.strip()
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    return _manual_wsl_to_windows_path(path)
+
+
+def _path_for_windows_node(path: Path) -> str:
+    return _path_for_windows_executable(path)
+
+
+def _quote_windows_cmd_path(value: str) -> str:
+    if any(char.isspace() for char in value):
+        return f'"{value}"'
+    return value
+
+
+def _command_name_variants(binary: str) -> list[str]:
+    if _looks_like_path(binary):
+        return [os.path.expanduser(os.path.expandvars(binary))]
+
+    variants = [binary]
+    root, ext = os.path.splitext(binary)
+    if not ext:
+        variants.extend(f"{root}{suffix}" for suffix in _WINDOWS_CLI_EXTENSIONS)
+    return _dedupe(variants)
+
+
+def _existing_path(value: str) -> str | None:
+    expanded = _manual_windows_to_wsl_path(os.path.expanduser(os.path.expandvars(value)))
+    path = Path(expanded)
+    if path.is_file():
+        return str(path)
+    return None
+
+
+def _resolved_paths_for_binary(binary: str) -> list[str]:
+    paths: list[str] = []
+    for variant in _command_name_variants(binary):
+        if existing := _existing_path(variant):
+            paths.append(existing)
+        if found := shutil.which(variant):
+            paths.append(found)
+    return _dedupe(paths)
+
+
+def _npm_global_prefixes() -> list[Path]:
+    prefixes: list[Path] = []
+    for npm_binary in _resolved_paths_for_binary("npm"):
+        try:
+            completed = subprocess.run(
+                [npm_binary, "prefix", "-g"],
+                capture_output=True,
+                text=True,
+                timeout=2,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+        if completed.returncode != 0:
+            continue
+        prefix = completed.stdout.strip()
+        if prefix:
+            prefixes.append(Path(_manual_windows_to_wsl_path(prefix)))
+    return list(dict.fromkeys(prefixes))
+
+
+def _package_path(package_name: str) -> Path:
+    return Path(*package_name.split("/"))
+
+
+def _package_command_name(package_name: str) -> str:
+    return package_name.rsplit("/", 1)[-1]
+
+
+def _npm_package_dir_candidates(base_dir: Path, package_name: str) -> list[Path]:
+    package_path = _package_path(package_name)
+    bases = [base_dir]
+    try:
+        resolved = base_dir.resolve()
+    except OSError:
+        resolved = base_dir
+    bases.append(resolved)
+
+    candidates: list[Path] = []
+    for base in dict.fromkeys(bases):
+        candidates.extend(
+            [
+                base / "node_modules" / package_path,
+                base / "lib" / "node_modules" / package_path,
+                base.parent / "node_modules" / package_path,
+                base.parent / "lib" / "node_modules" / package_path,
+            ]
+        )
+    return [path for path in dict.fromkeys(candidates) if path.is_dir()]
+
+
+def _npm_package_entrypoints(
+    package_dir: Path,
+    *,
+    command_name: str,
+    package_name: str,
+) -> list[Path]:
+    rel_paths: list[Path] = []
+    package_json = package_dir / "package.json"
+    if package_json.is_file():
+        try:
+            metadata = json.loads(package_json.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            metadata = {}
+        bin_spec = metadata.get("bin") if isinstance(metadata, dict) else None
+        if isinstance(bin_spec, str):
+            rel_paths.append(Path(bin_spec))
+        elif isinstance(bin_spec, dict):
+            preferred_names = [
+                command_name,
+                package_name,
+                _package_command_name(package_name),
+            ]
+            for name in preferred_names:
+                entry = bin_spec.get(name)
+                if isinstance(entry, str):
+                    rel_paths.append(Path(entry))
+            rel_paths.extend(Path(entry) for entry in bin_spec.values() if isinstance(entry, str))
+
+    rel_paths.extend(_NODE_CLI_ENTRYPOINT_FALLBACKS)
+
+    candidates = [path if path.is_absolute() else package_dir / path for path in dict.fromkeys(rel_paths)]
+    return [path for path in candidates if path.is_file()]
+
+
+def _node_binary_candidates_for_dir(base_dir: Path) -> list[str]:
+    node_paths = [
+        str(base_dir / "node"),
+        str(base_dir / "node.exe"),
+        str(base_dir / "bin" / "node"),
+        str(base_dir / "bin" / "node.exe"),
+        *_resolved_paths_for_binary("node"),
+        *_resolved_paths_for_binary("node.exe"),
+    ]
+    try:
+        resolved = base_dir.resolve()
+    except OSError:
+        resolved = base_dir
+    node_paths.extend(
+        [
+            str(resolved / "node"),
+            str(resolved / "node.exe"),
+            str(resolved / "bin" / "node"),
+            str(resolved / "bin" / "node.exe"),
+        ]
+    )
+
+    return [node for node in _dedupe(node_paths) if Path(node).is_file() or shutil.which(node) is not None]
+
+
+def _node_package_candidates_from_dir(
+    agent_id: str,
+    base_dir: Path,
+) -> list[CodingAgentExecutable]:
+    executables: list[CodingAgentExecutable] = []
+    packages = _CODING_AGENT_NPM_PACKAGES.get(agent_id, ())
+    if not packages:
+        return executables
+
+    node_paths = _node_binary_candidates_for_dir(base_dir)
+    if not node_paths:
+        return executables
+
+    command_name = _CODING_AGENT_SPECS.get(agent_id, (agent_id, agent_id))[1]
+    for package_name in packages:
+        package_dirs = _npm_package_dir_candidates(base_dir, package_name)
+        if not package_dirs:
+            continue
+        for package_dir in package_dirs:
+            entrypoints = _npm_package_entrypoints(
+                package_dir,
+                command_name=command_name,
+                package_name=package_name,
+            )
+            for node in node_paths:
+                is_windows_node = node.lower().endswith(".exe")
+                for entrypoint in entrypoints:
+                    entry_arg = _path_for_windows_node(entrypoint) if is_windows_node else str(entrypoint)
+                    argv = (node, "--no-warnings=DEP0040", entry_arg)
+                    executables.append(
+                        CodingAgentExecutable(
+                            binary=node,
+                            argv=argv,
+                            display=" ".join(argv),
+                            source=f"npm:{package_name}",
+                        )
+                    )
+    return executables
+
+
+def _node_package_candidates_from_shim(
+    agent_id: str,
+    shim_path: str,
+) -> list[CodingAgentExecutable]:
+    path = Path(shim_path)
+    bases = [path.parent]
+    with suppress(OSError):
+        bases.append(path.resolve().parent)
+
+    candidates: list[CodingAgentExecutable] = []
+    for base in dict.fromkeys(bases):
+        candidates.extend(_node_package_candidates_from_dir(agent_id, base))
+    return candidates
+
+
+def _windows_cmd_wrapper_candidates(path: str) -> list[CodingAgentExecutable]:
+    """Return cmd.exe-based candidates for Windows npm .cmd/.bat wrappers."""
+    if not path.lower().endswith(_WINDOWS_CMD_EXTENSIONS):
+        return []
+
+    cmd_paths = _resolved_paths_for_binary("cmd.exe")
+    if not cmd_paths and (cmd := shutil.which("cmd.exe")):
+        cmd_paths = [cmd]
+
+    windows_path = _quote_windows_cmd_path(_path_for_windows_executable(Path(path)))
+    return [
+        CodingAgentExecutable(
+            binary=cmd,
+            argv=(cmd, "/d", "/s", "/c", windows_path),
+            display=f"{cmd} /d /s /c {windows_path}",
+            source="windows-cmd",
+        )
+        for cmd in cmd_paths
+    ]
+
+
+def _is_windows_wrapper_path(path: str) -> bool:
+    return path.lower().endswith(_WINDOWS_CLI_EXTENSIONS)
+
+
+def _is_windows_npm_shim_path(path: str, all_paths: list[str]) -> bool:
+    lower = path.lower()
+    if not lower.startswith("/mnt/"):
+        return False
+    return any(other.lower() in {f"{lower}.cmd", f"{lower}.bat"} for other in all_paths)
+
+
+def _extra_node_package_candidates(
+    agent_id: str,
+    binary: str,
+) -> list[CodingAgentExecutable]:
+    candidates: list[CodingAgentExecutable] = []
+    if _looks_like_path(binary):
+        path = Path(_manual_windows_to_wsl_path(os.path.expanduser(os.path.expandvars(binary))))
+        bases = [path.parent if path.is_file() or path.suffix else path]
+        for base in bases:
+            candidates.extend(_node_package_candidates_from_dir(agent_id, base))
+        return candidates
+
+    for prefix in _npm_global_prefixes():
+        candidates.extend(_node_package_candidates_from_dir(agent_id, prefix))
+        candidates.extend(_node_package_candidates_from_dir(agent_id, prefix / "bin"))
+    return candidates
+
+
+def _dedupe_executables(candidates: list[CodingAgentExecutable]) -> list[CodingAgentExecutable]:
+    seen: set[tuple[str, ...]] = set()
+    unique: list[CodingAgentExecutable] = []
+    for candidate in candidates:
+        if candidate.argv not in seen:
+            seen.add(candidate.argv)
+            unique.append(candidate)
+    return unique
+
+
+# Backwards-compatible internal helpers kept for tests and downstream users
+# that reached into this private module during the first implementation.
+def _gemini_node_candidates_from_dir(base_dir: Path) -> list[CodingAgentExecutable]:
+    return _node_package_candidates_from_dir("gemini", base_dir)
+
+
+def _gemini_node_candidates_from_shim(shim_path: str) -> list[CodingAgentExecutable]:
+    return _node_package_candidates_from_shim("gemini", shim_path)
+
+
+def get_coding_agent_executable_candidates(
+    agent_id: str,
+    binary: str,
+) -> list[CodingAgentExecutable]:
+    """Return candidate executable forms for a coding-agent CLI."""
+    paths = _resolved_paths_for_binary(binary)
+    candidates: list[CodingAgentExecutable] = []
+    late_direct_candidates: list[CodingAgentExecutable] = []
+
+    for path in paths:
+        direct = CodingAgentExecutable(binary=path, argv=(path,), display=path)
+        if _is_windows_wrapper_path(path) or _is_windows_npm_shim_path(path, paths):
+            late_direct_candidates.append(direct)
+        else:
+            candidates.append(direct)
+
+    for path in paths:
+        candidates.extend(_windows_cmd_wrapper_candidates(path))
+
+    candidates.extend(late_direct_candidates)
+
+    for path in paths:
+        candidates.extend(_node_package_candidates_from_shim(agent_id, path))
+    candidates.extend(_extra_node_package_candidates(agent_id, binary))
+
+    return _dedupe_executables(candidates)
+
+
+def _summarize_health_error(output: str) -> str:
+    """Return a compact single-line health-check failure reason."""
+    lines = [line.strip() for line in output.splitlines() if line.strip()]
+    if not lines:
+        return "health check failed with no output"
+    return lines[0][:240]
+
+
+def verify_coding_agent_binary(
+    agent_id: str,
+    binary: str,
+    *,
+    timeout: int = _CODING_AGENT_HEALTH_TIMEOUT,
+) -> tuple[bool, str | None]:
+    """Run a lightweight health check for a resolved coding-agent binary."""
+    try:
+        completed = subprocess.run(
+            [binary, "--version"],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return False, f"{agent_id} health check timed out after {timeout}s"
+    except OSError as exc:
+        return False, f"{agent_id} could not start: {exc}"
+
+    if completed.returncode == 0:
+        return True, None
+
+    output = "\n".join(part for part in (completed.stderr, completed.stdout) if part)
+    return False, _summarize_health_error(output)
+
+
+def verify_coding_agent_executable(
+    agent_id: str,
+    executable: CodingAgentExecutable,
+    *,
+    timeout: int = _CODING_AGENT_HEALTH_TIMEOUT,
+) -> tuple[bool, str | None]:
+    """Run a lightweight health check for a candidate executable."""
+    try:
+        completed = subprocess.run(
+            [*executable.argv, "--version"],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return False, f"{agent_id} health check timed out after {timeout}s"
+    except OSError as exc:
+        return False, f"{agent_id} could not start: {exc}"
+
+    if completed.returncode == 0:
+        return True, None
+
+    output = "\n".join(part for part in (completed.stderr, completed.stdout) if part)
+    return False, _summarize_health_error(output)
+
+
+def resolve_coding_agent_executable(
+    agent_id: str,
+    binary: str,
+    *,
+    verify: bool = False,
+    verify_timeout: int = _CODING_AGENT_HEALTH_TIMEOUT,
+) -> tuple[CodingAgentExecutable | None, bool | None, str | None]:
+    """Resolve a coding-agent executable, optionally picking the first healthy candidate."""
+    candidates = get_coding_agent_executable_candidates(agent_id, binary)
+    if not candidates:
+        return None, False if verify else None, f"'{binary}' is not installed or not on PATH"
+
+    if not verify:
+        return candidates[0], None, None
+
+    last_error: str | None = None
+    for candidate in candidates:
+        healthy, error = verify_coding_agent_executable(agent_id, candidate, timeout=verify_timeout)
+        if healthy:
+            return candidate, True, None
+        last_error = error
+
+    return candidates[0], False, last_error
+
+
 def get_available_coding_agents(
     *,
     agent_paths: Mapping[str, str] | None = None,
     include_unavailable: bool = True,
+    verify: bool = False,
+    verify_timeout: int = _CODING_AGENT_HEALTH_TIMEOUT,
 ) -> list[CodingAgentInfo]:
     """Auto-detect installed coding-agent CLIs.
 
@@ -149,6 +624,9 @@ def get_available_coding_agents(
         include_unavailable: When ``True`` (default), return all known agents
             with ``available=False`` for missing CLIs. When ``False``, return
             only discovered agents.
+        verify: When ``True``, run ``--version`` for resolved binaries and
+            mark CLIs unavailable when the executable shim fails.
+        verify_timeout: Timeout in seconds for each health check.
 
     Returns:
         A list of :class:`CodingAgentInfo` entries suitable for app settings,
@@ -160,18 +638,31 @@ def get_available_coding_agents(
     for agent_id, (display_name, default_binary) in _CODING_AGENT_SPECS.items():
         custom_binary = configured_paths.get(agent_id, "")
         binary_name = custom_binary or default_binary
-        resolved = resolve_coding_agent_binary(binary_name)
+        executable, healthy, error = resolve_coding_agent_executable(
+            agent_id,
+            binary_name,
+            verify=verify,
+            verify_timeout=verify_timeout,
+        )
 
-        if resolved is None and not include_unavailable:
+        available = executable is not None and (healthy is not False)
+
+        if not available and not include_unavailable:
             continue
 
+        binary_display = executable.display if executable is not None else binary_name
+        source = executable.source if executable is not None else None
         agents.append(
             CodingAgentInfo(
                 id=agent_id,
                 name=display_name,
-                available=resolved is not None,
-                binary=resolved or binary_name,
+                available=available,
+                binary=binary_display,
                 custom_path=bool(custom_binary),
+                source=source,
+                verified=verify,
+                healthy=healthy,
+                error=error,
             )
         )
 

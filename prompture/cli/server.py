@@ -8,6 +8,7 @@ OpenAI SDK, …) need:
   optional server-side tool execution (sandbox / web search).
 * ``POST /v1/completions`` — legacy completions, thin wrapper around chat.
 * ``GET  /v1/models`` — list models discovered by Prompture.
+* ``GET  /v1/coding-agents`` — list local Claude/Codex/Gemini CLIs.
 * ``POST /v1/embeddings`` — routes to ``get_embedding_driver_for_model``.
 
 Plus Prompture-native endpoints:
@@ -782,6 +783,29 @@ def create_app(
         )
 
     # ---- OpenAI-compatible: /v1/models ----
+
+    @app.get("/v1/coding-agents")
+    async def list_coding_agents(verify: bool = True) -> Any:
+        """List available local coding-agent CLIs."""
+        from dataclasses import asdict
+
+        from ..infra.discovery import get_available_coding_agents
+
+        agents = get_available_coding_agents(verify=verify)
+        agent_objects: list[dict[str, Any]] = []
+        for agent in agents:
+            item = asdict(agent)
+            item["object"] = "coding_agent"
+            agent_objects.append(item)
+
+        return JSONResponse(
+            {
+                "object": "list",
+                "data": agent_objects,
+                # Legacy/simple field for small app integrations.
+                "coding_agents": [agent["id"] for agent in agent_objects if agent["available"]],
+            }
+        )
 
     @app.get("/v1/models")
     async def list_models() -> Any:

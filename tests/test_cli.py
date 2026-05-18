@@ -6,6 +6,7 @@ import pytest
 from click.testing import CliRunner
 
 from prompture.cli.cli import cli
+from prompture.infra.discovery import CodingAgentExecutable
 
 
 @pytest.mark.integration
@@ -73,10 +74,32 @@ def test_coding_agents_command_lists_agents():
     assert "gemini" in result.output
 
 
+def test_coding_agents_command_can_verify_health():
+    """The coding-agents command can show health-check errors."""
+    runner = CliRunner()
+    with (
+        patch(
+            "prompture.infra.discovery.shutil.which",
+            side_effect=lambda binary: "/usr/local/bin/codex" if binary == "codex" else None,
+        ),
+        patch("prompture.infra.discovery.verify_coding_agent_executable", return_value=(False, "node: not found")),
+    ):
+        result = runner.invoke(cli, ["coding-agents", "--verify"])
+
+    assert result.exit_code == 0
+    assert "failed" in result.output
+    assert "node: not found" in result.output
+
+
 def test_code_agent_dry_run_auto_approve(tmp_path):
     """Dry-run shows the resolved coding-agent command without executing it."""
     runner = CliRunner()
-    with patch("prompture.infra.coding_agents.resolve_coding_agent_binary", return_value="/usr/local/bin/codex"):
+    executable = CodingAgentExecutable(
+        binary="/usr/local/bin/codex",
+        argv=("/usr/local/bin/codex",),
+        display="/usr/local/bin/codex",
+    )
+    with patch("prompture.infra.coding_agents.resolve_coding_agent_executable", return_value=(executable, None, None)):
         result = runner.invoke(
             cli,
             [

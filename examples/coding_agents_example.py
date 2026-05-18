@@ -23,10 +23,11 @@ PREFERRED_AGENT = os.getenv("PROMPTURE_CODING_AGENT", "codex")
 
 
 print("Detected coding agents:")
-agents = get_available_coding_agents()
+agents = get_available_coding_agents(verify=True)
 for agent in agents:
-    status = "available" if agent.available else "missing"
-    print(f"- {agent.id}: {status} ({agent.binary})")
+    status = "available" if agent.available else ("failed" if agent.verified else "missing")
+    detail = f" - {agent.error}" if agent.error else ""
+    print(f"- {agent.id}: {status} ({agent.binary}){detail}")
 
 available = {agent.id for agent in agents if agent.available}
 if PREFERRED_AGENT not in available:

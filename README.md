@@ -43,7 +43,7 @@ print(person.name)  # Maria
 - **Tool use** — Function calling and streaming across supported providers, with automatic prompt-based simulation for models without native tool support
 - **Sandboxed Python execution** — Drop-in `python_execute` tool backed by Tukuy's `PythonSandbox` (import whitelist, path restrictions, timeout, memory limit, AST risk gate)
 - **Web search** — Drop-in `web_search` tool with Tavily, Serper, Brave, and SearXNG backends; returns Markdown so the LLM can cite by URL
-- **OpenAI-compatible server** — `prompture serve` exposes `/v1/chat/completions`, `/v1/completions`, `/v1/embeddings`, `/v1/models`; point Claude Code, Codex, Cursor, Aider, or any OpenAI SDK at it and route to any of the 36+ providers
+- **OpenAI-compatible server** — `prompture serve` exposes `/v1/chat/completions`, `/v1/completions`, `/v1/embeddings`, `/v1/models`, and `/v1/coding-agents`; point Claude Code, Codex, Cursor, Aider, or any OpenAI SDK at it and route to any of the 36+ providers
 - **Synthetic datasets** — `generate_qa_dataset()` turns documents into fine-tuning JSONL (Q&A, ShareGPT, or Alpaca) ready for Unsloth, Axolotl, or TRL
 - **Refusal detection** — `RefusalDetector` + `RefusalEvaluator` flag and score LLM refusals (5 categories, en/es markers, position-weighted confidence); useful for cross-provider alignment comparison and validating abliterated models
 - **Input safety** — `PromptInjectionDetector` (jailbreak, role-hijack, delimiter attacks, encoded payloads) + `PIIRedactor` (emails, phones, Luhn-checked cards, SSN, IBAN, IPs, API keys, embedded URL credentials)
@@ -1208,7 +1208,7 @@ Prompture can also discover and run local coding-agent CLIs for app integrations
 ```python
 from prompture import get_available_coding_agents, run_coding_agent
 
-agents = get_available_coding_agents()
+agents = get_available_coding_agents(verify=True)
 print(agents)
 
 result = run_coding_agent(
@@ -1223,9 +1223,27 @@ print(result.output)
 The same integration is available from the CLI:
 
 ```bash
-prompture coding-agents
+prompture coding-agents --verify
 prompture code-agent codex --auto-approve "Add tests for the pricing cache"
 prompture code-agent claude --auto-approve "Review this package for release blockers"
+```
+
+Use `verify=True` (or `prompture coding-agents --verify`) when PATH may contain
+broken shims; Prompture runs a quick `--version` health check and reports the
+failure reason. Actual `run_coding_agent(...)` calls also health-check by
+default before launching the task; pass `verify_binary=False` only if you
+explicitly want to skip that preflight.
+
+Discovery checks normal PATH installs and npm-style installs for Claude Code
+(`@anthropic-ai/claude-code`), Codex CLI (`@openai/codex`), and Gemini CLI
+(`@google/gemini-cli`). If a shim is present but broken, verified discovery can
+fall back to the package entrypoint plus a working `node` or `node.exe`.
+
+Apps can use the server endpoint too:
+
+```bash
+curl "http://localhost:9471/v1/coding-agents"
+curl "http://localhost:9471/v1/coding-agents?verify=false"
 ```
 
 For fully unattended sandboxed environments, `approval_mode="yolo"` maps to
@@ -1274,7 +1292,7 @@ Run spec-driven extraction suites for cross-model comparison.
 
 `prompture serve` exposes an OpenAI-shaped API
 (`/v1/chat/completions`, `/v1/completions`, `/v1/embeddings`,
-`/v1/models`) backed by Prompture's driver registry.  Point any
+`/v1/models`, `/v1/coding-agents`) backed by Prompture's driver registry.  Point any
 OpenAI SDK — or any tool that speaks the OpenAI API (Claude Code,
 Codex, Cursor, Aider, LangChain) — at it and route to any of the 36+
 supported providers under one endpoint.
