@@ -452,3 +452,38 @@ class TestQuestionDetection:
             )
         )
         assert [e.type for e in events] == ["done", "question"]
+
+
+class TestSessionIdExtraction:
+    def test_claude_system_event_extracts_session_id(self):
+        events = list(
+            parse_claude_stream_json_lines(
+                _lines({"type": "system", "subtype": "init", "session_id": "abc-123"})
+            )
+        )
+        assert events[0].session_id == "abc-123"
+
+    def test_claude_result_event_extracts_session_id(self):
+        events = list(
+            parse_claude_stream_json_lines(
+                _lines({"type": "result", "is_error": False, "result": "ok", "session_id": "abc-123"})
+            )
+        )
+        assert events[0].type == "done"
+        assert events[0].session_id == "abc-123"
+
+    def test_codex_task_started_extracts_session_id_from_msg(self):
+        events = list(
+            parse_codex_json_lines(
+                _lines({"msg": {"type": "task_started", "model": "gpt-5", "session_id": "codex-1"}})
+            )
+        )
+        assert events[0].session_id == "codex-1"
+
+    def test_codex_session_configured_extracts_envelope_session_id(self):
+        events = list(
+            parse_codex_json_lines(
+                _lines({"session_id": "codex-2", "msg": {"type": "session_configured"}})
+            )
+        )
+        assert events[0].session_id == "codex-2"

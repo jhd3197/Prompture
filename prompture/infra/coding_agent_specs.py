@@ -48,6 +48,7 @@ def _build_claude_args(
     model: str | None,
     extra_args: Sequence[str],
     output_format: OutputFormat = "text",
+    session_id: str | None = None,
 ) -> list[str]:
     args = ["--print"]
     if output_format == "json":
@@ -57,6 +58,8 @@ def _build_claude_args(
         args.extend(["--output-format", "text"])
     if model:
         args.extend(["--model", model])
+    if session_id:
+        args.extend(["--resume", session_id])
     if approval_mode in {"auto", "yolo"}:
         args.append("--dangerously-skip-permissions")
     args.extend(extra_args)
@@ -71,8 +74,12 @@ def _build_codex_args(
     model: str | None,
     extra_args: Sequence[str],
     output_format: OutputFormat = "text",
+    session_id: str | None = None,
 ) -> list[str]:
-    args = ["exec"]
+    # Codex uses `exec` for a new task and `exec resume <id>` to continue one.
+    args: list[str] = ["exec"]
+    if session_id:
+        args.extend(["resume", session_id])
     if output_format == "json":
         args.append("--json")
     if model:
@@ -93,6 +100,7 @@ def _build_gemini_style_args(
     model: str | None,
     extra_args: Sequence[str],
     output_format: OutputFormat = "text",
+    session_id: str | None = None,
 ) -> list[str]:
     """Argument builder for gemini-cli and forks (e.g. Qwen Code)."""
     args: list[str] = []
@@ -112,6 +120,7 @@ def _build_aider_args(
     model: str | None,
     extra_args: Sequence[str],
     output_format: OutputFormat = "text",
+    session_id: str | None = None,
 ) -> list[str]:
     args: list[str] = []
     if model:
@@ -130,6 +139,7 @@ def _build_opencode_args(
     model: str | None,
     extra_args: Sequence[str],
     output_format: OutputFormat = "text",
+    session_id: str | None = None,
 ) -> list[str]:
     args = ["run"]
     if model:
@@ -146,6 +156,7 @@ def _build_cursor_agent_args(
     model: str | None,
     extra_args: Sequence[str],
     output_format: OutputFormat = "text",
+    session_id: str | None = None,
 ) -> list[str]:
     args = ["-p"]
     if model:
@@ -164,6 +175,7 @@ def _build_crush_args(
     model: str | None,
     extra_args: Sequence[str],
     output_format: OutputFormat = "text",
+    session_id: str | None = None,
 ) -> list[str]:
     args = ["run"]
     if model:

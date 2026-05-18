@@ -89,6 +89,7 @@ class CodingAgentRunResult:
     cost_usd: float | None = None
     input_tokens: int | None = None
     output_tokens: int | None = None
+    session_id: str | None = None
 
     @property
     def ok(self) -> bool:
@@ -177,6 +178,7 @@ def build_coding_agent_command(
     model: str | None = None,
     extra_args: Sequence[str] | None = None,
     output_format: OutputFormat = "text",
+    session_id: str | None = None,
 ) -> CodingAgentCommand:
     """Build the subprocess command for a local coding-agent CLI.
 
@@ -219,6 +221,7 @@ def build_coding_agent_command(
         model=model,
         extra_args=args_extra,
         output_format=fmt,
+        session_id=session_id,
     )
 
 
@@ -264,6 +267,7 @@ def _build_command_from_executable(
     model: str | None,
     extra_args: Sequence[str],
     output_format: OutputFormat = "text",
+    session_id: str | None = None,
 ) -> CodingAgentCommand:
     spec = get_spec(agent_id)
     if spec is None:
@@ -274,6 +278,7 @@ def _build_command_from_executable(
         model=model,
         extra_args=extra_args,
         output_format=output_format,
+        session_id=session_id,
     )
 
     return CodingAgentCommand(
@@ -307,6 +312,7 @@ def run_coding_agent(
     verify_timeout: int = 5,
     output_format: OutputFormat = "text",
     session: UsageSession | None = None,
+    session_id: str | None = None,
 ) -> CodingAgentRunResult:
     """Run a local coding-agent CLI and return its output.
 
@@ -356,6 +362,7 @@ def run_coding_agent(
             model=model,
             extra_args=args_extra,
             output_format=fmt,
+            session_id=session_id,
         )
     else:
         command = build_coding_agent_command(
@@ -368,6 +375,7 @@ def run_coding_agent(
             model=model,
             extra_args=args_extra,
             output_format=fmt,
+            session_id=session_id,
         )
 
     child_env = None if env is None else {**os.environ, **dict(env)}
@@ -397,17 +405,21 @@ def run_coding_agent(
     cost_usd: float | None = None
     input_tokens: int | None = None
     output_tokens: int | None = None
+    captured_session_id: str | None = session_id
     if fmt == "json":
         spec = get_spec(agent_id)
         parser = spec.parse_events if spec else None
         if parser is not None:
             events = tuple(parser(stdout.splitlines()))
             for ev in events:
+                if ev.session_id and captured_session_id is None:
+                    captured_session_id = ev.session_id
                 if ev.type == "done":
                     cost_usd = ev.cost_usd
                     input_tokens = ev.input_tokens
                     output_tokens = ev.output_tokens
-                    break
+                    if ev.session_id:
+                        captured_session_id = ev.session_id
 
     output = _merge_output(stdout, stderr)
     if len(output) > max_output_chars:
@@ -438,6 +450,7 @@ def run_coding_agent(
         cost_usd=cost_usd,
         input_tokens=input_tokens,
         output_tokens=output_tokens,
+        session_id=captured_session_id,
     )
 
 
@@ -459,6 +472,7 @@ async def astream_coding_agent(
     env: Mapping[str, str] | None = None,
     verify_binary: bool = True,
     verify_timeout: int = 5,
+    session_id: str | None = None,
 ) -> AsyncIterator[CodingAgentEvent]:
     """Stream :class:`CodingAgentEvent` instances from a coding-agent CLI as they arrive.
 
@@ -518,6 +532,7 @@ async def astream_coding_agent(
         model=model,
         extra_args=args_extra,
         output_format=fmt,
+        session_id=session_id,
     )
 
     child_env = None if env is None else {**os.environ, **dict(env)}

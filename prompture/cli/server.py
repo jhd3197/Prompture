@@ -819,6 +819,7 @@ def create_app(
         timeout: int = 600
         stream: bool = False
         output_format: str = "text"
+        session_id: Optional[str] = None
 
     @app.post("/v1/coding-agents/run")
     async def run_coding_agent_endpoint(req: CodingAgentRunRequest, _: None = Depends(_verify_api_key)) -> Any:
@@ -851,6 +852,7 @@ def create_app(
                         approval_mode=req.approval_mode,  # type: ignore[arg-type]
                         model=req.model,
                         extra_args=req.extra_args,
+                        session_id=req.session_id,
                     ):
                         yield {"data": json.dumps(asdict(event), default=str)}
                 except ValueError as exc:
@@ -869,6 +871,7 @@ def create_app(
                 extra_args=req.extra_args,
                 timeout=req.timeout,
                 output_format=req.output_format,
+                session_id=req.session_id,
             )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc

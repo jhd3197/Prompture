@@ -889,3 +889,86 @@ class TestAskedQuestionProperty:
         )
 
         assert result.asked_question is None
+
+
+class TestSessionContinuity:
+    """Tests for resuming a previous coding-agent session."""
+
+    @patch(
+        "prompture.infra.coding_agents.resolve_coding_agent_executable",
+        return_value=_executable("/usr/local/bin/claude"),
+    )
+    def test_claude_resume_flag_emitted(self, _mock_resolve, tmp_path):
+        command = build_coding_agent_command(
+            "claude",
+            "follow up",
+            cwd=tmp_path,
+            approval_mode="auto",
+            session_id="sess-abc",
+        )
+        assert "--resume" in command.argv
+        idx = command.argv.index("--resume")
+        assert command.argv[idx + 1] == "sess-abc"
+
+    @patch(
+        "prompture.infra.coding_agents.resolve_coding_agent_executable",
+        return_value=_executable("/usr/local/bin/codex"),
+    )
+    def test_codex_resume_subcommand(self, _mock_resolve, tmp_path):
+        command = build_coding_agent_command(
+            "codex",
+            "follow up",
+            cwd=tmp_path,
+            approval_mode="auto",
+            session_id="sess-xyz",
+        )
+        # codex exec resume <id> ...
+        assert command.argv[1:4] == ["exec", "resume", "sess-xyz"]
+
+    @patch("prompture.infra.coding_agents.subprocess.run")
+    @patch(
+        "prompture.infra.coding_agents.resolve_coding_agent_executable",
+        return_value=_executable("/usr/local/bin/claude"),
+    )
+    def test_result_captures_session_id_from_system_event(self, _mock_resolve, mock_run, tmp_path):
+        import json as _json
+
+        stream = "\n".join(
+            [
+                _json.dumps({"type": "system", "subtype": "init", "session_id": "captured-1"}),
+                _json.dumps({"type": "result", "is_error": False, "result": "ok"}),
+            ]
+        )
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=["/usr/local/bin/claude"], returncode=0, stdout=stream, stderr=""
+        )
+
+        result = run_coding_agent(
+            "claude",
+            "task",
+            cwd=tmp_path,
+            approval_mode="auto",
+            output_format="json",
+        )
+
+        assert result.session_id == "captured-1"
+
+    @patch("prompture.infra.coding_agents.subprocess.run")
+    @patch(
+        "prompture.infra.coding_agents.resolve_coding_agent_executable",
+        return_value=_executable("/usr/local/bin/claude"),
+    )
+    def test_supplied_session_id_preserved_when_no_init_event(self, _mock_resolve, mock_run, tmp_path):
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=["/usr/local/bin/claude"], returncode=0, stdout="plain text", stderr=""
+        )
+
+        result = run_coding_agent(
+            "claude",
+            "follow up",
+            cwd=tmp_path,
+            approval_mode="auto",
+            session_id="from-caller",
+        )
+
+        assert result.session_id == "from-caller"

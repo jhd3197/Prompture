@@ -41,6 +41,7 @@ class CodingAgentEvent:
     duration_ms: int | None = None
     error: str | None = None
     choices: tuple[str, ...] | None = None
+    session_id: str | None = None
     raw: Mapping[str, Any] | None = None
 
 
@@ -66,12 +67,18 @@ def parse_claude_stream_json_lines(lines: Iterable[str]) -> Iterator[CodingAgent
 def _claude_event_to_events(obj: Mapping[str, Any]) -> Iterator[CodingAgentEvent]:
     kind = obj.get("type")
     if kind == "system":
-        yield CodingAgentEvent(type="system", raw=obj)
+        sid = obj.get("session_id")
+        yield CodingAgentEvent(
+            type="system",
+            session_id=sid if isinstance(sid, str) else None,
+            raw=obj,
+        )
         return
     if kind == "result":
         usage = obj.get("usage") if isinstance(obj.get("usage"), dict) else {}
         is_error = bool(obj.get("is_error"))
         text = obj.get("result") if isinstance(obj.get("result"), str) else None
+        sid = obj.get("session_id")
         yield CodingAgentEvent(
             type="done",
             text=text,
@@ -80,6 +87,7 @@ def _claude_event_to_events(obj: Mapping[str, Any]) -> Iterator[CodingAgentEvent
             output_tokens=_safe_int(usage.get("output_tokens")),
             duration_ms=_safe_int(obj.get("duration_ms")),
             error=text if is_error else None,
+            session_id=sid if isinstance(sid, str) else None,
             raw=obj,
         )
         question = _question_event_for_text(text, obj)
@@ -158,8 +166,12 @@ def _codex_event_to_events(obj: Mapping[str, Any]) -> Iterator[CodingAgentEvent]
     if msg is None:
         return
     kind = msg.get("type")
-    if kind == "task_started":
-        yield CodingAgentEvent(type="system", raw=obj)
+    if kind in ("task_started", "session_configured"):
+        # Codex emits session_id either nested in msg or at the envelope level.
+        sid = msg.get("session_id") if isinstance(msg.get("session_id"), str) else None
+        if sid is None and isinstance(obj.get("session_id"), str):
+            sid = obj["session_id"]
+        yield CodingAgentEvent(type="system", session_id=sid, raw=obj)
         return
     if kind == "agent_message":
         text = msg.get("message")
