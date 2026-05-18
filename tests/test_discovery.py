@@ -7,11 +7,14 @@ from prompture.drivers.elevenlabs_stt_driver import ElevenLabsSTTDriver
 from prompture.drivers.elevenlabs_tts_driver import ElevenLabsTTSDriver
 from prompture.drivers.ollama_driver import OllamaDriver
 from prompture.infra.discovery import (
+    CodingAgentInfo,
     _discovery_cache,
     clear_discovery_cache,
     display_available_models,
     get_available_audio_models,
+    get_available_coding_agents,
     get_available_models,
+    resolve_coding_agent_binary,
 )
 
 
@@ -59,6 +62,62 @@ class TestDiscovery:
         models = get_available_models()
         # Should not crash, just not include ollama models (unless some other provider is active)
         assert not any(m.startswith("ollama/") for m in models)
+
+
+class TestCodingAgentDiscovery:
+    """Tests for local coding-agent CLI discovery."""
+
+    @patch("prompture.infra.discovery.shutil.which")
+    def test_detects_known_agent_binaries(self, mock_which):
+        """Claude and Codex are marked available when their CLIs resolve."""
+        paths = {
+            "claude": "/usr/local/bin/claude",
+            "codex": "/usr/local/bin/codex",
+        }
+        mock_which.side_effect = lambda binary: paths.get(binary)
+
+        agents = get_available_coding_agents()
+        by_id = {agent.id: agent for agent in agents}
+
+        assert isinstance(by_id["claude"], CodingAgentInfo)
+        assert by_id["claude"].available is True
+        assert by_id["claude"].binary == "/usr/local/bin/claude"
+        assert by_id["codex"].available is True
+        assert by_id["gemini"].available is False
+        assert by_id["gemini"].binary == "gemini"
+
+    @patch("prompture.infra.discovery.shutil.which")
+    def test_can_return_only_available_agents(self, mock_which):
+        """Unavailable CLIs are omitted when requested."""
+        mock_which.side_effect = lambda binary: "/usr/local/bin/codex" if binary == "codex" else None
+
+        agents = get_available_coding_agents(include_unavailable=False)
+
+        assert [agent.id for agent in agents] == ["codex"]
+
+    @patch("prompture.infra.discovery.shutil.which")
+    def test_custom_agent_paths_override_default_binaries(self, mock_which):
+        """Explicit paths are resolved and marked as custom."""
+        mock_which.side_effect = lambda binary: binary if binary == "/opt/claude/bin/claude" else None
+
+        agents = get_available_coding_agents(agent_paths={"claude": "/opt/claude/bin/claude"})
+        by_id = {agent.id: agent for agent in agents}
+
+        assert by_id["claude"].available is True
+        assert by_id["claude"].binary == "/opt/claude/bin/claude"
+        assert by_id["claude"].custom_path is True
+        assert by_id["codex"].custom_path is False
+
+    @patch("prompture.infra.discovery.platform.system", return_value="Windows")
+    @patch("prompture.infra.discovery.shutil.which")
+    def test_resolve_coding_agent_binary_prefers_windows_wrappers(self, mock_which, _mock_system):
+        """Windows resolution checks npm wrapper extensions before the bare shim."""
+        mock_which.side_effect = lambda binary: f"C:/tools/{binary}" if binary == "codex.cmd" else None
+
+        resolved = resolve_coding_agent_binary("codex")
+
+        assert resolved == "C:/tools/codex.cmd"
+        mock_which.assert_called_once_with("codex.cmd")
 
 
 class TestAudioDiscovery:

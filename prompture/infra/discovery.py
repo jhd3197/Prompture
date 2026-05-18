@@ -6,7 +6,10 @@ import dataclasses
 import hashlib
 import logging
 import os
+import platform
+import shutil
 import sys
+from collections.abc import Mapping
 from typing import Any, Literal, overload
 
 from ..drivers.provider_descriptors import PROVIDER_DESCRIPTOR_MAP, ProviderDescriptor, _resolve_cls
@@ -86,6 +89,93 @@ _SOURCE_LABELS: dict[str, str] = {
     "static": "known",
     "catalog": "catalog",
 }
+
+
+@dataclasses.dataclass(frozen=True)
+class CodingAgentInfo:
+    """Availability metadata for an installed coding-agent CLI."""
+
+    id: str
+    name: str
+    available: bool
+    binary: str
+    custom_path: bool = False
+
+
+_CODING_AGENT_SPECS: dict[str, tuple[str, str]] = {
+    "claude": ("Claude Code", "claude"),
+    "codex": ("Codex CLI", "codex"),
+    "gemini": ("Gemini CLI", "gemini"),
+}
+
+_WINDOWS_CLI_EXTENSIONS = (".cmd", ".ps1", ".bat")
+
+
+def resolve_coding_agent_binary(binary: str) -> str | None:
+    """Resolve a coding-agent CLI binary from PATH.
+
+    On Windows, npm-installed CLIs often ship an extensionless shim beside a
+    real ``.cmd`` wrapper. Prefer the wrapper extensions before falling back to
+    the bare command, matching CachiBot's runtime behavior.
+    """
+    if not binary:
+        return None
+
+    expanded = os.path.expanduser(os.path.expandvars(binary))
+    candidates: list[str] = []
+    if platform.system() == "Windows":
+        root, ext = os.path.splitext(expanded)
+        if not ext:
+            candidates.extend(f"{root}{suffix}" for suffix in _WINDOWS_CLI_EXTENSIONS)
+    candidates.append(expanded)
+
+    for candidate in candidates:
+        if path := shutil.which(candidate):
+            return path
+    return None
+
+
+def get_available_coding_agents(
+    *,
+    agent_paths: Mapping[str, str] | None = None,
+    include_unavailable: bool = True,
+) -> list[CodingAgentInfo]:
+    """Auto-detect installed coding-agent CLIs.
+
+    Args:
+        agent_paths: Optional explicit binary paths by agent id. Supported ids
+            are ``"claude"``, ``"codex"``, and ``"gemini"``. Explicit paths
+            override PATH discovery for that agent.
+        include_unavailable: When ``True`` (default), return all known agents
+            with ``available=False`` for missing CLIs. When ``False``, return
+            only discovered agents.
+
+    Returns:
+        A list of :class:`CodingAgentInfo` entries suitable for app settings,
+        command autocomplete, or local capability checks.
+    """
+    configured_paths = agent_paths or {}
+    agents: list[CodingAgentInfo] = []
+
+    for agent_id, (display_name, default_binary) in _CODING_AGENT_SPECS.items():
+        custom_binary = configured_paths.get(agent_id, "")
+        binary_name = custom_binary or default_binary
+        resolved = resolve_coding_agent_binary(binary_name)
+
+        if resolved is None and not include_unavailable:
+            continue
+
+        agents.append(
+            CodingAgentInfo(
+                id=agent_id,
+                name=display_name,
+                available=resolved is not None,
+                binary=resolved or binary_name,
+                custom_path=bool(custom_binary),
+            )
+        )
+
+    return agents
 
 
 def _config_via(desc: ProviderDescriptor) -> str:

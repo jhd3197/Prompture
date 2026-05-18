@@ -1203,6 +1203,15 @@ get_available_video_gen_models()        # ['runway/gen4.5', 'runway/gen4_aleph',
 get_available_audio_models(modality="tts")  # ['runway/eleven_multilingual_v2', ...]
 ```
 
+Prompture can also discover local coding-agent CLIs for app integrations:
+
+```python
+from prompture import get_available_coding_agents
+
+agents = get_available_coding_agents()
+# [CodingAgentInfo(id='claude', available=True, ...), ...]
+```
+
 ### Logging and Debugging
 
 ```python

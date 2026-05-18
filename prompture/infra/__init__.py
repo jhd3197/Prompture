@@ -31,15 +31,18 @@ from .capabilities import (
 )
 from .cost_mixin import AudioCostMixin, EmbeddingCostMixin, VideoCostMixin
 from .discovery import (
+    CodingAgentInfo,
     clear_discovery_cache,
     display_available_models,
     get_available_audio_models,
+    get_available_coding_agents,
     get_available_embedding_models,
     get_available_image_gen_models,
     get_available_models,
     get_available_moderation_models,
     get_available_rerank_models,
     get_available_video_gen_models,
+    resolve_coding_agent_binary,
 )
 from .ledger import ModelUsageLedger, get_recently_used_models
 from .logging import JSONFormatter, configure_logging
@@ -67,6 +70,7 @@ __all__ = [
     "BudgetPolicy",
     "BudgetState",
     "CacheBackend",
+    "CodingAgentInfo",
     "CostEstimate",
     "DriverCallbacks",
     "EmbeddingCostMixin",
@@ -94,6 +98,7 @@ __all__ = [
     "estimate_cost",
     "estimate_tokens",
     "get_available_audio_models",
+    "get_available_coding_agents",
     "get_available_embedding_models",
     "get_available_image_gen_models",
     "get_available_models",
@@ -114,5 +119,6 @@ __all__ = [
     "register_model",
     "register_provider",
     "resolve_budget_policy",
+    "resolve_coding_agent_binary",
     "settings",
 ]
