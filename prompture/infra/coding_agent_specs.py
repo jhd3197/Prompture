@@ -38,9 +38,7 @@ def _build_claude_args(
     args = ["--print", "--output-format", "text"]
     if model:
         args.extend(["--model", model])
-    if approval_mode == "auto":
-        args.extend(["--permission-mode", "dontAsk"])
-    elif approval_mode == "yolo":
+    if approval_mode in {"auto", "yolo"}:
         args.append("--dangerously-skip-permissions")
     args.extend(extra_args)
     args.append(task)
@@ -84,6 +82,72 @@ def _build_gemini_style_args(
     return args
 
 
+def _build_aider_args(
+    task: str,
+    *,
+    approval_mode: ApprovalMode,
+    model: str | None,
+    extra_args: Sequence[str],
+) -> list[str]:
+    args: list[str] = []
+    if model:
+        args.extend(["--model", model])
+    if approval_mode in {"auto", "yolo"}:
+        args.append("--yes-always")
+    args.extend(extra_args)
+    args.extend(["--message", task])
+    return args
+
+
+def _build_opencode_args(
+    task: str,
+    *,
+    approval_mode: ApprovalMode,
+    model: str | None,
+    extra_args: Sequence[str],
+) -> list[str]:
+    args = ["run"]
+    if model:
+        args.extend(["--model", model])
+    args.extend(extra_args)
+    args.append(task)
+    return args
+
+
+def _build_cursor_agent_args(
+    task: str,
+    *,
+    approval_mode: ApprovalMode,
+    model: str | None,
+    extra_args: Sequence[str],
+) -> list[str]:
+    args = ["-p"]
+    if model:
+        args.extend(["--model", model])
+    if approval_mode in {"auto", "yolo"}:
+        args.append("--force")
+    args.extend(extra_args)
+    args.append(task)
+    return args
+
+
+def _build_crush_args(
+    task: str,
+    *,
+    approval_mode: ApprovalMode,
+    model: str | None,
+    extra_args: Sequence[str],
+) -> list[str]:
+    args = ["run"]
+    if model:
+        args.extend(["--model", model])
+    if approval_mode in {"auto", "yolo"}:
+        args.append("--yolo")
+    args.extend(extra_args)
+    args.append(task)
+    return args
+
+
 CODING_AGENT_SPECS: dict[str, CodingAgentSpec] = {
     "claude": CodingAgentSpec(
         id="claude",
@@ -112,6 +176,34 @@ CODING_AGENT_SPECS: dict[str, CodingAgentSpec] = {
         default_binary="qwen",
         npm_packages=("@qwen-code/qwen-code",),
         build_args=_build_gemini_style_args,
+    ),
+    "aider": CodingAgentSpec(
+        id="aider",
+        display_name="Aider",
+        default_binary="aider",
+        npm_packages=(),
+        build_args=_build_aider_args,
+    ),
+    "opencode": CodingAgentSpec(
+        id="opencode",
+        display_name="OpenCode",
+        default_binary="opencode",
+        npm_packages=("opencode-ai",),
+        build_args=_build_opencode_args,
+    ),
+    "cursor-agent": CodingAgentSpec(
+        id="cursor-agent",
+        display_name="Cursor Agent",
+        default_binary="cursor-agent",
+        npm_packages=(),
+        build_args=_build_cursor_agent_args,
+    ),
+    "crush": CodingAgentSpec(
+        id="crush",
+        display_name="Crush",
+        default_binary="crush",
+        npm_packages=(),
+        build_args=_build_crush_args,
     ),
 }
 

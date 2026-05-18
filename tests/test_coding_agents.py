@@ -55,7 +55,11 @@ class TestCodingAgentCommands:
         return_value=_executable("/usr/local/bin/claude"),
     )
     def test_claude_auto_and_model_command(self, _mock_resolve, tmp_path):
-        """Claude auto mode runs non-interactively with dontAsk permissions."""
+        """Claude auto mode skips permission prompts via the dangerous flag.
+
+        Claude Code does not expose an intermediate non-interactive mode — the
+        only way to suppress approval prompts is --dangerously-skip-permissions.
+        """
         command = build_coding_agent_command(
             "claude",
             "review this repository",
@@ -71,8 +75,7 @@ class TestCodingAgentCommands:
             "text",
             "--model",
             "sonnet",
-            "--permission-mode",
-            "dontAsk",
+            "--dangerously-skip-permissions",
             "review this repository",
         ]
 
@@ -133,21 +136,117 @@ class TestCodingAgentCommands:
         import pytest
 
         with pytest.raises(ValueError, match="Unsupported coding agent"):
-            build_coding_agent_command("aider", "do a thing", cwd=tmp_path)
+            build_coding_agent_command("nonesuch", "do a thing", cwd=tmp_path)
+
+    @patch(
+        "prompture.infra.coding_agents.resolve_coding_agent_executable",
+        return_value=_executable("/usr/local/bin/aider"),
+    )
+    def test_aider_auto_and_model_command(self, _mock_resolve, tmp_path):
+        """Aider takes the task via --message and skips prompts with --yes-always."""
+        command = build_coding_agent_command(
+            "aider",
+            "rename foo to bar",
+            cwd=tmp_path,
+            approval_mode="auto",
+            model="gpt-4o",
+        )
+
+        assert command.argv == [
+            "/usr/local/bin/aider",
+            "--model",
+            "gpt-4o",
+            "--yes-always",
+            "--message",
+            "rename foo to bar",
+        ]
+
+    @patch(
+        "prompture.infra.coding_agents.resolve_coding_agent_executable",
+        return_value=_executable("/usr/local/bin/opencode"),
+    )
+    def test_opencode_run_subcommand(self, _mock_resolve, tmp_path):
+        """OpenCode uses the `run` subcommand for non-interactive execution."""
+        command = build_coding_agent_command(
+            "opencode",
+            "add a CHANGELOG entry",
+            cwd=tmp_path,
+            approval_mode="auto",
+            model="anthropic/claude-sonnet-4",
+        )
+
+        assert command.argv == [
+            "/usr/local/bin/opencode",
+            "run",
+            "--model",
+            "anthropic/claude-sonnet-4",
+            "add a CHANGELOG entry",
+        ]
+
+    @patch(
+        "prompture.infra.coding_agents.resolve_coding_agent_executable",
+        return_value=_executable("/usr/local/bin/cursor-agent"),
+    )
+    def test_cursor_agent_print_mode(self, _mock_resolve, tmp_path):
+        """Cursor Agent uses -p for non-interactive print mode."""
+        command = build_coding_agent_command(
+            "cursor-agent",
+            "explain main.py",
+            cwd=tmp_path,
+            approval_mode="auto",
+        )
+
+        assert command.argv == [
+            "/usr/local/bin/cursor-agent",
+            "-p",
+            "--force",
+            "explain main.py",
+        ]
+
+    @patch(
+        "prompture.infra.coding_agents.resolve_coding_agent_executable",
+        return_value=_executable("/usr/local/bin/crush"),
+    )
+    def test_crush_yolo_command(self, _mock_resolve, tmp_path):
+        """Crush exposes an explicit --yolo flag for full auto mode."""
+        command = build_coding_agent_command(
+            "crush",
+            "tidy this module",
+            cwd=tmp_path,
+            approval_mode="yolo",
+        )
+
+        assert "run" in command.argv
+        assert "--yolo" in command.argv
+        assert command.argv[-1] == "tidy this module"
 
 
 class TestCodingAgentSpecs:
     """Registry-level sanity checks."""
 
-    def test_registry_includes_qwen(self):
+    def test_registry_includes_all_quick_wins(self):
         from prompture.infra import CODING_AGENT_SPECS, get_coding_agent_spec
 
-        assert "qwen" in CODING_AGENT_SPECS
+        for agent_id in ("claude", "codex", "gemini", "qwen", "aider", "opencode", "cursor-agent", "crush"):
+            assert agent_id in CODING_AGENT_SPECS, f"missing spec: {agent_id}"
+            assert get_coding_agent_spec(agent_id) is not None
+
+    def test_qwen_uses_gemini_npm_package_shape(self):
+        from prompture.infra import get_coding_agent_spec
+
         spec = get_coding_agent_spec("qwen")
         assert spec is not None
         assert spec.display_name == "Qwen Code"
-        assert spec.default_binary == "qwen"
         assert spec.npm_packages == ("@qwen-code/qwen-code",)
+
+    def test_pip_only_agents_have_no_npm_package(self):
+        """Aider, Cursor Agent, and Crush are not distributed via npm."""
+        from prompture.infra import get_coding_agent_spec
+
+        for agent_id in ("aider", "cursor-agent", "crush"):
+            spec = get_coding_agent_spec(agent_id)
+            assert spec is not None
+            assert spec.npm_packages == ()
 
     def test_get_spec_returns_none_for_unknown(self):
         from prompture.infra import get_coding_agent_spec

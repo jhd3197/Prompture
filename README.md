@@ -1212,7 +1212,7 @@ agents = get_available_coding_agents(verify=True)
 print(agents)
 
 result = run_coding_agent(
-    "codex",  # or "claude" / "gemini" / "qwen"
+    "codex",  # claude, codex, gemini, qwen, aider, opencode, cursor-agent, crush
     "Add focused tests for the discovery helper.",
     cwd=".",
     approval_mode="auto",  # avoids repeated approval prompts where supported
@@ -1234,12 +1234,23 @@ failure reason. Actual `run_coding_agent(...)` calls also health-check by
 default before launching the task; pass `verify_binary=False` only if you
 explicitly want to skip that preflight.
 
-Discovery checks normal PATH installs and npm-style installs for Claude Code
-(`@anthropic-ai/claude-code`), Codex CLI (`@openai/codex`), Gemini CLI
-(`@google/gemini-cli`), and Qwen Code (`@qwen-code/qwen-code`, a gemini-cli
-fork). If a shim is present but broken, verified discovery can fall back to
-the package entrypoint plus a working `node` or `node.exe`. To register an
-additional agent, add a `CodingAgentSpec` to
+Supported agents:
+
+| Agent | Binary | Install |
+|---|---|---|
+| Claude Code | `claude` | npm `@anthropic-ai/claude-code` |
+| Codex CLI | `codex` | npm `@openai/codex` |
+| Gemini CLI | `gemini` | npm `@google/gemini-cli` |
+| Qwen Code | `qwen` | npm `@qwen-code/qwen-code` (gemini-cli fork) |
+| Aider | `aider` | `pip install aider-chat` |
+| OpenCode | `opencode` | npm `opencode-ai` |
+| Cursor Agent | `cursor-agent` | Cursor installer |
+| Crush | `crush` | brew / scoop / Go install |
+
+Discovery checks normal PATH installs and npm-style installs (`node_modules`
+package entrypoints). If a shim is present but broken, verified discovery can
+fall back to the package entrypoint plus a working `node` or `node.exe`. To
+register an additional agent, add a `CodingAgentSpec` to
 `prompture.infra.coding_agent_specs.CODING_AGENT_SPECS`.
 
 Apps can use the server endpoint too:
