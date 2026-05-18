@@ -174,4 +174,8 @@ ignore_missing_imports = true
 
 [tool.bandit]
 exclude_dirs = ["tests", "examples"]
-skips = ["B101", "B104", "B110", "B112", "B615"]
+# B404/B603/B607 are noisy for legitimate subprocess usage. The coding-agent
+# runner shells out to CLI binaries whose argv comes from the curated
+# CODING_AGENT_SPECS registry and resolved-path executables, not from raw
+# user input. shell=False is already in use (which B603 paradoxically flags).
+skips = ["B101", "B104", "B110", "B112", "B404", "B603", "B607", "B615"]
