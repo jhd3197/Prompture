@@ -9,12 +9,16 @@ checks) and command construction read from this registry.
 from __future__ import annotations
 
 import dataclasses
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from typing import Literal
 
+from .coding_agent_events import CodingAgentEvent, parse_claude_stream_json_lines
+
 ApprovalMode = Literal["default", "auto", "yolo"]
+OutputFormat = Literal["text", "json"]
 
 BuildArgsFn = Callable[..., list[str]]
+ParseEventsFn = Callable[[Iterable[str]], Iterator[CodingAgentEvent]]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -26,6 +30,11 @@ class CodingAgentSpec:
     default_binary: str
     npm_packages: tuple[str, ...]
     build_args: BuildArgsFn
+    parse_events: ParseEventsFn | None = None
+
+    @property
+    def supports_structured_output(self) -> bool:
+        return self.parse_events is not None
 
 
 def _build_claude_args(
@@ -34,8 +43,14 @@ def _build_claude_args(
     approval_mode: ApprovalMode,
     model: str | None,
     extra_args: Sequence[str],
+    output_format: OutputFormat = "text",
 ) -> list[str]:
-    args = ["--print", "--output-format", "text"]
+    args = ["--print"]
+    if output_format == "json":
+        # Claude Code requires --verbose alongside stream-json.
+        args.extend(["--output-format", "stream-json", "--verbose"])
+    else:
+        args.extend(["--output-format", "text"])
     if model:
         args.extend(["--model", model])
     if approval_mode in {"auto", "yolo"}:
@@ -51,6 +66,7 @@ def _build_codex_args(
     approval_mode: ApprovalMode,
     model: str | None,
     extra_args: Sequence[str],
+    output_format: OutputFormat = "text",
 ) -> list[str]:
     args = ["exec"]
     if model:
@@ -70,6 +86,7 @@ def _build_gemini_style_args(
     approval_mode: ApprovalMode,
     model: str | None,
     extra_args: Sequence[str],
+    output_format: OutputFormat = "text",
 ) -> list[str]:
     """Argument builder for gemini-cli and forks (e.g. Qwen Code)."""
     args: list[str] = []
@@ -88,6 +105,7 @@ def _build_aider_args(
     approval_mode: ApprovalMode,
     model: str | None,
     extra_args: Sequence[str],
+    output_format: OutputFormat = "text",
 ) -> list[str]:
     args: list[str] = []
     if model:
@@ -105,6 +123,7 @@ def _build_opencode_args(
     approval_mode: ApprovalMode,
     model: str | None,
     extra_args: Sequence[str],
+    output_format: OutputFormat = "text",
 ) -> list[str]:
     args = ["run"]
     if model:
@@ -120,6 +139,7 @@ def _build_cursor_agent_args(
     approval_mode: ApprovalMode,
     model: str | None,
     extra_args: Sequence[str],
+    output_format: OutputFormat = "text",
 ) -> list[str]:
     args = ["-p"]
     if model:
@@ -137,6 +157,7 @@ def _build_crush_args(
     approval_mode: ApprovalMode,
     model: str | None,
     extra_args: Sequence[str],
+    output_format: OutputFormat = "text",
 ) -> list[str]:
     args = ["run"]
     if model:
@@ -155,6 +176,7 @@ CODING_AGENT_SPECS: dict[str, CodingAgentSpec] = {
         default_binary="claude",
         npm_packages=("@anthropic-ai/claude-code",),
         build_args=_build_claude_args,
+        parse_events=parse_claude_stream_json_lines,
     ),
     "codex": CodingAgentSpec(
         id="codex",

@@ -254,6 +254,128 @@ class TestCodingAgentSpecs:
         assert get_coding_agent_spec("nonesuch") is None
 
 
+class TestStructuredOutput:
+    """Tests for output_format='json' wiring."""
+
+    @patch(
+        "prompture.infra.coding_agents.resolve_coding_agent_executable",
+        return_value=_executable("/usr/local/bin/claude"),
+    )
+    def test_claude_json_mode_adds_stream_json_flags(self, _mock_resolve, tmp_path):
+        from prompture.infra import build_coding_agent_command
+
+        command = build_coding_agent_command(
+            "claude",
+            "summarize this file",
+            cwd=tmp_path,
+            output_format="json",
+        )
+        assert "--output-format" in command.argv
+        idx = command.argv.index("--output-format")
+        assert command.argv[idx + 1] == "stream-json"
+        assert "--verbose" in command.argv
+
+    @patch(
+        "prompture.infra.coding_agents.resolve_coding_agent_executable",
+        return_value=_executable("/usr/local/bin/codex"),
+    )
+    def test_json_mode_rejected_for_unsupported_agent(self, _mock_resolve, tmp_path):
+        import pytest
+
+        from prompture.infra import build_coding_agent_command
+
+        with pytest.raises(ValueError, match="does not support output_format='json'"):
+            build_coding_agent_command(
+                "codex",
+                "do a thing",
+                cwd=tmp_path,
+                output_format="json",
+            )
+
+    @patch("prompture.infra.coding_agents.subprocess.run")
+    @patch(
+        "prompture.infra.coding_agents.resolve_coding_agent_executable",
+        return_value=_executable("/usr/local/bin/claude"),
+    )
+    def test_claude_json_mode_parses_events_and_cost(self, _mock_resolve, mock_run, tmp_path):
+        """run_coding_agent with output_format='json' populates events + cost."""
+        import json as _json
+
+        stream_lines = "\n".join(
+            [
+                _json.dumps({"type": "system", "subtype": "init", "session_id": "s1"}),
+                _json.dumps(
+                    {
+                        "type": "assistant",
+                        "message": {"content": [{"type": "text", "text": "Looking at this..."}]},
+                    }
+                ),
+                _json.dumps(
+                    {
+                        "type": "assistant",
+                        "message": {
+                            "content": [
+                                {"type": "tool_use", "name": "Read", "input": {"path": "a.py"}}
+                            ]
+                        },
+                    }
+                ),
+                _json.dumps(
+                    {
+                        "type": "result",
+                        "is_error": False,
+                        "result": "Summarised the file.",
+                        "total_cost_usd": 0.0123,
+                        "duration_ms": 4500,
+                        "usage": {"input_tokens": 1500, "output_tokens": 800},
+                    }
+                ),
+            ]
+        )
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=["/usr/local/bin/claude"],
+            returncode=0,
+            stdout=stream_lines,
+            stderr="",
+        )
+
+        result = run_coding_agent(
+            "claude",
+            "summarize a.py",
+            cwd=tmp_path,
+            approval_mode="auto",
+            output_format="json",
+        )
+
+        assert result.ok is True
+        assert result.cost_usd == 0.0123
+        assert result.input_tokens == 1500
+        assert result.output_tokens == 800
+        types = [e.type for e in result.events]
+        assert types == ["system", "message", "tool_call", "done"]
+
+    @patch("prompture.infra.coding_agents.subprocess.run")
+    @patch(
+        "prompture.infra.coding_agents.resolve_coding_agent_executable",
+        return_value=_executable("/usr/local/bin/claude"),
+    )
+    def test_text_mode_leaves_events_empty(self, _mock_resolve, mock_run, tmp_path):
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=["/usr/local/bin/claude"],
+            returncode=0,
+            stdout="plain text reply",
+            stderr="",
+        )
+
+        result = run_coding_agent("claude", "hi", cwd=tmp_path, approval_mode="auto")
+
+        assert result.events == ()
+        assert result.cost_usd is None
+        assert result.input_tokens is None
+        assert result.output_tokens is None
+        assert result.output == "plain text reply"
+
+
 class TestCodingAgentRunner:
     """Tests for running coding-agent commands without invoking real CLIs."""
 

@@ -11,6 +11,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Literal
 
+from .coding_agent_events import CodingAgentEvent
 from .coding_agent_specs import CODING_AGENT_SPECS, get_spec
 from .discovery import (
     CodingAgentExecutable,
@@ -19,8 +20,10 @@ from .discovery import (
 
 CodingAgentId = str
 ApprovalMode = Literal["default", "auto", "yolo"]
+OutputFormat = Literal["text", "json"]
 
 _SUPPORTED_APPROVAL_MODES = {"default", "auto", "yolo"}
+_SUPPORTED_OUTPUT_FORMATS = {"text", "json"}
 
 
 @dataclasses.dataclass(frozen=True)
@@ -45,6 +48,10 @@ class CodingAgentRunResult:
     output: str
     timed_out: bool = False
     duration_seconds: float = 0.0
+    events: tuple[CodingAgentEvent, ...] = ()
+    cost_usd: float | None = None
+    input_tokens: int | None = None
+    output_tokens: int | None = None
 
     @property
     def ok(self) -> bool:
@@ -68,6 +75,21 @@ def _normalize_approval_mode(approval_mode: str) -> ApprovalMode:
     return normalized  # type: ignore[return-value]
 
 
+def _normalize_output_format(agent_id: str, output_format: str) -> OutputFormat:
+    normalized = output_format.strip().lower()
+    if normalized not in _SUPPORTED_OUTPUT_FORMATS:
+        available = ", ".join(sorted(_SUPPORTED_OUTPUT_FORMATS))
+        raise ValueError(f"Unsupported output_format '{output_format}'. Available: {available}")
+    if normalized == "json":
+        spec = get_spec(agent_id)
+        if spec is None or not spec.supports_structured_output:
+            raise ValueError(
+                f"Agent '{agent_id}' does not support output_format='json' yet — "
+                f"only agents whose spec sets parse_events do."
+            )
+    return normalized  # type: ignore[return-value]
+
+
 def _resolve_cwd(cwd: str | os.PathLike[str] | None) -> str:
     path = Path(cwd or os.getcwd()).expanduser().resolve()
     if not path.is_dir():
@@ -85,6 +107,7 @@ def build_coding_agent_command(
     agent_paths: Mapping[str, str] | None = None,
     model: str | None = None,
     extra_args: Sequence[str] | None = None,
+    output_format: OutputFormat = "text",
 ) -> CodingAgentCommand:
     """Build the subprocess command for a local coding-agent CLI.
 
@@ -104,6 +127,7 @@ def build_coding_agent_command(
     """
     agent_id = _normalize_agent(agent)
     mode = _normalize_approval_mode(approval_mode)
+    fmt = _normalize_output_format(agent_id, output_format)
     task_text = task.strip()
     if not task_text:
         raise ValueError("task must not be empty")
@@ -125,6 +149,7 @@ def build_coding_agent_command(
         approval_mode=mode,
         model=model,
         extra_args=args_extra,
+        output_format=fmt,
     )
 
 
@@ -169,11 +194,18 @@ def _build_command_from_executable(
     approval_mode: ApprovalMode,
     model: str | None,
     extra_args: Sequence[str],
+    output_format: OutputFormat = "text",
 ) -> CodingAgentCommand:
     spec = get_spec(agent_id)
     if spec is None:
         raise ValueError(f"Unsupported coding agent '{agent_id}'")
-    args = spec.build_args(task_text, approval_mode=approval_mode, model=model, extra_args=extra_args)
+    args = spec.build_args(
+        task_text,
+        approval_mode=approval_mode,
+        model=model,
+        extra_args=extra_args,
+        output_format=output_format,
+    )
 
     return CodingAgentCommand(
         agent=agent_id,
@@ -204,6 +236,7 @@ def run_coding_agent(
     env: Mapping[str, str] | None = None,
     verify_binary: bool = True,
     verify_timeout: int = 5,
+    output_format: OutputFormat = "text",
 ) -> CodingAgentRunResult:
     """Run a local coding-agent CLI and return its output.
 
@@ -212,9 +245,15 @@ def run_coding_agent(
     already trust to contain the blast radius. By default, the resolved binary
     is health-checked before the agent task starts so broken PATH shims fail
     early with a clear message.
+
+    When ``output_format="json"`` is supported by the agent (Claude Code today)
+    the result's ``events`` field is populated with parsed
+    :class:`CodingAgentEvent` instances and ``cost_usd`` / ``input_tokens`` /
+    ``output_tokens`` are extracted from the final result event.
     """
     agent_id = _normalize_agent(agent)
     mode = _normalize_approval_mode(approval_mode)
+    fmt = _normalize_output_format(agent_id, output_format)
     task_text = task.strip()
     if not task_text:
         raise ValueError("task must not be empty")
@@ -246,6 +285,7 @@ def run_coding_agent(
             approval_mode=mode,
             model=model,
             extra_args=args_extra,
+            output_format=fmt,
         )
     else:
         command = build_coding_agent_command(
@@ -257,6 +297,7 @@ def run_coding_agent(
             agent_paths=agent_paths,
             model=model,
             extra_args=args_extra,
+            output_format=fmt,
         )
 
     child_env = None if env is None else {**os.environ, **dict(env)}
@@ -270,16 +311,35 @@ def run_coding_agent(
             timeout=timeout,
             check=False,
         )
-        output = _merge_output(completed.stdout, completed.stderr)
+        stdout = completed.stdout or ""
+        stderr = completed.stderr or ""
         timed_out = False
         returncode = completed.returncode
     except subprocess.TimeoutExpired as exc:
-        stdout = exc.stdout.decode(errors="replace") if isinstance(exc.stdout, bytes) else exc.stdout
-        stderr = exc.stderr.decode(errors="replace") if isinstance(exc.stderr, bytes) else exc.stderr
-        output = _merge_output(stdout, stderr) or f"{command.binary} timed out after {timeout}s"
+        stdout = exc.stdout.decode(errors="replace") if isinstance(exc.stdout, bytes) else (exc.stdout or "")
+        stderr = exc.stderr.decode(errors="replace") if isinstance(exc.stderr, bytes) else (exc.stderr or "")
+        if not stdout and not stderr:
+            stderr = f"{command.binary} timed out after {timeout}s"
         timed_out = True
         returncode = -1
 
+    events: tuple[CodingAgentEvent, ...] = ()
+    cost_usd: float | None = None
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    if fmt == "json":
+        spec = get_spec(agent_id)
+        parser = spec.parse_events if spec else None
+        if parser is not None:
+            events = tuple(parser(stdout.splitlines()))
+            for ev in events:
+                if ev.type == "done":
+                    cost_usd = ev.cost_usd
+                    input_tokens = ev.input_tokens
+                    output_tokens = ev.output_tokens
+                    break
+
+    output = _merge_output(stdout, stderr)
     if len(output) > max_output_chars:
         output = output[:max_output_chars] + f"\n\n... (truncated at {max_output_chars} chars)"
 
@@ -291,6 +351,10 @@ def run_coding_agent(
         output=output,
         timed_out=timed_out,
         duration_seconds=time.monotonic() - start,
+        events=events,
+        cost_usd=cost_usd,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
     )
 
 
