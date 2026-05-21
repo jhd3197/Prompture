@@ -1175,6 +1175,105 @@ agent = create_deep_agent(
 
 `AsyncDeepAgent` / `create_async_deep_agent` mirror the sync API for async use. State lives on `agent.deep_state` (the `state` attribute is reserved for lifecycle on the underlying `Agent`). Reserved tool names (`write_todos`, `task`, `read_file`, `write_file`, `edit_file`, `ls`, `glob`, `grep`) take precedence over user tools; collisions emit a warning. See `examples/deep_agent_example.py` for a complete walkthrough.
 
+### Assistants
+
+An `Assistant` bundles a `Persona`, optional `Skill`s, optional `tools`, and exactly one execution backend (an LLM `model` id or a `coding_agent` CLI id) into a reusable unit.  Consumers register an assistant once and reuse it everywhere, swapping the backend without changing call-sites.
+
+```python
+from prompture import Assistant, Persona, SkillInfo
+
+web_dev = Assistant(
+    name="web-developer",
+    persona=Persona(
+        name="web_dev",
+        system_prompt="You are a senior {{role}} building {{page_type}} pages.",
+    ),
+    skills=[SkillInfo(
+        name="semantic-html5",
+        description="Always prefer semantic HTML5 tags.",
+        instructions="Use <header>/<main>/<section>; avoid <div> when a semantic tag fits.",
+    )],
+    model="openai/gpt-4o",
+    variables={"role": "developer"},
+).register()  # store in the assistant registry
+
+# Later, anywhere:
+a = Assistant.from_registry("web-developer")
+result = await a.arun("Build /about.html.", role="senior", page_type="about")
+print(result.output, result.cost_usd)
+```
+
+Both backends return a uniform `AssistantResult` with `output`, `cost_usd`, `input_tokens`, `output_tokens`, `session_id` (coding-agent only), and `raw` (the underlying `AgentResult` / `CodingAgentRunResult`).  Swap an LLM for a CLI by replacing `model="…"` with `coding_agent="claude"` (or `"auto"` for capability-aware auto-selection — see *Picking a coding-agent CLI* below).
+
+Set `enable_planning=True` to route the LLM backend through `AsyncDeepAgent` and gain `write_todos` + streaming plan updates.
+
+### Review Loops
+
+`AsyncReviewLoop` wraps the "do work → critique it → optionally revise" pattern as a single async call.  Works with anything exposing an awaitable `arun(prompt, **kwargs)` that returns an object with `.output` — typically two `Assistant`s.
+
+```python
+from prompture import Assistant, AsyncReviewLoop, Persona
+
+coder = Assistant(name="c", persona=Persona(name="c", system_prompt="Write Python."), model="openai/gpt-4o-mini")
+reviewer = Assistant(
+    name="r",
+    persona=Persona(
+        name="r",
+        system_prompt="Critique the code. End with one line: SCORE: <0-10>",
+    ),
+    model="openai/gpt-4o-mini",
+)
+
+loop = AsyncReviewLoop(
+    coder=coder,
+    reviewer=reviewer,
+    max_iters=3,
+    approve_when=lambda r: "SCORE: 9" in r.output or "SCORE: 10" in r.output,
+)
+result = await loop.arun("Write a function that reverses a string.")
+print(result.output, "approved=", result.approved, "iters=", result.iterations)
+```
+
+Customise the review framing with `review_prompt=` and the retry framing with `feedback_prompt=` if the defaults don't fit.  Every iteration is preserved in `result.history` as a `ReviewLoopIteration` with the raw coder / reviewer results attached.
+
+### Picking a coding-agent CLI
+
+`pick_best_coding_agent` combines discovery with the capability flags on each `CodingAgentSpec`, so callers can ask for *"any installed CLI that supports X"* without hardcoding agent ids.
+
+```python
+from prompture import pick_best_coding_agent
+
+chosen = pick_best_coding_agent(
+    prefer=["claude", "codex"],
+    require_session_resume=True,
+    verify=True,
+)
+if chosen:
+    print(f"Will use {chosen.id} from {chosen.binary}")
+```
+
+Capability flags exposed today: `supports_tool_use`, `supports_structured_output`, `supports_questions` (clarifying-question events), `supports_session_resume`.
+
+### Salvaging code from text responses
+
+When an LLM should have called your `write_file` tool but instead dumped code into its final response (common with weaker models or providers without tool-calling), use `extract_fenced_blocks` and `extract_html_document` to recover it:
+
+```python
+from prompture import extract_fenced_blocks, extract_html_document
+
+for block in extract_fenced_blocks(text, languages=["html", "css", "js"]):
+    write_file(f"{block.language}.txt", block.content)
+
+doc = extract_html_document(text)
+if doc.found:
+    write_file("index.html", doc.html)
+    # inline <style> / <script> blocks are also split out:
+    write_file("styles.css", "\n\n".join(doc.styles))
+    write_file("script.js", "\n\n".join(doc.scripts))
+```
+
+Both helpers return plain dataclasses with no I/O of their own.  See `examples/assistant_example.py` for the assistant + review-loop + extractor flow end-to-end.
+
 ### Cost Pre-flight
 
 Forecast the cost of a call **before** making it.  Accepts either text
