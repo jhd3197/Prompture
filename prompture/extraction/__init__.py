@@ -1,5 +1,11 @@
 """Core extraction engine: schema-enforced JSON extraction from LLMs."""
 
+from .code_extraction import (
+    ExtractedHtml,
+    FencedBlock,
+    extract_fenced_blocks,
+    extract_html_document,
+)
 from .core import (
     Driver,
     ExtractResult,
@@ -52,6 +58,8 @@ __all__ = [
     "SELF_DISCOVER",
     "Driver",
     "ExtractResult",
+    "ExtractedHtml",
+    "FencedBlock",
     "ReasoningStrategy",
     "ReasoningStrategyProtocol",
     "StructuredOutputStrategy",
@@ -66,8 +74,10 @@ __all__ = [
     "clean_toon_text",
     "clear_registry",
     "extract_and_jsonify",
+    "extract_fenced_blocks",
     "extract_from_data",
     "extract_from_pandas",
+    "extract_html_document",
     "extract_with_model",
     "extract_with_models",
     "field_from_registry",

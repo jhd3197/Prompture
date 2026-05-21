@@ -27,7 +27,13 @@ ParseEventsFn = Callable[[Iterable[str]], Iterator[CodingAgentEvent]]
 
 @dataclasses.dataclass(frozen=True)
 class CodingAgentSpec:
-    """Static description of a supported coding-agent CLI."""
+    """Static description of a supported coding-agent CLI.
+
+    Capability flags (``supports_session_resume``, ``supports_questions``,
+    ``supports_tool_use``) describe what features the CLI exposes via
+    Prompture's runner.  Use :func:`pick_best_coding_agent` to filter
+    available CLIs by the capabilities your workflow requires.
+    """
 
     id: str
     display_name: str
@@ -35,6 +41,18 @@ class CodingAgentSpec:
     npm_packages: tuple[str, ...]
     build_args: BuildArgsFn
     parse_events: ParseEventsFn | None = None
+    # --- capability flags ---------------------------------------------
+    # Every supported CLI executes tools against the real filesystem;
+    # this flag exists so callers can ``require_tool_use=True`` and stay
+    # future-proof against narrower agent variants we might add later.
+    supports_tool_use: bool = True
+    # Whether the CLI emits clarifying-question events Prompture can
+    # surface via ``CodingAgentRunResult.asked_question``.  Only the
+    # CLIs whose stream parser tags ``question`` events qualify.
+    supports_questions: bool = False
+    # Whether ``run_coding_agent(..., session_id=...)`` can resume a
+    # prior turn against this CLI.
+    supports_session_resume: bool = False
 
     @property
     def supports_structured_output(self) -> bool:
@@ -195,6 +213,8 @@ CODING_AGENT_SPECS: dict[str, CodingAgentSpec] = {
         npm_packages=("@anthropic-ai/claude-code",),
         build_args=_build_claude_args,
         parse_events=parse_claude_stream_json_lines,
+        supports_questions=True,
+        supports_session_resume=True,
     ),
     "codex": CodingAgentSpec(
         id="codex",
@@ -203,6 +223,8 @@ CODING_AGENT_SPECS: dict[str, CodingAgentSpec] = {
         npm_packages=("@openai/codex",),
         build_args=_build_codex_args,
         parse_events=parse_codex_json_lines,
+        supports_questions=True,
+        supports_session_resume=True,
     ),
     "gemini": CodingAgentSpec(
         id="gemini",
