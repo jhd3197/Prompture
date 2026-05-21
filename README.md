@@ -31,29 +31,37 @@ print(person.name)  # Maria
 
 ## Key Features
 
-- **Structured output** — JSON schema enforcement and direct Pydantic model population
-- **36+ providers** — OpenAI, Claude, Google, Groq, Grok, Azure, AWS Bedrock, Ollama, LM Studio, OpenRouter, HuggingFace, Moonshot, ModelScope, Z.ai, Vertex AI, AirLLM, CachiBot, Runway, MiniMax/Hailuo, Kling AI, Luma AI, Pika Labs, Fal.ai, Ideogram, Black Forest Labs (Flux), Mistral AI, DeepSeek, Cohere, Voyage AI, Jina AI, Nomic, Mixedbread (mxbai), Cartesia, Deepgram, AssemblyAI, generic OpenAI-compatible (Fireworks, Together, Cerebras, SambaNova, Perplexity, NVIDIA, DeepInfra, SiliconFlow, GitHub Models), and generic HTTP
-- **Multi-modal** — Drivers for embeddings (OpenAI, Cohere, Voyage, Jina, Nomic, Mixedbread, Ollama), rerank (Cohere, Voyage, Jina, Mixedbread), moderation (OpenAI, Mistral), image generation (DALL-E, Imagen, Grok, Stability, Runway, Kling, Fal, Ideogram, Black Forest Labs / Flux), video generation (Grok Imagine Video, Runway text/image/video → video, MiniMax/Hailuo, Kling, Luma Dream Machine, Pika, Fal), text-to-speech (OpenAI, ElevenLabs, Cartesia Sonic, Deepgram Aura, Runway), sound effects, voice dubbing / isolation / conversion (Runway), and speech-to-text (Whisper, ElevenLabs, Deepgram Nova-3, AssemblyAI Universal-2)
-- **RAG stack** — Document loaders (PDF, DOCX, HTML, Markdown, JSON/JSONL, CSV, EPUB, XLSX), chunkers (character, recursive, token-aware via tiktoken, semantic, markdown-aware), vector stores (Chroma, Pinecone, Qdrant, pgvector, FAISS, Weaviate), retrievers (similarity, MMR, hybrid dense+BM25 via RRF), and an end-to-end `RAGPipeline` that composes loader → chunker → embedder → store → retriever → optional reranker → LLM
-- **Multi-model fallback** — Try a list of models in sequence with per-attempt cost, token, and capability accounting
-- **Strategy cascade** — Auto-selects between provider-native JSON mode, tool-call extraction, and prompted repair so extraction works on any model
-- **TOON input conversion** — 45-60% token savings when sending structured data via [Token-Oriented Object Notation](https://github.com/jhd3197/python-toon)
-- **Stepwise extraction** — Per-field prompts with smart type coercion (shorthand numbers, multilingual booleans, dates)
-- **Field registry** — 50+ predefined extraction fields with template variables and Pydantic integration
-- **Conversations** — Stateful multi-turn sessions with sync and async support
-- **Tool use** — Function calling and streaming across supported providers, with automatic prompt-based simulation for models without native tool support
-- **Sandboxed Python execution** — Drop-in `python_execute` tool backed by Tukuy's `PythonSandbox` (import whitelist, path restrictions, timeout, memory limit, AST risk gate)
-- **Web search** — Drop-in `web_search` tool with Tavily, Serper, Brave, and SearXNG backends; returns Markdown so the LLM can cite by URL
-- **OpenAI-compatible server** — `prompture serve` exposes `/v1/chat/completions`, `/v1/completions`, `/v1/embeddings`, `/v1/models`, and `/v1/coding-agents`; point Claude Code, Codex, Cursor, Aider, or any OpenAI SDK at it and route to any of the 36+ providers
-- **Synthetic datasets** — `generate_qa_dataset()` turns documents into fine-tuning JSONL (Q&A, ShareGPT, or Alpaca) ready for Unsloth, Axolotl, or TRL
-- **Refusal detection** — `RefusalDetector` + `RefusalEvaluator` flag and score LLM refusals (5 categories, en/es markers, position-weighted confidence); useful for cross-provider alignment comparison and validating abliterated models
-- **Input safety** — `PromptInjectionDetector` (jailbreak, role-hijack, delimiter attacks, encoded payloads) + `PIIRedactor` (emails, phones, Luhn-checked cards, SSN, IBAN, IPs, API keys, embedded URL credentials)
-- **Deep agents** — Drop-in `DeepAgent` with planning (`write_todos`), virtual filesystem (`read_file` / `write_file` / `edit_file` / `ls` / `glob` / `grep`), sub-agent delegation (`task`), and automatic context summarization — no LangChain or LangGraph required
-- **Caching** — Built-in response cache with memory, SQLite, and Redis backends
-- **Plugin system** — Register custom drivers via entry points
-- **Usage tracking** — Token counts and cost calculation on every call
-- **Auto-repair** — Optional second LLM pass to fix malformed JSON
-- **Batch testing** — Spec-driven suites to compare models side by side
+**Structured extraction**
+- JSON schema enforcement and direct Pydantic model population
+- Stepwise per-field extraction with smart type coercion (shorthand numbers, multilingual booleans, dates)
+- Field registry — 50+ predefined fields with template variables and Pydantic integration
+- Strategy cascade — auto-selects provider-native JSON mode, tool-call extraction, or prompted repair
+- Multi-model fallback with per-attempt cost, token, and capability accounting
+- Optional auto-repair pass for malformed JSON
+
+**Providers & modalities**
+- 36+ providers under a unified `provider/model` string — see [Providers](#providers)
+- Multi-modal drivers for embeddings, rerank, moderation, image, video, TTS, STT, and audio transforms — see [Multi-Modal](#multi-modal)
+- TOON input conversion for 45–60% token savings on structured input ([python-toon](https://github.com/jhd3197/python-toon))
+
+**Agents, tools, RAG**
+- Stateful conversations with sync + async support
+- Function calling and streaming across providers, with prompt-based simulation for models without native tool use
+- Drop-in tools: sandboxed `python_execute` (Tukuy), `web_search` (Tavily / Serper / Brave / SearXNG)
+- `DeepAgent` with planning, virtual filesystem, sub-agents, and auto-summarization — no LangChain
+- Full RAG stack — loaders, chunkers, vector stores, hybrid dense+BM25 retrieval, end-to-end `RAGPipeline` — see [RAG](#rag)
+
+**Safety & evaluation**
+- `PromptInjectionDetector` + `PIIRedactor` for input-side defense
+- `RefusalDetector` / `RefusalEvaluator` for cross-provider alignment scoring
+- `generate_qa_dataset()` — synthetic JSONL datasets ready for Unsloth, Axolotl, TRL
+
+**Ops**
+- `prompture serve` — OpenAI-compatible server (`/v1/chat/completions`, `/v1/embeddings`, `/v1/coding-agents`, …) routes any client to any provider
+- Usage tracking — tokens + cost on every call
+- Response cache — memory, SQLite, Redis backends
+- Plugin system — register custom drivers via entry points
+- Spec-driven batch testing for cross-model comparison
 
 ## Built With Prompture
 
@@ -68,34 +76,70 @@ Projects powered by Prompture at their core:
 pip install prompture
 ```
 
-Optional extras:
+That's all you need for the core driver system, structured extraction, and
+agent loop. Everything below is **opt-in** — install only what you'll actually
+use.
+
+> **TL;DR** — Building a RAG app? `pip install prompture[rag]` and skip the
+> rest of this section. Just doing structured extraction or agents? You don't
+> need any extras.
+
+### Core extras
+
+| Extra | Adds | Install |
+|---|---|---|
+| `redis` | Redis cache backend | `pip install prompture[redis]` |
+| `serve` | FastAPI server mode (`prompture serve`) | `pip install prompture[serve]` |
+| `airllm` | AirLLM local inference | `pip install prompture[airllm]` |
+| `bedrock` | AWS Bedrock driver (`boto3`) | `pip install prompture[bedrock]` |
+| `sandbox` | Sandboxed Python execution tool (`tukuy`) | `pip install prompture[sandbox]` |
+
+### RAG — the easy path
 
 ```bash
-pip install prompture[redis]       # Redis cache backend
-pip install prompture[serve]       # FastAPI server mode
-pip install prompture[airllm]      # AirLLM local inference
-pip install prompture[bedrock]     # AWS Bedrock driver (boto3)
-pip install prompture[sandbox]     # Sandboxed Python execution tool (tukuy)
-pip install prompture[rag]         # Full RAG stack (all loaders, chunkers, vector stores, hybrid retrieval)
+pip install prompture[rag]
 ```
 
-Fine-grained RAG extras (install only what you need):
+Pulls in every loader, chunker, hybrid retrieval, and all vector-store
+backends. Use this unless you need to keep the dependency footprint small.
+
+### RAG — à la carte
+
+Pick only the pieces you need.
+
+**Loaders** — one per document format:
+
+| Extra | Format | Backed by |
+|---|---|---|
+| `rag-pdf` | PDF | `pypdf` |
+| `rag-docx` | DOCX | `python-docx` |
+| `rag-html` | HTML | `beautifulsoup4` + `markdownify` + `lxml` |
+| `rag-epub` | EPUB | `ebooklib` |
+| `rag-xlsx` | XLSX | `openpyxl` |
+
+**Chunking & retrieval:**
+
+| Extra | What it adds | Backed by |
+|---|---|---|
+| `rag-token` | Token-aware chunker | `tiktoken` |
+| `rag-semantic` | Semantic chunker | `numpy` |
+| `rag-hybrid` | Hybrid retriever (BM25 + vectors) | `rank-bm25` |
+
+**Vector stores** — pick whichever you deploy against:
+
+| Extra | Vector store |
+|---|---|
+| `rag-vs-chroma` | Chroma |
+| `rag-vs-pinecone` | Pinecone |
+| `rag-vs-qdrant` | Qdrant |
+| `rag-vs-pgvector` | pgvector / PostgreSQL |
+| `rag-vs-faiss` | FAISS (CPU build) |
+| `rag-vs-weaviate` | Weaviate |
+
+Combine them as needed, e.g.:
 
 ```bash
-pip install prompture[rag-pdf]         # PDF loader (pypdf)
-pip install prompture[rag-docx]        # DOCX loader (python-docx)
-pip install prompture[rag-html]        # HTML loader (beautifulsoup4 + markdownify + lxml)
-pip install prompture[rag-epub]        # EPUB loader (ebooklib)
-pip install prompture[rag-xlsx]        # XLSX loader (openpyxl)
-pip install prompture[rag-token]       # Token-aware chunker (tiktoken)
-pip install prompture[rag-semantic]    # Semantic chunker (numpy)
-pip install prompture[rag-hybrid]      # Hybrid retriever with BM25 (rank-bm25)
-pip install prompture[rag-vs-chroma]   # Chroma vector store
-pip install prompture[rag-vs-pinecone] # Pinecone vector store
-pip install prompture[rag-vs-qdrant]   # Qdrant vector store
-pip install prompture[rag-vs-pgvector] # pgvector / PostgreSQL
-pip install prompture[rag-vs-faiss]    # FAISS vector store (CPU build)
-pip install prompture[rag-vs-weaviate] # Weaviate vector store
+pip install "prompture[rag-pdf,rag-token,rag-vs-qdrant]"
 ```
 
 ## Configuration
@@ -144,17 +188,23 @@ Model strings use `"provider/model"` format. The provider prefix routes to the c
 | `openai` | `openai/gpt-4` | Automatic |
 | `claude` | `claude/claude-3` | Automatic |
 | `google` | `google/gemini-1.5-pro` | Automatic |
-| `google_vertexai` | `google_vertexai/gemini-1.5-pro` | Automatic |
 | `groq` | `groq/llama2-70b-4096` | Automatic |
+| `openrouter` | `openrouter/anthropic/claude-2` | Automatic |
+| `ollama` | `ollama/llama3.1:8b` | Free (local) |
+
+<details>
+<summary><b>Show all 30+ providers</b></summary>
+
+| Provider | Example Model | Cost |
+|---|---|---|
+| `google_vertexai` | `google_vertexai/gemini-1.5-pro` | Automatic |
 | `grok` | `grok/grok-4-fast-reasoning` | Automatic |
 | `azure` | `azure/deployed-name` | Automatic |
 | `bedrock` | `bedrock/anthropic.claude-3-5-haiku-20241022-v1:0` (requires `pip install prompture[bedrock]`) | Automatic |
-| `openrouter` | `openrouter/anthropic/claude-2` | Automatic |
 | `moonshot` | `moonshot/kimi-k2` | Automatic |
 | `modelscope` | `modelscope/Qwen2.5-72B-Instruct` | Automatic |
 | `zai` | `zai/glm-4` | Automatic |
 | `cachibot` | `cachibot/openai/gpt-4o-mini` | Automatic |
-| `ollama` | `ollama/llama3.1:8b` | Free (local) |
 | `lmstudio` | `lmstudio/local-model` | Free (local) |
 | `huggingface` | `hf/model-name` | Free (local) |
 | `airllm` | `airllm/Qwen2-7B` | Free (local) |
@@ -173,6 +223,8 @@ Model strings use `"provider/model"` format. The provider prefix routes to the c
 | `nomic` | `nomic/nomic-embed-text-v1.5` (embedding) | Automatic |
 | `mixedbread` | `mixedbread/mxbai-embed-large-v1` (embedding), `mixedbread/mxbai-rerank-large-v1` (rerank) | Automatic |
 | `openai_compatible` | `openai_compatible/<profile>/<model>` — 9 curated profiles: `fireworks`, `together`, `cerebras`, `sambanova`, `perplexity`, `nvidia`, `deepinfra`, `siliconflow`, `github_models` (or pass an explicit `endpoint=` for anything else) | Automatic where pricing is known |
+
+</details>
 
 Aliases (`anthropic`, `gemini`, `chatgpt`, `xai`, `lm_studio`, `zhipu`, `hf`, `dalle`, `runwayml`, `hailuo`, `mistralai`, `flux`, `mxbai`) route to their canonical providers.
 
@@ -1489,184 +1541,10 @@ Selected flags:
 
 Full example walkthrough: [`examples/openai_server_example.md`](examples/openai_server_example.md).
 
-## Integrating Prompture into Your Project
+## Integrating & Extending
 
-### FastAPI + AsyncAgent with Tools
-
-The most common integration pattern — an AI chat endpoint with database-backed tools:
-
-```python
-from fastapi import APIRouter, Depends
-from prompture import AsyncAgent, ToolRegistry, ProviderEnvironment, BudgetExceededError
-
-router = APIRouter()
-
-def build_tools(db) -> ToolRegistry:
-    registry = ToolRegistry()
-
-    @registry.tool
-    async def search_records(query: str) -> str:
-        """Search the database for matching records."""
-        results = await db.execute(...)
-        return format_results(results)
-
-    return registry
-
-@router.post("/chat")
-async def chat(message: str, db=Depends(get_db)):
-    env = ProviderEnvironment(openai_api_key=get_api_key_from_db(db))
-
-    agent = AsyncAgent(
-        "openai/gpt-4o",
-        env=env,
-        tools=build_tools(db),
-        system_prompt="You are a helpful assistant with database access.",
-        max_cost=0.25,
-        budget_policy="hard_stop",
-    )
-
-    try:
-        result = await agent.run(message)
-        return {"reply": result.output_text, "usage": result.usage}
-    except BudgetExceededError:
-        return {"error": "Cost limit exceeded"}, 429
-```
-
-### SSE Streaming Endpoint
-
-Stream responses via Server-Sent Events:
-
-```python
-from fastapi.responses import StreamingResponse
-from prompture import AsyncAgent, StreamEventType
-
-@router.post("/chat/stream")
-async def chat_stream(message: str):
-    agent = AsyncAgent("claude/claude-sonnet-4-6", env=env, system_prompt="...")
-
-    async def event_stream():
-        async for event in agent.run_stream(message):
-            match event.event_type:
-                case StreamEventType.text_delta:
-                    yield f"data: {json.dumps({'type': 'text', 'content': event.data})}\n\n"
-                case StreamEventType.tool_call:
-                    yield f"data: {json.dumps({'type': 'tool_call', 'name': event.data['name']})}\n\n"
-                case StreamEventType.output:
-                    yield f"data: {json.dumps({'type': 'done'})}\n\n"
-
-    return StreamingResponse(event_stream(), media_type="text/event-stream")
-```
-
-### Structured Extraction in Endpoints
-
-Use `AsyncConversation.ask_for_json()` for one-shot structured data extraction:
-
-```python
-from prompture import AsyncConversation
-
-@router.get("/insights")
-async def get_insights():
-    conv = AsyncConversation("openai/gpt-4o", system_prompt="You analyze data.")
-    result = await conv.ask_for_json(
-        f"Analyze this data and produce insights:\n\n{context}",
-        {"type": "object", "properties": {
-            "insights": {"type": "array", "items": {"type": "object", ...}},
-            "summary": {"type": "string"},
-        }},
-    )
-    return result["json_object"]
-```
-
-### Error Handling
-
-Key exceptions to catch in production:
-
-```python
-from prompture import BudgetExceededError, DriverError, ExtractionError, ValidationError
-
-try:
-    result = await agent.run(message)
-except BudgetExceededError:
-    # Cost or token limit exceeded — return 429
-    pass
-except DriverError:
-    # Provider API error (auth, rate limit, network) — return 502
-    pass
-except ExtractionError:
-    # JSON parsing/validation failed — return 422
-    pass
-except ValidationError:
-    # Schema validation failed — return 422
-    pass
-```
-
-## Extending Prompture
-
-Prompture's provider registry is plugin-based. Every built-in provider
-(OpenAI, Claude, Google, etc.) is contributed by a `ProviderPlugin`
-instance registered in `prompture.plugins.builtins`. Third-party packages
-can register their own providers via the `prompture.providers` Python
-entry-point group — no fork required.
-
-### Plugin Architecture
-
-At import time, `prompture` discovers plugins from two sources:
-
-1. **Built-in plugins** — loaded from `prompture.plugins.builtins` directly.
-2. **External plugins** — discovered through the `prompture.providers`
-   entry-point group via `importlib.metadata.entry_points()`.
-
-Each plugin returns one or more `ProviderDescriptor` instances. Prompture
-then wires them up to the LLM, audio, image, video, embedding, rerank,
-and moderation driver registries.
-
-### Writing a Plugin
-
-Create a Python file that subclasses `ProviderPlugin`:
-
-```python
-# my_package/plugin.py
-from prompture.plugins import ProviderPlugin
-from prompture.drivers.provider_descriptors import (
-    ProviderDescriptor,
-    DriverSpec,
-)
-
-
-class MyProviderPlugin(ProviderPlugin):
-    name = "my_provider"
-    version = "0.1.0"
-
-    def descriptors(self):
-        return [
-            ProviderDescriptor(
-                name="my_provider",
-                llm_sync=DriverSpec(
-                    cls_path="my_package.driver.MyDriver",
-                    kwarg_map={"api_key": "my_provider_api_key"},
-                    default_model="my-model-1",
-                ),
-                display_name="My Provider",
-                is_configured_check="my_provider_api_key",
-            ),
-        ]
-```
-
-Then declare the entry point in your package's `pyproject.toml`:
-
-```toml
-[project.entry-points."prompture.providers"]
-my_provider = "my_package.plugin:MyProviderPlugin"
-```
-
-Once `pip install`-ed alongside Prompture, your provider becomes
-available automatically:
-
-```python
-from prompture import get_driver_for_model
-
-driver = get_driver_for_model("my_provider/my-model-1")
-```
+- **FastAPI integration patterns** (AsyncAgent + tools, SSE streaming, structured endpoints, error handling) — see [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md#integrating-prompture-into-your-project)
+- **Custom provider plugins** (architecture + a complete `ProviderPlugin` walkthrough) — see [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md#extending-prompture)
 
 ## Development
 
