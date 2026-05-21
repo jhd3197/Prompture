@@ -11,6 +11,7 @@ from .assistant import (
     unregister_assistant,
 )
 from .async_agent import AsyncAgent, AsyncAgentIterator, AsyncStreamedAgentResult
+from .review_loop import AsyncReviewLoop, ReviewLoopIteration, ReviewLoopResult
 from .async_conversation import AsyncConversation
 from .async_deep_agent import AsyncDeepAgent, create_async_deep_agent
 from .conversation import Conversation
@@ -88,6 +89,7 @@ __all__ = [
     "AsyncStreamedAgentResult",
     "Assistant",
     "AssistantResult",
+    "AsyncReviewLoop",
     "Conversation",
     "DeepAgent",
     "DeepAgentResult",
@@ -95,6 +97,8 @@ __all__ = [
     "GuardrailError",
     "ModelRetry",
     "Persona",
+    "ReviewLoopIteration",
+    "ReviewLoopResult",
     "RunContext",
     "SkillInfo",
     "SkillParseError",
