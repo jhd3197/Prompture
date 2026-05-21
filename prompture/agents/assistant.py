@@ -162,6 +162,7 @@ class Assistant:
     variables: dict[str, Any] = dataclasses.field(default_factory=dict)
     enable_planning: bool = False
     output_type: Any = None
+    output_key: str | None = None
     options: dict[str, Any] = dataclasses.field(default_factory=dict)
     coding_agent_options: dict[str, Any] = dataclasses.field(default_factory=dict)
 
@@ -275,6 +276,37 @@ class Assistant:
 
     # ----- LLM backend ---------------------------------------------------
 
+    def build_async_agent(self, **vars: Any) -> Any:
+        """Construct the underlying ``AsyncAgent`` (or ``AsyncDeepAgent``).
+
+        Use this when you want the Assistant as a *configuration* bundle
+        (persona + skills + tools + model + options) but need to drive
+        the underlying agent yourself — through a group, a streaming
+        callback machinery, or any other orchestration layer that
+        operates on :class:`AsyncAgent` directly.
+
+        Args:
+            **vars: Per-call template variables merged into the persona
+                before rendering.  Equivalent to the per-call kwargs of
+                :meth:`arun` / :meth:`astream`, but applied at
+                construction time.
+
+        Returns:
+            An :class:`AsyncAgent` when ``enable_planning=False``,
+            otherwise an :class:`AsyncDeepAgent`.
+
+        Raises:
+            ValueError: When this Assistant is configured with a
+                ``coding_agent`` backend (it shells out to a CLI and has
+                no in-process agent to expose).
+        """
+        if self.coding_agent:
+            raise ValueError(
+                "build_async_agent() is only available for the LLM backend; "
+                f"this Assistant uses coding_agent={self.coding_agent!r}."
+            )
+        return self._build_async_agent(call_vars=vars)
+
     def _build_async_agent(self, *, call_vars: dict[str, Any]) -> Any:
         persona = self._composed_persona(call_vars)
         if self.enable_planning:
@@ -297,6 +329,7 @@ class Assistant:
             system_prompt=persona,
             tools=list(self.tools) or None,
             output_type=self.output_type,
+            output_key=self.output_key,
             name=self.name,
             description=self.description,
             options=dict(self.options) or None,

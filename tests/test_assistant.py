@@ -157,6 +157,57 @@ def test_from_registry_unknown_raises():
 
 
 # ---------------------------------------------------------------------------
+# build_async_agent
+# ---------------------------------------------------------------------------
+
+
+def test_build_async_agent_returns_async_agent(persona):
+    from prompture import AsyncAgent
+
+    a = Assistant(
+        name="dev",
+        persona=persona,
+        model="openai/gpt-4o",
+        output_key="page_output",
+    )
+    agent = a.build_async_agent(role="senior")
+    assert isinstance(agent, AsyncAgent)
+    assert agent.name == "dev"
+    assert agent.output_key == "page_output"
+
+
+def test_build_async_agent_returns_deep_when_planning_enabled(persona):
+    from prompture import AsyncDeepAgent
+
+    a = Assistant(
+        name="dev",
+        persona=persona,
+        model="openai/gpt-4o",
+        enable_planning=True,
+    )
+    agent = a.build_async_agent()
+    assert isinstance(agent, AsyncDeepAgent)
+
+
+def test_build_async_agent_rejects_coding_agent_backend(persona):
+    a = Assistant(name="cli", persona=persona, coding_agent="claude")
+    with pytest.raises(ValueError, match="only available for the LLM backend"):
+        a.build_async_agent()
+
+
+def test_build_async_agent_applies_skills_to_system_prompt(persona, skill):
+    a = Assistant(
+        name="dev",
+        persona=persona,
+        skills=[skill],
+        model="openai/gpt-4o",
+    )
+    agent = a.build_async_agent()
+    rendered = agent._system_prompt.render()
+    assert "Always use semantic tags" in rendered
+
+
+# ---------------------------------------------------------------------------
 # Coding-agent backend (mocked)
 # ---------------------------------------------------------------------------
 
