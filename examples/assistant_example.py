@@ -117,14 +117,10 @@ async def demo_review_loop() -> None:
     )
 
     result = await loop.arun(
-        "Build an /about page for a small coffee shop. One hero section, "
-        "a 'Our Story' paragraph, and a contact link.",
+        "Build an /about page for a small coffee shop. One hero section, a 'Our Story' paragraph, and a contact link.",
         coder_kwargs={"page_type": "about"},
     )
-    print(
-        f"\n=== Review loop done — iterations={result.iterations} "
-        f"approved={result.approved} ==="
-    )
+    print(f"\n=== Review loop done — iterations={result.iterations} approved={result.approved} ===")
     extracted = extract_html_document(result.output)
     if extracted.found:
         print(f"Salvaged HTML ({len(extracted.html)} chars).")
@@ -146,10 +142,7 @@ def demo_capability_picker() -> None:
         verify=True,
     )
     if chosen is None:
-        print(
-            "[info] No installed coding-agent CLI supports session resume on "
-            "this machine."
-        )
+        print("[info] No installed coding-agent CLI supports session resume on this machine.")
         return
     print(f"[info] Best CLI for session resume: {chosen.id} ({chosen.binary})")
 
@@ -173,13 +166,8 @@ async def demo_cli_assistant() -> None:
         coding_agent="auto",  # picks the first healthy installed CLI
         coding_agent_options={"approval_mode": "auto"},
     )
-    result = await cli_dev.arun(
-        "Write /about.html for a coffee shop. Return the file contents."
-    )
-    print(
-        f"\n=== CLI assistant ran on '{result.raw.agent}' "
-        f"(cost=${result.cost_usd or 0:.4f}) ==="
-    )
+    result = await cli_dev.arun("Write /about.html for a coffee shop. Return the file contents.")
+    print(f"\n=== CLI assistant ran on '{result.raw.agent}' (cost=${result.cost_usd or 0:.4f}) ===")
     print(result.output[:400])
 
 

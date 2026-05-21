@@ -55,9 +55,7 @@ def test_requires_exactly_one_backend(persona):
         Assistant(name="bad", persona=persona)
 
     with pytest.raises(ValueError, match="exactly one"):
-        Assistant(
-            name="bad", persona=persona, model="openai/gpt-4o", coding_agent="claude"
-        )
+        Assistant(name="bad", persona=persona, model="openai/gpt-4o", coding_agent="claude")
 
 
 def test_planning_requires_llm_backend(persona):
@@ -103,9 +101,7 @@ def test_with_skills_appends(persona, skill):
 
 
 def test_composed_persona_includes_skill_instructions(persona, skill):
-    a = Assistant(
-        name="dev", persona=persona, skills=[skill], model="openai/gpt-4o"
-    )
+    a = Assistant(name="dev", persona=persona, skills=[skill], model="openai/gpt-4o")
     composed = a._composed_persona({})
     rendered = composed.render()
     assert "Always use semantic tags" in rendered
@@ -259,13 +255,16 @@ def test_coding_agent_auto_resolves_first_healthy(persona):
             "session_id": None,
         },
     )()
-    with patch(
-        "prompture.infra.discovery.get_available_coding_agents",
-        return_value=fake_specs,
-    ), patch(
-        "prompture.infra.coding_agents.arun_coding_agent",
-        new=AsyncMock(return_value=fake_result),
-    ) as runner:
+    with (
+        patch(
+            "prompture.infra.discovery.get_available_coding_agents",
+            return_value=fake_specs,
+        ),
+        patch(
+            "prompture.infra.coding_agents.arun_coding_agent",
+            new=AsyncMock(return_value=fake_result),
+        ) as runner,
+    ):
         asyncio.run(a.arun("hi"))
     assert runner.call_args.args[0] == "claude"
 

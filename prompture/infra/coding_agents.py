@@ -55,6 +55,7 @@ def _record_into_session(
     }
     session.record(response_info)
 
+
 CodingAgentId = str
 ApprovalMode = Literal["default", "auto", "yolo"]
 OutputFormat = Literal["text", "json"]

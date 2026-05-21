@@ -73,7 +73,7 @@ def demo_structured_output() -> str | None:
                 for i, c in enumerate(ev.choices, 1):
                     print(f"       {i}. {c}")
 
-    if (q := result.asked_question):
+    if q := result.asked_question:
         print(f"\nAgent asked a clarifying question:\n  {q.text}")
 
     print(f"\nSession summary: {session.summary()['formatted']}")

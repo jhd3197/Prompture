@@ -190,8 +190,7 @@ class Assistant:
             )
         if self.enable_planning and not self.model:
             raise ValueError(
-                "enable_planning=True only applies to the LLM backend "
-                "(set `model=...`, not `coding_agent=...`)."
+                "enable_planning=True only applies to the LLM backend (set `model=...`, not `coding_agent=...`)."
             )
 
     # ----- composition ---------------------------------------------------
@@ -211,10 +210,7 @@ class Assistant:
         persona = self.persona
 
         for skill in self.skills:
-            block = (
-                f"## Skill: {skill.name}\n"
-                f"{skill.description}\n\n{skill.instructions}".rstrip()
-            )
+            block = f"## Skill: {skill.name}\n{skill.description}\n\n{skill.instructions}".rstrip()
             persona = persona.extend(block)
 
         # Push merged variables back so render() (called by AsyncAgent)
@@ -485,9 +481,7 @@ def clear_assistant_registry() -> None:
 def _from_registry(cls: type[Assistant], name: str) -> Assistant:
     found = get_assistant(name)
     if found is None:
-        raise KeyError(
-            f"No Assistant registered as {name!r}. Known: {get_assistant_names()}"
-        )
+        raise KeyError(f"No Assistant registered as {name!r}. Known: {get_assistant_names()}")
     return found
 
 

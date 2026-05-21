@@ -214,9 +214,7 @@ class AsyncReviewLoop:
     review_prompt: Callable[[str], str] = dataclasses.field(
         default=lambda code: f"Review this work and give feedback:\n\n{code}"
     )
-    feedback_prompt: Callable[[str, ReviewLoopIteration], str] = (
-        _default_feedback_prompt
-    )
+    feedback_prompt: Callable[[str, ReviewLoopIteration], str] = _default_feedback_prompt
 
     def __post_init__(self) -> None:
         if self.max_iters < 1:
@@ -291,9 +289,7 @@ class AsyncReviewLoop:
                 code_result=code_result,
             )
 
-            review_result = await self.reviewer.arun(
-                self.review_prompt(code_text), **reviewer_kwargs
-            )
+            review_result = await self.reviewer.arun(self.review_prompt(code_text), **reviewer_kwargs)
             review_text = getattr(review_result, "output", "") or ""
             approved = bool(self.approve_when(review_result))
             yield ReviewLoopEvent(

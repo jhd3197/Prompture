@@ -96,9 +96,7 @@ def test_require_session_resume_filters_out_aider():
         "prompture.infra.discovery.get_available_coding_agents",
         return_value=[_info("aider"), _info("claude")],
     ):
-        chosen = pick_best_coding_agent(
-            require_session_resume=True, verify=False
-        )
+        chosen = pick_best_coding_agent(require_session_resume=True, verify=False)
     assert chosen is not None
     assert chosen.id == "claude"
 
@@ -108,9 +106,7 @@ def test_returns_none_when_no_requirements_satisfied():
         "prompture.infra.discovery.get_available_coding_agents",
         return_value=[_info("aider")],
     ):
-        chosen = pick_best_coding_agent(
-            require_session_resume=True, verify=False
-        )
+        chosen = pick_best_coding_agent(require_session_resume=True, verify=False)
     assert chosen is None
 
 
@@ -128,8 +124,6 @@ def test_require_structured_output_filters_aider():
         "prompture.infra.discovery.get_available_coding_agents",
         return_value=[_info("aider"), _info("codex")],
     ):
-        chosen = pick_best_coding_agent(
-            require_structured_output=True, verify=False
-        )
+        chosen = pick_best_coding_agent(require_structured_output=True, verify=False)
     assert chosen is not None
     assert chosen.id == "codex"

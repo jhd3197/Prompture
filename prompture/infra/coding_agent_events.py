@@ -251,10 +251,10 @@ _QUESTION_PHRASE_RE = re.compile(
 
 _CHOICE_LINE_RE = re.compile(
     r"^\s*(?:"
-    r"(?P<num>\d+)[.\):]\s+|"     # 1. foo  1) foo  1: foo
-    r"[-*•]\s+|"                  # - foo   * foo   • foo
-    r"\([a-zA-Z]\)\s+|"           # (a) foo
-    r"[a-zA-Z][.\)]\s+"           # a) foo  a. foo
+    r"(?P<num>\d+)[.\):]\s+|"  # 1. foo  1) foo  1: foo
+    r"[-*•]\s+|"  # - foo   * foo   • foo
+    r"\([a-zA-Z]\)\s+|"  # (a) foo
+    r"[a-zA-Z][.\)]\s+"  # a) foo  a. foo
     r")(?P<body>.+\S)\s*$"
 )
 
