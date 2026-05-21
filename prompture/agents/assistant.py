@@ -62,7 +62,7 @@ import asyncio
 import dataclasses
 import logging
 import threading
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator
 from typing import Any
 
 from .persona import Persona
@@ -155,7 +155,9 @@ class Assistant:
     name: str
     persona: Persona
     skills: tuple[SkillInfo, ...] = ()
-    tools: tuple[Callable[..., Any], ...] = ()
+    # Either a tuple of Python callables OR a ToolRegistry — both are
+    # accepted by the underlying AsyncAgent.
+    tools: Any = ()
     model: str | None = None
     coding_agent: str | None = None
     description: str = ""
@@ -165,15 +167,19 @@ class Assistant:
     output_key: str | None = None
     options: dict[str, Any] = dataclasses.field(default_factory=dict)
     coding_agent_options: dict[str, Any] = dataclasses.field(default_factory=dict)
+    # Extra kwargs forwarded to AsyncDeepAgent when enable_planning=True
+    # (e.g. {"enable_vfs": False, "enable_summarization": False}).
+    deep_agent_options: dict[str, Any] = dataclasses.field(default_factory=dict)
 
     # ----- construction --------------------------------------------------
 
     def __post_init__(self) -> None:
-        # Normalise iterable args to immutable tuples so the dataclass
-        # stays hashable + frozen-friendly.
+        # Normalise skills to an immutable tuple.  Tools may be either a
+        # tuple of callables OR a ToolRegistry — both are passed
+        # through to AsyncAgent unchanged.
         if not isinstance(self.skills, tuple):
             object.__setattr__(self, "skills", tuple(self.skills))
-        if not isinstance(self.tools, tuple):
+        if isinstance(self.tools, (list, set)):
             object.__setattr__(self, "tools", tuple(self.tools))
 
         if bool(self.model) == bool(self.coding_agent):
@@ -309,17 +315,19 @@ class Assistant:
 
     def _build_async_agent(self, *, call_vars: dict[str, Any]) -> Any:
         persona = self._composed_persona(call_vars)
+        tools_arg = self._tools_for_agent()
         if self.enable_planning:
             from .async_deep_agent import AsyncDeepAgent
 
             return AsyncDeepAgent(
                 self.model or "",
                 system_prompt=persona,
-                tools=list(self.tools) or None,
+                tools=tools_arg,
                 name=self.name,
                 description=self.description,
                 enable_planning=True,
                 options=dict(self.options) or None,
+                **dict(self.deep_agent_options),
             )
 
         from .async_agent import AsyncAgent
@@ -327,13 +335,28 @@ class Assistant:
         return AsyncAgent(
             self.model or "",
             system_prompt=persona,
-            tools=list(self.tools) or None,
+            tools=tools_arg,
             output_type=self.output_type,
             output_key=self.output_key,
             name=self.name,
             description=self.description,
             options=dict(self.options) or None,
         )
+
+    def _tools_for_agent(self) -> Any:
+        """Coerce ``self.tools`` into the shape ``AsyncAgent`` expects.
+
+        Returns ``None`` when nothing is configured, the underlying
+        ``ToolRegistry`` when one was passed in directly, or a list of
+        callables otherwise.
+        """
+        if not self.tools:
+            return None
+        # Tuples / lists of callables → list (AsyncAgent expects a list).
+        if isinstance(self.tools, tuple):
+            return list(self.tools) or None
+        # Any other object (e.g. ToolRegistry) is passed through verbatim.
+        return self.tools
 
     async def _run_llm(
         self,
