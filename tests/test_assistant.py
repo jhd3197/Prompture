@@ -180,6 +180,7 @@ def test_build_async_agent_returns_deep_when_planning_enabled(persona):
         persona=persona,
         model="openai/gpt-4o",
         enable_planning=True,
+        deep_agent_options={"enable_summarization": False},
     )
     agent = a.build_async_agent()
     assert isinstance(agent, AsyncDeepAgent)
