@@ -1,6 +1,15 @@
 """Agents, conversations, personas, skills, and tool schemas."""
 
 from .agent import Agent, AgentIterator, StreamedAgentResult
+from .assistant import (
+    Assistant,
+    AssistantResult,
+    clear_assistant_registry,
+    get_assistant,
+    get_assistant_names,
+    register_assistant,
+    unregister_assistant,
+)
 from .async_agent import AsyncAgent, AsyncAgentIterator, AsyncStreamedAgentResult
 from .async_conversation import AsyncConversation
 from .async_deep_agent import AsyncDeepAgent, create_async_deep_agent
@@ -77,6 +86,8 @@ __all__ = [
     "AsyncConversation",
     "AsyncDeepAgent",
     "AsyncStreamedAgentResult",
+    "Assistant",
+    "AssistantResult",
     "Conversation",
     "DeepAgent",
     "DeepAgentResult",
@@ -98,12 +109,15 @@ __all__ = [
     "Todo",
     "ToolDefinition",
     "ToolRegistry",
+    "clear_assistant_registry",
     "clear_persona_registry",
     "clear_skill_registry",
     "create_async_deep_agent",
     "create_deep_agent",
     "discover_skills",
     "discover_skills_async",
+    "get_assistant",
+    "get_assistant_names",
     "get_persona",
     "get_persona_names",
     "get_persona_registry_snapshot",
@@ -117,11 +131,13 @@ __all__ = [
     "load_skill_async",
     "load_skill_from_directory",
     "load_skills_from_directory",
+    "register_assistant",
     "register_persona",
     "register_skill",
     "register_trait",
     "reset_persona_registry",
     "reset_trait_registry",
     "tool_from_function",
+    "unregister_assistant",
     "unregister_skill",
 ]
