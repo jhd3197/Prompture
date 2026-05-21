@@ -748,9 +748,7 @@ def pick_best_coding_agent(
             return False
         if require_questions and not spec.supports_questions:
             return False
-        if require_session_resume and not spec.supports_session_resume:
-            return False
-        return True
+        return not (require_session_resume and not spec.supports_session_resume)
 
     by_id = {info.id: info for info in healthy}
     if prefer:

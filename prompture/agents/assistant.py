@@ -62,7 +62,7 @@ import asyncio
 import dataclasses
 import logging
 import threading
-from collections.abc import AsyncIterator, Callable, Iterable, Sequence
+from collections.abc import AsyncIterator, Callable
 from typing import Any
 
 from .persona import Persona
