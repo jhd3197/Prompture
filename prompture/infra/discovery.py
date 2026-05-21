@@ -12,7 +12,7 @@ import platform
 import shutil
 import subprocess
 import sys
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from contextlib import suppress
 from pathlib import Path
 from typing import Any, Literal, overload
@@ -687,6 +687,82 @@ def get_available_coding_agents(
         )
 
     return agents
+
+
+def pick_best_coding_agent(
+    *,
+    prefer: Sequence[str] | None = None,
+    require_tool_use: bool = False,
+    require_structured_output: bool = False,
+    require_questions: bool = False,
+    require_session_resume: bool = False,
+    agent_paths: Mapping[str, str] | None = None,
+    verify: bool = True,
+    verify_timeout: int = _CODING_AGENT_HEALTH_TIMEOUT,
+) -> CodingAgentInfo | None:
+    """Pick the most preferred installed coding-agent CLI matching capability requirements.
+
+    Combines :func:`get_available_coding_agents` (filtered to healthy
+    entries) with the capability flags on :class:`CodingAgentSpec` so
+    callers can ask for "a healthy CLI that supports session resume"
+    without writing the loop themselves.
+
+    Args:
+        prefer: Ordered list of agent ids to try first.  When any of
+            these is healthy and meets the requirements, it wins.  When
+            None or empty, the spec registry's default ordering is used.
+        require_tool_use: Reject CLIs whose spec sets
+            ``supports_tool_use=False``.
+        require_structured_output: Reject CLIs without a JSON event
+            parser (``spec.supports_structured_output``).
+        require_questions: Reject CLIs that don't emit clarifying
+            ``question`` events.
+        require_session_resume: Reject CLIs that don't support
+            ``run_coding_agent(..., session_id=...)``.
+        agent_paths: Forwarded to :func:`get_available_coding_agents`.
+        verify: Run health checks (default True so we never pick a
+            broken shim).
+        verify_timeout: Health-check timeout.
+
+    Returns:
+        The matching :class:`CodingAgentInfo`, or ``None`` when nothing
+        on the box satisfies the requirements.
+    """
+    from .coding_agent_specs import get_spec
+
+    candidates = get_available_coding_agents(
+        agent_paths=agent_paths,
+        include_unavailable=False,
+        verify=verify,
+        verify_timeout=verify_timeout,
+    )
+    healthy = [info for info in candidates if info.available and info.healthy is not False]
+
+    def _meets_requirements(info: CodingAgentInfo) -> bool:
+        spec = get_spec(info.id)
+        if spec is None:
+            return False
+        if require_tool_use and not spec.supports_tool_use:
+            return False
+        if require_structured_output and not spec.supports_structured_output:
+            return False
+        if require_questions and not spec.supports_questions:
+            return False
+        if require_session_resume and not spec.supports_session_resume:
+            return False
+        return True
+
+    by_id = {info.id: info for info in healthy}
+    if prefer:
+        for agent_id in prefer:
+            info = by_id.get(agent_id)
+            if info is not None and _meets_requirements(info):
+                return info
+
+    for info in healthy:
+        if _meets_requirements(info):
+            return info
+    return None
 
 
 def _config_via(desc: ProviderDescriptor) -> str:

@@ -194,8 +194,8 @@ def test_coding_agent_run_dispatches_to_arun_coding_agent(persona):
 def test_coding_agent_auto_resolves_first_healthy(persona):
     a = Assistant(name="cli-dev", persona=persona, coding_agent="auto")
     fake_specs = [
-        type("S", (), {"id": "claude", "available": True})(),
-        type("S", (), {"id": "codex", "available": True})(),
+        type("S", (), {"id": "claude", "available": True, "healthy": True})(),
+        type("S", (), {"id": "codex", "available": True, "healthy": True})(),
     ]
     fake_result = type(
         "R",

@@ -329,15 +329,15 @@ class Assistant:
         if agent_id != "auto":
             return agent_id
 
-        from ..infra.discovery import get_available_coding_agents
+        from ..infra.discovery import pick_best_coding_agent
 
-        available = [a for a in get_available_coding_agents(verify=True) if a.available]
-        if not available:
+        chosen = pick_best_coding_agent(verify=True)
+        if chosen is None:
             raise RuntimeError(
                 "Assistant coding_agent='auto' but no healthy coding-agent CLI "
                 "was found on PATH (tried Claude Code, Codex, Aider, etc.)."
             )
-        return available[0].id
+        return chosen.id
 
     def _compose_coding_agent_task(
         self,
