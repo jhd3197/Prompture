@@ -293,9 +293,7 @@ def stream_openai_compat_tool_call(
     stream = driver.client.chat.completions.create(**kwargs)
 
     def cost_fn(prompt_tokens: int, completion_tokens: int, cached_tokens: int) -> float:
-        return driver._calculate_cost(
-            provider, model, prompt_tokens, completion_tokens, cached_tokens=cached_tokens
-        )
+        return driver._calculate_cost(provider, model, prompt_tokens, completion_tokens, cached_tokens=cached_tokens)
 
     yield from iter_openai_compat_live_events(stream, model=model, cost_fn=cost_fn)
 
@@ -336,9 +334,7 @@ async def astream_openai_compat_tool_call(
     stream = await driver.client.chat.completions.create(**kwargs)
 
     def cost_fn(prompt_tokens: int, completion_tokens: int, cached_tokens: int) -> float:
-        return driver._calculate_cost(
-            provider, model, prompt_tokens, completion_tokens, cached_tokens=cached_tokens
-        )
+        return driver._calculate_cost(provider, model, prompt_tokens, completion_tokens, cached_tokens=cached_tokens)
 
     async for ev in aiter_openai_compat_live_events(stream, model=model, cost_fn=cost_fn):
         yield ev
@@ -436,7 +432,10 @@ def stream_raw_http_compat_tool_call(
     from ..agents.live_events import MessageStop
 
     model, payload = _build_raw_http_payload(
-        driver, messages, tools, options,
+        driver,
+        messages,
+        tools,
+        options,
         provider=provider,
         default_max_tokens=default_max_tokens,
         default_temperature=default_temperature,
@@ -459,7 +458,7 @@ def stream_raw_http_compat_tool_call(
             line = raw_line.strip()
             if not line.startswith("data:"):
                 continue
-            data = line[len("data:"):].strip()
+            data = line[len("data:") :].strip()
             if data == "[DONE]":
                 break
             try:
@@ -471,8 +470,10 @@ def stream_raw_http_compat_tool_call(
 
     yield from _finalize_tool_use_stops(state)
     cost = driver._calculate_cost(
-        provider, model,
-        state["prompt_tokens"], state["completion_tokens"],
+        provider,
+        model,
+        state["prompt_tokens"],
+        state["completion_tokens"],
         cached_tokens=state["cached_prompt_tokens"],
     )
     yield MessageStop(stop_reason=state["finish_reason"], usage=_build_meta(state, model, cost))
@@ -498,7 +499,10 @@ async def astream_raw_http_compat_tool_call(
     from ..agents.live_events import MessageStop
 
     model, payload = _build_raw_http_payload(
-        driver, messages, tools, options,
+        driver,
+        messages,
+        tools,
+        options,
         provider=provider,
         default_max_tokens=default_max_tokens,
         default_temperature=default_temperature,
@@ -507,36 +511,40 @@ async def astream_raw_http_compat_tool_call(
     resolved_headers = headers or _bearer_headers(driver.api_key)
 
     state = _fresh_state()
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        async with client.stream(
+    async with (
+        httpx.AsyncClient(timeout=timeout) as client,
+        client.stream(
             "POST",
             resolved_url,
             headers=resolved_headers,
             json=payload,
-        ) as resp:
-            resp.raise_for_status()
-            async for raw_line in resp.aiter_lines():
-                if not raw_line:
-                    continue
-                line = raw_line.strip()
-                if not line.startswith("data:"):
-                    continue
-                data = line[len("data:"):].strip()
-                if data == "[DONE]":
-                    break
-                try:
-                    chunk_dict = json.loads(data)
-                except json.JSONDecodeError:
-                    continue
-                chunk = _dict_to_chunk(chunk_dict)
-                for ev in _process_chunk(chunk, state):
-                    yield ev
+        ) as resp,
+    ):
+        resp.raise_for_status()
+        async for raw_line in resp.aiter_lines():
+            if not raw_line:
+                continue
+            line = raw_line.strip()
+            if not line.startswith("data:"):
+                continue
+            data = line[len("data:") :].strip()
+            if data == "[DONE]":
+                break
+            try:
+                chunk_dict = json.loads(data)
+            except json.JSONDecodeError:
+                continue
+            chunk = _dict_to_chunk(chunk_dict)
+            for ev in _process_chunk(chunk, state):
+                yield ev
 
     for ev in _finalize_tool_use_stops(state):
         yield ev
     cost = driver._calculate_cost(
-        provider, model,
-        state["prompt_tokens"], state["completion_tokens"],
+        provider,
+        model,
+        state["prompt_tokens"],
+        state["completion_tokens"],
         cached_tokens=state["cached_prompt_tokens"],
     )
     yield MessageStop(stop_reason=state["finish_reason"], usage=_build_meta(state, model, cost))

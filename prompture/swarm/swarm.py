@@ -28,9 +28,7 @@ from .types import SwarmCallbacks, SwarmResult, SwarmStep, aggregate_usage
 logger = logging.getLogger("prompture.swarm")
 
 _DEFAULT_MAX_TICKS = 10
-_DEFAULT_ACTION_PROMPT = (
-    "React to the current situation. Stay in character and respond concisely."
-)
+_DEFAULT_ACTION_PROMPT = "React to the current situation. Stay in character and respond concisely."
 
 
 class Swarm:
@@ -203,9 +201,7 @@ class Swarm:
             if self._max_total_cost is not None:
                 total_so_far = sum(s.get("total_cost", s.get("cost", 0.0)) for s in usage_summaries)
                 if total_so_far >= self._max_total_cost:
-                    self._stop_reason = (
-                        f"budget exceeded ({total_so_far:.4f} >= {self._max_total_cost:.4f})"
-                    )
+                    self._stop_reason = f"budget exceeded ({total_so_far:.4f} >= {self._max_total_cost:.4f})"
                     break
 
             self._env.advance_tick()
@@ -252,9 +248,7 @@ class Swarm:
                     )
 
                     if self._callbacks.on_agent_complete:
-                        self._callbacks.on_agent_complete(
-                            swarm_agent.name, result, tick_idx
-                        )
+                        self._callbacks.on_agent_complete(swarm_agent.name, result, tick_idx)
 
                 except Exception as exc:
                     duration_ms = (time.perf_counter() - step_t0) * 1000
@@ -273,9 +267,7 @@ class Swarm:
                     )
 
                     if self._callbacks.on_agent_error:
-                        self._callbacks.on_agent_error(
-                            swarm_agent.name, exc, tick_idx
-                        )
+                        self._callbacks.on_agent_error(swarm_agent.name, exc, tick_idx)
 
                     if self._error_policy == ErrorPolicy.raise_on_error:
                         self._stop_reason = f"raise_on_error: {swarm_agent.name}"

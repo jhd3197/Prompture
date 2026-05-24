@@ -47,6 +47,16 @@ function Invoke-AllChecks {
         Write-Host "fixed $fixed files" -ForegroundColor Yellow
     }
 
+    # --- bandit security scan (matches .github/workflows/security.yml) ---
+    Write-Host "  bandit          " -ForegroundColor Cyan -NoNewline
+    $banditOut = & bandit -q -r $pyPath -c "$Root\pyproject.toml" 2>&1
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "ok" -ForegroundColor Green
+    } else {
+        Write-Host "fail" -ForegroundColor Red
+        $banditOut | Where-Object { $_ -match ">> Issue|Severity|Location" } | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }
+    }
+
     # --- mypy type check ---
     Write-Host "  mypy            " -ForegroundColor Cyan -NoNewline
     $out = & mypy $pyPath 2>&1

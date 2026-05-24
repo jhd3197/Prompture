@@ -211,9 +211,7 @@ class EvolInstruct:
                 raise ValueError(f"operator_prompts missing required key {op!r}.")
             tpl = prompts[op]
             if "{question}" not in tpl or "{answer}" not in tpl:
-                raise ValueError(
-                    f"operator_prompts[{op!r}] must contain '{{question}}' and '{{answer}}' placeholders."
-                )
+                raise ValueError(f"operator_prompts[{op!r}] must contain '{{question}}' and '{{answer}}' placeholders.")
         self.model = model
         self.operator_prompts = dict(prompts)
         self.options = dict(options) if options is not None else {"temperature": 0.7, "max_tokens": 512}

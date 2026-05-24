@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from collections.abc import AsyncIterator
 from typing import Any
@@ -26,6 +27,8 @@ from .claude_driver import (
     _extract_anthropic_system_and_messages,
     _extract_anthropic_text_and_tool_calls,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class AsyncClaudeDriver(CostMixin, AsyncDriver):
@@ -76,8 +79,7 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
             from ..exceptions import ConfigurationError
 
             raise ConfigurationError(
-                "anthropic package not installed. "
-                'Install it with: pip install "prompture[anthropic]"'
+                'anthropic package not installed. Install it with: pip install "prompture[anthropic]"'
             )
 
         opts = {**{"temperature": 0.0, "max_tokens": 512}, **options}
@@ -175,8 +177,7 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
             from ..exceptions import ConfigurationError
 
             raise ConfigurationError(
-                "anthropic package not installed. "
-                'Install it with: pip install "prompture[anthropic]"'
+                'anthropic package not installed. Install it with: pip install "prompture[anthropic]"'
             )
 
         opts = {**{"temperature": 0.0, "max_tokens": 512}, **options}
@@ -190,9 +191,7 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
         client = self.client
 
         system_content, api_messages = _extract_anthropic_system_and_messages(messages)
-        anthropic_tools = _apply_cache_control_to_tools(
-            _convert_tools_to_anthropic(tools), cache_prompt=cache_prompt
-        )
+        anthropic_tools = _apply_cache_control_to_tools(_convert_tools_to_anthropic(tools), cache_prompt=cache_prompt)
 
         kwargs: dict[str, Any] = {
             "model": model,
@@ -246,8 +245,7 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
             from ..exceptions import ConfigurationError
 
             raise ConfigurationError(
-                "anthropic package not installed. "
-                'Install it with: pip install "prompture[anthropic]"'
+                'anthropic package not installed. Install it with: pip install "prompture[anthropic]"'
             )
 
         opts = {**{"temperature": 0.0, "max_tokens": 512}, **options}
@@ -338,8 +336,7 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
             from ..exceptions import ConfigurationError
 
             raise ConfigurationError(
-                "anthropic package not installed. "
-                'Install it with: pip install "prompture[anthropic]"'
+                'anthropic package not installed. Install it with: pip install "prompture[anthropic]"'
             )
 
         from ..agents.live_events import (
@@ -358,9 +355,7 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
         client = self.client
 
         system_content, api_messages = _extract_anthropic_system_and_messages(messages)
-        anthropic_tools = _apply_cache_control_to_tools(
-            _convert_tools_to_anthropic(tools), cache_prompt=cache_prompt
-        )
+        anthropic_tools = _apply_cache_control_to_tools(_convert_tools_to_anthropic(tools), cache_prompt=cache_prompt)
 
         kwargs: dict[str, Any] = {
             "model": model,

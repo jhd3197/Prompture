@@ -17,7 +17,6 @@ logger = logging.getLogger(__name__)
 class GrokDriver(CostMixin, Driver):
     supports_json_mode = True
     supports_tool_use = True
-    supports_streaming = True
     supports_streaming_tool_use = True
 
     supports_vision = True
@@ -250,7 +249,4 @@ class GrokDriver(CostMixin, Driver):
         """Stream one turn as :class:`LiveEvent` via the shared raw-HTTP helper."""
         from ._openai_compat_stream import stream_raw_http_compat_tool_call
 
-        yield from stream_raw_http_compat_tool_call(
-            self, messages, tools, options, provider="grok"
-        )
-
+        yield from stream_raw_http_compat_tool_call(self, messages, tools, options, provider="grok")

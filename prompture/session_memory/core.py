@@ -33,8 +33,7 @@ class Summarizer(Protocol):
     role/content message dicts, return a single short paragraph.
     """
 
-    def __call__(self, messages: list[dict[str, Any]]) -> str:
-        ...
+    def __call__(self, messages: list[dict[str, Any]]) -> str: ...
 
 
 def default_summarizer(messages: list[dict[str, Any]]) -> str:

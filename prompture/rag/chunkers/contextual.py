@@ -63,10 +63,7 @@ DEFAULT_CONTEXTUAL_PROMPT = (
 #: Fallback combined-prompt template, used when the driver doesn't
 #: expose ``generate_messages``. Less cache-friendly than the
 #: messages path but functionally equivalent.
-_FALLBACK_COMBINED_PROMPT = (
-    "<document>\n{document}\n</document>\n\n"
-    "{user_prompt}"
-)
+_FALLBACK_COMBINED_PROMPT = "<document>\n{document}\n</document>\n\n{user_prompt}"
 
 
 class _LLM(Protocol):
@@ -131,8 +128,7 @@ class ContextualChunker(TextChunker):
     ) -> None:
         if "{chunk}" not in prompt:
             raise ValueError(
-                "ContextualChunker prompt must include a '{chunk}' placeholder; "
-                f"got: {prompt[:80]!r}..."
+                f"ContextualChunker prompt must include a '{{chunk}}' placeholder; got: {prompt[:80]!r}..."
             )
         # NOTE: we deliberately do *not* call super().__init__ with chunk_size
         # because that base check rejects chunk_overlap >= chunk_size, but the
@@ -143,11 +139,15 @@ class ContextualChunker(TextChunker):
         self.base = base
         self.driver = driver
         self.prompt = prompt
-        self.llm_options = llm_options if llm_options is not None else {
-            "temperature": 0.0,
-            "max_tokens": 200,
-            "cache_prompt": True,
-        }
+        self.llm_options = (
+            llm_options
+            if llm_options is not None
+            else {
+                "temperature": 0.0,
+                "max_tokens": 200,
+                "cache_prompt": True,
+            }
+        )
         self.max_context_chars = max_context_chars
         self.max_document_chars = max_document_chars
         self.fail_open = fail_open

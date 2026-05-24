@@ -350,10 +350,7 @@ class SQLiteSessionStore:
 
     def delete(self, user_id: str, *, session_id: str | None = None, fact_id: str | None = None) -> int:
         if session_id is None and fact_id is None:
-            raise ValueError(
-                "Refusing to delete every memory for a user without a "
-                "session_id or fact_id filter."
-            )
+            raise ValueError("Refusing to delete every memory for a user without a session_id or fact_id filter.")
 
         sql = "DELETE FROM session_memory WHERE user_id = ?"
         params: list[Any] = [user_id]

@@ -77,10 +77,7 @@ class StepBackRetriever(Retriever):
         rrf_k: int = 60,
     ) -> None:
         if "{query}" not in prompt:
-            raise ValueError(
-                "StepBack prompt must include a '{query}' placeholder; got: "
-                f"{prompt[:60]!r}..."
-            )
+            raise ValueError(f"StepBack prompt must include a '{{query}}' placeholder; got: {prompt[:60]!r}...")
         self.base = base
         self.llm = llm
         self.prompt = prompt

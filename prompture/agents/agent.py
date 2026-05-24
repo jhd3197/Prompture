@@ -1258,7 +1258,6 @@ class Agent(Generic[DepsType]):
             self._lifecycle = AgentState.errored
             raise
 
-
     # ------------------------------------------------------------------
     # run_live() — interleaved tool calling with streaming text deltas
     # ------------------------------------------------------------------
@@ -1350,9 +1349,7 @@ class Agent(Generic[DepsType]):
             )
 
             if self._output_type is not None:
-                output, output_text = self._parse_output(
-                    conv, response_text, steps, all_tool_calls, 0.0, session
-                )
+                output, output_text = self._parse_output(conv, response_text, steps, all_tool_calls, 0.0, session)
             else:
                 output = response_text
                 output_text = response_text

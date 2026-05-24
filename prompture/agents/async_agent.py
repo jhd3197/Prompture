@@ -1332,9 +1332,7 @@ class AsyncAgent(Generic[DepsType]):
             self._extract_steps(conv.messages, steps, all_tool_calls, full_results)
 
             if self._output_type is not None:
-                output, output_text = await self._parse_output(
-                    conv, response_text, steps, all_tool_calls, 0.0, session
-                )
+                output, output_text = await self._parse_output(conv, response_text, steps, all_tool_calls, 0.0, session)
             else:
                 output = response_text
                 output_text = response_text

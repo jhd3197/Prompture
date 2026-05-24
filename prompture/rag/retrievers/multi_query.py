@@ -118,8 +118,7 @@ class MultiQueryRetriever(Retriever):
             raise ValueError(f"n_queries must be >= 1, got {n_queries}")
         if "{query}" not in prompt or "{n}" not in prompt:
             raise ValueError(
-                "MultiQuery prompt must include '{query}' and '{n}' placeholders; "
-                f"got: {prompt[:60]!r}..."
+                f"MultiQuery prompt must include '{{query}}' and '{{n}}' placeholders; got: {prompt[:60]!r}..."
             )
         self.base = base
         self.llm = llm

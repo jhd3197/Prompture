@@ -116,10 +116,14 @@ class PairwiseJudge:
         self.driver = driver
         self.swap_positions = swap_positions
         self.prompt = prompt
-        self.llm_options = llm_options if llm_options is not None else {
-            "temperature": 0.0,
-            "max_tokens": 200,
-        }
+        self.llm_options = (
+            llm_options
+            if llm_options is not None
+            else {
+                "temperature": 0.0,
+                "max_tokens": 200,
+            }
+        )
 
     # ------------------------------------------------------------------
     # Public API

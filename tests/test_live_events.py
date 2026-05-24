@@ -27,7 +27,6 @@ from prompture.agents.tools_schema import ToolRegistry
 from prompture.drivers.async_base import AsyncDriver
 from prompture.drivers.base import Driver
 
-
 # ---------------------------------------------------------------------------
 # Mock drivers
 # ---------------------------------------------------------------------------
@@ -432,7 +431,7 @@ class TestEventTypes:
         ]
         for cls, expected in cases:
             # All events carry their discriminator as a class default field.
-            assert getattr(cls, "__dataclass_fields__")["event_type"].default == expected
+            assert cls.__dataclass_fields__["event_type"].default == expected
 
     def test_event_types_are_frozen(self):
         e = TextDelta(text="x")
@@ -684,8 +683,7 @@ class _FakeStreamResponse:
         return None
 
     def iter_lines(self, decode_unicode: bool = True):
-        for line in self._lines:
-            yield line
+        yield from self._lines
 
 
 class _FakeRawHttpDriver:
@@ -727,20 +725,8 @@ class TestRawHttpHelper:
         from prompture.drivers import _openai_compat_stream
 
         sse_lines = [
-            _sse(
-                {
-                    "choices": [
-                        {"index": 0, "delta": {"content": "Looking up "}, "finish_reason": None}
-                    ]
-                }
-            ),
-            _sse(
-                {
-                    "choices": [
-                        {"index": 0, "delta": {"content": "Tokyo..."}, "finish_reason": None}
-                    ]
-                }
-            ),
+            _sse({"choices": [{"index": 0, "delta": {"content": "Looking up "}, "finish_reason": None}]}),
+            _sse({"choices": [{"index": 0, "delta": {"content": "Tokyo..."}, "finish_reason": None}]}),
             _sse(
                 {
                     "choices": [
@@ -765,11 +751,7 @@ class TestRawHttpHelper:
                     "choices": [
                         {
                             "index": 0,
-                            "delta": {
-                                "tool_calls": [
-                                    {"index": 0, "function": {"arguments": '{"cit'}}
-                                ]
-                            },
+                            "delta": {"tool_calls": [{"index": 0, "function": {"arguments": '{"cit'}}]},
                             "finish_reason": None,
                         }
                     ]
@@ -780,11 +762,7 @@ class TestRawHttpHelper:
                     "choices": [
                         {
                             "index": 0,
-                            "delta": {
-                                "tool_calls": [
-                                    {"index": 0, "function": {"arguments": 'y": "Tokyo"}'}}
-                                ]
-                            },
+                            "delta": {"tool_calls": [{"index": 0, "function": {"arguments": 'y": "Tokyo"}'}}]},
                             "finish_reason": "tool_calls",
                         }
                     ]

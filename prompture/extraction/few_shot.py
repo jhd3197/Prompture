@@ -230,9 +230,7 @@ class FewShotExampleStore:
             )
         vectors = response["embeddings"]
         if len(vectors) != len(texts):
-            raise ValueError(
-                f"Embedder returned {len(vectors)} vectors for {len(texts)} inputs."
-            )
+            raise ValueError(f"Embedder returned {len(vectors)} vectors for {len(texts)} inputs.")
         return [list(v) for v in vectors]
 
 

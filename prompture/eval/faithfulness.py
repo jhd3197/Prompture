@@ -183,10 +183,14 @@ class FaithfulnessEvaluator:
         self.driver = driver
         self.decomposition_prompt = decomposition_prompt
         self.verification_prompt = verification_prompt
-        self.llm_options = llm_options if llm_options is not None else {
-            "temperature": 0.0,
-            "max_tokens": 512,
-        }
+        self.llm_options = (
+            llm_options
+            if llm_options is not None
+            else {
+                "temperature": 0.0,
+                "max_tokens": 512,
+            }
+        )
         self.treat_silent_as = treat_silent_as
 
     # ------------------------------------------------------------------

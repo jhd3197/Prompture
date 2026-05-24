@@ -697,10 +697,7 @@ class AsyncConversation:
         """
         from .live_events import (
             AssistantTurnStart,
-            MessageStop,
             TextDelta,
-            ThinkingDelta,
-            ToolInputDelta,
             ToolResult,
             ToolUseStart,
             ToolUseStop,
@@ -806,9 +803,7 @@ class AsyncConversation:
                     is_error = False
                 except Exception as exc:
                     result_str = (
-                        f"Error ({type(exc).__name__}): {exc}"
-                        if str(exc)
-                        else f"Error: {type(exc).__name__}: {exc!r}"
+                        f"Error ({type(exc).__name__}): {exc}" if str(exc) else f"Error: {type(exc).__name__}: {exc!r}"
                     )
                     is_error = True
                 finally:

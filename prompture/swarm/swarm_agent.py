@@ -38,8 +38,7 @@ class _AgentLike(Protocol):
     and :class:`~prompture.groups.GroupAsAgent`.
     """
 
-    def run(self, prompt: str, **kwargs: Any) -> Any:
-        ...
+    def run(self, prompt: str, **kwargs: Any) -> Any: ...
 
 
 ObserveFn = Callable[["SwarmAgent", "Environment", int], str]
@@ -93,9 +92,7 @@ def default_observe(agent: SwarmAgent, env: Environment, tick: int) -> str:
         include_own=False,
     )
     if events:
-        lines = [
-            f"- [t{e.tick}] {e.agent_id} ({e.kind}): {e.content}" for e in events
-        ]
+        lines = [f"- [t{e.tick}] {e.agent_id} ({e.kind}): {e.content}" for e in events]
         parts.append("## Recent events\n" + "\n".join(lines))
 
     if agent.memory is not None and agent.memory_recent_k > 0:

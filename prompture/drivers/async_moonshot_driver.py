@@ -341,7 +341,6 @@ class AsyncMoonshotDriver(CostMixin, AsyncDriver):
 
         return result
 
-
     # ------------------------------------------------------------------
     # Live streaming with interleaved tool calls
     # ------------------------------------------------------------------
@@ -355,9 +354,7 @@ class AsyncMoonshotDriver(CostMixin, AsyncDriver):
         """Async streaming-tool via the shared raw-HTTP helper."""
         from ._openai_compat_stream import astream_raw_http_compat_tool_call
 
-        async for ev in astream_raw_http_compat_tool_call(
-            self, messages, tools, options, provider="moonshot"
-        ):
+        async for ev in astream_raw_http_compat_tool_call(self, messages, tools, options, provider="moonshot"):
             yield ev
 
     # ------------------------------------------------------------------

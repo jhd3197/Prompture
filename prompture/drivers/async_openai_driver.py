@@ -72,8 +72,7 @@ class AsyncOpenAIDriver(CostMixin, AsyncDriver):
             from ..exceptions import ConfigurationError
 
             raise ConfigurationError(
-                "openai package (>=1.0.0) is not installed. "
-                'Install it with: pip install "prompture[openai]"'
+                'openai package (>=1.0.0) is not installed. Install it with: pip install "prompture[openai]"'
             )
 
         model = options.get("model", self.model)
@@ -132,8 +131,7 @@ class AsyncOpenAIDriver(CostMixin, AsyncDriver):
             from ..exceptions import ConfigurationError
 
             raise ConfigurationError(
-                "openai package (>=1.0.0) is not installed. "
-                'Install it with: pip install "prompture[openai]"'
+                'openai package (>=1.0.0) is not installed. Install it with: pip install "prompture[openai]"'
             )
 
         model = options.get("model", self.model)
@@ -185,8 +183,7 @@ class AsyncOpenAIDriver(CostMixin, AsyncDriver):
             from ..exceptions import ConfigurationError
 
             raise ConfigurationError(
-                "openai package (>=1.0.0) is not installed. "
-                'Install it with: pip install "prompture[openai]"'
+                'openai package (>=1.0.0) is not installed. Install it with: pip install "prompture[openai]"'
             )
 
         model = options.get("model", self.model)
@@ -248,13 +245,10 @@ class AsyncOpenAIDriver(CostMixin, AsyncDriver):
             from ..exceptions import ConfigurationError
 
             raise ConfigurationError(
-                "openai package (>=1.0.0) is not installed. "
-                'Install it with: pip install "prompture[openai]"'
+                'openai package (>=1.0.0) is not installed. Install it with: pip install "prompture[openai]"'
             )
 
         from ._openai_compat_stream import astream_openai_compat_tool_call
 
-        async for ev in astream_openai_compat_tool_call(
-            self, messages, tools, options, provider="openai"
-        ):
+        async for ev in astream_openai_compat_tool_call(self, messages, tools, options, provider="openai"):
             yield ev

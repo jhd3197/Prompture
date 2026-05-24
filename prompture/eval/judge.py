@@ -156,7 +156,14 @@ class LLMJudge:
             raise EvalError("LLMJudge requires at least one criterion.")
         if scale < 2:
             raise EvalError(f"scale must be >= 2; got {scale}.")
-        required_placeholders = ("{input}", "{output}", "{reference}", "{criteria_block}", "{scale}", "{response_shape}")
+        required_placeholders = (
+            "{input}",
+            "{output}",
+            "{reference}",
+            "{criteria_block}",
+            "{scale}",
+            "{response_shape}",
+        )
         for placeholder in required_placeholders:
             if placeholder not in prompt:
                 raise EvalError(f"Prompt template is missing required placeholder {placeholder}.")
@@ -166,10 +173,14 @@ class LLMJudge:
         self.scale = scale
         self.pass_threshold = pass_threshold
         self.prompt = prompt
-        self.llm_options = llm_options if llm_options is not None else {
-            "temperature": 0.0,
-            "max_tokens": 400,
-        }
+        self.llm_options = (
+            llm_options
+            if llm_options is not None
+            else {
+                "temperature": 0.0,
+                "max_tokens": 400,
+            }
+        )
         self._criterion_keys = _criterion_keys(self.criteria)
         self._criteria_block = _criteria_block(self.criteria)
         self._response_shape = _response_shape(self.criteria, self.scale)
@@ -231,10 +242,7 @@ class LLMJudge:
             _accumulate_meta(meta, response.get("meta"))
 
         if score is None:
-            raise EvalError(
-                f"Judge response did not include a usable 'score' field. "
-                f"Got: {text[:160]!r}"
-            )
+            raise EvalError(f"Judge response did not include a usable 'score' field. Got: {text[:160]!r}")
 
         return JudgeResult(
             score=score,

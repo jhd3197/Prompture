@@ -265,10 +265,7 @@ class ZaiDriver(CostMixin, Driver):
         """Stream one turn as :class:`LiveEvent` via the shared raw-HTTP helper."""
         from ._openai_compat_stream import stream_raw_http_compat_tool_call
 
-        yield from stream_raw_http_compat_tool_call(
-            self, messages, tools, options, provider="zai"
-        )
-
+        yield from stream_raw_http_compat_tool_call(self, messages, tools, options, provider="zai")
 
     # ------------------------------------------------------------------
     # Streaming

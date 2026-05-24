@@ -194,10 +194,7 @@ class SwarmResult:
                 }
                 for e in self.events
             ],
-            "errors": [
-                {"agent_id": aid, "error": str(exc)}
-                for aid, exc in self.errors
-            ],
+            "errors": [{"agent_id": aid, "error": str(exc)} for aid, exc in self.errors],
         }
 
 

@@ -72,10 +72,7 @@ class HyDERetriever(Retriever):
         max_hypothetical_chars: int = 2000,
     ) -> None:
         if "{query}" not in prompt:
-            raise ValueError(
-                "HyDE prompt must include a '{query}' placeholder; got: "
-                f"{prompt[:60]!r}..."
-            )
+            raise ValueError(f"HyDE prompt must include a '{{query}}' placeholder; got: {prompt[:60]!r}...")
         self.base = base
         self.llm = llm
         self.prompt = prompt

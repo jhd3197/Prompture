@@ -52,7 +52,7 @@ DEFAULT_EXPANSION_PROMPT = (
     "would benefit from. Each answer must be complete, accurate, and "
     "self-contained.\n\n"
     "EXAMPLE PAIRS:\n{seed_block}\n\n"
-    "Respond with a single JSON object: {{\"pairs\": [{{\"question\": ..., \"answer\": ...}}, ...]}}"
+    'Respond with a single JSON object: {{"pairs": [{{"question": ..., "answer": ...}}, ...]}}'
 )
 
 

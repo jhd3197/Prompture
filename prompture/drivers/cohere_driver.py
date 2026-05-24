@@ -42,8 +42,7 @@ class CohereDriver(CostMixin, Driver):
             from ..exceptions import ConfigurationError
 
             raise ConfigurationError(
-                "COHERE_API_KEY is not set. Provide api_key=... or set the "
-                "COHERE_API_KEY environment variable."
+                "COHERE_API_KEY is not set. Provide api_key=... or set the COHERE_API_KEY environment variable."
             )
         self.model = model
         self.base_url = "https://api.cohere.com/v2"

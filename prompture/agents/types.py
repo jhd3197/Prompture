@@ -133,9 +133,9 @@ class AgentCallbacks:
     """
 
     on_step: Callable[[AgentStep], None] | Callable[[AgentStep], Awaitable[None]] | None = None
-    on_tool_start: (
-        Callable[[str, dict[str, Any]], None] | Callable[[str, dict[str, Any]], Awaitable[None]] | None
-    ) = None
+    on_tool_start: Callable[[str, dict[str, Any]], None] | Callable[[str, dict[str, Any]], Awaitable[None]] | None = (
+        None
+    )
     on_tool_end: Callable[[str, Any], None] | Callable[[str, Any], Awaitable[None]] | None = None
     on_iteration: Callable[[int], None] | Callable[[int], Awaitable[None]] | None = None
     on_output: Callable[[AgentResult], None] | Callable[[AgentResult], Awaitable[None]] | None = None

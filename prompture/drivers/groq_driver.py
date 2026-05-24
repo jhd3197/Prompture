@@ -20,7 +20,6 @@ logger = logging.getLogger(__name__)
 class GroqDriver(CostMixin, Driver):
     supports_json_mode = True
     supports_tool_use = True
-    supports_streaming = True
     supports_streaming_tool_use = True
     supports_vision = True
 
@@ -78,10 +77,7 @@ class GroqDriver(CostMixin, Driver):
         if self.client is None:
             from ..exceptions import ConfigurationError
 
-            raise ConfigurationError(
-                "groq package is not installed. "
-                'Install it with: pip install "prompture[groq]"'
-            )
+            raise ConfigurationError('groq package is not installed. Install it with: pip install "prompture[groq]"')
 
         model = options.get("model", self.model)
 
@@ -171,10 +167,7 @@ class GroqDriver(CostMixin, Driver):
         if self.client is None:
             from ..exceptions import ConfigurationError
 
-            raise ConfigurationError(
-                "groq package is not installed. "
-                'Install it with: pip install "prompture[groq]"'
-            )
+            raise ConfigurationError('groq package is not installed. Install it with: pip install "prompture[groq]"')
 
         model = options.get("model", self.model)
         model_config = self._get_model_config("groq", model)
@@ -264,13 +257,8 @@ class GroqDriver(CostMixin, Driver):
         if self.client is None:
             from ..exceptions import ConfigurationError
 
-            raise ConfigurationError(
-                "groq package is not installed. "
-                'Install it with: pip install "prompture[groq]"'
-            )
+            raise ConfigurationError('groq package is not installed. Install it with: pip install "prompture[groq]"')
 
         from ._openai_compat_stream import stream_openai_compat_tool_call
 
-        yield from stream_openai_compat_tool_call(
-            self, messages, tools, options, provider="groq"
-        )
+        yield from stream_openai_compat_tool_call(self, messages, tools, options, provider="groq")

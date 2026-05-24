@@ -38,8 +38,7 @@ class MistralDriver(CostMixin, Driver):
             from ..exceptions import ConfigurationError
 
             raise ConfigurationError(
-                "MISTRAL_API_KEY is not set. Provide api_key=... or set the "
-                "MISTRAL_API_KEY environment variable."
+                "MISTRAL_API_KEY is not set. Provide api_key=... or set the MISTRAL_API_KEY environment variable."
             )
         self.model = model
         self.base_url = "https://api.mistral.ai/v1"
@@ -260,7 +259,4 @@ class MistralDriver(CostMixin, Driver):
         """Stream one turn as :class:`LiveEvent` via the shared raw-HTTP helper."""
         from ._openai_compat_stream import stream_raw_http_compat_tool_call
 
-        yield from stream_raw_http_compat_tool_call(
-            self, messages, tools, options, provider="mistral"
-        )
-
+        yield from stream_raw_http_compat_tool_call(self, messages, tools, options, provider="mistral")

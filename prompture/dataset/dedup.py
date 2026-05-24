@@ -242,8 +242,7 @@ def dedup_semantic(
     response = embedder.embed([t for _, t in indexed], embed_options or {})
     if not isinstance(response, dict) or "embeddings" not in response:
         raise ValueError(
-            "Embedder returned an unexpected shape; expected {'embeddings': [...]}, "
-            f"got {type(response).__name__}."
+            f"Embedder returned an unexpected shape; expected {{'embeddings': [...]}}, got {type(response).__name__}."
         )
     vectors = response["embeddings"]
     if len(vectors) != len(indexed):
@@ -329,10 +328,7 @@ def apply_dedup(pairs: list[Any], config: DedupConfig) -> tuple[list[Any], int]:
             threshold=config.threshold,
             embed_options=config.embed_options,
         )
-    raise ValueError(
-        f"Unknown dedup strategy {config.strategy!r}. "
-        "Choose 'exact', 'shingle', 'semantic', or 'none'."
-    )
+    raise ValueError(f"Unknown dedup strategy {config.strategy!r}. Choose 'exact', 'shingle', 'semantic', or 'none'.")
 
 
 __all__ = [

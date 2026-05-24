@@ -57,9 +57,7 @@ def snapshot_conversation(
         partial_output: Any partial generation text worth persisting.
         metadata: Free-form payload merged into the snapshot.
     """
-    model = getattr(conv, "model_name", None) or getattr(
-        getattr(conv, "_driver", None), "model", None
-    )
+    model = getattr(conv, "model_name", None) or getattr(getattr(conv, "_driver", None), "model", None)
     system_prompt = getattr(conv, "system_prompt", None)
     return Checkpoint(
         run_id=run_id or uuid.uuid4().hex,
@@ -107,9 +105,7 @@ def restore_conversation(
 
     effective_model = model or checkpoint.model
     if driver is None and not effective_model:
-        raise ValueError(
-            "Cannot restore conversation: no model in checkpoint and no override provided"
-        )
+        raise ValueError("Cannot restore conversation: no model in checkpoint and no override provided")
 
     kwargs: dict[str, Any] = dict(conversation_kwargs)
     if "system_prompt" not in kwargs and checkpoint.system_prompt:

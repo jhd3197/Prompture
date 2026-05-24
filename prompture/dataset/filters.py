@@ -144,7 +144,9 @@ _WHITESPACE_RE = re.compile(r"\s+")
 def shape_filter() -> PairPredicate:
     """Reject obvious shape-level junk: empty fields, question without ``?`` *and* without 'how/what/why/etc.', identical Q and A."""
 
-    interrogative = re.compile(r"^\s*(?:who|what|when|where|why|how|which|list|name|describe|explain|define)\b", re.IGNORECASE)
+    interrogative = re.compile(
+        r"^\s*(?:who|what|when|where|why|how|which|list|name|describe|explain|define)\b", re.IGNORECASE
+    )
 
     def predicate(pair: Any) -> FilterDecision:
         q = _question_text(pair).strip()
@@ -243,9 +245,7 @@ class QualityFilter:
                 kept.append(pair)
                 stats.total_out += 1
             else:
-                stats.dropped_by_reason[decision.reason] = (
-                    stats.dropped_by_reason.get(decision.reason, 0) + 1
-                )
+                stats.dropped_by_reason[decision.reason] = stats.dropped_by_reason.get(decision.reason, 0) + 1
         return kept, stats
 
     def iter(self, pairs: Iterable[Any]) -> Iterator[Any]:

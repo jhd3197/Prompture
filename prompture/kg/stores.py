@@ -127,9 +127,7 @@ class InMemoryEntityStore:
                 return False
             self._unindex_entity(ent)
             # Cascade: drop edges referencing this id.
-            for rel_id in list(self._rel_by_subject.get(entity_id, ())) + list(
-                self._rel_by_object.get(entity_id, ())
-            ):
+            for rel_id in list(self._rel_by_subject.get(entity_id, ())) + list(self._rel_by_object.get(entity_id, ())):
                 rel = self._relations.pop(rel_id, None)
                 if rel is not None:
                     self._rel_by_subject[rel.subject_id].discard(rel.id)
@@ -287,9 +285,7 @@ class SQLiteEntityStore:
         with self._lock:
             conn = self._connect()
             try:
-                row = conn.execute(
-                    "SELECT * FROM entities WHERE id = ?", (entity_id,)
-                ).fetchone()
+                row = conn.execute("SELECT * FROM entities WHERE id = ?", (entity_id,)).fetchone()
             finally:
                 conn.close()
         if row is None:
@@ -430,9 +426,7 @@ class SQLiteEntityStore:
         with self._lock:
             conn = self._connect()
             try:
-                rows = conn.execute(
-                    "SELECT * FROM mentions WHERE entity_id = ?", (entity_id,)
-                ).fetchall()
+                rows = conn.execute("SELECT * FROM mentions WHERE entity_id = ?", (entity_id,)).fetchall()
             finally:
                 conn.close()
         return [self._row_to_mention(r) for r in rows]

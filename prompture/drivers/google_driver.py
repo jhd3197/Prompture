@@ -61,8 +61,7 @@ class GoogleDriver(CostMixin, Driver):
             from ..exceptions import ConfigurationError
 
             raise ConfigurationError(
-                "google-genai package is not installed. "
-                'Install it with: pip install "prompture[google]"'
+                'google-genai package is not installed. Install it with: pip install "prompture[google]"'
             )
         self.api_key = api_key or os.getenv("GOOGLE_API_KEY")
         if not self.api_key:

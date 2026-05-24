@@ -357,8 +357,7 @@ class ClaudeDriver(CostMixin, Driver):
             from ..exceptions import ConfigurationError
 
             raise ConfigurationError(
-                "anthropic package not installed. "
-                'Install it with: pip install "prompture[anthropic]"'
+                'anthropic package not installed. Install it with: pip install "prompture[anthropic]"'
             )
 
         opts = {**{"temperature": 0.0, "max_tokens": 512}, **options}
@@ -476,8 +475,7 @@ class ClaudeDriver(CostMixin, Driver):
             from ..exceptions import ConfigurationError
 
             raise ConfigurationError(
-                "anthropic package not installed. "
-                'Install it with: pip install "prompture[anthropic]"'
+                'anthropic package not installed. Install it with: pip install "prompture[anthropic]"'
             )
 
         opts = {**{"temperature": 0.0, "max_tokens": 512}, **options}
@@ -491,9 +489,7 @@ class ClaudeDriver(CostMixin, Driver):
         client = anthropic.Anthropic(api_key=self.api_key)
 
         system_content, api_messages = _extract_anthropic_system_and_messages(messages)
-        anthropic_tools = _apply_cache_control_to_tools(
-            _convert_tools_to_anthropic(tools), cache_prompt=cache_prompt
-        )
+        anthropic_tools = _apply_cache_control_to_tools(_convert_tools_to_anthropic(tools), cache_prompt=cache_prompt)
 
         kwargs: dict[str, Any] = {
             "model": model,
@@ -547,8 +543,7 @@ class ClaudeDriver(CostMixin, Driver):
             from ..exceptions import ConfigurationError
 
             raise ConfigurationError(
-                "anthropic package not installed. "
-                'Install it with: pip install "prompture[anthropic]"'
+                'anthropic package not installed. Install it with: pip install "prompture[anthropic]"'
             )
 
         opts = {**{"temperature": 0.0, "max_tokens": 512}, **options}
@@ -648,8 +643,7 @@ class ClaudeDriver(CostMixin, Driver):
             from ..exceptions import ConfigurationError
 
             raise ConfigurationError(
-                "anthropic package not installed. "
-                'Install it with: pip install "prompture[anthropic]"'
+                'anthropic package not installed. Install it with: pip install "prompture[anthropic]"'
             )
 
         from ..agents.live_events import (
@@ -668,9 +662,7 @@ class ClaudeDriver(CostMixin, Driver):
         client = anthropic.Anthropic(api_key=self.api_key)
 
         system_content, api_messages = _extract_anthropic_system_and_messages(messages)
-        anthropic_tools = _apply_cache_control_to_tools(
-            _convert_tools_to_anthropic(tools), cache_prompt=cache_prompt
-        )
+        anthropic_tools = _apply_cache_control_to_tools(_convert_tools_to_anthropic(tools), cache_prompt=cache_prompt)
 
         kwargs: dict[str, Any] = {
             "model": model,

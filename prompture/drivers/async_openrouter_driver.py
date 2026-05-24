@@ -236,7 +236,6 @@ class AsyncOpenRouterDriver(CostMixin, AsyncDriver):
             result["reasoning_content"] = choice["message"]["reasoning_content"]
         return result
 
-
     # ------------------------------------------------------------------
     # Live streaming with interleaved tool calls
     # ------------------------------------------------------------------
@@ -250,9 +249,7 @@ class AsyncOpenRouterDriver(CostMixin, AsyncDriver):
         """Async streaming-tool via the shared raw-HTTP helper."""
         from ._openai_compat_stream import astream_raw_http_compat_tool_call
 
-        async for ev in astream_raw_http_compat_tool_call(
-            self, messages, tools, options, provider="openrouter"
-        ):
+        async for ev in astream_raw_http_compat_tool_call(self, messages, tools, options, provider="openrouter"):
             yield ev
 
     # ------------------------------------------------------------------

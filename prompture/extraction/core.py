@@ -86,9 +86,7 @@ def _merge_usage(
     }
 
 
-def _walk_schema_to_field(
-    schema: dict[str, Any], loc: tuple[Any, ...]
-) -> dict[str, Any] | None:
+def _walk_schema_to_field(schema: dict[str, Any], loc: tuple[Any, ...]) -> dict[str, Any] | None:
     """Navigate a JSON-Schema dict to the entry referenced by ``loc``.
 
     ``loc`` follows Pydantic's ValidationError convention:
@@ -148,9 +146,7 @@ def _format_validation_hint(error: dict[str, Any]) -> str:
     return f"VALIDATION: {msg}{type_hint}.{suffix}"
 
 
-def tighten_schema_from_validation_errors(
-    schema: dict[str, Any], errors: list[dict[str, Any]]
-) -> dict[str, Any]:
+def tighten_schema_from_validation_errors(schema: dict[str, Any], errors: list[dict[str, Any]]) -> dict[str, Any]:
     """Return a copy of ``schema`` with retry hints appended to failing fields.
 
     For every Pydantic validation error in ``errors`` we look up the
@@ -1136,10 +1132,7 @@ def extract_with_model(
             if picked:
                 examples_block = format_examples_for_prompt(picked)
                 augmented_instruction = f"{examples_block}\n{instruction_template}"
-                selected_examples_meta = [
-                    {"input": ex.input_text, "metadata": dict(ex.metadata)}
-                    for ex in picked
-                ]
+                selected_examples_meta = [{"input": ex.input_text, "metadata": dict(ex.metadata)} for ex in picked]
                 logger.debug(
                     "[extract] Few-shot: selected %d/%d examples for query.",
                     len(picked),

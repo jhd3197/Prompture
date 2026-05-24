@@ -284,7 +284,6 @@ class OpenRouterDriver(CostMixin, Driver):
             result["reasoning_content"] = choice["message"]["reasoning_content"]
         return result
 
-
     # ------------------------------------------------------------------
     # Live streaming with interleaved tool calls
     # ------------------------------------------------------------------
@@ -298,9 +297,7 @@ class OpenRouterDriver(CostMixin, Driver):
         """Stream one turn as :class:`LiveEvent` via the shared raw-HTTP helper."""
         from ._openai_compat_stream import stream_raw_http_compat_tool_call
 
-        yield from stream_raw_http_compat_tool_call(
-            self, messages, tools, options, provider="openrouter"
-        )
+        yield from stream_raw_http_compat_tool_call(self, messages, tools, options, provider="openrouter")
 
     # ------------------------------------------------------------------
     # Streaming

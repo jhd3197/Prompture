@@ -22,7 +22,6 @@ logger = logging.getLogger(__name__)
 class AsyncGroqDriver(CostMixin, AsyncDriver):
     supports_json_mode = True
     supports_tool_use = True
-    supports_streaming = True
     supports_streaming_tool_use = True
     supports_vision = True
 
@@ -62,10 +61,7 @@ class AsyncGroqDriver(CostMixin, AsyncDriver):
         if self.client is None:
             from ..exceptions import ConfigurationError
 
-            raise ConfigurationError(
-                "groq package is not installed. "
-                'Install it with: pip install "prompture[groq]"'
-            )
+            raise ConfigurationError('groq package is not installed. Install it with: pip install "prompture[groq]"')
 
         model = options.get("model", self.model)
 
@@ -141,10 +137,7 @@ class AsyncGroqDriver(CostMixin, AsyncDriver):
         if self.client is None:
             from ..exceptions import ConfigurationError
 
-            raise ConfigurationError(
-                "groq package is not installed. "
-                'Install it with: pip install "prompture[groq]"'
-            )
+            raise ConfigurationError('groq package is not installed. Install it with: pip install "prompture[groq]"')
 
         model = options.get("model", self.model)
         model_config = self._get_model_config("groq", model)
@@ -233,14 +226,9 @@ class AsyncGroqDriver(CostMixin, AsyncDriver):
         if self.client is None:
             from ..exceptions import ConfigurationError
 
-            raise ConfigurationError(
-                "groq package is not installed. "
-                'Install it with: pip install "prompture[groq]"'
-            )
+            raise ConfigurationError('groq package is not installed. Install it with: pip install "prompture[groq]"')
 
         from ._openai_compat_stream import astream_openai_compat_tool_call
 
-        async for ev in astream_openai_compat_tool_call(
-            self, messages, tools, options, provider="groq"
-        ):
+        async for ev in astream_openai_compat_tool_call(self, messages, tools, options, provider="groq"):
             yield ev

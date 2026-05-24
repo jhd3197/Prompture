@@ -19,7 +19,6 @@ logger = logging.getLogger(__name__)
 class AsyncGrokDriver(CostMixin, AsyncDriver):
     supports_json_mode = True
     supports_tool_use = True
-    supports_streaming = True
     supports_streaming_tool_use = True
 
     supports_vision = True
@@ -235,8 +234,5 @@ class AsyncGrokDriver(CostMixin, AsyncDriver):
         """Async streaming-tool via the shared raw-HTTP helper."""
         from ._openai_compat_stream import astream_raw_http_compat_tool_call
 
-        async for ev in astream_raw_http_compat_tool_call(
-            self, messages, tools, options, provider="grok"
-        ):
+        async for ev in astream_raw_http_compat_tool_call(self, messages, tools, options, provider="grok"):
             yield ev
-

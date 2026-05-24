@@ -18,6 +18,7 @@ FastAPI / Starlette / Flask / aiohttp handler.
 
 from __future__ import annotations
 
+import contextlib
 import dataclasses
 import json
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -90,7 +91,7 @@ def event_to_sse(event: LiveEvent) -> str:
 
 
 class _Handler(BaseHTTPRequestHandler):
-    def do_GET(self) -> None:  # noqa: N802 — required by BaseHTTPRequestHandler
+    def do_GET(self) -> None:
         if self.path != "/chat":
             self.send_response(404)
             self.end_headers()
@@ -125,10 +126,8 @@ def main() -> int:
     print(f"SSE demo listening at http://{addr[0]}:{addr[1]}/chat")
     print("In another shell:  curl -N http://127.0.0.1:8765/chat")
     server = HTTPServer(addr, _Handler)
-    try:
+    with contextlib.suppress(KeyboardInterrupt):
         server.serve_forever()
-    except KeyboardInterrupt:
-        pass
     return 0
 
 
