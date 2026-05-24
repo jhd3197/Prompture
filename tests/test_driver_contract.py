@@ -69,8 +69,8 @@ def test_capability_resolution_uses_driver_instance() -> None:
     drops streaming support to exercise the lookup path with a known
     mismatch between provider-level claims and instance-level reality.
     """
-    from prompture.drivers.async_ollama_driver import AsyncOllamaDriver
     from prompture.drivers.async_base import AsyncDriver
+    from prompture.drivers.async_ollama_driver import AsyncOllamaDriver
     from prompture.drivers.ollama_driver import OllamaDriver
     from prompture.infra.capabilities import get_capabilities
 
