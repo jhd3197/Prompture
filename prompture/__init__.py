@@ -9,6 +9,7 @@ try:
 except ImportError:  # tukuy not installed
     TukuyLLMBackend = None  # type: ignore[assignment,misc]
     create_tukuy_backend = None  # type: ignore[assignment]
+from . import eval as eval
 from . import plugins, rag
 from .cli import *
 from .dataset import (
@@ -22,6 +23,17 @@ from .dataset import (
     to_sharegpt,
 )
 from .drivers import *
+from .eval import (
+    EvalError,
+    FaithfulnessEvaluator,
+    FaithfulnessResult,
+    JudgeResult,
+    LLMJudge,
+    PairwiseJudge,
+    PairwiseResult,
+    SelfConsistencyEvaluator,
+    SelfConsistencyResult,
+)
 from .exceptions import (
     BudgetExceededError,
     ConfigurationError,
