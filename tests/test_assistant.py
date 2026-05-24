@@ -192,6 +192,63 @@ def test_build_async_agent_rejects_coding_agent_backend(persona):
         a.build_async_agent()
 
 
+def test_agent_options_forward_to_async_agent_kwargs(persona):
+    """agent_options must spread into AsyncAgent.__init__ so callers can
+    set budget controls (max_cost, budget_policy, fallback_models, ...)
+    that the Assistant doesn't expose as first-class fields."""
+    from prompture import BudgetPolicy
+
+    a = Assistant(
+        name="dev",
+        persona=persona,
+        model="openai/gpt-4o",
+        agent_options={
+            "max_iterations": 5,
+            "max_cost": 0.50,
+            "budget_policy": BudgetPolicy.warn_and_continue,
+            "fallback_models": ["openai/gpt-4o-mini"],
+        },
+    )
+    with patch("prompture.agents.async_agent.AsyncAgent.__init__", return_value=None) as init:
+        a.build_async_agent()
+    assert init.called
+    kwargs = init.call_args.kwargs
+    assert kwargs["max_iterations"] == 5
+    assert kwargs["max_cost"] == 0.50
+    assert kwargs["budget_policy"] is BudgetPolicy.warn_and_continue
+    assert kwargs["fallback_models"] == ["openai/gpt-4o-mini"]
+
+
+def test_agent_options_ignored_when_planning_enabled(persona):
+    """enable_planning=True routes through AsyncDeepAgent, so agent_options
+    must NOT leak through — deep_agent_options is the right escape hatch."""
+    from prompture import AsyncDeepAgent
+
+    a = Assistant(
+        name="dev",
+        persona=persona,
+        model="openai/gpt-4o",
+        enable_planning=True,
+        agent_options={"max_iterations": 5},
+    )
+    with patch("prompture.agents.async_deep_agent.AsyncDeepAgent.__init__", return_value=None) as init:
+        agent = a.build_async_agent()
+    assert isinstance(agent, AsyncDeepAgent)
+    assert "max_iterations" not in init.call_args.kwargs
+
+
+def test_agent_options_empty_by_default(persona):
+    """Default Assistant carries an empty agent_options dict; nothing is
+    forwarded so callers who don't opt in see no behavior change."""
+    a = Assistant(name="dev", persona=persona, model="openai/gpt-4o")
+    assert a.agent_options == {}
+    with patch("prompture.agents.async_agent.AsyncAgent.__init__", return_value=None) as init:
+        a.build_async_agent()
+    kwargs = init.call_args.kwargs
+    for budget_kw in ("max_iterations", "max_cost", "budget_policy", "fallback_models"):
+        assert budget_kw not in kwargs, f"{budget_kw} should not appear without agent_options"
+
+
 def test_build_async_agent_applies_skills_to_system_prompt(persona, skill):
     a = Assistant(
         name="dev",

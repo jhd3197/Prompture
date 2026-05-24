@@ -145,11 +145,25 @@ class Assistant:
         output_type: Optional Pydantic model passed to ``AsyncAgent`` for
             structured-output parsing.  Ignored for the coding-agent
             backend.
-        options: Driver options merged into the underlying agent (e.g.
-            ``{"max_tokens": 8000, "timeout": 600}``).
+        options: Driver options forwarded to the underlying agent's
+            ``options`` kwarg (driver-level settings like
+            ``{"max_tokens": 8000, "timeout": 600}``). Distinct from
+            ``agent_options`` below, which targets the agent constructor
+            itself.
+        agent_options: Extra kwargs spread into ``AsyncAgent.__init__``
+            when ``enable_planning=False``. Use this for budget controls
+            and other agent-level settings the Assistant doesn't expose
+            as first-class fields, e.g.
+            ``{"max_iterations": 5, "max_cost": 0.50,
+            "budget_policy": "hard_stop",
+            "fallback_models": ["openai/gpt-4o-mini"]}``.
         coding_agent_options: Extra kwargs forwarded to
             ``run_coding_agent`` / ``astream_coding_agent`` (e.g.
             ``approval_mode``, ``cwd``, ``timeout``).
+        deep_agent_options: Extra kwargs spread into
+            ``AsyncDeepAgent.__init__`` when ``enable_planning=True``
+            (e.g. ``{"enable_vfs": False, "enable_summarization": False,
+            "max_iterations": 30}``).
     """
 
     name: str
@@ -167,6 +181,12 @@ class Assistant:
     output_key: str | None = None
     options: dict[str, Any] = dataclasses.field(default_factory=dict)
     coding_agent_options: dict[str, Any] = dataclasses.field(default_factory=dict)
+    # Extra kwargs forwarded to AsyncAgent.__init__ when enable_planning is
+    # False (e.g. {"max_iterations": 5, "max_cost": 0.50,
+    # "budget_policy": "hard_stop", "fallback_models": ["openai/gpt-4o-mini"]}).
+    # Anything AsyncAgent accepts works here — see its signature for the
+    # full list (max_tokens, persistent_conversation, output_key, ...).
+    agent_options: dict[str, Any] = dataclasses.field(default_factory=dict)
     # Extra kwargs forwarded to AsyncDeepAgent when enable_planning=True
     # (e.g. {"enable_vfs": False, "enable_summarization": False}).
     deep_agent_options: dict[str, Any] = dataclasses.field(default_factory=dict)
@@ -337,6 +357,7 @@ class Assistant:
             name=self.name,
             description=self.description,
             options=dict(self.options) or None,
+            **dict(self.agent_options),
         )
 
     def _tools_for_agent(self) -> Any:
