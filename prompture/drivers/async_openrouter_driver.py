@@ -94,6 +94,16 @@ class AsyncOpenRouterDriver(CostMixin, AsyncDriver):
             else:
                 data["response_format"] = {"type": "json_object"}
 
+        # vLLM-style guided_json pass-through + extra_body escape hatch.
+        from ._openai_compat import apply_guided_decoding, merge_extra_body
+
+        apply_guided_decoding(
+            data,
+            json_schema=options.get("json_schema"),
+            guided_decoding=options.get("guided_decoding"),
+        )
+        merge_extra_body(data, options)
+
         async with httpx.AsyncClient() as client:
             try:
                 response = await client.post(

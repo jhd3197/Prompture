@@ -860,6 +860,21 @@ print(result["usage"])        # token counts and cost
 
 Prompture picks how to obtain structured JSON based on each model's capabilities. The cascade is `provider_native` (built-in JSON mode / schema enforcement) → `tool_call` (encode the schema as a function definition and read it back from the tool call) → `prompted_repair` (prompt for JSON, repair malformed output via AI cleanup). Pass `strategy="auto"` (default) to let Prompture select per model, or pin a specific strategy via the `StructuredOutputStrategy` enum or its string value. The strategy used is recorded in the response so you can see which path each call took.
 
+### Constrained Decoding (vLLM / LMStudio / OpenRouter)
+
+For any OpenAI-compatible driver — `OpenAICompatibleDriver`, `OpenRouterDriver`, `LMStudioDriver` (sync + async) — set `options={"guided_decoding": True}` to also ship vLLM-style `guided_json` fields alongside the standard `response_format`. That unlocks logit-level FSM-constrained sampling (100% schema validity at sample time) on backends that support it. Pin a specific backend with `"outlines"`, `"xgrammar"`, or `"lm-format-enforcer"`:
+
+```python
+result = extract_with_model(
+    Person,
+    "Maria is 32, a developer in NYC.",
+    model_name="openai_compatible/local-vllm",
+    options={"guided_decoding": "xgrammar"},   # fast lattice FSM
+)
+```
+
+Unknown servers ignore the extra fields, so it's safe to leave on. An `options={"extra_body": {...}}` escape hatch mirrors the OpenAI SDK so you can also pass `min_p`, `repetition_penalty`, OpenRouter provider preferences, etc. See `examples/constrained_decoding_example.py`.
+
 ### Multi-Model Fallback
 
 Try a list of models in priority order, with full per-attempt accounting — every model tried (success, failure, or skipped) is recorded with its cost, tokens, duration, capabilities, and strategy. The first success wins; if all fail, an optional `fallback` Pydantic instance is returned instead of raising.

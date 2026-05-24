@@ -99,6 +99,18 @@ class LMStudioDriver(Driver):
                 # LM Studio rejects "json_object" type.
                 pass
 
+        # vLLM-style guided_json pass-through + generic extra_body escape hatch
+        # (8A-lite). Useful when LM Studio is fronting a vLLM backend or when
+        # the user wants to inject vendor-specific fields.
+        from ._openai_compat import apply_guided_decoding, merge_extra_body
+
+        apply_guided_decoding(
+            payload,
+            json_schema=merged_options.get("json_schema"),
+            guided_decoding=merged_options.get("guided_decoding"),
+        )
+        merge_extra_body(payload, merged_options)
+
         try:
             logger.debug(f"Sending request to LM Studio endpoint: {self.endpoint}")
             logger.debug(f"Request payload: {payload}")

@@ -50,25 +50,6 @@ from .integrations import *
 from .media import *
 from .persistence import *
 from .pipeline import *
-from .swarm import (
-    AllScheduler,
-    CallableScheduler,
-    Environment,
-    Event,
-    EventKind,
-    InMemoryStore,
-    Memory,
-    MemoryStore,
-    PriorityScheduler,
-    RoundRobinScheduler,
-    SampleScheduler,
-    Scheduler,
-    Swarm,
-    SwarmAgent,
-    SwarmCallbacks,
-    SwarmResult,
-    SwarmStep,
-)
 from .refusal import (
     RefusalCategory,
     RefusalDetector,
@@ -87,6 +68,25 @@ from .security import (
     RedactionResult,
     is_prompt_injection,
     redact_pii,
+)
+from .swarm import (
+    AllScheduler,
+    CallableScheduler,
+    Environment,
+    Event,
+    EventKind,
+    InMemoryStore,
+    Memory,
+    MemoryStore,
+    PriorityScheduler,
+    RoundRobinScheduler,
+    SampleScheduler,
+    Scheduler,
+    Swarm,
+    SwarmAgent,
+    SwarmCallbacks,
+    SwarmResult,
+    SwarmStep,
 )
 from .tools import (
     PythonSandboxTool,

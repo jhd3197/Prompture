@@ -128,6 +128,19 @@ class OpenRouterDriver(CostMixin, Driver):
             else:
                 data["response_format"] = {"type": "json_object"}
 
+        # vLLM-style guided_json pass-through + generic extra_body escape
+        # hatch (8A-lite). OpenRouter passes unrecognised fields to upstream
+        # providers, so vLLM-backed models on OpenRouter get FSM-constrained
+        # decoding when guided_decoding=True is set.
+        from ._openai_compat import apply_guided_decoding, merge_extra_body
+
+        apply_guided_decoding(
+            data,
+            json_schema=options.get("json_schema"),
+            guided_decoding=options.get("guided_decoding"),
+        )
+        merge_extra_body(data, options)
+
         try:
             response = requests.post(
                 f"{self.base_url}/chat/completions",
