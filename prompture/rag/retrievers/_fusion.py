@@ -22,7 +22,7 @@ def _document_id(result: VectorSearchResult) -> str:
     meta_id = result.document.metadata.get("id")
     if meta_id is not None:
         return str(meta_id)
-    return "sha1:" + hashlib.sha1(result.document.content.encode("utf-8")).hexdigest()
+    return "sha1:" + hashlib.sha1(result.document.content.encode("utf-8"), usedforsecurity=False).hexdigest()
 
 
 def fuse_search_results(

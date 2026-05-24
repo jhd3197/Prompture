@@ -69,7 +69,7 @@ class SampleScheduler:
         if k < 0:
             raise ValueError("SampleScheduler k must be non-negative")
         self._k = k
-        self._rng = rng or random.Random()
+        self._rng = rng or random.Random()  # nosec B311 - non-cryptographic agent sampling
 
     def select(
         self,

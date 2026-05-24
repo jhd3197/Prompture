@@ -217,7 +217,7 @@ class EvolInstruct:
         self.model = model
         self.operator_prompts = dict(prompts)
         self.options = dict(options) if options is not None else {"temperature": 0.7, "max_tokens": 512}
-        self._rng = random.Random(seed)
+        self._rng = random.Random(seed)  # nosec B311 - non-cryptographic dataset sampling
 
     # ------------------------------------------------------------------
     # Public API

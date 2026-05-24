@@ -11,6 +11,25 @@ except ImportError:  # tukuy not installed
     create_tukuy_backend = None  # type: ignore[assignment]
 from . import eval as eval
 from . import plugins, rag
+from .checkpoints import (
+    Checkpoint,
+    CheckpointManager,
+    CheckpointStore,
+    FileCheckpointStore,
+    InMemoryCheckpointStore,
+    RunStatus,
+    SQLiteCheckpointStore,
+    restore_conversation,
+    snapshot_conversation,
+)
+from .citations import (
+    CITATION_INSTRUCTION,
+    Citation,
+    CitationTracker,
+    CitedAnswer,
+    Source,
+    extract_citations,
+)
 from .cli import *
 from .dataset import (
     ChatTurn,
@@ -47,6 +66,17 @@ from .groups import *
 from .infra import *
 from .ingestion import *
 from .integrations import *
+from .kg import (
+    Entity,
+    EntityStore,
+    InMemoryEntityStore,
+    KnowledgeGraph,
+    Mention,
+    Relation,
+    SQLiteEntityStore,
+    extract_entities,
+    extract_relations,
+)
 from .media import *
 from .persistence import *
 from .pipeline import *
@@ -68,36 +98,6 @@ from .security import (
     RedactionResult,
     is_prompt_injection,
     redact_pii,
-)
-from .checkpoints import (
-    Checkpoint,
-    CheckpointManager,
-    CheckpointStore,
-    FileCheckpointStore,
-    InMemoryCheckpointStore,
-    RunStatus,
-    SQLiteCheckpointStore,
-    restore_conversation,
-    snapshot_conversation,
-)
-from .citations import (
-    CITATION_INSTRUCTION,
-    Citation,
-    CitationTracker,
-    CitedAnswer,
-    Source,
-    extract_citations,
-)
-from .kg import (
-    Entity,
-    EntityStore,
-    InMemoryEntityStore,
-    KnowledgeGraph,
-    Mention,
-    Relation,
-    SQLiteEntityStore,
-    extract_entities,
-    extract_relations,
 )
 from .session_memory import (
     InMemorySessionStore,

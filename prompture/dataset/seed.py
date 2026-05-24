@@ -119,7 +119,7 @@ class SelfInstruct:
         self.prompt = prompt
         self.options = dict(options) if options is not None else {"temperature": 0.7, "max_tokens": 1024}
         self.seed_sample_size = seed_sample_size
-        self._rng = seed_random or random.Random()
+        self._rng = seed_random or random.Random()  # nosec B311 - non-cryptographic dataset sampling
 
     # ------------------------------------------------------------------
     # Public API

@@ -385,7 +385,7 @@ class SQLiteEntityStore:
         if as_object:
             clauses.append("object_id = ?")
             params.append(entity_id)
-        sql = f"SELECT * FROM relations WHERE ({' OR '.join(clauses)})"
+        sql = f"SELECT * FROM relations WHERE ({' OR '.join(clauses)})"  # nosec B608 - clauses are library-controlled literals; entity values are parameterized
         if predicate is not None:
             sql += " AND predicate = ?"
             params.append(predicate)
