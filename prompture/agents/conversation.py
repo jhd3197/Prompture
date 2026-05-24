@@ -924,6 +924,90 @@ class Conversation:
             if chunk["type"] == "delta":
                 yield chunk["text"]
 
+    def ask_stream_model(
+        self,
+        content: str,
+        model_cls: type[BaseModel],
+        options: dict[str, Any] | None = None,
+        *,
+        json_mode: Literal["auto", "on", "off"] = "auto",
+        emit_unchanged: bool = False,
+    ) -> Iterator[BaseModel]:
+        """Stream a JSON response and yield progressive :class:`pydantic.BaseModel` partials.
+
+        Wraps the underlying streaming driver with the partial-JSON
+        parser from :mod:`prompture.extraction.streaming`. Each yielded
+        instance is built via :meth:`BaseModel.model_construct` (no
+        validation) until the stream completes; when the full response
+        validates, the *final* yield is a fully-validated instance.
+
+        The schema instructions are appended to the prompt; only the
+        original ``content`` is stored in conversation history.
+
+        Args:
+            content: User message.
+            model_cls: Pydantic v2 model to construct partials of.
+            options: Driver options forwarded to ``generate_messages_stream``.
+            json_mode: ``"auto"`` (default) sets ``json_mode=True`` and
+                provides a ``json_schema`` to the driver when the driver
+                declares ``supports_json_schema``. ``"on"`` forces JSON
+                mode; ``"off"`` sends the prompt as-is (caller must
+                instruct the model to produce JSON).
+            emit_unchanged: Yield even when consecutive partials are
+                identical. Defaults to False — only changed snapshots
+                are yielded.
+
+        Yields:
+            ``model_cls`` instances. The last one is validated when the
+            stream produced a complete JSON object; intermediate ones
+            are non-validated partials with missing fields left unset.
+
+        Raises:
+            AttributeError: when the driver doesn't expose
+                ``generate_messages_stream``.
+        """
+        from ..extraction.streaming import stream_extract
+
+        schema = model_cls.model_json_schema()
+        schema_str = json.dumps(schema, indent=2)
+        schema_instruction = (
+            "You MUST respond with a single JSON object (no markdown, no extra text) "
+            "that validates against this JSON schema:\n"
+            f"{schema_str}\n\nUse double quotes for keys and strings. "
+            "If a value is unknown use null."
+        )
+        prompt = f"{content}\n\n{schema_instruction}"
+
+        merged_options: dict[str, Any] = {**self._options, **(options or {})}
+        if json_mode in ("auto", "on"):
+            merged_options.setdefault("json_mode", True)
+            if json_mode != "off" and getattr(self._driver, "supports_json_schema", False):
+                merged_options.setdefault("json_schema", schema)
+
+        last_partial: BaseModel | None = None
+        for partial in stream_extract(
+            self._driver,
+            prompt,
+            model_cls,
+            system_prompt=self._system_prompt,
+            options=merged_options,
+            emit_unchanged=emit_unchanged,
+        ):
+            last_partial = partial
+            yield partial
+
+        # Record only the original content (not the schema instructions) in
+        # history; the assistant turn records the JSON serialisation of the
+        # last partial so subsequent turns can reference it textually.
+        self._messages.append({"role": "user", "content": content})
+        if last_partial is not None:
+            try:
+                last_text = last_partial.model_dump_json()
+            except Exception:
+                last_text = ""
+            if last_text:
+                self._messages.append({"role": "assistant", "content": last_text})
+
     def ask_for_json(
         self,
         content: str,

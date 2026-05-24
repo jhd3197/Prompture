@@ -86,6 +86,108 @@ def _merge_usage(
     }
 
 
+def _walk_schema_to_field(
+    schema: dict[str, Any], loc: tuple[Any, ...]
+) -> dict[str, Any] | None:
+    """Navigate a JSON-Schema dict to the entry referenced by ``loc``.
+
+    ``loc`` follows Pydantic's ValidationError convention:
+
+    * string entries index into ``properties``
+    * integer entries index into ``items``
+
+    Returns the schema entry for the addressed field, or ``None`` when
+    the path doesn't resolve (e.g. the schema uses ``$ref`` we don't
+    follow here, or the field is wrapped in an ``anyOf`` / ``oneOf``
+    that we don't traverse). Returning ``None`` is a quiet skip — the
+    caller leaves the schema untouched for that error.
+    """
+    if not loc:
+        return None
+    node: Any = schema
+    for part in loc[:-1]:
+        if not isinstance(node, dict):
+            return None
+        if isinstance(part, str):
+            node = node.get("properties", {}).get(part)
+        elif isinstance(part, int):
+            node = node.get("items")
+        else:
+            return None
+        if node is None:
+            return None
+    last = loc[-1]
+    if not isinstance(node, dict):
+        return None
+    if isinstance(last, str):
+        return node.get("properties", {}).get(last)  # type: ignore[no-any-return]
+    if isinstance(last, int):
+        return node.get("items")  # type: ignore[no-any-return]
+    return None
+
+
+def _format_validation_hint(error: dict[str, Any]) -> str:
+    """Render one Pydantic validation error as a short corrective hint.
+
+    Designed to be appended to a field's ``description`` so the model
+    sees it on the next attempt. Kept concise — long retry hints
+    confuse small models more than they help.
+    """
+    msg = str(error.get("msg") or "value did not validate").strip().rstrip(".")
+    input_val = error.get("input")
+    expected_type = error.get("type", "")
+
+    if input_val is None or (isinstance(input_val, str) and not input_val):
+        return f"VALIDATION: {msg}."
+    # Truncate gigantic inputs (e.g. long strings the model dumped).
+    rendered_input = repr(input_val)
+    if len(rendered_input) > 80:
+        rendered_input = rendered_input[:77] + "..."
+    suffix = f" Previous attempt returned {rendered_input}."
+    type_hint = f" (constraint: {expected_type})" if expected_type else ""
+    return f"VALIDATION: {msg}{type_hint}.{suffix}"
+
+
+def tighten_schema_from_validation_errors(
+    schema: dict[str, Any], errors: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """Return a copy of ``schema`` with retry hints appended to failing fields.
+
+    For every Pydantic validation error in ``errors`` we look up the
+    addressed field in ``schema`` and append a short hint to that
+    field's ``description`` (creating one if missing). Errors whose
+    ``loc`` we can't resolve are silently skipped — those still get
+    handled by the existing prompt-level ``validation_feedback`` path.
+
+    The returned schema is a deep copy; the input is never mutated. If
+    no errors resolve to a field, the input schema is returned
+    unchanged (cheap, no copy).
+    """
+    if not errors:
+        return schema
+
+    import copy
+
+    resolved_any = False
+    new_schema = copy.deepcopy(schema)
+    for err in errors:
+        loc = err.get("loc") or ()
+        if not isinstance(loc, (tuple, list)):
+            continue
+        field_schema = _walk_schema_to_field(new_schema, tuple(loc))
+        if field_schema is None:
+            continue
+        hint = _format_validation_hint(err)
+        existing = field_schema.get("description", "")
+        if hint in str(existing):
+            # Don't append the same hint twice across multiple retries.
+            continue
+        field_schema["description"] = f"{existing} {hint}".strip() if existing else hint
+        resolved_any = True
+
+    return new_schema if resolved_any else schema
+
+
 def _build_content_with_images(text: str, images: list[ImageInput] | None = None) -> str | list[dict[str, Any]]:
     """Return plain string when no images, or a list of content blocks."""
     if not images:
@@ -1051,6 +1153,12 @@ def extract_with_model(
 
     last_error: Exception | None = None
     validation_feedback: str | None = None
+    # Phase 5: schema-level retry feedback. When a Pydantic ValidationError
+    # is captured, we tighten the relevant fields' `description` entries
+    # and pass the patched schema on the next attempt. Combined with the
+    # prompt-level `validation_feedback`, this gives the model both
+    # structural and conversational hints to correct itself.
+    tightened_schema: dict[str, Any] | None = None
 
     for attempt in range(max(1, max_retries)):
         try:
@@ -1063,9 +1171,11 @@ def extract_with_model(
                     "Please fix these issues."
                 )
 
+            effective_schema = tightened_schema if tightened_schema is not None else schema
+
             result = extract_and_jsonify(
                 text=actual_text,
-                json_schema=schema,
+                json_schema=effective_schema,
                 model_name=actual_model,
                 instruction_template=effective_instruction,
                 ai_cleanup=ai_cleanup,
@@ -1146,6 +1256,21 @@ def extract_with_model(
             # Capture Pydantic validation errors to feed back on next attempt
             if hasattr(exc, "errors") and callable(getattr(exc, "errors", None)):
                 validation_feedback = str(exc)
+                # Phase 5: tighten the schema for the next retry so the
+                # model gets a structural hint, not just a prompt-level one.
+                try:
+                    error_details = exc.errors()  # type: ignore[attr-defined]
+                except Exception:
+                    error_details = []
+                if error_details:
+                    base = tightened_schema if tightened_schema is not None else schema
+                    candidate = tighten_schema_from_validation_errors(base, error_details)
+                    if candidate is not base:
+                        tightened_schema = candidate
+                        logger.debug(
+                            "[extract] Tightened schema descriptions for %d failing field(s).",
+                            len(error_details),
+                        )
             if attempt < max(1, max_retries) - 1:
                 logger.debug("[extract] Attempt %d failed: %s, retrying...", attempt + 1, exc)
                 continue
