@@ -12,6 +12,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Generic, TypeVar, Union
 
+from .._internal.json_encoder import PromptureJSONEncoder
+
 DepsType = TypeVar("DepsType")
 
 
@@ -246,7 +248,7 @@ class AgentResult:
             with open("agent_history.json", "w") as f:
                 f.write(json_str)
         """
-        return json.dumps(self.to_dict(include_messages=include_messages), indent=2, default=str)
+        return json.dumps(self.to_dict(include_messages=include_messages), indent=2, cls=PromptureJSONEncoder)
 
 
 class StreamEventType(str, enum.Enum):

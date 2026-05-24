@@ -322,13 +322,24 @@ class AsyncConversation:
         return cls.from_export(data, callbacks=callbacks, tools=tools)
 
     def _maybe_auto_save(self) -> None:
-        """Auto-save after each turn if configured."""
+        """Auto-save after each turn if configured.
+
+        Errors are logged at WARNING level (not silently swallowed) so that
+        disk-full, permission, or serialization failures are visible to the
+        operator. We still don't re-raise — auto-save is best-effort and
+        should never break the conversation loop.
+        """
         if self._auto_save is None:
             return
         try:
             self.save(self._auto_save)
         except Exception:
-            logger.debug("Auto-save failed for conversation %s", self._conversation_id, exc_info=True)
+            logger.warning(
+                "Auto-save failed for conversation %s (path=%s)",
+                self._conversation_id,
+                self._auto_save,
+                exc_info=True,
+            )
 
     # ------------------------------------------------------------------
     # Budget enforcement

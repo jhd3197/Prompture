@@ -35,10 +35,18 @@ class GroqDriver(CostMixin, Driver):
         """
         self.api_key = api_key or os.getenv("GROQ_API_KEY")
         self.model = model
-        if groq is not None:
-            self.client: Any = groq.Client(api_key=self.api_key)
-        else:
-            self.client = None
+        if groq is None:
+            self.client: Any = None
+            return
+        if not self.api_key:
+            from ..exceptions import ConfigurationError
+
+            raise ConfigurationError(
+                "GROQ_API_KEY is not set. Provide api_key=... or set the "
+                "GROQ_API_KEY environment variable. "
+                "See https://github.com/jhd3197/prompture#configuration"
+            )
+        self.client: Any = groq.Client(api_key=self.api_key)
 
     @classmethod
     def list_models(cls, *, api_key: str | None = None, timeout: int = 10, **kw: object) -> list[str] | None:

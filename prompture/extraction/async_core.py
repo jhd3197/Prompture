@@ -5,10 +5,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import sys
-from datetime import date, datetime
-from decimal import Decimal
 from typing import Any, Literal, Union
+
+from .._internal.json_encoder import PromptureJSONEncoder
 
 try:
     import toon
@@ -408,27 +407,20 @@ async def extract_and_jsonify(
         reasoning_strategy = auto_select_reasoning_strategy(text, json_schema)
     content_prompt = apply_reasoning_strategy(content_prompt, reasoning_strategy)
 
-    try:
-        result = await ask_for_json(
-            driver,
-            content_prompt,
-            json_schema,
-            ai_cleanup,
-            model_id,
-            opts,
-            output_format=output_format,
-            json_mode=json_mode,
-            system_prompt=system_prompt,
-            strategy=strategy,
-        )
-        result["usage"]["reasoning_strategy"] = _strategy_name(reasoning_strategy)
-        return result
-    except Exception as e:
-        if "pytest" in sys.modules:
-            import pytest
-
-            pytest.skip(f"Connection error occurred: {e}")
-        raise
+    result = await ask_for_json(
+        driver,
+        content_prompt,
+        json_schema,
+        ai_cleanup,
+        model_id,
+        opts,
+        output_format=output_format,
+        json_mode=json_mode,
+        system_prompt=system_prompt,
+        strategy=strategy,
+    )
+    result["usage"]["reasoning_strategy"] = _strategy_name(reasoning_strategy)
+    return result
 
 
 async def manual_extract_and_jsonify(
@@ -557,7 +549,7 @@ async def _async_chunked_extract(
                 merged_json[field_name] = None
 
     model_instance = model_cls(**merged_json)
-    merged_json_str = json.dumps(merged_json, default=str, ensure_ascii=False)
+    merged_json_str = json.dumps(merged_json, cls=PromptureJSONEncoder, ensure_ascii=False)
 
     result_dict: dict[str, Any] = {
         "json_string": merged_json_str,
@@ -862,15 +854,7 @@ async def stepwise_extract_with_model(
         model_instance = model_cls(**data)
         model_dict = model_instance.model_dump()
 
-        class ExtendedJSONEncoder(json.JSONEncoder):
-            def default(self, obj: Any) -> Any:
-                if isinstance(obj, (datetime, date)):
-                    return obj.isoformat()
-                if isinstance(obj, Decimal):
-                    return str(obj)
-                return super().default(obj)
-
-        json_string = json.dumps(model_dict, cls=ExtendedJSONEncoder)
+        json_string = json.dumps(model_dict, cls=PromptureJSONEncoder)
 
         result = {
             "json_string": json_string,

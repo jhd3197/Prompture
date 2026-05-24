@@ -4,11 +4,10 @@ from __future__ import annotations
 
 import json
 import logging
-import sys
 import warnings
-from datetime import date, datetime
-from decimal import Decimal
 from typing import TYPE_CHECKING, Any, Literal, Union
+
+from .._internal.json_encoder import PromptureJSONEncoder
 
 if TYPE_CHECKING:
     from ..pipeline.routing import RoutingConfig
@@ -598,7 +597,7 @@ def extract_and_jsonify(
     Raises:
         ValueError: If text is empty or None, or if model_name format is invalid.
         json.JSONDecodeError: If the response cannot be parsed as JSON and ai_cleanup is False.
-        pytest.skip: If a ConnectionError occurs during testing (when pytest is running).
+        ConnectionError: If the underlying HTTP call fails.
     """
     if options is None:
         options = {}
@@ -693,10 +692,6 @@ def extract_and_jsonify(
         result["usage"]["reasoning_strategy"] = _strategy_name(reasoning_strategy)
         return result
     except (requests.exceptions.ConnectionError, requests.exceptions.HTTPError) as e:
-        if "pytest" in sys.modules:
-            import pytest
-
-            pytest.skip(f"Connection error occurred: {e}")
         raise ConnectionError(f"Connection error occurred: {e}") from e
 
 
@@ -816,7 +811,7 @@ def _chunked_extract(
 
     # Validate merged result
     model_instance = actual_cls(**merged_json)
-    merged_json_str = json.dumps(merged_json, default=str, ensure_ascii=False)
+    merged_json_str = json.dumps(merged_json, cls=PromptureJSONEncoder, ensure_ascii=False)
 
     result_dict: dict[str, Any] = {
         "json_string": merged_json_str,
@@ -1400,17 +1395,8 @@ def stepwise_extract_with_model(
         model_instance = model_cls(**data)
         model_dict = model_instance.model_dump()
 
-        # Enhanced DateTimeEncoder to handle both datetime and date objects
-        class ExtendedJSONEncoder(json.JSONEncoder):
-            def default(self, obj: Any) -> Any:
-                if isinstance(obj, (datetime, date)):
-                    return obj.isoformat()
-                if isinstance(obj, Decimal):
-                    return str(obj)
-                return super().default(obj)
-
-        # Create json string with custom encoder
-        json_string = json.dumps(model_dict, cls=ExtendedJSONEncoder)
+        # Use the shared PromptureJSONEncoder (handles datetime/Decimal/UUID/BaseModel/etc.)
+        json_string = json.dumps(model_dict, cls=PromptureJSONEncoder)
 
         # Create result matching extract_with_model format
         result = {

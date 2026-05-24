@@ -38,6 +38,21 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
     def __init__(self, api_key: str | None = None, model: str = "claude-haiku-4-5-20251001"):
         self.api_key = api_key or os.getenv("CLAUDE_API_KEY")
         self.model = model or os.getenv("CLAUDE_MODEL_NAME", "claude-haiku-4-5-20251001")
+        if anthropic is None:
+            self.client = None
+            return
+        if not self.api_key:
+            from ..exceptions import ConfigurationError
+
+            raise ConfigurationError(
+                "CLAUDE_API_KEY is not set. Provide api_key=... or set the "
+                "CLAUDE_API_KEY environment variable. "
+                "See https://github.com/jhd3197/prompture#configuration"
+            )
+        # Cache one AsyncAnthropic client for the lifetime of this driver so
+        # we reuse its HTTP/2 connection pool instead of building a fresh TLS
+        # session per request.
+        self.client = anthropic.AsyncAnthropic(api_key=self.api_key)
 
     supports_messages = True
 
@@ -54,7 +69,7 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
         return await self._do_generate(self._prepare_messages(messages), options)
 
     async def _do_generate(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
-        if anthropic is None:
+        if self.client is None:
             raise RuntimeError("anthropic package not installed")
 
         opts = {**{"temperature": 0.0, "max_tokens": 512}, **options}
@@ -69,7 +84,7 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
 
         supports_temperature = self._get_model_config("claude", model)["supports_temperature"]
 
-        client = anthropic.AsyncAnthropic(api_key=self.api_key)
+        client = self.client
 
         system_content, api_messages = _extract_anthropic_system_and_messages(messages)
 
@@ -142,7 +157,7 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
         options: dict[str, Any],
     ) -> dict[str, Any]:
         """Generate a response that may include tool calls (Anthropic)."""
-        if anthropic is None:
+        if self.client is None:
             raise RuntimeError("anthropic package not installed")
 
         opts = {**{"temperature": 0.0, "max_tokens": 512}, **options}
@@ -152,7 +167,7 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
 
         supports_temperature = self._get_model_config("claude", model)["supports_temperature"]
 
-        client = anthropic.AsyncAnthropic(api_key=self.api_key)
+        client = self.client
 
         system_content, api_messages = _extract_anthropic_system_and_messages(messages)
         anthropic_tools = _convert_tools_to_anthropic(tools)
@@ -204,13 +219,13 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
         options: dict[str, Any],
     ) -> AsyncIterator[dict[str, Any]]:
         """Yield response chunks via Anthropic streaming API."""
-        if anthropic is None:
+        if self.client is None:
             raise RuntimeError("anthropic package not installed")
 
         opts = {**{"temperature": 0.0, "max_tokens": 512}, **options}
         model = options.get("model", self.model)
         supports_temperature = self._get_model_config("claude", model)["supports_temperature"]
-        client = anthropic.AsyncAnthropic(api_key=self.api_key)
+        client = self.client
 
         system_content, api_messages = _extract_anthropic_system_and_messages(messages)
 

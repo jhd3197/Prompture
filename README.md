@@ -29,6 +29,18 @@ person = extract_with_model(Person, "Maria is 32, a developer in NYC.", model_na
 print(person.name)  # Maria
 ```
 
+> **First time?** Pick a provider and install its extra. The core package above
+> is just the orchestration layer — provider SDKs are opt-in.
+>
+> | Use `provider/...` | Install | Auth env var |
+> |---|---|---|
+> | `openai/gpt-4`, `openai/gpt-4o-mini`, … | `pip install "prompture[openai]"` | `OPENAI_API_KEY` |
+> | `claude/claude-sonnet-4-6`, … | `pip install "prompture[anthropic]"` | `CLAUDE_API_KEY` |
+> | `google/gemini-1.5-pro`, … | `pip install "prompture[google]"` | `GOOGLE_API_KEY` |
+> | `groq/llama-3.1-8b-instant`, … | `pip install "prompture[groq]"` | `GROQ_API_KEY` |
+> | `ollama/llama3.1:8b`, … (local) | no extra needed | — (set `OLLAMA_HOST` if non-default) |
+> | everything in one go | `pip install "prompture[all]"` | provider-specific |
+
 ## Key Features
 
 **Structured extraction**
@@ -964,8 +976,8 @@ from prompture import Conversation
 
 conv = Conversation(model_name="openai/gpt-4")
 conv.add_message("system", "You are a helpful assistant.")
-response = conv.send("What is the capital of France?")
-follow_up = conv.send("What about Germany?")  # retains context
+response = conv.ask("What is the capital of France?")
+follow_up = conv.ask("What about Germany?")  # retains context
 ```
 
 ### Tool Use

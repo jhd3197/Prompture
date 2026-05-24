@@ -39,6 +39,8 @@ import uuid
 from collections import OrderedDict
 from typing import Any, Optional
 
+from .._internal.json_encoder import PromptureJSONEncoder
+
 logger = logging.getLogger("prompture.server")
 
 
@@ -854,7 +856,7 @@ def create_app(
                         extra_args=req.extra_args,
                         session_id=req.session_id,
                     ):
-                        yield {"data": json.dumps(asdict(event), default=str)}
+                        yield {"data": json.dumps(asdict(event), cls=PromptureJSONEncoder)}
                 except ValueError as exc:
                     yield {"data": json.dumps({"type": "error", "error": str(exc)})}
                 yield {"data": json.dumps({"type": "stream_end"})}

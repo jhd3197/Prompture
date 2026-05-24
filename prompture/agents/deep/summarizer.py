@@ -22,6 +22,7 @@ import json
 import logging
 from typing import TYPE_CHECKING, Any
 
+from ..._internal.json_encoder import PromptureJSONEncoder
 from ...drivers import get_driver_for_model
 from ...drivers.base import Driver
 from ..deep_prompts import SUMMARIZER_SYSTEM_PROMPT, SUMMARY_PRELUDE
@@ -48,7 +49,7 @@ def _stringify_message(msg: dict[str, Any]) -> str:
                     parts.append("[image]")
         content = "\n".join(parts)
     elif not isinstance(content, str):
-        content = json.dumps(content, default=str)
+        content = json.dumps(content, cls=PromptureJSONEncoder)
 
     tool_calls = msg.get("tool_calls")
     if tool_calls:

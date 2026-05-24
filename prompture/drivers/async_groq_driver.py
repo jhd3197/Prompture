@@ -29,10 +29,18 @@ class AsyncGroqDriver(CostMixin, AsyncDriver):
     def __init__(self, api_key: str | None = None, model: str = "llama2-70b-4096"):
         self.api_key = api_key or os.getenv("GROQ_API_KEY")
         self.model = model
-        if groq is not None:
-            self.client: Any = groq.AsyncClient(api_key=self.api_key)
-        else:
-            self.client = None
+        if groq is None:
+            self.client: Any = None
+            return
+        if not self.api_key:
+            from ..exceptions import ConfigurationError
+
+            raise ConfigurationError(
+                "GROQ_API_KEY is not set. Provide api_key=... or set the "
+                "GROQ_API_KEY environment variable. "
+                "See https://github.com/jhd3197/prompture#configuration"
+            )
+        self.client: Any = groq.AsyncClient(api_key=self.api_key)
 
     supports_messages = True
 

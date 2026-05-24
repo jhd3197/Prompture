@@ -9,6 +9,7 @@ import json
 from datetime import datetime, timezone
 from typing import Any
 
+from .._internal.json_encoder import PromptureJSONEncoder
 from ..agents.types import AgentResult, AgentStep, StepType
 
 
@@ -256,7 +257,7 @@ def export_result_json(result: AgentResult, include_messages: bool = True) -> st
             f.write(json_str)
     """
     data = result_to_dict(result, include_messages=include_messages)
-    return json.dumps(data, indent=2, default=str)
+    return json.dumps(data, indent=2, cls=PromptureJSONEncoder)
 
 
 def result_to_dict(result: AgentResult, include_messages: bool = True) -> dict[str, Any]:

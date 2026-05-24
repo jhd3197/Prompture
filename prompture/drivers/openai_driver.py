@@ -138,10 +138,18 @@ class OpenAIDriver(CostMixin, Driver):
     def __init__(self, api_key: str | None = None, model: str = "gpt-4o-mini"):
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
         self.model = model
-        if OpenAI is not None:
-            self.client = OpenAI(api_key=self.api_key)
-        else:
+        if OpenAI is None:
             self.client = None
+            return
+        if not self.api_key:
+            from ..exceptions import ConfigurationError
+
+            raise ConfigurationError(
+                "OPENAI_API_KEY is not set. Provide api_key=... or set the "
+                "OPENAI_API_KEY environment variable. "
+                "See https://github.com/jhd3197/prompture#configuration"
+            )
+        self.client = OpenAI(api_key=self.api_key)
 
     @classmethod
     def list_models(cls, *, api_key: str | None = None, timeout: int = 10, **kw: object) -> list[str] | None:

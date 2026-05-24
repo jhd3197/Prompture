@@ -218,6 +218,16 @@ class ClaudeDriver(CostMixin, Driver):
     def __init__(self, api_key: str | None = None, model: str = "claude-haiku-4-5-20251001"):
         self.api_key = api_key or os.getenv("CLAUDE_API_KEY")
         self.model = model or os.getenv("CLAUDE_MODEL_NAME", "claude-haiku-4-5-20251001")
+        # Only validate when the SDK is installed — when anthropic is missing we
+        # surface that at call time so plain import-and-discover still works.
+        if anthropic is not None and not self.api_key:
+            from ..exceptions import ConfigurationError
+
+            raise ConfigurationError(
+                "CLAUDE_API_KEY is not set. Provide api_key=... or set the "
+                "CLAUDE_API_KEY environment variable. "
+                "See https://github.com/jhd3197/prompture#configuration"
+            )
 
     @classmethod
     def list_models(cls, *, api_key: str | None = None, timeout: int = 10, **kw: object) -> list[str] | None:

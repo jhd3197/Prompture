@@ -61,7 +61,13 @@ class GoogleDriver(CostMixin, Driver):
             raise RuntimeError("google-genai package is not installed. Install it with: pip install google-genai")
         self.api_key = api_key or os.getenv("GOOGLE_API_KEY")
         if not self.api_key:
-            raise ValueError("Google API key not found. Set GOOGLE_API_KEY env var or pass api_key to constructor")
+            from ..exceptions import ConfigurationError
+
+            raise ConfigurationError(
+                "GOOGLE_API_KEY is not set. Provide api_key=... or set the "
+                "GOOGLE_API_KEY environment variable. "
+                "See https://github.com/jhd3197/prompture#configuration"
+            )
 
         self.model = model
 
