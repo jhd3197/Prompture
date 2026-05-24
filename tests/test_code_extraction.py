@@ -21,11 +21,7 @@ def test_fenced_blocks_basic():
 
 
 def test_fenced_blocks_multiple_languages():
-    text = (
-        "```html\n<p>x</p>\n```\n"
-        "```css\np { color: red; }\n```\n"
-        "```js\nconsole.log(1);\n```"
-    )
+    text = "```html\n<p>x</p>\n```\n```css\np { color: red; }\n```\n```js\nconsole.log(1);\n```"
     blocks = extract_fenced_blocks(text)
     assert [b.language for b in blocks] == ["html", "css", "js"]
 
@@ -122,11 +118,6 @@ def test_html_document_skips_empty_script_tags():
 
 
 def test_html_document_multiple_styles_collected():
-    text = (
-        "<!DOCTYPE html><html>"
-        "<style>a { color: red; }</style>"
-        "<style>b { color: blue; }</style>"
-        "</html>"
-    )
+    text = "<!DOCTYPE html><html><style>a { color: red; }</style><style>b { color: blue; }</style></html>"
     result = extract_html_document(text)
     assert result.styles == ("a { color: red; }", "b { color: blue; }")

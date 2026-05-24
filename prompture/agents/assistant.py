@@ -62,7 +62,7 @@ import asyncio
 import dataclasses
 import logging
 import threading
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator
 from typing import Any
 
 from .persona import Persona
@@ -145,34 +145,61 @@ class Assistant:
         output_type: Optional Pydantic model passed to ``AsyncAgent`` for
             structured-output parsing.  Ignored for the coding-agent
             backend.
-        options: Driver options merged into the underlying agent (e.g.
-            ``{"max_tokens": 8000, "timeout": 600}``).
+        options: Driver options forwarded to the underlying agent's
+            ``options`` kwarg (driver-level settings like
+            ``{"max_tokens": 8000, "timeout": 600}``). Distinct from
+            ``agent_options`` below, which targets the agent constructor
+            itself.
+        agent_options: Extra kwargs spread into ``AsyncAgent.__init__``
+            when ``enable_planning=False``. Use this for budget controls
+            and other agent-level settings the Assistant doesn't expose
+            as first-class fields, e.g.
+            ``{"max_iterations": 5, "max_cost": 0.50,
+            "budget_policy": "hard_stop",
+            "fallback_models": ["openai/gpt-4o-mini"]}``.
         coding_agent_options: Extra kwargs forwarded to
             ``run_coding_agent`` / ``astream_coding_agent`` (e.g.
             ``approval_mode``, ``cwd``, ``timeout``).
+        deep_agent_options: Extra kwargs spread into
+            ``AsyncDeepAgent.__init__`` when ``enable_planning=True``
+            (e.g. ``{"enable_vfs": False, "enable_summarization": False,
+            "max_iterations": 30}``).
     """
 
     name: str
     persona: Persona
     skills: tuple[SkillInfo, ...] = ()
-    tools: tuple[Callable[..., Any], ...] = ()
+    # Either a tuple of Python callables OR a ToolRegistry — both are
+    # accepted by the underlying AsyncAgent.
+    tools: Any = ()
     model: str | None = None
     coding_agent: str | None = None
     description: str = ""
     variables: dict[str, Any] = dataclasses.field(default_factory=dict)
     enable_planning: bool = False
     output_type: Any = None
+    output_key: str | None = None
     options: dict[str, Any] = dataclasses.field(default_factory=dict)
     coding_agent_options: dict[str, Any] = dataclasses.field(default_factory=dict)
+    # Extra kwargs forwarded to AsyncAgent.__init__ when enable_planning is
+    # False (e.g. {"max_iterations": 5, "max_cost": 0.50,
+    # "budget_policy": "hard_stop", "fallback_models": ["openai/gpt-4o-mini"]}).
+    # Anything AsyncAgent accepts works here — see its signature for the
+    # full list (max_tokens, persistent_conversation, output_key, ...).
+    agent_options: dict[str, Any] = dataclasses.field(default_factory=dict)
+    # Extra kwargs forwarded to AsyncDeepAgent when enable_planning=True
+    # (e.g. {"enable_vfs": False, "enable_summarization": False}).
+    deep_agent_options: dict[str, Any] = dataclasses.field(default_factory=dict)
 
     # ----- construction --------------------------------------------------
 
     def __post_init__(self) -> None:
-        # Normalise iterable args to immutable tuples so the dataclass
-        # stays hashable + frozen-friendly.
+        # Normalise skills to an immutable tuple.  Tools may be either a
+        # tuple of callables OR a ToolRegistry — both are passed
+        # through to AsyncAgent unchanged.
         if not isinstance(self.skills, tuple):
             object.__setattr__(self, "skills", tuple(self.skills))
-        if not isinstance(self.tools, tuple):
+        if isinstance(self.tools, (list, set)):
             object.__setattr__(self, "tools", tuple(self.tools))
 
         if bool(self.model) == bool(self.coding_agent):
@@ -183,8 +210,7 @@ class Assistant:
             )
         if self.enable_planning and not self.model:
             raise ValueError(
-                "enable_planning=True only applies to the LLM backend "
-                "(set `model=...`, not `coding_agent=...`)."
+                "enable_planning=True only applies to the LLM backend (set `model=...`, not `coding_agent=...`)."
             )
 
     # ----- composition ---------------------------------------------------
@@ -204,10 +230,7 @@ class Assistant:
         persona = self.persona
 
         for skill in self.skills:
-            block = (
-                f"## Skill: {skill.name}\n"
-                f"{skill.description}\n\n{skill.instructions}".rstrip()
-            )
+            block = f"## Skill: {skill.name}\n{skill.description}\n\n{skill.instructions}".rstrip()
             persona = persona.extend(block)
 
         # Push merged variables back so render() (called by AsyncAgent)
@@ -275,19 +298,52 @@ class Assistant:
 
     # ----- LLM backend ---------------------------------------------------
 
+    def build_async_agent(self, **vars: Any) -> Any:
+        """Construct the underlying ``AsyncAgent`` (or ``AsyncDeepAgent``).
+
+        Use this when you want the Assistant as a *configuration* bundle
+        (persona + skills + tools + model + options) but need to drive
+        the underlying agent yourself — through a group, a streaming
+        callback machinery, or any other orchestration layer that
+        operates on :class:`AsyncAgent` directly.
+
+        Args:
+            **vars: Per-call template variables merged into the persona
+                before rendering.  Equivalent to the per-call kwargs of
+                :meth:`arun` / :meth:`astream`, but applied at
+                construction time.
+
+        Returns:
+            An :class:`AsyncAgent` when ``enable_planning=False``,
+            otherwise an :class:`AsyncDeepAgent`.
+
+        Raises:
+            ValueError: When this Assistant is configured with a
+                ``coding_agent`` backend (it shells out to a CLI and has
+                no in-process agent to expose).
+        """
+        if self.coding_agent:
+            raise ValueError(
+                "build_async_agent() is only available for the LLM backend; "
+                f"this Assistant uses coding_agent={self.coding_agent!r}."
+            )
+        return self._build_async_agent(call_vars=vars)
+
     def _build_async_agent(self, *, call_vars: dict[str, Any]) -> Any:
         persona = self._composed_persona(call_vars)
+        tools_arg = self._tools_for_agent()
         if self.enable_planning:
             from .async_deep_agent import AsyncDeepAgent
 
             return AsyncDeepAgent(
                 self.model or "",
                 system_prompt=persona,
-                tools=list(self.tools) or None,
+                tools=tools_arg,
                 name=self.name,
                 description=self.description,
                 enable_planning=True,
                 options=dict(self.options) or None,
+                **dict(self.deep_agent_options),
             )
 
         from .async_agent import AsyncAgent
@@ -295,12 +351,29 @@ class Assistant:
         return AsyncAgent(
             self.model or "",
             system_prompt=persona,
-            tools=list(self.tools) or None,
+            tools=tools_arg,
             output_type=self.output_type,
+            output_key=self.output_key,
             name=self.name,
             description=self.description,
             options=dict(self.options) or None,
+            **dict(self.agent_options),
         )
+
+    def _tools_for_agent(self) -> Any:
+        """Coerce ``self.tools`` into the shape ``AsyncAgent`` expects.
+
+        Returns ``None`` when nothing is configured, the underlying
+        ``ToolRegistry`` when one was passed in directly, or a list of
+        callables otherwise.
+        """
+        if not self.tools:
+            return None
+        # Tuples / lists of callables → list (AsyncAgent expects a list).
+        if isinstance(self.tools, tuple):
+            return list(self.tools) or None
+        # Any other object (e.g. ToolRegistry) is passed through verbatim.
+        return self.tools
 
     async def _run_llm(
         self,
@@ -429,9 +502,7 @@ def clear_assistant_registry() -> None:
 def _from_registry(cls: type[Assistant], name: str) -> Assistant:
     found = get_assistant(name)
     if found is None:
-        raise KeyError(
-            f"No Assistant registered as {name!r}. Known: {get_assistant_names()}"
-        )
+        raise KeyError(f"No Assistant registered as {name!r}. Known: {get_assistant_names()}")
     return found
 
 

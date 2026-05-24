@@ -18,9 +18,7 @@ def _lines(*objs: dict) -> list[str]:
 class TestClaudeStreamJSONParser:
     def test_emits_system_init_event(self):
         events = list(
-            parse_claude_stream_json_lines(
-                _lines({"type": "system", "subtype": "init", "session_id": "abc"})
-            )
+            parse_claude_stream_json_lines(_lines({"type": "system", "subtype": "init", "session_id": "abc"}))
         )
         assert len(events) == 1
         assert events[0].type == "system"
@@ -208,19 +206,11 @@ class TestClaudeStreamJSONParser:
                     },
                     {
                         "type": "assistant",
-                        "message": {
-                            "content": [
-                                {"type": "tool_use", "name": "Read", "input": {"path": "a.py"}}
-                            ]
-                        },
+                        "message": {"content": [{"type": "tool_use", "name": "Read", "input": {"path": "a.py"}}]},
                     },
                     {
                         "type": "user",
-                        "message": {
-                            "content": [
-                                {"type": "tool_result", "tool_use_id": "1", "content": "print('hi')"}
-                            ]
-                        },
+                        "message": {"content": [{"type": "tool_result", "tool_use_id": "1", "content": "print('hi')"}]},
                     },
                     {
                         "type": "result",
@@ -251,22 +241,16 @@ class TestCodexJSONParser:
         assert [e.type for e in events] == ["system"]
 
     def test_agent_message_emits_message_event(self):
-        events = list(
-            parse_codex_json_lines(_lines({"msg": {"type": "agent_message", "message": "hello"}}))
-        )
+        events = list(parse_codex_json_lines(_lines({"msg": {"type": "agent_message", "message": "hello"}})))
         assert events == [CodingAgentEvent(type="message", text="hello", raw=events[0].raw)]
 
     def test_agent_message_delta_emits_partial_message(self):
-        events = list(
-            parse_codex_json_lines(_lines({"msg": {"type": "agent_message_delta", "delta": "Hel"}}))
-        )
+        events = list(parse_codex_json_lines(_lines({"msg": {"type": "agent_message_delta", "delta": "Hel"}})))
         assert [e.type for e in events] == ["message"]
         assert events[0].text == "Hel"
 
     def test_empty_delta_is_skipped(self):
-        events = list(
-            parse_codex_json_lines(_lines({"msg": {"type": "agent_message_delta", "delta": ""}}))
-        )
+        events = list(parse_codex_json_lines(_lines({"msg": {"type": "agent_message_delta", "delta": ""}})))
         assert events == []
 
     def test_exec_command_begin_is_tool_call(self):
@@ -318,9 +302,7 @@ class TestCodexJSONParser:
         assert events[0].output_tokens == 200
 
     def test_explicit_error_event(self):
-        events = list(
-            parse_codex_json_lines(_lines({"msg": {"type": "error", "message": "rate limit"}}))
-        )
+        events = list(parse_codex_json_lines(_lines({"msg": {"type": "error", "message": "rate limit"}})))
         assert events[0].type == "error"
         assert events[0].error == "rate limit"
 
@@ -350,12 +332,7 @@ class TestQuestionDetection:
     def test_numbered_choices_extracted(self):
         from prompture.infra.coding_agent_events import detect_question
 
-        text = (
-            "Which approach do you want?\n"
-            "1. Refactor the whole module\n"
-            "2. Add a thin wrapper\n"
-            "3. Leave it as-is"
-        )
+        text = "Which approach do you want?\n1. Refactor the whole module\n2. Add a thin wrapper\n3. Leave it as-is"
         is_q, choices = detect_question(text)
         assert is_q is True
         assert choices == (
@@ -423,11 +400,7 @@ class TestQuestionDetection:
                     {
                         "msg": {
                             "type": "agent_message",
-                            "message": (
-                                "Do you want me to:\n"
-                                "1. Update the schema\n"
-                                "2. Skip the migration"
-                            ),
+                            "message": ("Do you want me to:\n1. Update the schema\n2. Skip the migration"),
                         }
                     }
                 )
@@ -457,9 +430,7 @@ class TestQuestionDetection:
 class TestSessionIdExtraction:
     def test_claude_system_event_extracts_session_id(self):
         events = list(
-            parse_claude_stream_json_lines(
-                _lines({"type": "system", "subtype": "init", "session_id": "abc-123"})
-            )
+            parse_claude_stream_json_lines(_lines({"type": "system", "subtype": "init", "session_id": "abc-123"}))
         )
         assert events[0].session_id == "abc-123"
 
@@ -474,16 +445,10 @@ class TestSessionIdExtraction:
 
     def test_codex_task_started_extracts_session_id_from_msg(self):
         events = list(
-            parse_codex_json_lines(
-                _lines({"msg": {"type": "task_started", "model": "gpt-5", "session_id": "codex-1"}})
-            )
+            parse_codex_json_lines(_lines({"msg": {"type": "task_started", "model": "gpt-5", "session_id": "codex-1"}}))
         )
         assert events[0].session_id == "codex-1"
 
     def test_codex_session_configured_extracts_envelope_session_id(self):
-        events = list(
-            parse_codex_json_lines(
-                _lines({"session_id": "codex-2", "msg": {"type": "session_configured"}})
-            )
-        )
+        events = list(parse_codex_json_lines(_lines({"session_id": "codex-2", "msg": {"type": "session_configured"}})))
         assert events[0].session_id == "codex-2"

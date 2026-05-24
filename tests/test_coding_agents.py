@@ -829,9 +829,7 @@ class TestAskedQuestionProperty:
                     {
                         "type": "assistant",
                         "message": {
-                            "content": [
-                                {"type": "text", "text": "Which approach do you want?\n1. Foo\n2. Bar"}
-                            ]
+                            "content": [{"type": "text", "text": "Which approach do you want?\n1. Foo\n2. Bar"}]
                         },
                     }
                 ),

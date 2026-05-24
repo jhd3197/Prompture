@@ -38,7 +38,13 @@ from .persona import (
     reset_persona_registry,
     reset_trait_registry,
 )
-from .review_loop import AsyncReviewLoop, ReviewLoopIteration, ReviewLoopResult
+from .review_loop import (
+    AsyncReviewLoop,
+    ReviewLoopEvent,
+    ReviewLoopEventType,
+    ReviewLoopIteration,
+    ReviewLoopResult,
+)
 from .skills import (
     SKILLS,
     SkillInfo,
@@ -97,6 +103,8 @@ __all__ = [
     "GuardrailError",
     "ModelRetry",
     "Persona",
+    "ReviewLoopEvent",
+    "ReviewLoopEventType",
     "ReviewLoopIteration",
     "ReviewLoopResult",
     "RunContext",
