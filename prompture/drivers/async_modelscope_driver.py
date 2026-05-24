@@ -24,6 +24,7 @@ class AsyncModelScopeDriver(CostMixin, AsyncDriver):
     supports_json_mode = True
     supports_json_schema = False
     supports_tool_use = True
+    supports_streaming_tool_use = True
     supports_streaming = True
     supports_vision = False
 
@@ -219,6 +220,25 @@ class AsyncModelScopeDriver(CostMixin, AsyncDriver):
             "tool_calls": tool_calls_out,
             "stop_reason": stop_reason,
         }
+
+    # ------------------------------------------------------------------
+    # Live streaming with interleaved tool calls
+    # ------------------------------------------------------------------
+
+    async def generate_messages_with_tools_stream(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        options: dict[str, Any],
+    ):
+        """Async streaming-tool via the shared raw-HTTP helper."""
+        from ._openai_compat_stream import astream_raw_http_compat_tool_call
+
+        async for ev in astream_raw_http_compat_tool_call(
+            self, messages, tools, options, provider="modelscope"
+        ):
+            yield ev
+
 
     # ------------------------------------------------------------------
     # Streaming

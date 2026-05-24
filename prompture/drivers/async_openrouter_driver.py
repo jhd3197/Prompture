@@ -22,6 +22,8 @@ class AsyncOpenRouterDriver(CostMixin, AsyncDriver):
     supports_json_mode = True
     supports_json_schema = True
     supports_tool_use = True
+    supports_streaming_tool_use = True
+
     supports_streaming = True
     supports_vision = True
 
@@ -233,6 +235,25 @@ class AsyncOpenRouterDriver(CostMixin, AsyncDriver):
         if choice["message"].get("reasoning_content") is not None:
             result["reasoning_content"] = choice["message"]["reasoning_content"]
         return result
+
+
+    # ------------------------------------------------------------------
+    # Live streaming with interleaved tool calls
+    # ------------------------------------------------------------------
+
+    async def generate_messages_with_tools_stream(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        options: dict[str, Any],
+    ):
+        """Async streaming-tool via the shared raw-HTTP helper."""
+        from ._openai_compat_stream import astream_raw_http_compat_tool_call
+
+        async for ev in astream_raw_http_compat_tool_call(
+            self, messages, tools, options, provider="openrouter"
+        ):
+            yield ev
 
     # ------------------------------------------------------------------
     # Streaming

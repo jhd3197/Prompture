@@ -344,11 +344,211 @@ async def astream_openai_compat_tool_call(
         yield ev
 
 
+# ----------------------------------------------------------------------
+# Raw-HTTP variants for drivers that POST directly instead of using
+# the OpenAI SDK (grok, openrouter, moonshot, mistral, modelscope, zai,
+# cachibot, ...). Same event output, parses SSE lines from a streaming
+# requests / httpx response.
+# ----------------------------------------------------------------------
+
+
+def _dict_to_chunk(d: Any) -> Any:
+    """Convert a JSON-decoded dict (and nested dicts/lists) to a
+    namespace-like object so ``_process_chunk`` (which uses attribute
+    access throughout) works on raw HTTP payloads without changes."""
+    from types import SimpleNamespace
+
+    if isinstance(d, dict):
+        return SimpleNamespace(**{k: _dict_to_chunk(v) for k, v in d.items()})
+    if isinstance(d, list):
+        return [_dict_to_chunk(item) for item in d]
+    return d
+
+
+def _build_raw_http_payload(
+    driver: Any,
+    messages: list[dict[str, Any]],
+    tools: list[dict[str, Any]],
+    options: dict[str, Any],
+    *,
+    provider: str,
+    default_max_tokens: int,
+    default_temperature: float,
+) -> tuple[str, dict[str, Any]]:
+    """Build (model, payload) for a raw-HTTP OpenAI-compat call.
+
+    Pulls ``tokens_param`` / ``supports_temperature`` from the driver's
+    ``_get_model_config(provider, model)``. Adds ``stream`` and
+    ``stream_options.include_usage`` so the final chunk carries usage.
+    """
+    model = options.get("model", driver.model)
+    model_config = driver._get_model_config(provider, model)
+    tokens_param = model_config["tokens_param"]
+    supports_temperature = model_config["supports_temperature"]
+
+    opts = {"temperature": default_temperature, "max_tokens": default_max_tokens, **options}
+
+    payload: dict[str, Any] = {
+        "model": model,
+        "messages": messages,
+        "tools": tools,
+        "stream": True,
+        "stream_options": {"include_usage": True},
+    }
+    payload[tokens_param] = opts.get("max_tokens", default_max_tokens)
+    if supports_temperature and "temperature" in opts:
+        payload["temperature"] = opts["temperature"]
+    if "tool_choice" in options:
+        payload["tool_choice"] = options["tool_choice"]
+
+    return model, payload
+
+
+def _bearer_headers(api_key: str) -> dict[str, str]:
+    return {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+
+
+def stream_raw_http_compat_tool_call(
+    driver: Any,
+    messages: list[dict[str, Any]],
+    tools: list[dict[str, Any]],
+    options: dict[str, Any],
+    *,
+    provider: str,
+    url: str | None = None,
+    headers: dict[str, str] | None = None,
+    default_max_tokens: int = 4096,
+    default_temperature: float = 1.0,
+    timeout: int = 120,
+) -> Iterator[Any]:
+    """Generic sync streaming-tool implementation for raw-HTTP OpenAI-compat
+    drivers (those that call ``requests.post(/chat/completions)`` instead
+    of using the OpenAI SDK).
+
+    Defaults assume the driver exposes:
+    - ``self.api_base`` — base URL (no trailing ``/chat/completions``)
+    - ``self.api_key`` — used as ``Authorization: Bearer <key>``
+
+    Override *url* or *headers* if the driver uses a different shape.
+    """
+    import requests
+
+    from ..agents.live_events import MessageStop
+
+    model, payload = _build_raw_http_payload(
+        driver, messages, tools, options,
+        provider=provider,
+        default_max_tokens=default_max_tokens,
+        default_temperature=default_temperature,
+    )
+    resolved_url = url or f"{driver.api_base}/chat/completions"
+    resolved_headers = headers or _bearer_headers(driver.api_key)
+
+    state = _fresh_state()
+    with requests.post(
+        resolved_url,
+        headers=resolved_headers,
+        json=payload,
+        stream=True,
+        timeout=timeout,
+    ) as resp:
+        resp.raise_for_status()
+        for raw_line in resp.iter_lines(decode_unicode=True):
+            if not raw_line:
+                continue
+            line = raw_line.strip()
+            if not line.startswith("data:"):
+                continue
+            data = line[len("data:"):].strip()
+            if data == "[DONE]":
+                break
+            try:
+                chunk_dict = json.loads(data)
+            except json.JSONDecodeError:
+                continue
+            chunk = _dict_to_chunk(chunk_dict)
+            yield from _process_chunk(chunk, state)
+
+    yield from _finalize_tool_use_stops(state)
+    cost = driver._calculate_cost(
+        provider, model,
+        state["prompt_tokens"], state["completion_tokens"],
+        cached_tokens=state["cached_prompt_tokens"],
+    )
+    yield MessageStop(stop_reason=state["finish_reason"], usage=_build_meta(state, model, cost))
+
+
+async def astream_raw_http_compat_tool_call(
+    driver: Any,
+    messages: list[dict[str, Any]],
+    tools: list[dict[str, Any]],
+    options: dict[str, Any],
+    *,
+    provider: str,
+    url: str | None = None,
+    headers: dict[str, str] | None = None,
+    default_max_tokens: int = 4096,
+    default_temperature: float = 1.0,
+    timeout: float = 120.0,
+) -> AsyncIterator[Any]:
+    """Async sibling of :func:`stream_raw_http_compat_tool_call` using
+    ``httpx.AsyncClient.stream``."""
+    import httpx
+
+    from ..agents.live_events import MessageStop
+
+    model, payload = _build_raw_http_payload(
+        driver, messages, tools, options,
+        provider=provider,
+        default_max_tokens=default_max_tokens,
+        default_temperature=default_temperature,
+    )
+    resolved_url = url or f"{driver.api_base}/chat/completions"
+    resolved_headers = headers or _bearer_headers(driver.api_key)
+
+    state = _fresh_state()
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        async with client.stream(
+            "POST",
+            resolved_url,
+            headers=resolved_headers,
+            json=payload,
+        ) as resp:
+            resp.raise_for_status()
+            async for raw_line in resp.aiter_lines():
+                if not raw_line:
+                    continue
+                line = raw_line.strip()
+                if not line.startswith("data:"):
+                    continue
+                data = line[len("data:"):].strip()
+                if data == "[DONE]":
+                    break
+                try:
+                    chunk_dict = json.loads(data)
+                except json.JSONDecodeError:
+                    continue
+                chunk = _dict_to_chunk(chunk_dict)
+                for ev in _process_chunk(chunk, state):
+                    yield ev
+
+    for ev in _finalize_tool_use_stops(state):
+        yield ev
+    cost = driver._calculate_cost(
+        provider, model,
+        state["prompt_tokens"], state["completion_tokens"],
+        cached_tokens=state["cached_prompt_tokens"],
+    )
+    yield MessageStop(stop_reason=state["finish_reason"], usage=_build_meta(state, model, cost))
+
+
 __all__ = [
     "AsyncCostFn",
     "CostFn",
     "aiter_openai_compat_live_events",
     "astream_openai_compat_tool_call",
+    "astream_raw_http_compat_tool_call",
     "iter_openai_compat_live_events",
     "stream_openai_compat_tool_call",
+    "stream_raw_http_compat_tool_call",
 ]

@@ -661,3 +661,211 @@ class TestAsyncAgentRunLive:
             events.append(ev)
         text = "".join(e.text for e in events if isinstance(e, TextDelta))
         assert text == "hello"
+
+
+# ---------------------------------------------------------------------------
+# Raw-HTTP SSE helper tests
+# ---------------------------------------------------------------------------
+
+
+class _FakeStreamResponse:
+    """Minimal stand-in for the requests streaming response object."""
+
+    def __init__(self, lines: list[str]):
+        self._lines = lines
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+    def raise_for_status(self):
+        return None
+
+    def iter_lines(self, decode_unicode: bool = True):
+        for line in self._lines:
+            yield line
+
+
+class _FakeRawHttpDriver:
+    """Driver stub satisfying the raw-HTTP helper's contract.
+
+    Exposes ``api_base``, ``api_key``, ``model``, ``_get_model_config``, and
+    ``_calculate_cost`` — no real network or SDK involved.
+    """
+
+    api_base = "https://example.invalid/v1"
+    api_key = "test-key"
+    model = "test-model"
+
+    def _get_model_config(self, provider: str, model: str) -> dict[str, Any]:
+        return {"tokens_param": "max_tokens", "supports_temperature": True}
+
+    def _calculate_cost(
+        self,
+        provider: str,
+        model: str,
+        prompt_tokens: int,
+        completion_tokens: int,
+        cached_tokens: int = 0,
+    ) -> float:
+        return 0.0001 * prompt_tokens + 0.0005 * completion_tokens
+
+
+def _sse(payload: dict[str, Any]) -> str:
+    import json as _json
+
+    return "data: " + _json.dumps(payload)
+
+
+class TestRawHttpHelper:
+    def test_raw_http_stream_yields_interleaved_events(self, monkeypatch):
+        """Helper should parse SSE deltas the same way as the SDK helper:
+        text deltas before tool_calls, JSON fragments accumulated, ToolUseStop
+        emitted with the parsed input, MessageStop with cost at the end."""
+        from prompture.drivers import _openai_compat_stream
+
+        sse_lines = [
+            _sse(
+                {
+                    "choices": [
+                        {"index": 0, "delta": {"content": "Looking up "}, "finish_reason": None}
+                    ]
+                }
+            ),
+            _sse(
+                {
+                    "choices": [
+                        {"index": 0, "delta": {"content": "Tokyo..."}, "finish_reason": None}
+                    ]
+                }
+            ),
+            _sse(
+                {
+                    "choices": [
+                        {
+                            "index": 0,
+                            "delta": {
+                                "tool_calls": [
+                                    {
+                                        "index": 0,
+                                        "id": "call_a",
+                                        "function": {"name": "lookup_population", "arguments": ""},
+                                    }
+                                ]
+                            },
+                            "finish_reason": None,
+                        }
+                    ]
+                }
+            ),
+            _sse(
+                {
+                    "choices": [
+                        {
+                            "index": 0,
+                            "delta": {
+                                "tool_calls": [
+                                    {"index": 0, "function": {"arguments": '{"cit'}}
+                                ]
+                            },
+                            "finish_reason": None,
+                        }
+                    ]
+                }
+            ),
+            _sse(
+                {
+                    "choices": [
+                        {
+                            "index": 0,
+                            "delta": {
+                                "tool_calls": [
+                                    {"index": 0, "function": {"arguments": 'y": "Tokyo"}'}}
+                                ]
+                            },
+                            "finish_reason": "tool_calls",
+                        }
+                    ]
+                }
+            ),
+            _sse(
+                {
+                    "choices": [],
+                    "usage": {
+                        "prompt_tokens": 12,
+                        "completion_tokens": 9,
+                        "prompt_tokens_details": {"cached_tokens": 0},
+                    },
+                }
+            ),
+            "data: [DONE]",
+        ]
+
+        def fake_post(url, headers, json, stream, timeout):
+            return _FakeStreamResponse(sse_lines)
+
+        monkeypatch.setattr("requests.post", fake_post)
+
+        driver = _FakeRawHttpDriver()
+        events = list(
+            _openai_compat_stream.stream_raw_http_compat_tool_call(
+                driver,
+                messages=[{"role": "user", "content": "Tokyo?"}],
+                tools=[{"type": "function", "function": {"name": "lookup_population"}}],
+                options={},
+                provider="grok",
+            )
+        )
+        kinds = [e.event_type for e in events]
+        assert kinds.count("text_delta") == 2
+        assert kinds.count("tool_use_start") == 1
+        assert kinds.count("tool_input_delta") == 2
+        assert kinds.count("tool_use_stop") == 1
+        assert kinds[-1] == "message_stop"
+
+        tool_stop = next(e for e in events if e.event_type == "tool_use_stop")
+        assert tool_stop.id == "call_a"
+        assert tool_stop.name == "lookup_population"
+        assert tool_stop.input == {"city": "Tokyo"}
+
+        message_stop = events[-1]
+        assert message_stop.stop_reason == "tool_calls"
+        assert message_stop.usage["prompt_tokens"] == 12
+        assert message_stop.usage["completion_tokens"] == 9
+        # Cost = 0.0001 * 12 + 0.0005 * 9 = 0.0012 + 0.0045 = 0.0057
+        assert message_stop.usage["cost"] == pytest.approx(0.0057, abs=1e-6)
+
+    def test_raw_http_stream_handles_done_and_blank_lines(self, monkeypatch):
+        from prompture.drivers import _openai_compat_stream
+
+        sse_lines = [
+            "",  # blank
+            "event: ping",  # non-data line
+            _sse({"choices": [{"index": 0, "delta": {"content": "hi"}, "finish_reason": None}]}),
+            "",
+            _sse({"choices": [], "usage": {"prompt_tokens": 1, "completion_tokens": 1}}),
+            "data: [DONE]",
+            # Anything after [DONE] must not be processed.
+            _sse({"choices": [{"index": 0, "delta": {"content": "GHOST"}}]}),
+        ]
+
+        def fake_post(url, headers, json, stream, timeout):
+            return _FakeStreamResponse(sse_lines)
+
+        monkeypatch.setattr("requests.post", fake_post)
+
+        driver = _FakeRawHttpDriver()
+        events = list(
+            _openai_compat_stream.stream_raw_http_compat_tool_call(
+                driver,
+                messages=[],
+                tools=[],
+                options={},
+                provider="grok",
+            )
+        )
+        text = "".join(e.text for e in events if e.event_type == "text_delta")
+        assert text == "hi"
+        assert "GHOST" not in text
