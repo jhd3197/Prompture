@@ -116,7 +116,7 @@ class QdrantVectorStore(VectorStore):
         documents: list[Document],
     ):
         points = []
-        for _id, vec, doc in zip(ids, vectors, documents):
+        for _id, vec, doc in zip(ids, vectors, documents, strict=False):
             payload = dict(doc.metadata)
             payload["_content"] = doc.content
             if self._qmodels is not None:

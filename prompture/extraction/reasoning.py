@@ -29,7 +29,7 @@ from __future__ import annotations
 import logging
 import threading
 from dataclasses import dataclass
-from typing import Any, Protocol, Union, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 logger = logging.getLogger("prompture.extraction.reasoning")
 
@@ -257,7 +257,7 @@ def auto_select_reasoning_strategy(
     return None
 
 
-def _strategy_name(strategy: Union[str, ReasoningStrategyProtocol, None]) -> str | None:
+def _strategy_name(strategy: str | ReasoningStrategyProtocol | None) -> str | None:
     """Return a serialisable name for *strategy*, or ``None``."""
     if strategy is None:
         return None
@@ -268,7 +268,7 @@ def _strategy_name(strategy: Union[str, ReasoningStrategyProtocol, None]) -> str
 
 def apply_reasoning_strategy(
     content_prompt: str,
-    strategy: Union[str, ReasoningStrategyProtocol, None],
+    strategy: str | ReasoningStrategyProtocol | None,
 ) -> str:
     """Resolve and apply a reasoning strategy to *content_prompt*.
 

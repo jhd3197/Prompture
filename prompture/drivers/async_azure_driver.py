@@ -12,12 +12,12 @@ from typing import Any
 
 try:
     from openai import AsyncAzureOpenAI
-except Exception:
+except ImportError:
     AsyncAzureOpenAI = None  # type: ignore[misc, assignment]
 
 try:
     import anthropic
-except Exception:
+except ImportError:
     anthropic = None  # type: ignore[assignment]
 
 from ..infra.cost_mixin import CostMixin, prepare_strict_schema

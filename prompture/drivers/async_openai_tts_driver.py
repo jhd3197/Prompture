@@ -9,7 +9,7 @@ from typing import Any
 
 try:
     from openai import AsyncOpenAI
-except Exception:
+except ImportError:
     AsyncOpenAI = None  # type: ignore[misc, assignment]
 
 from ..infra.cost_mixin import AudioCostMixin

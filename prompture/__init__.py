@@ -9,7 +9,27 @@ try:
 except ImportError:  # tukuy not installed
     TukuyLLMBackend = None  # type: ignore[assignment,misc]
     create_tukuy_backend = None  # type: ignore[assignment]
+from . import eval as eval
 from . import plugins, rag
+from .checkpoints import (
+    Checkpoint,
+    CheckpointManager,
+    CheckpointStore,
+    FileCheckpointStore,
+    InMemoryCheckpointStore,
+    RunStatus,
+    SQLiteCheckpointStore,
+    restore_conversation,
+    snapshot_conversation,
+)
+from .citations import (
+    CITATION_INSTRUCTION,
+    Citation,
+    CitationTracker,
+    CitedAnswer,
+    Source,
+    extract_citations,
+)
 from .cli import *
 from .dataset import (
     ChatTurn,
@@ -22,6 +42,17 @@ from .dataset import (
     to_sharegpt,
 )
 from .drivers import *
+from .eval import (
+    EvalError,
+    FaithfulnessEvaluator,
+    FaithfulnessResult,
+    JudgeResult,
+    LLMJudge,
+    PairwiseJudge,
+    PairwiseResult,
+    SelfConsistencyEvaluator,
+    SelfConsistencyResult,
+)
 from .exceptions import (
     BudgetExceededError,
     ConfigurationError,
@@ -35,6 +66,17 @@ from .groups import *
 from .infra import *
 from .ingestion import *
 from .integrations import *
+from .kg import (
+    Entity,
+    EntityStore,
+    InMemoryEntityStore,
+    KnowledgeGraph,
+    Mention,
+    Relation,
+    SQLiteEntityStore,
+    extract_entities,
+    extract_relations,
+)
 from .media import *
 from .persistence import *
 from .pipeline import *
@@ -56,6 +98,34 @@ from .security import (
     RedactionResult,
     is_prompt_injection,
     redact_pii,
+)
+from .session_memory import (
+    InMemorySessionStore,
+    MemoryFact,
+    MemoryKind,
+    SessionMemory,
+    SessionMemoryStore,
+    SQLiteSessionStore,
+    Summarizer,
+)
+from .swarm import (
+    AllScheduler,
+    CallableScheduler,
+    Environment,
+    Event,
+    EventKind,
+    InMemoryStore,
+    Memory,
+    MemoryStore,
+    PriorityScheduler,
+    RoundRobinScheduler,
+    SampleScheduler,
+    Scheduler,
+    Swarm,
+    SwarmAgent,
+    SwarmCallbacks,
+    SwarmResult,
+    SwarmStep,
 )
 from .tools import (
     PythonSandboxTool,

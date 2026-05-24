@@ -10,7 +10,7 @@ middleware. :class:`DeepAgent` owns the state, exposes it on the result via
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Literal, Union
+from typing import Any, Literal
 
 from .persona import Persona
 from .tools_schema import ToolDefinition
@@ -90,7 +90,7 @@ class SubAgentSpec:
 
     name: str
     description: str
-    system_prompt: Union[str, Persona]
+    system_prompt: str | Persona
     model: str | None = None
     tools: list[ToolDefinition] | None = None
     inherit_tools: bool = True

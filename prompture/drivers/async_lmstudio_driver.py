@@ -87,6 +87,16 @@ class AsyncLMStudioDriver(AsyncDriver):
                 # LM Studio rejects "json_object" type.
                 pass
 
+        # vLLM-style guided_json pass-through + generic extra_body escape hatch.
+        from ._openai_compat import apply_guided_decoding, merge_extra_body
+
+        apply_guided_decoding(
+            payload,
+            json_schema=merged_options.get("json_schema"),
+            guided_decoding=merged_options.get("guided_decoding"),
+        )
+        merge_extra_body(payload, merged_options)
+
         async with httpx.AsyncClient() as client:
             try:
                 r = await client.post(self.endpoint, json=payload, headers=self._headers, timeout=120)

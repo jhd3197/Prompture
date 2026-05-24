@@ -52,6 +52,8 @@ class MoonshotDriver(CostMixin, Driver):
     supports_json_mode = True
     supports_json_schema = True
     supports_tool_use = True
+    supports_streaming_tool_use = True
+
     supports_streaming = True
     supports_vision = True
 
@@ -474,6 +476,21 @@ class MoonshotDriver(CostMixin, Driver):
             result["reasoning_content"] = message["reasoning_content"]
 
         return result
+
+    # ------------------------------------------------------------------
+    # Live streaming with interleaved tool calls
+    # ------------------------------------------------------------------
+
+    def generate_messages_with_tools_stream(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        options: dict[str, Any],
+    ):
+        """Stream one turn as :class:`LiveEvent` via the shared raw-HTTP helper."""
+        from ._openai_compat_stream import stream_raw_http_compat_tool_call
+
+        yield from stream_raw_http_compat_tool_call(self, messages, tools, options, provider="moonshot")
 
     # ------------------------------------------------------------------
     # Streaming

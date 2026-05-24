@@ -9,7 +9,7 @@ from typing import Any
 
 try:
     from openai import OpenAI
-except Exception:
+except ImportError:
     OpenAI = None  # type: ignore[misc, assignment]
 
 from ..infra.cost_mixin import CostMixin, prepare_strict_schema
@@ -129,6 +129,7 @@ class OpenAIDriver(CostMixin, Driver):
     supports_json_schema = True
     supports_tool_use = True
     supports_streaming = True
+    supports_streaming_tool_use = True
     supports_vision = True
 
     # All pricing and model config now resolved from JSON rate files (KB) and
@@ -138,10 +139,18 @@ class OpenAIDriver(CostMixin, Driver):
     def __init__(self, api_key: str | None = None, model: str = "gpt-4o-mini"):
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
         self.model = model
-        if OpenAI is not None:
-            self.client = OpenAI(api_key=self.api_key)
-        else:
+        if OpenAI is None:
             self.client = None
+            return
+        if not self.api_key:
+            from ..exceptions import ConfigurationError
+
+            raise ConfigurationError(
+                "OPENAI_API_KEY is not set. Provide api_key=... or set the "
+                "OPENAI_API_KEY environment variable. "
+                "See https://github.com/jhd3197/prompture#configuration"
+            )
+        self.client = OpenAI(api_key=self.api_key)
 
     @classmethod
     def list_models(cls, *, api_key: str | None = None, timeout: int = 10, **kw: object) -> list[str] | None:
@@ -169,7 +178,11 @@ class OpenAIDriver(CostMixin, Driver):
 
     def _do_generate(self, messages: list[dict[str, Any]], options: dict[str, Any]) -> dict[str, Any]:
         if self.client is None:
-            raise RuntimeError("openai package (>=1.0.0) is not installed")
+            from ..exceptions import ConfigurationError
+
+            raise ConfigurationError(
+                'openai package (>=1.0.0) is not installed. Install it with: pip install "prompture[openai]"'
+            )
 
         model = options.get("model", self.model)
 
@@ -225,7 +238,11 @@ class OpenAIDriver(CostMixin, Driver):
     ) -> dict[str, Any]:
         """Generate a response that may include tool calls."""
         if self.client is None:
-            raise RuntimeError("openai package (>=1.0.0) is not installed")
+            from ..exceptions import ConfigurationError
+
+            raise ConfigurationError(
+                'openai package (>=1.0.0) is not installed. Install it with: pip install "prompture[openai]"'
+            )
 
         model = options.get("model", self.model)
         model_config = self._get_model_config("openai", model)
@@ -273,7 +290,11 @@ class OpenAIDriver(CostMixin, Driver):
     ) -> Iterator[dict[str, Any]]:
         """Yield response chunks via OpenAI streaming API."""
         if self.client is None:
-            raise RuntimeError("openai package (>=1.0.0) is not installed")
+            from ..exceptions import ConfigurationError
+
+            raise ConfigurationError(
+                'openai package (>=1.0.0) is not installed. Install it with: pip install "prompture[openai]"'
+            )
 
         model = options.get("model", self.model)
         model_config = self._get_model_config("openai", model)
@@ -318,3 +339,27 @@ class OpenAIDriver(CostMixin, Driver):
         yield _build_openai_stream_done(
             model, full_text, prompt_tokens, completion_tokens, total_cost, cached_prompt_tokens
         )
+
+    # ------------------------------------------------------------------
+    # Live streaming with interleaved tool calls
+    # ------------------------------------------------------------------
+
+    def generate_messages_with_tools_stream(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        options: dict[str, Any],
+    ) -> Iterator[Any]:
+        """Stream one OpenAI turn as :class:`LiveEvent` via the shared
+        OpenAI-compat helper. See
+        :mod:`prompture.drivers._openai_compat_stream` for the protocol."""
+        if self.client is None:
+            from ..exceptions import ConfigurationError
+
+            raise ConfigurationError(
+                'openai package (>=1.0.0) is not installed. Install it with: pip install "prompture[openai]"'
+            )
+
+        from ._openai_compat_stream import stream_openai_compat_tool_call
+
+        yield from stream_openai_compat_tool_call(self, messages, tools, options, provider="openai")

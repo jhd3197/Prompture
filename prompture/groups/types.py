@@ -14,6 +14,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+from .._internal.json_encoder import PromptureJSONEncoder
+
 
 class ErrorPolicy(enum.Enum):
     """How a group handles agent failures."""
@@ -110,7 +112,7 @@ class GroupResult:
     def save(self, path: str) -> None:
         """Write the exported dict to a JSON file."""
         with open(path, "w", encoding="utf-8") as f:
-            json.dump(self.export(), f, indent=2, default=str)
+            json.dump(self.export(), f, indent=2, cls=PromptureJSONEncoder)
 
 
 @dataclass

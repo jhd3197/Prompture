@@ -20,13 +20,13 @@ from typing import Any
 try:
     from google import genai
     from google.genai import types
-except Exception:
+except ImportError:
     genai = None  # type: ignore[assignment]
     types = None  # type: ignore[assignment]
 
 try:
     from anthropic import AnthropicVertex
-except Exception:
+except ImportError:
     AnthropicVertex = None  # type: ignore[assignment]
 
 from ..infra.cost_mixin import CostMixin

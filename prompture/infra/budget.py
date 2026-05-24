@@ -8,8 +8,9 @@ from __future__ import annotations
 
 import enum
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable, Union
+from typing import Any
 
 from ..exceptions import BudgetExceededError
 
@@ -161,7 +162,7 @@ class CostEstimate:
     token_counter: str = "heuristic"
 
 
-def _tokens_for(text_or_count: Union[str, int]) -> tuple[int, str]:
+def _tokens_for(text_or_count: str | int) -> tuple[int, str]:
     """Resolve a ``str | int`` to ``(token_count, counter_name)``."""
     if isinstance(text_or_count, int):
         return max(0, text_or_count), "exact"
@@ -179,8 +180,8 @@ def _tokens_for(text_or_count: Union[str, int]) -> tuple[int, str]:
 
 def estimate_call_cost(
     model: str,
-    prompt: Union[str, int],
-    completion: Union[str, int, None] = None,
+    prompt: str | int,
+    completion: str | int | None = None,
     *,
     expected_completion_tokens: int = 500,
 ) -> CostEstimate:

@@ -7,7 +7,7 @@ name = "prompture"
 description = "Ask LLMs to return structured JSON and run cross-model tests. API-first."
 readme = "README.md"
 license = "MIT"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 authors = [{ name = "Juan Denis", email = "juan@vene.co" }]
 classifiers = [
     "Programming Language :: Python :: 3",
@@ -111,7 +111,7 @@ version_file = "prompture/_version.py"
 fallback_version = "1.0.0"
 
 [tool.ruff]
-target-version = "py39"
+target-version = "py310"
 line-length = 120
 exclude = ["prompture/_version.py"]
 

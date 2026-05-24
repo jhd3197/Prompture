@@ -26,6 +26,8 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
+from .._internal.json_encoder import PromptureJSONEncoder
+
 
 class JSONFormatter(logging.Formatter):
     """Emit each log record as a single JSON line.
@@ -45,7 +47,7 @@ class JSONFormatter(logging.Formatter):
         data = getattr(record, "prompture_data", None)
         if data is not None:
             payload["data"] = data
-        return json.dumps(payload, default=str, ensure_ascii=False)
+        return json.dumps(payload, cls=PromptureJSONEncoder, ensure_ascii=False)
 
 
 def configure_logging(

@@ -185,6 +185,8 @@ class OpenAICompatibleDriver(CostMixin, Driver):
         if supports_temperature and "temperature" in opts:
             data["temperature"] = opts["temperature"]
 
+        from ._openai_compat import apply_guided_decoding, merge_extra_body
+
         if options.get("json_mode"):
             json_schema = options.get("json_schema")
             if json_schema:
@@ -199,6 +201,16 @@ class OpenAICompatibleDriver(CostMixin, Driver):
                 }
             else:
                 data["response_format"] = {"type": "json_object"}
+
+        # vLLM-style FSM-constrained decoding pass-through (8A-lite).
+        # Safe on every OpenAI-compatible server — unrecognised keys are ignored.
+        apply_guided_decoding(
+            data,
+            json_schema=options.get("json_schema"),
+            guided_decoding=options.get("guided_decoding"),
+        )
+        # Generic vendor escape hatch (mirrors openai SDK's extra_body).
+        merge_extra_body(data, options)
 
         try:
             response = requests.post(

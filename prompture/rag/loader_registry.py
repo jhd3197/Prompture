@@ -9,8 +9,8 @@ explicit name (``get_loader("pdf")``) or directly from a file path
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable, Union
 
 from .documents import AsyncDocumentLoader, DocumentLoader
 
@@ -97,14 +97,14 @@ def get_async_loader(name: str) -> AsyncDocumentLoader:
     return ASYNC_LOADER_REGISTRY[key]()
 
 
-def _extension_of(path: Union[str, Path]) -> str:
+def _extension_of(path: str | Path) -> str:
     suffix = Path(str(path)).suffix.lower()
     if not suffix:
         raise KeyError(f"Path '{path}' has no file extension; cannot auto-detect a loader.")
     return suffix
 
 
-def get_loader_for_path(path: Union[str, Path]) -> DocumentLoader:
+def get_loader_for_path(path: str | Path) -> DocumentLoader:
     """Return a sync loader appropriate for ``path``'s file extension."""
     ext = _extension_of(path)
     if ext not in _EXTENSION_INDEX:
@@ -113,7 +113,7 @@ def get_loader_for_path(path: Union[str, Path]) -> DocumentLoader:
     return get_loader(_EXTENSION_INDEX[ext])
 
 
-def get_async_loader_for_path(path: Union[str, Path]) -> AsyncDocumentLoader:
+def get_async_loader_for_path(path: str | Path) -> AsyncDocumentLoader:
     """Return an async loader appropriate for ``path``'s file extension."""
     ext = _extension_of(path)
     if ext not in _ASYNC_EXTENSION_INDEX:

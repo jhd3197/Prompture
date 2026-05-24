@@ -21,6 +21,8 @@ class OpenRouterDriver(CostMixin, Driver):
     supports_json_mode = True
     supports_json_schema = True
     supports_tool_use = True
+    supports_streaming_tool_use = True
+
     supports_streaming = True
     supports_vision = True
 
@@ -127,6 +129,19 @@ class OpenRouterDriver(CostMixin, Driver):
                 }
             else:
                 data["response_format"] = {"type": "json_object"}
+
+        # vLLM-style guided_json pass-through + generic extra_body escape
+        # hatch (8A-lite). OpenRouter passes unrecognised fields to upstream
+        # providers, so vLLM-backed models on OpenRouter get FSM-constrained
+        # decoding when guided_decoding=True is set.
+        from ._openai_compat import apply_guided_decoding, merge_extra_body
+
+        apply_guided_decoding(
+            data,
+            json_schema=options.get("json_schema"),
+            guided_decoding=options.get("guided_decoding"),
+        )
+        merge_extra_body(data, options)
 
         try:
             response = requests.post(
@@ -268,6 +283,21 @@ class OpenRouterDriver(CostMixin, Driver):
         if choice["message"].get("reasoning_content") is not None:
             result["reasoning_content"] = choice["message"]["reasoning_content"]
         return result
+
+    # ------------------------------------------------------------------
+    # Live streaming with interleaved tool calls
+    # ------------------------------------------------------------------
+
+    def generate_messages_with_tools_stream(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        options: dict[str, Any],
+    ):
+        """Stream one turn as :class:`LiveEvent` via the shared raw-HTTP helper."""
+        from ._openai_compat_stream import stream_raw_http_compat_tool_call
+
+        yield from stream_raw_http_compat_tool_call(self, messages, tools, options, provider="openrouter")
 
     # ------------------------------------------------------------------
     # Streaming

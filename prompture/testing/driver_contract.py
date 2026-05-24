@@ -18,6 +18,7 @@ from ..drivers.base import Driver
 # by overriding a separate method, so they are excluded from this contract.
 FLAG_TO_METHOD: dict[str, str] = {
     "supports_streaming": "generate_messages_stream",
+    "supports_streaming_tool_use": "generate_messages_with_tools_stream",
     "supports_tool_use": "generate_messages_with_tools",
     "supports_messages": "generate_messages",
 }

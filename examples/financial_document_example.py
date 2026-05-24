@@ -5,7 +5,6 @@ This example shows how to use Prompture for processing financial statements and 
 It demonstrates extraction of financial metrics such as revenue, profit margins, and fiscal data.
 """
 
-from typing import Optional
 
 from pydantic import BaseModel
 
@@ -59,10 +58,10 @@ register_field(
 
 class FinancialSummary(BaseModel):
     company: str = field_from_registry("company")
-    revenue: Optional[float] = field_from_registry("revenue")
-    profit_margin: Optional[float] = field_from_registry("profit_margin")
-    fiscal_year: Optional[int] = field_from_registry("year")
-    currency: Optional[str] = field_from_registry("currency")
+    revenue: float | None = field_from_registry("revenue")
+    profit_margin: float | None = field_from_registry("profit_margin")
+    fiscal_year: int | None = field_from_registry("year")
+    currency: str | None = field_from_registry("currency")
 
 
 # Sample financial report

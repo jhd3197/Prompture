@@ -3,7 +3,7 @@ import logging
 import os
 import uuid
 from collections.abc import Iterator
-from typing import Any, Optional
+from typing import Any
 
 import requests
 
@@ -85,7 +85,7 @@ class OllamaDriver(Driver):
 
         return _prepare_ollama_vision_messages(messages)
 
-    def generate(self, prompt: str, options: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+    def generate(self, prompt: str, options: dict[str, Any] | None = None) -> dict[str, Any]:
         # Delegate to /api/chat — the /api/generate endpoint produces
         # poor results with instruction-tuned models and does not support
         # JSON schema objects in the ``format`` field.
@@ -226,9 +226,13 @@ class OllamaDriver(Driver):
             "stream": True,
         }
 
-        if merged_options.get("json_mode"):
-            json_schema = merged_options.get("json_schema")
-            payload["format"] = json_schema if json_schema else "json"
+        # Native JSON mode / structured output — see generate_messages() for
+        # the matching logic. A schema implies JSON mode.
+        json_schema = merged_options.get("json_schema")
+        if json_schema is not None:
+            payload["format"] = json_schema
+        elif merged_options.get("json_mode"):
+            payload["format"] = "json"
         if "temperature" in merged_options:
             payload["temperature"] = merged_options["temperature"]
         if "top_p" in merged_options:
@@ -294,10 +298,15 @@ class OllamaDriver(Driver):
             "stream": False,
         }
 
-        # Native JSON mode / structured output support
-        if merged_options.get("json_mode"):
-            json_schema = merged_options.get("json_schema")
-            payload["format"] = json_schema if json_schema else "json"
+        # Native JSON mode / structured output (Ollama >=0.5 accepts a JSON
+        # schema dict directly in `format`; older versions accept "json" for
+        # loose grammar). Having a schema implies JSON mode, so we don't
+        # require an explicit json_mode=True flag in that case.
+        json_schema = merged_options.get("json_schema")
+        if json_schema is not None:
+            payload["format"] = json_schema
+        elif merged_options.get("json_mode"):
+            payload["format"] = "json"
 
         if "temperature" in merged_options:
             payload["temperature"] = merged_options["temperature"]

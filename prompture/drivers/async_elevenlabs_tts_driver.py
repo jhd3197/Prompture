@@ -9,7 +9,7 @@ from typing import Any
 
 try:
     import httpx
-except Exception:
+except ImportError:
     httpx = None  # type: ignore[assignment]
 
 from ..infra.cost_mixin import AudioCostMixin

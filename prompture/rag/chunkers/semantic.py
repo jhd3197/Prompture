@@ -187,7 +187,7 @@ class SemanticChunker(TextChunker):
 def _cosine_distance(a: list[float], b: list[float]) -> float:
     if len(a) != len(b):
         raise ValueError("Embedding vectors must have the same dimensionality")
-    dot = sum(x * y for x, y in zip(a, b))
+    dot = sum(x * y for x, y in zip(a, b, strict=False))
     na = math.sqrt(sum(x * x for x in a))
     nb = math.sqrt(sum(y * y for y in b))
     if na == 0 or nb == 0:

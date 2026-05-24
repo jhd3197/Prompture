@@ -6,7 +6,6 @@ It demonstrates registration of medical-specific fields and structured extractio
 including conditions, medications, and allergies.
 """
 
-from typing import Optional
 
 from pydantic import BaseModel
 
@@ -61,10 +60,10 @@ register_field(
 class PatientRecord(BaseModel):
     name: str = field_from_registry("name")
     age: int = field_from_registry("age")
-    date_of_birth: Optional[str] = field_from_registry("date_of_birth")
-    medical_conditions: Optional[list[str]] = field_from_registry("medical_conditions")
-    medications: Optional[list[str]] = field_from_registry("medications")
-    allergies: Optional[list[str]] = field_from_registry("allergies")
+    date_of_birth: str | None = field_from_registry("date_of_birth")
+    medical_conditions: list[str] | None = field_from_registry("medical_conditions")
+    medications: list[str] | None = field_from_registry("medications")
+    allergies: list[str] | None = field_from_registry("allergies")
 
 
 # Sample medical record

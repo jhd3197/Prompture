@@ -91,6 +91,35 @@ async def _apply_reranker_async(
     return [results[rr.index] for rr in rerank_results]
 
 
+def _resolve_reranker(reranker: Any, *, prefer_async: bool = False) -> Any:
+    """Coerce a ``provider/model`` string into an instantiated rerank driver.
+
+    Already-instantiated drivers and ``None`` are returned unchanged so
+    callers can mix-and-match. When ``prefer_async`` is true (the async
+    pipeline), tries the async registry first and falls back to the sync
+    registry — :func:`_apply_reranker_async` handles either uniformly.
+    """
+    if reranker is None or not isinstance(reranker, str):
+        return reranker
+    if "/" not in reranker:
+        raise ValueError(
+            f"Reranker string {reranker!r} must be in 'provider/model' form "
+            "(e.g. 'cohere/rerank-v3.5'). Pass a pre-instantiated driver instead "
+            "if you need custom construction."
+        )
+    if prefer_async:
+        try:
+            from ..drivers.rerank_registry import get_async_rerank_driver_for_model
+
+            return get_async_rerank_driver_for_model(reranker)
+        except Exception:
+            # Async driver may not exist for this provider; fall through to sync.
+            pass
+    from ..drivers.rerank_registry import get_rerank_driver_for_model
+
+    return get_rerank_driver_for_model(reranker)
+
+
 # ── Sync pipeline ────────────────────────────────────────────────────────────
 
 
@@ -113,9 +142,23 @@ class RAGPipeline:
         top_n_after_rerank: int = 4,
         system_prompt: str | None = None,
     ) -> None:
+        """Construct a RAG pipeline.
+
+        Args:
+            retriever: The retriever providing dense / hybrid / sparse search.
+            llm: An LLM driver for the generation step.
+            reranker: Optional reranker. Accepts either a pre-instantiated
+                rerank driver or a ``"provider/model"`` string such as
+                ``"cohere/rerank-v3.5"`` — the string is resolved via
+                :func:`prompture.drivers.rerank_registry.get_rerank_driver_for_model`.
+            prompt_template: Template containing ``{context}`` and ``{question}``.
+            top_n_after_rerank: How many results to keep after reranking.
+                Ignored when ``reranker`` is ``None``.
+            system_prompt: Optional system prompt for the LLM call.
+        """
         self.retriever = retriever
         self.llm = llm
-        self.reranker = reranker
+        self.reranker = _resolve_reranker(reranker, prefer_async=False)
         self.prompt_template = prompt_template
         self.top_n_after_rerank = top_n_after_rerank
         self.system_prompt = system_prompt
@@ -288,9 +331,22 @@ class AsyncRAGPipeline:
         top_n_after_rerank: int = 4,
         system_prompt: str | None = None,
     ) -> None:
+        """Construct an async RAG pipeline.
+
+        Args:
+            retriever: Sync or async retriever; the pipeline detects and adapts.
+            llm: A sync or async LLM driver.
+            reranker: Optional reranker. Accepts a pre-instantiated rerank
+                driver (sync or async) or a ``"provider/model"`` string. When
+                given a string, the async rerank driver is preferred and a
+                sync one is used as a fallback.
+            prompt_template: Template containing ``{context}`` and ``{question}``.
+            top_n_after_rerank: How many results to keep after reranking.
+            system_prompt: Optional system prompt for the LLM call.
+        """
         self.retriever = retriever
         self.llm = llm
-        self.reranker = reranker
+        self.reranker = _resolve_reranker(reranker, prefer_async=True)
         self.prompt_template = prompt_template
         self.top_n_after_rerank = top_n_after_rerank
         self.system_prompt = system_prompt

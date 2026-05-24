@@ -6,7 +6,6 @@ and topic categories using enum fields. Enum fields ensure that LLM outputs
 stay within predefined valid options, improving reliability and consistency.
 """
 
-from typing import Optional
 
 from pydantic import BaseModel
 
@@ -16,7 +15,7 @@ from prompture import extract_with_model, field_from_registry, get_field_definit
 # Define the Pydantic model for text classification using enum fields
 class TextClassification(BaseModel):
     tone: str = field_from_registry("tone")  # e.g. ["formal", "informal", "optimistic", "pessimistic"]
-    topic: Optional[str] = field_from_registry("topic")  # General subject/topic of the text
+    topic: str | None = field_from_registry("topic")  # General subject/topic of the text
 
 
 # Example texts to classify

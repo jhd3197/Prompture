@@ -16,6 +16,8 @@ from collections import OrderedDict
 from pathlib import Path
 from typing import Any
 
+from .._internal.json_encoder import PromptureJSONEncoder
+
 # ---------------------------------------------------------------------------
 # Cache key generation
 # ---------------------------------------------------------------------------
@@ -66,7 +68,7 @@ def make_cache_key(
     if system_prompt is not None:
         parts["system_prompt"] = system_prompt
 
-    blob = json.dumps(parts, sort_keys=True, default=str)
+    blob = json.dumps(parts, sort_keys=True, cls=PromptureJSONEncoder)
     return hashlib.sha256(blob.encode()).hexdigest()
 
 
@@ -236,7 +238,7 @@ class SQLiteCacheBackend(CacheBackend):
                 conn.close()
 
     def set(self, key: str, value: Any, ttl: int | None = None) -> None:
-        value_json = json.dumps(value, default=str)
+        value_json = json.dumps(value, cls=PromptureJSONEncoder)
         now = time.time()
         with self._lock:
             conn = self._connect()
@@ -320,7 +322,7 @@ class RedisCacheBackend(CacheBackend):
         return json.loads(raw)
 
     def set(self, key: str, value: Any, ttl: int | None = None) -> None:
-        value_json = json.dumps(value, default=str)
+        value_json = json.dumps(value, cls=PromptureJSONEncoder)
         if ttl:
             self._client.setex(self._prefixed(key), ttl, value_json)
         else:

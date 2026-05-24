@@ -5,7 +5,6 @@ This module tests the enhanced stepwise extraction with field definitions
 support, default value handling, and graceful failure management.
 """
 
-from typing import Optional
 from unittest.mock import patch
 
 import pytest
@@ -19,8 +18,8 @@ from prompture.extraction.fields import FIELD_DEFINITIONS
 class PersonModel(BaseModel):
     name: str = Field(description="Full name of the person")
     age: int = Field(description="Age in years")
-    email: Optional[str] = Field(None, description="Email address")
-    occupation: Optional[str] = Field(None, description="Job title")
+    email: str | None = Field(None, description="Email address")
+    occupation: str | None = Field(None, description="Job title")
 
 
 class SimpleModel(BaseModel):
@@ -31,10 +30,10 @@ class SimpleModel(BaseModel):
 class ComplexModel(BaseModel):
     name: str = Field(description="Person's name")
     age: int = Field(description="Person's age")
-    email: Optional[str] = Field(None, description="Email address")
-    phone: Optional[str] = Field(None, description="Phone number")
-    occupation: Optional[str] = Field(None, description="Job title")
-    experience_years: Optional[int] = Field(None, description="Years of experience")
+    email: str | None = Field(None, description="Email address")
+    phone: str | None = Field(None, description="Phone number")
+    occupation: str | None = Field(None, description="Job title")
+    experience_years: int | None = Field(None, description="Years of experience")
 
 
 class TestStepwiseExtractionBasic:

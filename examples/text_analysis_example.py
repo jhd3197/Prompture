@@ -6,7 +6,6 @@ sentiment using enum fields. It shows how enum fields restrict LLM output to spe
 predefined values (positive, negative, neutral) for sentiment analysis.
 """
 
-from typing import Optional
 
 from pydantic import BaseModel
 
@@ -16,7 +15,7 @@ from prompture import extract_with_model, field_from_registry, get_field_definit
 # Define the Pydantic model for text analysis using the sentiment enum field
 class TextAnalysis(BaseModel):
     sentiment: str = field_from_registry("sentiment")
-    topic: Optional[str] = field_from_registry("topic")
+    topic: str | None = field_from_registry("topic")
 
 
 # Sample texts to analyze

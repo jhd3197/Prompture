@@ -29,6 +29,18 @@ person = extract_with_model(Person, "Maria is 32, a developer in NYC.", model_na
 print(person.name)  # Maria
 ```
 
+> **First time?** Pick a provider and install its extra. The core package above
+> is just the orchestration layer — provider SDKs are opt-in.
+>
+> | Use `provider/...` | Install | Auth env var |
+> |---|---|---|
+> | `openai/gpt-4`, `openai/gpt-4o-mini`, … | `pip install "prompture[openai]"` | `OPENAI_API_KEY` |
+> | `claude/claude-sonnet-4-6`, … | `pip install "prompture[anthropic]"` | `CLAUDE_API_KEY` |
+> | `google/gemini-1.5-pro`, … | `pip install "prompture[google]"` | `GOOGLE_API_KEY` |
+> | `groq/llama-3.1-8b-instant`, … | `pip install "prompture[groq]"` | `GROQ_API_KEY` |
+> | `ollama/llama3.1:8b`, … (local) | no extra needed | — (set `OLLAMA_HOST` if non-default) |
+> | everything in one go | `pip install "prompture[all]"` | provider-specific |
+
 ## Key Features
 
 **Structured extraction**
@@ -848,6 +860,21 @@ print(result["usage"])        # token counts and cost
 
 Prompture picks how to obtain structured JSON based on each model's capabilities. The cascade is `provider_native` (built-in JSON mode / schema enforcement) → `tool_call` (encode the schema as a function definition and read it back from the tool call) → `prompted_repair` (prompt for JSON, repair malformed output via AI cleanup). Pass `strategy="auto"` (default) to let Prompture select per model, or pin a specific strategy via the `StructuredOutputStrategy` enum or its string value. The strategy used is recorded in the response so you can see which path each call took.
 
+### Constrained Decoding (vLLM / LMStudio / OpenRouter)
+
+For any OpenAI-compatible driver — `OpenAICompatibleDriver`, `OpenRouterDriver`, `LMStudioDriver` (sync + async) — set `options={"guided_decoding": True}` to also ship vLLM-style `guided_json` fields alongside the standard `response_format`. That unlocks logit-level FSM-constrained sampling (100% schema validity at sample time) on backends that support it. Pin a specific backend with `"outlines"`, `"xgrammar"`, or `"lm-format-enforcer"`:
+
+```python
+result = extract_with_model(
+    Person,
+    "Maria is 32, a developer in NYC.",
+    model_name="openai_compatible/local-vllm",
+    options={"guided_decoding": "xgrammar"},   # fast lattice FSM
+)
+```
+
+Unknown servers ignore the extra fields, so it's safe to leave on. An `options={"extra_body": {...}}` escape hatch mirrors the OpenAI SDK so you can also pass `min_p`, `repetition_penalty`, OpenRouter provider preferences, etc. See `examples/constrained_decoding_example.py`.
+
 ### Multi-Model Fallback
 
 Try a list of models in priority order, with full per-attempt accounting — every model tried (success, failure, or skipped) is recorded with its cost, tokens, duration, capabilities, and strategy. The first success wins; if all fail, an optional `fallback` Pydantic instance is returned instead of raising.
@@ -964,8 +991,8 @@ from prompture import Conversation
 
 conv = Conversation(model_name="openai/gpt-4")
 conv.add_message("system", "You are a helpful assistant.")
-response = conv.send("What is the capital of France?")
-follow_up = conv.send("What about Germany?")  # retains context
+response = conv.ask("What is the capital of France?")
+follow_up = conv.ask("What about Germany?")  # retains context
 ```
 
 ### Tool Use
@@ -1273,6 +1300,37 @@ if doc.found:
 ```
 
 Both helpers return plain dataclasses with no I/O of their own.  See `examples/assistant_example.py` for the assistant + review-loop + extractor flow end-to-end.
+
+### Prompt Caching (Claude)
+
+Anthropic prompt caching cuts input-token cost on cached prefixes to ~10% of
+the normal rate. Prompture turns it on by default for `ClaudeDriver` and
+`AsyncClaudeDriver` whenever the system prompt or tools bundle is large
+enough to benefit (≥4000 chars, roughly 1024 tokens — Anthropic's minimum
+cacheable block).
+
+```python
+from prompture import Conversation
+
+# Caching is automatic. The first call writes the cache (~1.25x cost on the
+# cached portion); subsequent calls within 5 minutes hit it (~0.1x cost).
+conv = Conversation(model_name="claude/claude-sonnet-4-6", system_prompt=LONG_SYSTEM_PROMPT)
+conv.ask("First question")   # cache_creation_input_tokens > 0
+conv.ask("Second question")  # cache_read_input_tokens > 0
+```
+
+To inspect cache activity, read `cached_prompt_tokens` and
+`cache_creation_tokens` from the response meta. To disable caching for a
+specific call pass `options={"cache_prompt": False}`.
+
+Tips:
+- Put stable content (persona, tools description, JSON schema) at the
+  **start** of the system prompt; put per-call variables (user query,
+  retrieved RAG context) in the message stream so they don't bust the cache.
+- Avoid `{{iteration}}` or other per-turn variables in Persona templates —
+  they rotate the cache key every turn.
+- Block size below ~1024 tokens is silently dropped by Anthropic; below
+  the threshold Prompture skips the `cache_control` marker to avoid noise.
 
 ### Cost Pre-flight
 
@@ -1625,6 +1683,13 @@ see the final assistant message.  Client-supplied `tools[]` in the
 request body are forwarded to the driver as schemas; if the model
 returns `tool_calls`, they appear in the response shape so the
 client can execute locally.
+
+> **Single-worker constraint:** the server keeps conversations and
+> rate-limit buckets in **per-process memory**. Run with
+> `uvicorn --workers 1` (the default) — multi-worker deployments will
+> partition state across processes, so a `conversation_id` created on
+> one worker can return 404 on another. A shared-state backend (Redis
+> / Postgres) is on the roadmap.
 
 Selected flags:
 

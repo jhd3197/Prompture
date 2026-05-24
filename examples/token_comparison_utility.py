@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from typing import Any, Union
+from typing import Any
 
 # Add project root to path
 EXAMPLES_DIR = Path(__file__).resolve().parent
@@ -35,7 +35,7 @@ def estimate_token_count(text: str, chars_per_token: int = 4) -> int:
 
 
 def compare_formats(
-    data: Union[list[dict[str, Any]], dict[str, Any]], data_key: str | None = None, chars_per_token: int = 4
+    data: list[dict[str, Any]] | dict[str, Any], data_key: str | None = None, chars_per_token: int = 4
 ) -> dict[str, Any]:
     """Compare JSON vs TOON format for token efficiency.
 

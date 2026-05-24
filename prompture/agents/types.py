@@ -10,7 +10,9 @@ import json
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Generic, TypeVar, Union
+from typing import Any, Generic, TypeVar
+
+from .._internal.json_encoder import PromptureJSONEncoder
 
 DepsType = TypeVar("DepsType")
 
@@ -130,18 +132,18 @@ class AgentCallbacks:
             without processing the full :class:`AgentResult`.
     """
 
-    on_step: Union[Callable[[AgentStep], None], Callable[[AgentStep], Awaitable[None]], None] = None
-    on_tool_start: Union[
-        Callable[[str, dict[str, Any]], None], Callable[[str, dict[str, Any]], Awaitable[None]], None
-    ] = None
-    on_tool_end: Union[Callable[[str, Any], None], Callable[[str, Any], Awaitable[None]], None] = None
-    on_iteration: Union[Callable[[int], None], Callable[[int], Awaitable[None]], None] = None
-    on_output: Union[Callable[[AgentResult], None], Callable[[AgentResult], Awaitable[None]], None] = None
-    on_thinking: Union[Callable[[str], None], Callable[[str], Awaitable[None]], None] = None
-    on_approval_needed: Union[
-        Callable[[str, str, dict[str, Any]], bool], Callable[[str, str, dict[str, Any]], Awaitable[bool]], None
-    ] = None
-    on_message: Union[Callable[[str], None], Callable[[str], Awaitable[None]], None] = None
+    on_step: Callable[[AgentStep], None] | Callable[[AgentStep], Awaitable[None]] | None = None
+    on_tool_start: Callable[[str, dict[str, Any]], None] | Callable[[str, dict[str, Any]], Awaitable[None]] | None = (
+        None
+    )
+    on_tool_end: Callable[[str, Any], None] | Callable[[str, Any], Awaitable[None]] | None = None
+    on_iteration: Callable[[int], None] | Callable[[int], Awaitable[None]] | None = None
+    on_output: Callable[[AgentResult], None] | Callable[[AgentResult], Awaitable[None]] | None = None
+    on_thinking: Callable[[str], None] | Callable[[str], Awaitable[None]] | None = None
+    on_approval_needed: (
+        Callable[[str, str, dict[str, Any]], bool] | Callable[[str, str, dict[str, Any]], Awaitable[bool]] | None
+    ) = None
+    on_message: Callable[[str], None] | Callable[[str], Awaitable[None]] | None = None
 
 
 @dataclass
@@ -246,7 +248,7 @@ class AgentResult:
             with open("agent_history.json", "w") as f:
                 f.write(json_str)
         """
-        return json.dumps(self.to_dict(include_messages=include_messages), indent=2, default=str)
+        return json.dumps(self.to_dict(include_messages=include_messages), indent=2, cls=PromptureJSONEncoder)
 
 
 class StreamEventType(str, enum.Enum):

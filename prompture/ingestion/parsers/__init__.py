@@ -7,7 +7,7 @@ Follows the same lazy-factory pattern used by
 from __future__ import annotations
 
 import logging
-from typing import Callable
+from collections.abc import Callable
 
 from .base import BaseParser
 

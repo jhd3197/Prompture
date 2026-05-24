@@ -62,7 +62,7 @@ class PineconeVectorStore(VectorStore):
         documents: list[Document],
     ) -> list[dict[str, Any]]:
         items: list[dict[str, Any]] = []
-        for _id, vec, doc in zip(ids, vectors, documents):
+        for _id, vec, doc in zip(ids, vectors, documents, strict=False):
             md = dict(doc.metadata)
             md.setdefault("_content", doc.content)
             items.append({"id": _id, "values": list(vec), "metadata": md})

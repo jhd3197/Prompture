@@ -12,7 +12,7 @@ import requests
 
 try:
     import anthropic
-except Exception:
+except ImportError:
     anthropic = None  # type: ignore[assignment]
 
 from ..infra.cost_mixin import CostMixin
@@ -175,6 +175,86 @@ def _build_anthropic_json_mode_tool_def(json_schema: dict[str, Any]) -> dict[str
     }
 
 
+# ----------------------------------------------------------------------
+# Prompt caching (Anthropic "ephemeral" cache_control blocks)
+#
+# Anthropic prompt caching delivers ~80% input-cost savings for stable
+# system prompts and tool definitions: cache_creation runs at 1.25x the
+# normal input rate, but cache_read runs at 0.1x. The cache lives for
+# ~5 minutes. Setting ``cache_control: {"type": "ephemeral"}`` on a
+# block tells the API to cache everything up to and including that
+# block.
+#
+# Minimum cacheable block size (Anthropic):
+#   * 1024 tokens for Sonnet / Opus
+#   * 2048 tokens for Haiku
+# Blocks below the minimum are silently ignored — no error, just no
+# cache hit. To avoid pointless cache_control churn we only mark a
+# block when it's "substantial enough to be worth trying":
+# CACHE_PROMPT_MIN_CHARS ≈ 1024 tokens × 4 chars/token.
+# ----------------------------------------------------------------------
+
+CACHE_PROMPT_MIN_CHARS = 4000
+
+
+def _apply_cache_control_to_system(
+    system_text: str | None,
+    *,
+    cache_prompt: bool,
+    min_chars: int = CACHE_PROMPT_MIN_CHARS,
+) -> str | list[dict[str, Any]] | None:
+    """Wrap the system prompt as a cacheable text block when worthwhile.
+
+    Returns the original string unchanged for short prompts (caching
+    would be silently dropped by the API). For longer prompts, returns
+    a single-element list ``[{"type": "text", "text": ..., "cache_control": ...}]``
+    that the Anthropic Messages API accepts in place of a plain string.
+
+    Returns ``None`` for an empty / missing system prompt so callers
+    can simply omit the ``system=`` kwarg.
+    """
+    if not system_text:
+        return None
+    if not cache_prompt or len(system_text) < min_chars:
+        return system_text
+    return [
+        {
+            "type": "text",
+            "text": system_text,
+            "cache_control": {"type": "ephemeral"},
+        }
+    ]
+
+
+def _apply_cache_control_to_tools(
+    tools: list[dict[str, Any]],
+    *,
+    cache_prompt: bool,
+    min_chars: int = CACHE_PROMPT_MIN_CHARS,
+) -> list[dict[str, Any]]:
+    """Tag the last tool dict with cache_control when the bundle is large.
+
+    Anthropic only honours one cache_control marker per logical section.
+    Putting it on the *last* tool extends the cached prefix through the
+    entire tools block. The cost of trying-and-being-ignored is tiny
+    (a few bytes per request), so we apply it whenever the combined
+    JSON for the tools meets ``min_chars``.
+
+    Returns a new list (and shallow-copies the last tool dict) so the
+    caller's tool definitions aren't mutated.
+    """
+    if not cache_prompt or not tools:
+        return tools
+    combined_len = sum(len(json.dumps(t, default=str)) for t in tools)
+    if combined_len < min_chars:
+        return tools
+    result = list(tools)
+    last = dict(result[-1])
+    last["cache_control"] = {"type": "ephemeral"}
+    result[-1] = last
+    return result
+
+
 def _build_anthropic_stream_done(
     model: str,
     full_text: str,
@@ -209,6 +289,7 @@ class ClaudeDriver(CostMixin, Driver):
     supports_json_schema = True
     supports_tool_use = True
     supports_streaming = True
+    supports_streaming_tool_use = True
     supports_vision = True
 
     # All pricing and model config now resolved from JSON rate files (KB) and
@@ -218,6 +299,16 @@ class ClaudeDriver(CostMixin, Driver):
     def __init__(self, api_key: str | None = None, model: str = "claude-haiku-4-5-20251001"):
         self.api_key = api_key or os.getenv("CLAUDE_API_KEY")
         self.model = model or os.getenv("CLAUDE_MODEL_NAME", "claude-haiku-4-5-20251001")
+        # Only validate when the SDK is installed — when anthropic is missing we
+        # surface that at call time so plain import-and-discover still works.
+        if anthropic is not None and not self.api_key:
+            from ..exceptions import ConfigurationError
+
+            raise ConfigurationError(
+                "CLAUDE_API_KEY is not set. Provide api_key=... or set the "
+                "CLAUDE_API_KEY environment variable. "
+                "See https://github.com/jhd3197/prompture#configuration"
+            )
 
     @classmethod
     def list_models(cls, *, api_key: str | None = None, timeout: int = 10, **kw: object) -> list[str] | None:
@@ -263,10 +354,15 @@ class ClaudeDriver(CostMixin, Driver):
 
     def _do_generate(self, messages: list[dict[str, Any]], options: dict[str, Any]) -> dict[str, Any]:
         if anthropic is None:
-            raise RuntimeError("anthropic package not installed")
+            from ..exceptions import ConfigurationError
+
+            raise ConfigurationError(
+                'anthropic package not installed. Install it with: pip install "prompture[anthropic]"'
+            )
 
         opts = {**{"temperature": 0.0, "max_tokens": 512}, **options}
         model = options.get("model", self.model)
+        cache_prompt = opts.get("cache_prompt", True)
 
         # Validate capabilities against models.dev metadata
         self._validate_model_capabilities(
@@ -297,16 +393,21 @@ class ClaudeDriver(CostMixin, Driver):
         }
         if supports_temperature:
             common_kwargs["temperature"] = opts["temperature"]
-        if system_content:
-            common_kwargs["system"] = system_content
+        wrapped_system = _apply_cache_control_to_system(system_content, cache_prompt=cache_prompt)
+        if wrapped_system is not None:
+            common_kwargs["system"] = wrapped_system
 
         # Native JSON mode: use tool-use for schema enforcement
         if options.get("json_mode"):
             json_schema = options.get("json_schema")
             if json_schema:
+                json_mode_tools = _apply_cache_control_to_tools(
+                    [_build_anthropic_json_mode_tool_def(json_schema)],
+                    cache_prompt=cache_prompt,
+                )
                 resp = client.messages.create(  # type: ignore[call-overload]
                     **common_kwargs,
-                    tools=[_build_anthropic_json_mode_tool_def(json_schema)],
+                    tools=json_mode_tools,
                     tool_choice={"type": "tool", "name": "extract_json"},
                 )
                 text = ""
@@ -371,10 +472,15 @@ class ClaudeDriver(CostMixin, Driver):
     ) -> dict[str, Any]:
         """Generate a response that may include tool calls (Anthropic)."""
         if anthropic is None:
-            raise RuntimeError("anthropic package not installed")
+            from ..exceptions import ConfigurationError
+
+            raise ConfigurationError(
+                'anthropic package not installed. Install it with: pip install "prompture[anthropic]"'
+            )
 
         opts = {**{"temperature": 0.0, "max_tokens": 512}, **options}
         model = options.get("model", self.model)
+        cache_prompt = opts.get("cache_prompt", True)
 
         self._validate_model_capabilities("claude", model, using_tool_use=True)
 
@@ -383,7 +489,7 @@ class ClaudeDriver(CostMixin, Driver):
         client = anthropic.Anthropic(api_key=self.api_key)
 
         system_content, api_messages = _extract_anthropic_system_and_messages(messages)
-        anthropic_tools = _convert_tools_to_anthropic(tools)
+        anthropic_tools = _apply_cache_control_to_tools(_convert_tools_to_anthropic(tools), cache_prompt=cache_prompt)
 
         kwargs: dict[str, Any] = {
             "model": model,
@@ -393,8 +499,9 @@ class ClaudeDriver(CostMixin, Driver):
         }
         if supports_temperature:
             kwargs["temperature"] = opts["temperature"]
-        if system_content:
-            kwargs["system"] = system_content
+        wrapped_system = _apply_cache_control_to_system(system_content, cache_prompt=cache_prompt)
+        if wrapped_system is not None:
+            kwargs["system"] = wrapped_system
 
         resp = client.messages.create(**kwargs)
 
@@ -433,10 +540,15 @@ class ClaudeDriver(CostMixin, Driver):
     ) -> Iterator[dict[str, Any]]:
         """Yield response chunks via Anthropic streaming API."""
         if anthropic is None:
-            raise RuntimeError("anthropic package not installed")
+            from ..exceptions import ConfigurationError
+
+            raise ConfigurationError(
+                'anthropic package not installed. Install it with: pip install "prompture[anthropic]"'
+            )
 
         opts = {**{"temperature": 0.0, "max_tokens": 512}, **options}
         model = options.get("model", self.model)
+        cache_prompt = opts.get("cache_prompt", True)
         supports_temperature = self._get_model_config("claude", model)["supports_temperature"]
         client = anthropic.Anthropic(api_key=self.api_key)
 
@@ -449,8 +561,9 @@ class ClaudeDriver(CostMixin, Driver):
         }
         if supports_temperature:
             kwargs["temperature"] = opts["temperature"]
-        if system_content:
-            kwargs["system"] = system_content
+        wrapped_system = _apply_cache_control_to_system(system_content, cache_prompt=cache_prompt)
+        if wrapped_system is not None:
+            kwargs["system"] = wrapped_system
 
         full_text = ""
         full_reasoning = ""
@@ -501,3 +614,160 @@ class ClaudeDriver(CostMixin, Driver):
             cached_prompt_tokens=cache_read,
             cache_creation_tokens=cache_create,
         )
+
+    # ------------------------------------------------------------------
+    # Live streaming with interleaved tool calls
+    # ------------------------------------------------------------------
+
+    def generate_messages_with_tools_stream(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        options: dict[str, Any],
+    ) -> Iterator[Any]:
+        """Stream one Anthropic turn as :class:`LiveEvent`, with native
+        interleaved text and tool_use blocks.
+
+        Maps Anthropic SSE events:
+        - ``message_start`` → captures input/cache token counts
+        - ``content_block_start`` (text|tool_use|thinking) → tracks block index
+          and emits ``ToolUseStart`` for tool_use blocks
+        - ``content_block_delta`` (text_delta|input_json_delta|thinking_delta)
+          → emits ``TextDelta`` / ``ToolInputDelta`` / ``ThinkingDelta``
+        - ``content_block_stop`` → emits ``ToolUseStop`` (with parsed input)
+          for tool_use blocks
+        - ``message_delta`` → captures output tokens and stop_reason
+        - finally yields ``MessageStop`` with cost + usage
+        """
+        if anthropic is None:
+            from ..exceptions import ConfigurationError
+
+            raise ConfigurationError(
+                'anthropic package not installed. Install it with: pip install "prompture[anthropic]"'
+            )
+
+        from ..agents.live_events import (
+            MessageStop,
+            TextDelta,
+            ThinkingDelta,
+            ToolInputDelta,
+            ToolUseStart,
+            ToolUseStop,
+        )
+
+        opts = {**{"temperature": 0.0, "max_tokens": 4096}, **options}
+        model = options.get("model", self.model)
+        cache_prompt = opts.get("cache_prompt", True)
+        supports_temperature = self._get_model_config("claude", model)["supports_temperature"]
+        client = anthropic.Anthropic(api_key=self.api_key)
+
+        system_content, api_messages = _extract_anthropic_system_and_messages(messages)
+        anthropic_tools = _apply_cache_control_to_tools(_convert_tools_to_anthropic(tools), cache_prompt=cache_prompt)
+
+        kwargs: dict[str, Any] = {
+            "model": model,
+            "messages": api_messages,
+            "max_tokens": opts["max_tokens"],
+            "tools": anthropic_tools,
+        }
+        if supports_temperature:
+            kwargs["temperature"] = opts["temperature"]
+        wrapped_system = _apply_cache_control_to_system(system_content, cache_prompt=cache_prompt)
+        if wrapped_system is not None:
+            kwargs["system"] = wrapped_system
+
+        block_kinds: dict[int, str] = {}
+        tool_block_info: dict[int, dict[str, Any]] = {}
+        tool_input_buffers: dict[int, list[str]] = {}
+
+        base_input = 0
+        cache_read = 0
+        cache_create = 0
+        completion_tokens = 0
+        stop_reason = "end_turn"
+
+        with client.messages.stream(**kwargs) as stream:
+            for event in stream:
+                ev_type = getattr(event, "type", "")
+                if ev_type == "message_start":
+                    usage = getattr(getattr(event, "message", None), "usage", None)
+                    if usage is not None:
+                        base_input = getattr(usage, "input_tokens", 0) or 0
+                        cache_read, cache_create = _extract_anthropic_cache_tokens(usage)
+                elif ev_type == "content_block_start":
+                    idx = getattr(event, "index", 0)
+                    block = getattr(event, "content_block", None)
+                    kind = getattr(block, "type", "") if block is not None else ""
+                    block_kinds[idx] = kind
+                    if kind == "tool_use":
+                        tool_id = getattr(block, "id", "") or ""
+                        tool_name = getattr(block, "name", "") or ""
+                        tool_block_info[idx] = {"id": tool_id, "name": tool_name}
+                        tool_input_buffers[idx] = []
+                        yield ToolUseStart(id=tool_id, name=tool_name)
+                elif ev_type == "content_block_delta":
+                    idx = getattr(event, "index", 0)
+                    delta = getattr(event, "delta", None)
+                    delta_type = getattr(delta, "type", "") if delta is not None else ""
+                    if delta_type == "text_delta":
+                        text_piece = getattr(delta, "text", "") or ""
+                        if text_piece:
+                            yield TextDelta(text=text_piece)
+                    elif delta_type == "thinking_delta":
+                        thinking_piece = getattr(delta, "thinking", "") or ""
+                        if thinking_piece:
+                            yield ThinkingDelta(text=thinking_piece)
+                    elif delta_type == "input_json_delta":
+                        fragment = getattr(delta, "partial_json", "") or ""
+                        info = tool_block_info.get(idx)
+                        if fragment and info is not None:
+                            tool_input_buffers.setdefault(idx, []).append(fragment)
+                            yield ToolInputDelta(id=info["id"], fragment=fragment)
+                elif ev_type == "content_block_stop":
+                    idx = getattr(event, "index", 0)
+                    if block_kinds.get(idx) == "tool_use":
+                        info = tool_block_info.get(idx, {})
+                        buf = "".join(tool_input_buffers.get(idx, []))
+                        try:
+                            parsed = json.loads(buf) if buf else {}
+                            if not isinstance(parsed, dict):
+                                parsed = {}
+                        except json.JSONDecodeError:
+                            logger.warning(
+                                "Failed to parse streamed tool input for %s: %r",
+                                info.get("name", "?"),
+                                buf[:200],
+                            )
+                            parsed = {}
+                        yield ToolUseStop(
+                            id=info.get("id", ""),
+                            name=info.get("name", ""),
+                            input=parsed,
+                        )
+                elif ev_type == "message_delta":
+                    usage = getattr(event, "usage", None)
+                    if usage is not None:
+                        completion_tokens = getattr(usage, "output_tokens", 0) or completion_tokens
+                    sr = getattr(getattr(event, "delta", None), "stop_reason", None)
+                    if sr:
+                        stop_reason = sr
+
+        prompt_tokens = base_input + cache_read + cache_create
+        total_cost = self._calculate_cost(
+            "claude",
+            model,
+            prompt_tokens,
+            completion_tokens,
+            cached_tokens=cache_read,
+            cache_creation_tokens=cache_create,
+        )
+        meta = {
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": prompt_tokens + completion_tokens,
+            "cached_prompt_tokens": cache_read,
+            "cache_creation_tokens": cache_create,
+            "cost": round(total_cost, 6),
+            "model_name": model,
+        }
+        yield MessageStop(stop_reason=stop_reason, usage=meta)

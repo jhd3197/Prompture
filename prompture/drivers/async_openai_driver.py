@@ -9,7 +9,7 @@ from typing import Any
 
 try:
     from openai import AsyncOpenAI
-except Exception:
+except ImportError:
     AsyncOpenAI = None  # type: ignore[misc, assignment]
 
 from ..infra.cost_mixin import CostMixin
@@ -32,6 +32,7 @@ class AsyncOpenAIDriver(CostMixin, AsyncDriver):
     supports_json_schema = True
     supports_tool_use = True
     supports_streaming = True
+    supports_streaming_tool_use = True
     supports_vision = True
 
     MODEL_PRICING = OpenAIDriver.MODEL_PRICING
@@ -39,10 +40,18 @@ class AsyncOpenAIDriver(CostMixin, AsyncDriver):
     def __init__(self, api_key: str | None = None, model: str = "gpt-4o-mini"):
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
         self.model = model
-        if AsyncOpenAI is not None:
-            self.client = AsyncOpenAI(api_key=self.api_key)
-        else:
+        if AsyncOpenAI is None:
             self.client = None
+            return
+        if not self.api_key:
+            from ..exceptions import ConfigurationError
+
+            raise ConfigurationError(
+                "OPENAI_API_KEY is not set. Provide api_key=... or set the "
+                "OPENAI_API_KEY environment variable. "
+                "See https://github.com/jhd3197/prompture#configuration"
+            )
+        self.client = AsyncOpenAI(api_key=self.api_key)
 
     supports_messages = True
 
@@ -60,7 +69,11 @@ class AsyncOpenAIDriver(CostMixin, AsyncDriver):
 
     async def _do_generate(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
         if self.client is None:
-            raise RuntimeError("openai package (>=1.0.0) is not installed")
+            from ..exceptions import ConfigurationError
+
+            raise ConfigurationError(
+                'openai package (>=1.0.0) is not installed. Install it with: pip install "prompture[openai]"'
+            )
 
         model = options.get("model", self.model)
 
@@ -115,7 +128,11 @@ class AsyncOpenAIDriver(CostMixin, AsyncDriver):
     ) -> dict[str, Any]:
         """Generate a response that may include tool calls."""
         if self.client is None:
-            raise RuntimeError("openai package (>=1.0.0) is not installed")
+            from ..exceptions import ConfigurationError
+
+            raise ConfigurationError(
+                'openai package (>=1.0.0) is not installed. Install it with: pip install "prompture[openai]"'
+            )
 
         model = options.get("model", self.model)
         model_config = self._get_model_config("openai", model)
@@ -163,7 +180,11 @@ class AsyncOpenAIDriver(CostMixin, AsyncDriver):
     ) -> AsyncIterator[dict[str, Any]]:
         """Yield response chunks via OpenAI streaming API."""
         if self.client is None:
-            raise RuntimeError("openai package (>=1.0.0) is not installed")
+            from ..exceptions import ConfigurationError
+
+            raise ConfigurationError(
+                'openai package (>=1.0.0) is not installed. Install it with: pip install "prompture[openai]"'
+            )
 
         model = options.get("model", self.model)
         model_config = self._get_model_config("openai", model)
@@ -208,3 +229,26 @@ class AsyncOpenAIDriver(CostMixin, AsyncDriver):
         yield _build_openai_stream_done(
             model, full_text, prompt_tokens, completion_tokens, total_cost, cached_prompt_tokens
         )
+
+    # ------------------------------------------------------------------
+    # Live streaming with interleaved tool calls
+    # ------------------------------------------------------------------
+
+    async def generate_messages_with_tools_stream(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        options: dict[str, Any],
+    ) -> AsyncIterator[Any]:
+        """Async streaming-tool via the shared OpenAI-compat helper."""
+        if self.client is None:
+            from ..exceptions import ConfigurationError
+
+            raise ConfigurationError(
+                'openai package (>=1.0.0) is not installed. Install it with: pip install "prompture[openai]"'
+            )
+
+        from ._openai_compat_stream import astream_openai_compat_tool_call
+
+        async for ev in astream_openai_compat_tool_call(self, messages, tools, options, provider="openai"):
+            yield ev

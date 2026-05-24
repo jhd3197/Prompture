@@ -411,7 +411,7 @@ class UsageTracker:
     # ------------------------------------------------------------------ #
 
     @contextlib.contextmanager
-    def session(self, session_id: str | None = None) -> Generator[str, None, None]:
+    def session(self, session_id: str | None = None) -> Generator[str]:
         """Set the session scope for nested calls."""
         sid = session_id or str(uuid.uuid4())
         token = _ctx_session_id.set(sid)
@@ -421,7 +421,7 @@ class UsageTracker:
             _ctx_session_id.reset(token)
 
     @contextlib.contextmanager
-    def conversation(self, conversation_id: str) -> Generator[str, None, None]:
+    def conversation(self, conversation_id: str) -> Generator[str]:
         """Set the conversation scope for nested calls."""
         token = _ctx_conversation_id.set(conversation_id)
         try:
@@ -430,7 +430,7 @@ class UsageTracker:
             _ctx_conversation_id.reset(token)
 
     @contextlib.contextmanager
-    def agent(self, agent_id: str) -> Generator[str, None, None]:
+    def agent(self, agent_id: str) -> Generator[str]:
         """Set the agent scope for nested calls."""
         token = _ctx_agent_id.set(agent_id)
         try:
@@ -439,7 +439,7 @@ class UsageTracker:
             _ctx_agent_id.reset(token)
 
     @contextlib.contextmanager
-    def tool(self, tool_name: str) -> Generator[str, None, None]:
+    def tool(self, tool_name: str) -> Generator[str]:
         """Set the tool scope for nested calls."""
         token = _ctx_tool_name.set(tool_name)
         try:
@@ -448,7 +448,7 @@ class UsageTracker:
             _ctx_tool_name.reset(token)
 
     @contextlib.contextmanager
-    def operation(self, operation_name: str) -> Generator[str, None, None]:
+    def operation(self, operation_name: str) -> Generator[str]:
         """Set the operation scope for nested calls."""
         token = _ctx_operation.set(operation_name)
         try:

@@ -4,9 +4,19 @@ generator.
 The function :func:`generate_qa_dataset` walks a source (file path,
 glob, list of paths, or a list of pre-loaded ``Document`` objects),
 chunks each document, and asks an LLM to emit several question/answer
-pairs grounded in each chunk.  Results are aggregated, de-duplicated by
-question text, and optionally written to disk in JSONL, ShareGPT, or
-Alpaca format.
+pairs grounded in each chunk.  Results are aggregated, optionally
+quality-filtered, de-duplicated, and written to disk in JSONL,
+ShareGPT, or Alpaca format.
+
+Phase 8C extensions (all opt-in, default-off):
+
+* ``personas`` — run each chunk through multiple :class:`Persona`
+  voices for stylistic diversity in the generated set.
+* ``quality_filter`` — drop short / runaway / refusal-flavoured
+  pairs via :class:`prompture.dataset.QualityFilter`.
+* ``dedup`` — choose between exact / shingle / semantic dedup via
+  :class:`prompture.dataset.DedupConfig`. The legacy ``dedupe=True``
+  argument is preserved and maps to exact dedup.
 """
 
 from __future__ import annotations
@@ -15,11 +25,13 @@ import asyncio
 import glob as _glob
 import logging
 from pathlib import Path
-from typing import Any, Literal, Union
+from typing import Any, Literal
 
 from ..extraction.async_core import extract_with_model as _async_extract_with_model
 from ..extraction.core import extract_with_model
 from ..rag.documents import Document
+from .dedup import DedupConfig, apply_dedup
+from .filters import QualityFilter
 from .formats import to_alpaca, to_jsonl, to_sharegpt, write_dataset
 from .schemas import QAPair, QAPairBatch
 
@@ -43,7 +55,7 @@ DEFAULT_PROMPT_TEMPLATE = (
 
 
 def _resolve_source(
-    source: Union[str, Path, list[Union[str, Path]], list[Document]],
+    source: str | Path | list[str | Path] | list[Document],
 ) -> list[Document]:
     """Turn any accepted *source* shape into a flat list of ``Document``."""
     from ..rag.loader_registry import get_loader_for_path
@@ -66,7 +78,7 @@ def _resolve_source(
     return docs
 
 
-def _expand_paths(items: list[Union[str, Path]]) -> list[Path]:
+def _expand_paths(items: list[str | Path]) -> list[Path]:
     out: list[Path] = []
     for item in items:
         s = str(item)
@@ -88,15 +100,74 @@ def _chunk_documents(docs: list[Document], chunker: Any) -> list[Document]:
 
 
 def _dedupe(pairs: list[QAPair]) -> list[QAPair]:
-    """Drop pairs with the same (normalised) question text."""
-    seen: set[str] = set()
-    out: list[QAPair] = []
-    for p in pairs:
-        key = " ".join(p.question.lower().split())
-        if key and key not in seen:
-            seen.add(key)
-            out.append(p)
-    return out
+    """Drop pairs with the same (normalised) question text.
+
+    .. deprecated:: 1.2.0
+        Use :func:`prompture.dataset.dedup_exact` (or the unified
+        :class:`DedupConfig`) directly. Retained for backward compatibility
+        only.
+    """
+    from .dedup import dedup_exact
+
+    kept, _removed = dedup_exact(pairs)
+    return kept
+
+
+def _resolve_personas(personas: list[Any] | None) -> list[tuple[str, str]]:
+    """Normalise an optional list of personas into ``(name, prefix)`` tuples.
+
+    Returns ``[("(none)", "")]`` when ``personas`` is missing — the
+    chunk-processing loop iterates the list, so this preserves the
+    "one call per chunk" default behaviour cleanly.
+    """
+    if not personas:
+        return [("(none)", "")]
+    voices: list[tuple[str, str]] = []
+    for persona in personas:
+        # Lazy import to keep this module dep-free when personas aren't used.
+        try:
+            from ..agents.persona import Persona
+        except ImportError:
+            Persona = None  # type: ignore[assignment, misc]
+
+        if Persona is not None and isinstance(persona, Persona):
+            name = persona.name or "persona"
+            prefix = persona.render()
+        elif isinstance(persona, str):
+            name = "string-persona"
+            prefix = persona
+        elif hasattr(persona, "render"):
+            name = getattr(persona, "name", None) or "persona"
+            prefix = persona.render()
+        else:
+            name = str(persona)
+            prefix = str(persona)
+        voices.append((name, prefix))
+    return voices
+
+
+def _render_prompt(
+    prompt_template: str,
+    n_per_chunk: int,
+    chunk: Document,
+    persona_prefix: str,
+) -> str:
+    """Format ``prompt_template`` and prepend ``persona_prefix`` when given."""
+    base = prompt_template.format(n=n_per_chunk, chunk=chunk.content)
+    if not persona_prefix:
+        return base
+    return f"{persona_prefix.strip()}\n\n{base}"
+
+
+def _resolve_dedup(dedup: DedupConfig | None, legacy_dedupe: bool) -> DedupConfig:
+    """Reconcile the new ``dedup`` config with the legacy ``dedupe`` flag.
+
+    Explicit ``dedup`` always wins. Otherwise: ``dedupe=True`` maps to
+    ``DedupConfig(strategy="exact")``; ``False`` maps to ``"none"``.
+    """
+    if dedup is not None:
+        return dedup
+    return DedupConfig(strategy="exact" if legacy_dedupe else "none")
 
 
 def _format_records(
@@ -118,19 +189,23 @@ def _format_records(
 
 
 def generate_qa_dataset(
-    source: Union[str, Path, list[Union[str, Path]], list[Document]],
+    source: str | Path | list[str | Path] | list[Document],
     *,
     model: str,
     n_per_chunk: int = 3,
     chunker: Any = None,
     prompt_template: str = DEFAULT_PROMPT_TEMPLATE,
-    output_path: Union[str, Path, None] = None,
+    output_path: str | Path | None = None,
     output_format: OutputFormat = "jsonl",
     options: dict[str, Any] | None = None,
     on_chunk: Any = None,
     max_chunks: int | None = None,
     dedupe: bool = True,
-) -> list[QAPair]:
+    personas: list[Any] | None = None,
+    quality_filter: QualityFilter | None = None,
+    dedup: DedupConfig | None = None,
+    return_stats: bool = False,
+) -> list[QAPair] | tuple[list[QAPair], dict[str, Any]]:
     """Generate a synthetic Q&A dataset from *source*.
 
     Args:
@@ -154,11 +229,32 @@ def generate_qa_dataset(
         max_chunks: Stop after this many chunks (useful for previewing
             a large corpus).
         dedupe: Drop pairs with duplicate questions (case-insensitive,
-            whitespace-normalised).  Default ``True``.
+            whitespace-normalised). Equivalent to ``dedup=DedupConfig(strategy="exact")``.
+            Defaults to ``True``. Ignored when ``dedup`` is supplied
+            explicitly.
+        personas: Optional list of :class:`prompture.agents.Persona`
+            (or anything exposing ``.render()`` and ``.name``). When
+            set, every chunk is processed once per persona — the
+            persona's rendered text is prepended to the prompt so the
+            generated pairs reflect each persona's voice. Multiplies
+            the LLM call budget by ``len(personas)``.
+        quality_filter: Optional :class:`QualityFilter`. Applied
+            *after* generation but *before* dedup. When ``None``, no
+            filtering happens. Pass ``QualityFilter()`` to enable the
+            shape + length + refusal filter trio.
+        dedup: Optional :class:`DedupConfig` overriding the legacy
+            ``dedupe`` flag. Choose ``"exact"`` (cheap, the default
+            via ``dedupe=True``), ``"shingle"`` (paraphrase-aware), or
+            ``"semantic"`` (embedding-based).
+        return_stats: When True, returns ``(pairs, stats_dict)``
+            instead of just ``pairs``. ``stats_dict`` carries
+            ``"raw_count"``, ``"filter"``, and ``"dedup_removed"``
+            keys for observability.
 
     Returns:
-        The list of :class:`QAPair` instances actually emitted.  When
-        ``output_path`` is set, the file is also written.
+        The list of :class:`QAPair` instances actually emitted. When
+        ``output_path`` is set, the file is also written. When
+        ``return_stats=True``, returns ``(pairs, stats)``.
 
     Example::
 
@@ -178,36 +274,52 @@ def generate_qa_dataset(
         logger.warning("No chunks produced from source — nothing to generate.")
         return []
 
+    persona_voices = _resolve_personas(personas)
+
     all_pairs: list[QAPair] = []
     for i, chunk in enumerate(chunks):
         if on_chunk is not None:
             on_chunk(i, len(chunks), chunk)
-        prompt = prompt_template.format(n=n_per_chunk, chunk=chunk.content)
-        try:
-            result = extract_with_model(
-                QAPairBatch,
-                prompt,
-                model_name=model,
-                options=options,
-            )
-            batch: QAPairBatch = result["model"]
-            all_pairs.extend(batch.pairs)
-        except Exception as exc:  # pragma: no cover — best-effort across many chunks
-            logger.warning(
-                "Chunk %d/%d (source=%s) failed: %s",
-                i + 1,
-                len(chunks),
-                chunk.metadata.get("source", "?"),
-                exc,
-            )
+        for persona_name, persona_prefix in persona_voices:
+            prompt = _render_prompt(prompt_template, n_per_chunk, chunk, persona_prefix)
+            try:
+                result = extract_with_model(
+                    QAPairBatch,
+                    prompt,
+                    model_name=model,
+                    options=options,
+                )
+                batch: QAPairBatch = result["model"]
+                all_pairs.extend(batch.pairs)
+            except Exception as exc:  # pragma: no cover — best-effort across many chunks
+                logger.warning(
+                    "Chunk %d/%d persona=%r (source=%s) failed: %s",
+                    i + 1,
+                    len(chunks),
+                    persona_name,
+                    chunk.metadata.get("source", "?"),
+                    exc,
+                )
 
-    if dedupe:
-        all_pairs = _dedupe(all_pairs)
+    raw_count = len(all_pairs)
+    stats: dict[str, Any] = {"raw_count": raw_count}
+
+    if quality_filter is not None:
+        all_pairs, filter_stats = quality_filter.filter(all_pairs)
+        stats["filter"] = filter_stats.to_dict()
+
+    dedup_cfg = _resolve_dedup(dedup, dedupe)
+    if dedup_cfg.strategy != "none":
+        all_pairs, removed = apply_dedup(all_pairs, dedup_cfg)
+        stats["dedup_removed"] = removed
+        stats["dedup_strategy"] = dedup_cfg.strategy
 
     if output_path is not None:
         records = _format_records(all_pairs, output_format)
         write_dataset(records, output_path)
 
+    if return_stats:
+        return all_pairs, stats
     return all_pairs
 
 
@@ -217,25 +329,35 @@ def generate_qa_dataset(
 
 
 async def agenerate_qa_dataset(
-    source: Union[str, Path, list[Union[str, Path]], list[Document]],
+    source: str | Path | list[str | Path] | list[Document],
     *,
     model: str,
     n_per_chunk: int = 3,
     chunker: Any = None,
     prompt_template: str = DEFAULT_PROMPT_TEMPLATE,
-    output_path: Union[str, Path, None] = None,
+    output_path: str | Path | None = None,
     output_format: OutputFormat = "jsonl",
     options: dict[str, Any] | None = None,
     on_chunk: Any = None,
     max_chunks: int | None = None,
     dedupe: bool = True,
     concurrency: int = 4,
-) -> list[QAPair]:
+    personas: list[Any] | None = None,
+    quality_filter: QualityFilter | None = None,
+    dedup: DedupConfig | None = None,
+    return_stats: bool = False,
+) -> list[QAPair] | tuple[list[QAPair], dict[str, Any]]:
     """Async variant of :func:`generate_qa_dataset` with bounded concurrency.
 
-    Same arguments plus:
+    Same arguments as :func:`generate_qa_dataset` plus:
+
         concurrency: Maximum number of chunks processed concurrently.
-            Defaults to 4.  Use 1 for serial async execution.
+            Defaults to 4. Use 1 for serial async execution.
+
+    ``personas``, ``quality_filter``, ``dedup``, ``return_stats``
+    behave identically to the sync version. With multiple personas
+    the semaphore still caps total parallel calls — the personas are
+    fanned out within each chunk's task slot.
     """
     docs = _resolve_source(source)
     chunks = _chunk_documents(docs, chunker)
@@ -243,41 +365,57 @@ async def agenerate_qa_dataset(
         chunks = chunks[:max_chunks]
     if not chunks:
         logger.warning("No chunks produced from source — nothing to generate.")
-        return []
+        return ([], {"raw_count": 0}) if return_stats else []
 
+    persona_voices = _resolve_personas(personas)
     semaphore = asyncio.Semaphore(concurrency)
 
     async def _process(idx: int, chunk: Document) -> list[QAPair]:
         if on_chunk is not None:
             on_chunk(idx, len(chunks), chunk)
-        async with semaphore:
-            prompt = prompt_template.format(n=n_per_chunk, chunk=chunk.content)
-            try:
-                result = await _async_extract_with_model(
-                    QAPairBatch,
-                    prompt,
-                    model_name=model,
-                    options=options,
-                )
-                return list(result["model"].pairs)
-            except Exception as exc:  # pragma: no cover
-                logger.warning(
-                    "Chunk %d/%d (source=%s) failed: %s",
-                    idx + 1,
-                    len(chunks),
-                    chunk.metadata.get("source", "?"),
-                    exc,
-                )
-                return []
+        out: list[QAPair] = []
+        for persona_name, persona_prefix in persona_voices:
+            async with semaphore:
+                prompt = _render_prompt(prompt_template, n_per_chunk, chunk, persona_prefix)
+                try:
+                    result = await _async_extract_with_model(
+                        QAPairBatch,
+                        prompt,
+                        model_name=model,
+                        options=options,
+                    )
+                    out.extend(result["model"].pairs)
+                except Exception as exc:  # pragma: no cover
+                    logger.warning(
+                        "Chunk %d/%d persona=%r (source=%s) failed: %s",
+                        idx + 1,
+                        len(chunks),
+                        persona_name,
+                        chunk.metadata.get("source", "?"),
+                        exc,
+                    )
+        return out
 
     batches = await asyncio.gather(*[_process(i, c) for i, c in enumerate(chunks)])
     all_pairs: list[QAPair] = [p for batch in batches for p in batch]
 
-    if dedupe:
-        all_pairs = _dedupe(all_pairs)
+    raw_count = len(all_pairs)
+    stats: dict[str, Any] = {"raw_count": raw_count}
+
+    if quality_filter is not None:
+        all_pairs, filter_stats = quality_filter.filter(all_pairs)
+        stats["filter"] = filter_stats.to_dict()
+
+    dedup_cfg = _resolve_dedup(dedup, dedupe)
+    if dedup_cfg.strategy != "none":
+        all_pairs, removed = apply_dedup(all_pairs, dedup_cfg)
+        stats["dedup_removed"] = removed
+        stats["dedup_strategy"] = dedup_cfg.strategy
 
     if output_path is not None:
         records = _format_records(all_pairs, output_format)
         write_dataset(records, output_path)
 
+    if return_stats:
+        return all_pairs, stats
     return all_pairs

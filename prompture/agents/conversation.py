@@ -6,11 +6,11 @@ import json
 import logging
 import time
 import uuid
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
-from typing import Any, Callable, Literal, Union, cast
+from typing import Any, Literal, cast
 
 from pydantic import BaseModel
 
@@ -329,13 +329,24 @@ class Conversation:
         return cls.from_export(data, callbacks=callbacks, tools=tools)
 
     def _maybe_auto_save(self) -> None:
-        """Auto-save after each turn if configured.  Errors are silently logged."""
+        """Auto-save after each turn if configured.
+
+        Errors are logged at WARNING level (not silently swallowed) so that
+        disk-full, permission, or serialization failures are visible to the
+        operator. We still don't re-raise — auto-save is best-effort and
+        should never break the conversation loop.
+        """
         if self._auto_save is None:
             return
         try:
             self.save(self._auto_save)
         except Exception:
-            logger.debug("Auto-save failed for conversation %s", self._conversation_id, exc_info=True)
+            logger.warning(
+                "Auto-save failed for conversation %s (path=%s)",
+                self._conversation_id,
+                self._auto_save,
+                exc_info=True,
+            )
 
     # ------------------------------------------------------------------
     # Budget enforcement
@@ -684,6 +695,162 @@ class Conversation:
 
         raise RuntimeError(f"Tool execution loop exceeded {self._max_tool_rounds} rounds")
 
+    def ask_live(
+        self,
+        content: str,
+        options: dict[str, Any] | None = None,
+        images: list[ImageInput] | None = None,
+    ) -> Iterator[Any]:
+        """Run an agentic tool loop, yielding :class:`LiveEvent` as work happens.
+
+        Unlike :meth:`ask_with_tool_events`, which buffers each LLM turn and
+        emits ``tool_call`` / ``tool_result`` between rounds, ``ask_live``
+        forwards the driver's interleaved stream — so callers see text
+        deltas before, between, and after tool calls within a single turn.
+        This produces the "Claude Code feel" where the model narrates as it
+        decides what to do next.
+
+        Drivers that don't natively stream tool use (``supports_streaming_tool_use
+        == False``) fall back to the buffered method via the base-class
+        synthetic event sequence. The shape is still uniform.
+
+        Yields:
+            :class:`~prompture.agents.live_events.LiveEvent` instances:
+            ``AssistantTurnStart``, ``TextDelta``, ``ThinkingDelta``,
+            ``ToolUseStart``, ``ToolInputDelta``, ``ToolUseStop``,
+            ``ToolResult`` (after this layer executes the tool),
+            ``MessageStop`` (end of each LLM turn),
+            ``TurnComplete`` (no more tool calls pending — loop ends).
+        """
+        from .live_events import (
+            AssistantTurnStart,
+            TextDelta,
+            ToolResult,
+            ToolUseStart,
+            ToolUseStop,
+            TurnComplete,
+        )
+
+        self._last_reasoning = None
+
+        if not self._tools:
+            for chunk in self.ask_stream(content, options, images=images):
+                yield TextDelta(text=chunk)
+            yield TurnComplete(usage=dict(self._usage))
+            return
+
+        use_native = getattr(self._driver, "supports_tool_use", False)
+        if self._simulated_tools is True or (self._simulated_tools == "auto" and not use_native):
+            for ev in self._ask_with_simulated_tool_events(content, options, images=images):
+                ev_type = ev.get("type")
+                if ev_type == "text_delta":
+                    yield TextDelta(text=ev.get("text", ""))
+                elif ev_type == "tool_call":
+                    yield ToolUseStart(id=ev.get("id", ""), name=ev.get("name", ""))
+                    yield ToolUseStop(
+                        id=ev.get("id", ""),
+                        name=ev.get("name", ""),
+                        input=ev.get("arguments", {}) or {},
+                    )
+                elif ev_type == "tool_result":
+                    yield ToolResult(
+                        id=ev.get("id", ""),
+                        name=ev.get("name", ""),
+                        output=ev.get("result", ""),
+                    )
+            yield TurnComplete(usage=dict(self._usage))
+            return
+
+        merged = {**self._options, **(options or {})}
+        tool_defs = self._tools.to_openai_format()
+
+        user_content = self._build_content_with_images(content, images)
+        self._messages.append({"role": "user", "content": user_content})
+        msgs = self._build_messages_raw()
+
+        for round_idx in range(self._max_tool_rounds):
+            self._check_budget()
+            if self._run_before_turn():
+                msgs = self._build_messages_raw()
+
+            yield AssistantTurnStart(turn_index=round_idx)
+
+            assistant_text_parts: list[str] = []
+            assistant_thinking_parts: list[str] = []
+            tool_calls_in_turn: list[dict[str, Any]] = []
+            pending_tools: list[tuple[str, str, dict[str, Any]]] = []
+            turn_usage: dict[str, Any] = {}
+            stop_reason: str = "end_turn"
+
+            stream = self._driver.generate_messages_with_tools_stream(msgs, tool_defs, merged)
+            for event in stream:
+                yield event
+                et = getattr(event, "event_type", None)
+                if et == "text_delta":
+                    assistant_text_parts.append(event.text)
+                elif et == "thinking_delta":
+                    assistant_thinking_parts.append(event.text)
+                elif et == "tool_use_stop":
+                    pending_tools.append((event.id, event.name, event.input))
+                    tool_calls_in_turn.append(
+                        {
+                            "id": event.id,
+                            "type": "function",
+                            "function": {"name": event.name, "arguments": json.dumps(event.input)},
+                        }
+                    )
+                elif et == "message_stop":
+                    turn_usage = dict(event.usage or {})
+                    stop_reason = event.stop_reason
+
+            full_text = "".join(assistant_text_parts)
+            full_thinking = "".join(assistant_thinking_parts) or None
+
+            assistant_msg: dict[str, Any] = {"role": "assistant", "content": full_text}
+            if tool_calls_in_turn:
+                assistant_msg["tool_calls"] = tool_calls_in_turn
+            if full_thinking is not None:
+                assistant_msg["reasoning_content"] = full_thinking
+                self._last_reasoning = full_thinking
+
+            self._messages.append(assistant_msg)
+            msgs.append(assistant_msg)
+            if turn_usage:
+                self._accumulate_usage(turn_usage)
+
+            if not pending_tools:
+                yield TurnComplete(usage=dict(self._usage))
+                return
+
+            for tool_id, tool_name, tool_input in pending_tools:
+                try:
+                    result = self._tools.execute(tool_name, tool_input)
+                    result_str = json.dumps(result) if not isinstance(result, str) else result
+                    is_error = False
+                except Exception as exc:
+                    result_str = (
+                        f"Error ({type(exc).__name__}): {exc}" if str(exc) else f"Error: {type(exc).__name__}: {exc!r}"
+                    )
+                    is_error = True
+
+                self._full_tool_results[tool_id] = result_str
+                yield ToolResult(id=tool_id, name=tool_name, output=result_str, is_error=is_error)
+
+                truncated = self._truncate_tool_result(result_str)
+                tool_result_msg: dict[str, Any] = {
+                    "role": "tool",
+                    "tool_call_id": tool_id,
+                    "content": truncated,
+                }
+                self._messages.append(tool_result_msg)
+                msgs.append(tool_result_msg)
+
+            # Unused stop_reason kept for symmetry with claw-code's loop;
+            # the real signal is whether pending_tools was non-empty.
+            del stop_reason
+
+        raise RuntimeError(f"ask_live exceeded {self._max_tool_rounds} rounds")
+
     def _ask_with_simulated_tool_events(
         self,
         content: str,
@@ -912,6 +1079,90 @@ class Conversation:
         for chunk in self._ask_stream_raw(content, options, images=images):
             if chunk["type"] == "delta":
                 yield chunk["text"]
+
+    def ask_stream_model(
+        self,
+        content: str,
+        model_cls: type[BaseModel],
+        options: dict[str, Any] | None = None,
+        *,
+        json_mode: Literal["auto", "on", "off"] = "auto",
+        emit_unchanged: bool = False,
+    ) -> Iterator[BaseModel]:
+        """Stream a JSON response and yield progressive :class:`pydantic.BaseModel` partials.
+
+        Wraps the underlying streaming driver with the partial-JSON
+        parser from :mod:`prompture.extraction.streaming`. Each yielded
+        instance is built via :meth:`BaseModel.model_construct` (no
+        validation) until the stream completes; when the full response
+        validates, the *final* yield is a fully-validated instance.
+
+        The schema instructions are appended to the prompt; only the
+        original ``content`` is stored in conversation history.
+
+        Args:
+            content: User message.
+            model_cls: Pydantic v2 model to construct partials of.
+            options: Driver options forwarded to ``generate_messages_stream``.
+            json_mode: ``"auto"`` (default) sets ``json_mode=True`` and
+                provides a ``json_schema`` to the driver when the driver
+                declares ``supports_json_schema``. ``"on"`` forces JSON
+                mode; ``"off"`` sends the prompt as-is (caller must
+                instruct the model to produce JSON).
+            emit_unchanged: Yield even when consecutive partials are
+                identical. Defaults to False — only changed snapshots
+                are yielded.
+
+        Yields:
+            ``model_cls`` instances. The last one is validated when the
+            stream produced a complete JSON object; intermediate ones
+            are non-validated partials with missing fields left unset.
+
+        Raises:
+            AttributeError: when the driver doesn't expose
+                ``generate_messages_stream``.
+        """
+        from ..extraction.streaming import stream_extract
+
+        schema = model_cls.model_json_schema()
+        schema_str = json.dumps(schema, indent=2)
+        schema_instruction = (
+            "You MUST respond with a single JSON object (no markdown, no extra text) "
+            "that validates against this JSON schema:\n"
+            f"{schema_str}\n\nUse double quotes for keys and strings. "
+            "If a value is unknown use null."
+        )
+        prompt = f"{content}\n\n{schema_instruction}"
+
+        merged_options: dict[str, Any] = {**self._options, **(options or {})}
+        if json_mode in ("auto", "on"):
+            merged_options.setdefault("json_mode", True)
+            if json_mode != "off" and getattr(self._driver, "supports_json_schema", False):
+                merged_options.setdefault("json_schema", schema)
+
+        last_partial: BaseModel | None = None
+        for partial in stream_extract(
+            self._driver,
+            prompt,
+            model_cls,
+            system_prompt=self._system_prompt,
+            options=merged_options,
+            emit_unchanged=emit_unchanged,
+        ):
+            last_partial = partial
+            yield partial
+
+        # Record only the original content (not the schema instructions) in
+        # history; the assistant turn records the JSON serialisation of the
+        # last partial so subsequent turns can reference it textually.
+        self._messages.append({"role": "user", "content": content})
+        if last_partial is not None:
+            try:
+                last_text = last_partial.model_dump_json()
+            except Exception:
+                last_text = ""
+            if last_text:
+                self._messages.append({"role": "assistant", "content": last_text})
 
     def ask_for_json(
         self,
@@ -1152,7 +1403,7 @@ class Conversation:
         fields: list[str] | None,
         field_definitions: dict[str, Any] | None,
         json_mode: Literal["auto", "on", "off"],
-    ) -> dict[str, Union[str, dict[str, Any]]]:
+    ) -> dict[str, str | dict[str, Any]]:
         """Stepwise extraction using conversation context between fields."""
         if field_definitions is None:
             field_definitions = get_registry_snapshot()

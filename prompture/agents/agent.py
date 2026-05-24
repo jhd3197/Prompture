@@ -651,12 +651,31 @@ class Agent(Generic[DepsType]):
     # ------------------------------------------------------------------
 
     def _resolve_system_prompt(self, ctx: RunContext[Any] | None = None) -> str | None:
-        """Build the system prompt, appending output schema if needed."""
+        """Build the system prompt, appending output schema if needed.
+
+        Assembly order (stable across iterations to maximise prompt-cache hits
+        on Anthropic / OpenAI auto-caching providers):
+
+        1. **persona / system_prompt content** — first, so it forms the cache
+           prefix. The Persona ``render(model=..., iteration=...)`` call only
+           substitutes placeholders the template actually references; a persona
+           template that includes ``{{iteration}}`` will rotate the cache key
+           every turn, defeating caching. Avoid per-turn variables in personas
+           if you want cache reuse.
+        2. **JSON output schema instruction** — second. Stable across calls
+           because ``self._output_type`` is fixed at Agent construction.
+
+        Variable per-call content (user query, retrieved RAG context, etc.)
+        belongs in the message stream, not the system prompt.
+        """
         parts: list[str] = []
 
         if self._system_prompt is not None:
             if isinstance(self._system_prompt, Persona):
-                # Render Persona with RunContext variables if available
+                # Render Persona with RunContext variables if available.
+                # NOTE: ``iteration`` makes the system prompt change every turn
+                # if the persona template references it — that's intentional
+                # for advanced cases but it breaks prompt caching. See docstring.
                 render_kwargs: dict[str, Any] = {}
                 if ctx is not None:
                     render_kwargs["model"] = ctx.model
@@ -1239,6 +1258,132 @@ class Agent(Generic[DepsType]):
             self._lifecycle = AgentState.errored
             raise
 
+    # ------------------------------------------------------------------
+    # run_live() — interleaved tool calling with streaming text deltas
+    # ------------------------------------------------------------------
+
+    def run_live(self, prompt: str, *, deps: Any = None) -> LiveAgentResult:
+        """Execute the agent loop yielding interleaved
+        :class:`~prompture.agents.live_events.LiveEvent` objects.
+
+        Unlike :meth:`run_stream`, ``run_live`` forwards the driver's
+        native streaming event sequence (Anthropic SSE / OpenAI deltas)
+        so the caller sees text and reasoning deltas *between* tool calls
+        within a single LLM turn — the "Claude Code feel".
+
+        Drivers without ``supports_streaming_tool_use`` fall back to the
+        base-class synthetic event sequence (one bundle per turn).
+
+        Returns a :class:`LiveAgentResult` iterable. After iteration
+        completes, :attr:`LiveAgentResult.result` holds the final
+        :class:`AgentResult`.
+        """
+        gen = self._execute_live(prompt, deps)
+        return LiveAgentResult(gen)
+
+    def _execute_live(self, prompt: str, deps: Any) -> Generator[Any, None, AgentResult]:
+        """Generator that drives ask_live and yields :class:`LiveEvent`."""
+        from ..infra.tracker import get_tracker
+        from .live_events import TextDelta, ThinkingDelta
+
+        current_depth = _agent_depth.get()
+        if current_depth >= self._max_depth:
+            raise RecursionError(f"Agent recursion depth exceeded: {current_depth} >= {self._max_depth}")
+        token = _agent_depth.set(current_depth + 1)
+        self._lifecycle = AgentState.running
+        self._stop_requested = False
+        steps: list[AgentStep] = []
+
+        try:
+            session = UsageSession()
+            driver_callbacks = DriverCallbacks(
+                on_response=session.record,
+                on_error=session.record_error,
+            )
+            ctx = self._build_run_context(prompt, deps, session, [], 0)
+            effective_prompt = self._run_input_guardrails(ctx, prompt)
+            resolved_system_prompt = self._resolve_system_prompt(ctx)
+            wrapped_tools = self._wrap_tools_with_context(ctx, session)
+
+            conv = self._build_conversation(
+                system_prompt=resolved_system_prompt,
+                tools=wrapped_tools if wrapped_tools else None,
+                driver_callbacks=driver_callbacks,
+            )
+
+            if self._agent_callbacks.on_iteration:
+                self._agent_callbacks.on_iteration(0)
+
+            tracker = get_tracker()
+            agent_name = self.name or self.__class__.__name__
+
+            response_text_parts: list[str] = []
+            thinking_parts: list[str] = []
+
+            with tracker.agent(agent_name):
+                security_token = None
+                if self._security_context is not None:
+                    from tukuy.safety import set_security_context
+
+                    security_token = set_security_context(self._security_context)
+                try:
+                    for event in conv.ask_live(effective_prompt):
+                        if isinstance(event, TextDelta):
+                            response_text_parts.append(event.text)
+                        elif isinstance(event, ThinkingDelta):
+                            thinking_parts.append(event.text)
+                        yield event
+                finally:
+                    if security_token is not None:
+                        from tukuy.safety import reset_security_context
+
+                        reset_security_context(security_token)
+
+            response_text = "".join(response_text_parts)
+            all_tool_calls: list[dict[str, Any]] = []
+            self._extract_steps(
+                conv.messages,
+                steps,
+                all_tool_calls,
+                getattr(conv, "_full_tool_results", None),
+            )
+
+            if self._output_type is not None:
+                output, output_text = self._parse_output(conv, response_text, steps, all_tool_calls, 0.0, session)
+            else:
+                output = response_text
+                output_text = response_text
+
+            result = AgentResult(
+                output=output,
+                output_text=output_text,
+                messages=conv.messages,
+                usage=conv.usage,
+                steps=steps,
+                all_tool_calls=all_tool_calls,
+                state=AgentState.idle,
+                run_usage=session.summary(),
+            )
+
+            if self._output_guardrails:
+                result = self._run_output_guardrails(ctx, result, conv, session, steps, all_tool_calls)
+
+            if self._agent_callbacks.on_step:
+                for step in steps:
+                    self._agent_callbacks.on_step(step)
+            if self._agent_callbacks.on_output:
+                self._agent_callbacks.on_output(result)
+            if self._agent_callbacks.on_message:
+                self._agent_callbacks.on_message(result.output_text)
+
+            self._lifecycle = AgentState.idle
+            return result
+        except Exception:
+            self._lifecycle = AgentState.errored
+            raise
+        finally:
+            _agent_depth.reset(token)
+
 
 # ------------------------------------------------------------------
 # AgentIterator
@@ -1292,6 +1437,39 @@ class StreamedAgentResult:
         return self
 
     def __next__(self) -> StreamEvent:
+        try:
+            return next(self._gen)
+        except StopIteration as e:
+            self._result = e.value
+            raise
+
+    @property
+    def result(self) -> AgentResult | None:
+        """The final :class:`AgentResult`, available after iteration completes."""
+        return self._result
+
+
+# ------------------------------------------------------------------
+# LiveAgentResult
+# ------------------------------------------------------------------
+
+
+class LiveAgentResult:
+    """Wraps the :meth:`Agent.run_live` generator, capturing the final result.
+
+    Yields :class:`~prompture.agents.live_events.LiveEvent` objects during
+    iteration.  After iteration completes, :attr:`result` holds the final
+    :class:`AgentResult`.
+    """
+
+    def __init__(self, gen: Generator[Any, None, AgentResult]) -> None:
+        self._gen = gen
+        self._result: AgentResult | None = None
+
+    def __iter__(self) -> LiveAgentResult:
+        return self
+
+    def __next__(self) -> Any:
         try:
             return next(self._gen)
         except StopIteration as e:

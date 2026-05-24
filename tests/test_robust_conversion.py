@@ -194,10 +194,12 @@ class TestConvertValueUnionTypes:
     def test_optional_type_conversion(self):
         """Test conversion with Optional types."""
         # Optional[int] is Union[int, None]
-        result = convert_value("42", Optional[int])
+        # Note: deliberately using the legacy ``Optional`` form to verify
+        # ``convert_value`` still handles it; ``X | None`` is the modern style.
+        result = convert_value("42", Optional[int])  # noqa: UP045
         assert result == 42
 
-        result = convert_value(None, Optional[int])
+        result = convert_value(None, Optional[int])  # noqa: UP045
         assert result is None
 
 

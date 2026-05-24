@@ -14,7 +14,7 @@ Features:
 import collections.abc
 import threading
 from datetime import date, datetime
-from typing import Any, Optional, Union
+from typing import Any, Union
 
 from pydantic import Field
 from pydantic.fields import FieldInfo
@@ -38,7 +38,7 @@ def _get_template_variables() -> dict[str, Any]:
     }
 
 
-def _apply_templates(text: str, custom_vars: Optional[dict[str, Any]] = None) -> str:
+def _apply_templates(text: str, custom_vars: dict[str, Any] | None = None) -> str:
     """Apply template variable substitution to a text string."""
     if not isinstance(text, str):
         return text
@@ -345,8 +345,8 @@ FIELD_DEFINITIONS = _global_registry
 
 
 def get_field_definition(
-    field_name: str, apply_templates: bool = True, custom_template_vars: Optional[dict[str, Any]] = None
-) -> Optional[FieldDefinition]:
+    field_name: str, apply_templates: bool = True, custom_template_vars: dict[str, Any] | None = None
+) -> FieldDefinition | None:
     """
     Retrieve the definition for a specific field from the global registry.
 
@@ -443,7 +443,7 @@ def add_field_definitions(field_definitions: dict[str, FieldDefinition]) -> None
 
 
 def field_from_registry(
-    field_name: str, apply_templates: bool = True, custom_template_vars: Optional[dict[str, Any]] = None
+    field_name: str, apply_templates: bool = True, custom_template_vars: dict[str, Any] | None = None
 ) -> FieldInfo:
     """
     Create a Pydantic Field from a field definition in the global registry.

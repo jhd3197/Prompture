@@ -6,11 +6,11 @@ import json
 import logging
 import time
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
-from typing import Any, Callable, Literal, Union, cast
+from typing import Any, Literal, cast
 
 from pydantic import BaseModel
 
@@ -322,13 +322,24 @@ class AsyncConversation:
         return cls.from_export(data, callbacks=callbacks, tools=tools)
 
     def _maybe_auto_save(self) -> None:
-        """Auto-save after each turn if configured."""
+        """Auto-save after each turn if configured.
+
+        Errors are logged at WARNING level (not silently swallowed) so that
+        disk-full, permission, or serialization failures are visible to the
+        operator. We still don't re-raise — auto-save is best-effort and
+        should never break the conversation loop.
+        """
         if self._auto_save is None:
             return
         try:
             self.save(self._auto_save)
         except Exception:
-            logger.debug("Auto-save failed for conversation %s", self._conversation_id, exc_info=True)
+            logger.warning(
+                "Auto-save failed for conversation %s (path=%s)",
+                self._conversation_id,
+                self._auto_save,
+                exc_info=True,
+            )
 
     # ------------------------------------------------------------------
     # Budget enforcement
@@ -669,6 +680,148 @@ class AsyncConversation:
                 msgs.append(tool_result_msg)
 
         raise RuntimeError(f"Tool execution loop exceeded {self._max_tool_rounds} rounds")
+
+    async def ask_live(
+        self,
+        content: str,
+        options: dict[str, Any] | None = None,
+        images: list[ImageInput] | None = None,
+    ) -> AsyncIterator[Any]:
+        """Async sibling of :meth:`Conversation.ask_live`.
+
+        Runs an agentic tool loop yielding :class:`LiveEvent` as work
+        happens — text/thinking deltas, tool_use start/input/stop,
+        tool_result, turn_complete — driven by the driver's native
+        streaming events for providers that support it (Claude, OpenAI,
+        Groq, etc.) and the synthetic fallback otherwise.
+        """
+        from .live_events import (
+            AssistantTurnStart,
+            TextDelta,
+            ToolResult,
+            ToolUseStart,
+            ToolUseStop,
+            TurnComplete,
+        )
+
+        self._last_reasoning = None
+
+        if not self._tools:
+            async for chunk in self.ask_stream(content, options, images=images):
+                yield TextDelta(text=chunk)
+            yield TurnComplete(usage=dict(self._usage))
+            return
+
+        use_native = getattr(self._driver, "supports_tool_use", False)
+        if self._simulated_tools is True or (self._simulated_tools == "auto" and not use_native):
+            async for ev in self._ask_with_simulated_tool_events(content, options, images=images):
+                ev_type = ev.get("type")
+                if ev_type == "text_delta":
+                    yield TextDelta(text=ev.get("text", ""))
+                elif ev_type == "tool_call":
+                    yield ToolUseStart(id=ev.get("id", ""), name=ev.get("name", ""))
+                    yield ToolUseStop(
+                        id=ev.get("id", ""),
+                        name=ev.get("name", ""),
+                        input=ev.get("arguments", {}) or {},
+                    )
+                elif ev_type == "tool_result":
+                    yield ToolResult(
+                        id=ev.get("id", ""),
+                        name=ev.get("name", ""),
+                        output=ev.get("result", ""),
+                    )
+            yield TurnComplete(usage=dict(self._usage))
+            return
+
+        merged = {**self._options, **(options or {})}
+        tool_defs = self._tools.to_openai_format()
+
+        user_content = self._build_content_with_images(content, images)
+        self._messages.append({"role": "user", "content": user_content})
+        msgs = self._build_messages_raw()
+
+        for round_idx in range(self._max_tool_rounds):
+            self._check_budget()
+            if await self._run_before_turn():
+                msgs = self._build_messages_raw()
+
+            yield AssistantTurnStart(turn_index=round_idx)
+
+            assistant_text_parts: list[str] = []
+            assistant_thinking_parts: list[str] = []
+            tool_calls_in_turn: list[dict[str, Any]] = []
+            pending_tools: list[tuple[str, str, dict[str, Any]]] = []
+            turn_usage: dict[str, Any] = {}
+
+            stream = self._driver.generate_messages_with_tools_stream(msgs, tool_defs, merged)
+            async for event in stream:
+                yield event
+                et = getattr(event, "event_type", None)
+                if et == "text_delta":
+                    assistant_text_parts.append(event.text)
+                elif et == "thinking_delta":
+                    assistant_thinking_parts.append(event.text)
+                elif et == "tool_use_stop":
+                    pending_tools.append((event.id, event.name, event.input))
+                    tool_calls_in_turn.append(
+                        {
+                            "id": event.id,
+                            "type": "function",
+                            "function": {"name": event.name, "arguments": json.dumps(event.input)},
+                        }
+                    )
+                elif et == "message_stop":
+                    turn_usage = dict(event.usage or {})
+
+            full_text = "".join(assistant_text_parts)
+            full_thinking = "".join(assistant_thinking_parts) or None
+
+            assistant_msg: dict[str, Any] = {"role": "assistant", "content": full_text}
+            if tool_calls_in_turn:
+                assistant_msg["tool_calls"] = tool_calls_in_turn
+            if full_thinking is not None:
+                assistant_msg["reasoning_content"] = full_thinking
+                self._last_reasoning = full_thinking
+
+            self._messages.append(assistant_msg)
+            msgs.append(assistant_msg)
+            if turn_usage:
+                self._accumulate_usage(turn_usage)
+
+            if not pending_tools:
+                yield TurnComplete(usage=dict(self._usage))
+                return
+
+            for tool_id, tool_name, tool_input in pending_tools:
+                from ..extraction.tukuy_bridge import current_tool_call_id
+
+                _tok = current_tool_call_id.set(tool_id)
+                try:
+                    result = await self._tools.aexecute(tool_name, tool_input)
+                    result_str = json.dumps(result) if not isinstance(result, str) else result
+                    is_error = False
+                except Exception as exc:
+                    result_str = (
+                        f"Error ({type(exc).__name__}): {exc}" if str(exc) else f"Error: {type(exc).__name__}: {exc!r}"
+                    )
+                    is_error = True
+                finally:
+                    current_tool_call_id.reset(_tok)
+
+                self._full_tool_results[tool_id] = result_str
+                yield ToolResult(id=tool_id, name=tool_name, output=result_str, is_error=is_error)
+
+                truncated = self._truncate_tool_result(result_str)
+                tool_result_msg: dict[str, Any] = {
+                    "role": "tool",
+                    "tool_call_id": tool_id,
+                    "content": truncated,
+                }
+                self._messages.append(tool_result_msg)
+                msgs.append(tool_result_msg)
+
+        raise RuntimeError(f"ask_live exceeded {self._max_tool_rounds} rounds")
 
     async def _ask_with_simulated_tool_events(
         self,
@@ -1131,7 +1284,7 @@ class AsyncConversation:
         fields: list[str] | None,
         field_definitions: dict[str, Any] | None,
         json_mode: Literal["auto", "on", "off"],
-    ) -> dict[str, Union[str, dict[str, Any]]]:
+    ) -> dict[str, str | dict[str, Any]]:
         """Stepwise extraction using async conversation context between fields."""
         if field_definitions is None:
             field_definitions = get_registry_snapshot()

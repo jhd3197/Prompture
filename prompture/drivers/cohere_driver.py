@@ -39,7 +39,11 @@ class CohereDriver(CostMixin, Driver):
     def __init__(self, api_key: str | None = None, model: str = "command-r-plus"):
         self.api_key = api_key or os.getenv("COHERE_API_KEY")
         if not self.api_key:
-            raise ValueError("Cohere API key not found. Set COHERE_API_KEY env var.")
+            from ..exceptions import ConfigurationError
+
+            raise ConfigurationError(
+                "COHERE_API_KEY is not set. Provide api_key=... or set the COHERE_API_KEY environment variable."
+            )
         self.model = model
         self.base_url = "https://api.cohere.com/v2"
         self.headers = {
@@ -81,7 +85,9 @@ class CohereDriver(CostMixin, Driver):
 
     def _do_generate(self, messages: list[dict[str, Any]], options: dict[str, Any]) -> dict[str, Any]:
         if not self.api_key:
-            raise RuntimeError("Cohere API key not found")
+            from ..exceptions import ConfigurationError
+
+            raise ConfigurationError("COHERE_API_KEY is not set.")
 
         model = options.get("model", self.model)
         model_config = self._get_model_config("cohere", model)
@@ -131,9 +137,15 @@ class CohereDriver(CostMixin, Driver):
             error_msg = f"Cohere API request failed: {e!s}"
             if body:
                 error_msg += f"\nResponse: {body}"
-            raise RuntimeError(error_msg) from e
+            from ..exceptions import DriverError
+
+            err = DriverError(error_msg)
+            err.status_code = e.response.status_code if e.response is not None else None
+            raise err from e
         except requests.exceptions.RequestException as e:
-            raise RuntimeError(f"Cohere API request failed: {e!s}") from e
+            from ..exceptions import DriverError
+
+            raise DriverError(f"Cohere API request failed: {e!s}") from e
 
         message = resp.get("message", {}) or {}
         text = self._extract_text(message)
@@ -166,7 +178,9 @@ class CohereDriver(CostMixin, Driver):
         options: dict[str, Any],
     ) -> dict[str, Any]:
         if not self.api_key:
-            raise RuntimeError("Cohere API key not found")
+            from ..exceptions import ConfigurationError
+
+            raise ConfigurationError("COHERE_API_KEY is not set.")
 
         model = options.get("model", self.model)
         model_config = self._get_model_config("cohere", model)
@@ -202,9 +216,15 @@ class CohereDriver(CostMixin, Driver):
             error_msg = f"Cohere API request failed: {e!s}"
             if body:
                 error_msg += f"\nResponse: {body}"
-            raise RuntimeError(error_msg) from e
+            from ..exceptions import DriverError
+
+            err = DriverError(error_msg)
+            err.status_code = e.response.status_code if e.response is not None else None
+            raise err from e
         except requests.exceptions.RequestException as e:
-            raise RuntimeError(f"Cohere API request failed: {e!s}") from e
+            from ..exceptions import DriverError
+
+            raise DriverError(f"Cohere API request failed: {e!s}") from e
 
         message = resp.get("message", {}) or {}
         text = self._extract_text(message)

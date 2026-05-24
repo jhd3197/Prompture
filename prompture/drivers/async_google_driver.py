@@ -11,7 +11,7 @@ from typing import Any
 try:
     from google import genai
     from google.genai import types
-except Exception:
+except ImportError:
     genai = None  # type: ignore[assignment]
     types = None  # type: ignore[assignment]
 
@@ -35,10 +35,20 @@ class AsyncGoogleDriver(CostMixin, AsyncDriver):
 
     def __init__(self, api_key: str | None = None, model: str = "gemini-1.5-pro"):
         if genai is None:
-            raise RuntimeError("google-genai package is not installed. Install it with: pip install google-genai")
+            from ..exceptions import ConfigurationError
+
+            raise ConfigurationError(
+                'google-genai package is not installed. Install it with: pip install "prompture[google]"'
+            )
         self.api_key = api_key or os.getenv("GOOGLE_API_KEY")
         if not self.api_key:
-            raise ValueError("Google API key not found. Set GOOGLE_API_KEY env var or pass api_key to constructor")
+            from ..exceptions import ConfigurationError
+
+            raise ConfigurationError(
+                "GOOGLE_API_KEY is not set. Provide api_key=... or set the "
+                "GOOGLE_API_KEY environment variable. "
+                "See https://github.com/jhd3197/prompture#configuration"
+            )
         self.model = model
         self._client = genai.Client(api_key=self.api_key)
         self.options: dict[str, Any] = {}
@@ -224,7 +234,9 @@ class AsyncGoogleDriver(CostMixin, AsyncDriver):
 
         except Exception as e:
             logger.error(f"Google API request failed: {e}")
-            raise RuntimeError(f"Google API request failed: {e}") from e
+            from ..exceptions import DriverError
+
+            raise DriverError(f"Google API request failed: {e}") from e
 
     # ------------------------------------------------------------------
     # Tool use
@@ -328,7 +340,9 @@ class AsyncGoogleDriver(CostMixin, AsyncDriver):
 
         except Exception as e:
             logger.error(f"Google API tool call request failed: {e}")
-            raise RuntimeError(f"Google API tool call request failed: {e}") from e
+            from ..exceptions import DriverError
+
+            raise DriverError(f"Google API tool call request failed: {e}") from e
 
     # ------------------------------------------------------------------
     # Streaming
@@ -372,4 +386,6 @@ class AsyncGoogleDriver(CostMixin, AsyncDriver):
 
         except Exception as e:
             logger.error(f"Google API streaming request failed: {e}")
-            raise RuntimeError(f"Google API streaming request failed: {e}") from e
+            from ..exceptions import DriverError
+
+            raise DriverError(f"Google API streaming request failed: {e}") from e

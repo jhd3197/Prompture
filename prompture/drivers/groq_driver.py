@@ -8,7 +8,7 @@ from typing import Any
 
 try:
     import groq
-except Exception:
+except ImportError:
     groq = None  # type: ignore[assignment]
 
 from ..infra.cost_mixin import CostMixin
@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 class GroqDriver(CostMixin, Driver):
     supports_json_mode = True
     supports_tool_use = True
+    supports_streaming_tool_use = True
     supports_vision = True
 
     # All pricing and model config now resolved from JSON rate files (KB) and
@@ -35,10 +36,18 @@ class GroqDriver(CostMixin, Driver):
         """
         self.api_key = api_key or os.getenv("GROQ_API_KEY")
         self.model = model
-        if groq is not None:
-            self.client: Any = groq.Client(api_key=self.api_key)
-        else:
-            self.client = None
+        if groq is None:
+            self.client: Any = None
+            return
+        if not self.api_key:
+            from ..exceptions import ConfigurationError
+
+            raise ConfigurationError(
+                "GROQ_API_KEY is not set. Provide api_key=... or set the "
+                "GROQ_API_KEY environment variable. "
+                "See https://github.com/jhd3197/prompture#configuration"
+            )
+        self.client: Any = groq.Client(api_key=self.api_key)
 
     @classmethod
     def list_models(cls, *, api_key: str | None = None, timeout: int = 10, **kw: object) -> list[str] | None:
@@ -66,7 +75,9 @@ class GroqDriver(CostMixin, Driver):
 
     def _do_generate(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
         if self.client is None:
-            raise RuntimeError("groq package is not installed")
+            from ..exceptions import ConfigurationError
+
+            raise ConfigurationError('groq package is not installed. Install it with: pip install "prompture[groq]"')
 
         model = options.get("model", self.model)
 
@@ -154,7 +165,9 @@ class GroqDriver(CostMixin, Driver):
     ) -> dict[str, Any]:
         """Generate a response that may include tool calls."""
         if self.client is None:
-            raise RuntimeError("groq package is not installed")
+            from ..exceptions import ConfigurationError
+
+            raise ConfigurationError('groq package is not installed. Install it with: pip install "prompture[groq]"')
 
         model = options.get("model", self.model)
         model_config = self._get_model_config("groq", model)
@@ -228,3 +241,24 @@ class GroqDriver(CostMixin, Driver):
         if reasoning_content is not None:
             result["reasoning_content"] = reasoning_content
         return result
+
+    # ------------------------------------------------------------------
+    # Live streaming with interleaved tool calls
+    # ------------------------------------------------------------------
+
+    def generate_messages_with_tools_stream(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        options: dict[str, Any],
+    ):
+        """Stream one Groq turn as :class:`LiveEvent` via the shared
+        OpenAI-compat helper."""
+        if self.client is None:
+            from ..exceptions import ConfigurationError
+
+            raise ConfigurationError('groq package is not installed. Install it with: pip install "prompture[groq]"')
+
+        from ._openai_compat_stream import stream_openai_compat_tool_call
+
+        yield from stream_openai_compat_tool_call(self, messages, tools, options, provider="groq")

@@ -225,6 +225,8 @@ PLAN_INGESTION.md
 /feedback
 PLAN_CACHIBOT_ROOMS.md
 PROMPTURE_FEATURES.md
+prompt.md
+prompts/
 .claude/settings.local.json
 /.pr
 /docs-cacao
