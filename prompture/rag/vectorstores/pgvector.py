@@ -115,7 +115,7 @@ class PgVectorStore(VectorStore):
         size = self._infer_vector_size(vectors)
         self._ensure_table(size)
         with self._conn.cursor() as cur:
-            for _id, vec, doc in zip(ids, vectors, documents):
+            for _id, vec, doc in zip(ids, vectors, documents, strict=False):
                 cur.execute(
                     f"""
                     INSERT INTO {self.table_name} (id, content, metadata, embedding)

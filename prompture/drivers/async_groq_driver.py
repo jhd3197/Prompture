@@ -8,7 +8,7 @@ from typing import Any
 
 try:
     import groq
-except Exception:
+except ImportError:
     groq = None  # type: ignore[assignment]
 
 from ..infra.cost_mixin import CostMixin
@@ -58,7 +58,12 @@ class AsyncGroqDriver(CostMixin, AsyncDriver):
 
     async def _do_generate(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
         if self.client is None:
-            raise RuntimeError("groq package is not installed")
+            from ..exceptions import ConfigurationError
+
+            raise ConfigurationError(
+                "groq package is not installed. "
+                'Install it with: pip install "prompture[groq]"'
+            )
 
         model = options.get("model", self.model)
 
@@ -132,7 +137,12 @@ class AsyncGroqDriver(CostMixin, AsyncDriver):
     ) -> dict[str, Any]:
         """Generate a response that may include tool calls."""
         if self.client is None:
-            raise RuntimeError("groq package is not installed")
+            from ..exceptions import ConfigurationError
+
+            raise ConfigurationError(
+                "groq package is not installed. "
+                'Install it with: pip install "prompture[groq]"'
+            )
 
         model = options.get("model", self.model)
         model_config = self._get_model_config("groq", model)

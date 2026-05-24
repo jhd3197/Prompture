@@ -37,9 +37,9 @@ from __future__ import annotations
 
 import enum
 import re
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any
 
 
 class PIICategory(str, enum.Enum):

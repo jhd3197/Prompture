@@ -3,12 +3,12 @@ import logging
 import os
 import uuid
 from collections.abc import Iterator
-from typing import Any, Optional
+from typing import Any
 
 try:
     from google import genai
     from google.genai import types
-except Exception:
+except ImportError:
     genai = None  # type: ignore[assignment]
     types = None  # type: ignore[assignment]
 
@@ -58,7 +58,12 @@ class GoogleDriver(CostMixin, Driver):
             model: Model to use. Defaults to "gemini-1.5-pro"
         """
         if genai is None:
-            raise RuntimeError("google-genai package is not installed. Install it with: pip install google-genai")
+            from ..exceptions import ConfigurationError
+
+            raise ConfigurationError(
+                "google-genai package is not installed. "
+                'Install it with: pip install "prompture[google]"'
+            )
         self.api_key = api_key or os.getenv("GOOGLE_API_KEY")
         if not self.api_key:
             from ..exceptions import ConfigurationError
@@ -162,7 +167,7 @@ class GoogleDriver(CostMixin, Driver):
         return _prepare_google_vision_messages(messages)
 
     def _build_generation_args(
-        self, messages: list[dict[str, Any]], options: Optional[dict[str, Any]] = None
+        self, messages: list[dict[str, Any]], options: dict[str, Any] | None = None
     ) -> tuple[Any, dict[str, Any]]:
         """Parse messages and options into (contents, config_dict) for generate_content.
 
@@ -294,14 +299,14 @@ class GoogleDriver(CostMixin, Driver):
 
         return gen_input, config_dict
 
-    def generate(self, prompt: str, options: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+    def generate(self, prompt: str, options: dict[str, Any] | None = None) -> dict[str, Any]:
         messages = [{"role": "user", "content": prompt}]
         return self._do_generate(messages, options)
 
     def generate_messages(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
         return self._do_generate(self._prepare_messages(messages), options)
 
-    def _do_generate(self, messages: list[dict[str, str]], options: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+    def _do_generate(self, messages: list[dict[str, str]], options: dict[str, Any] | None = None) -> dict[str, Any]:
         gen_input, config_dict = self._build_generation_args(messages, options)
 
         # Validate capabilities against models.dev metadata
@@ -335,7 +340,9 @@ class GoogleDriver(CostMixin, Driver):
 
         except Exception as e:
             logger.error(f"Google API request failed: {e}")
-            raise RuntimeError(f"Google API request failed: {e}") from e
+            from ..exceptions import DriverError
+
+            raise DriverError(f"Google API request failed: {e}") from e
 
     # ------------------------------------------------------------------
     # Tool use
@@ -441,7 +448,9 @@ class GoogleDriver(CostMixin, Driver):
 
         except Exception as e:
             logger.error(f"Google API tool call request failed: {e}")
-            raise RuntimeError(f"Google API tool call request failed: {e}") from e
+            from ..exceptions import DriverError
+
+            raise DriverError(f"Google API tool call request failed: {e}") from e
 
     # ------------------------------------------------------------------
     # Streaming
@@ -485,4 +494,6 @@ class GoogleDriver(CostMixin, Driver):
 
         except Exception as e:
             logger.error(f"Google API streaming request failed: {e}")
-            raise RuntimeError(f"Google API streaming request failed: {e}") from e
+            from ..exceptions import DriverError
+
+            raise DriverError(f"Google API streaming request failed: {e}") from e

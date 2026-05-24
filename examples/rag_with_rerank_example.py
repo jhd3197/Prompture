@@ -68,7 +68,7 @@ class _CharNGramVectorStore(VectorStore):
     def delete(self, ids: list[str]) -> None:
         kept_docs = []
         kept_ids = []
-        for doc, did in zip(self._docs, self._ids):
+        for doc, did in zip(self._docs, self._ids, strict=False):
             if did not in ids:
                 kept_docs.append(doc)
                 kept_ids.append(did)

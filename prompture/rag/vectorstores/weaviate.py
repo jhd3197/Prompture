@@ -87,7 +87,7 @@ class WeaviateVectorStore(VectorStore):
     ) -> list[str]:
         ids = ids or [str(uuid.uuid4()) for _ in documents]
         coll = self._coll()
-        for _id, vec, doc in zip(ids, vectors, documents):
+        for _id, vec, doc in zip(ids, vectors, documents, strict=False):
             props = {"content": doc.content, "metadata": doc.metadata}
             coll.data.insert(properties=props, uuid=_id, vector=list(vec))
         return ids

@@ -5,7 +5,6 @@ This example shows how to use Prompture for extracting product information from 
 It demonstrates extraction of product features, pricing, brand information, and categorization.
 """
 
-from typing import Optional
 
 from pydantic import BaseModel
 
@@ -70,11 +69,11 @@ register_field(
 
 class Product(BaseModel):
     name: str = field_from_registry("name")
-    brand: Optional[str] = field_from_registry("brand")
-    price: Optional[float] = field_from_registry("price")
-    description: Optional[str] = field_from_registry("description")
-    features: Optional[list[str]] = field_from_registry("product_features")
-    category: Optional[str] = field_from_registry("category")
+    brand: str | None = field_from_registry("brand")
+    price: float | None = field_from_registry("price")
+    description: str | None = field_from_registry("description")
+    features: list[str] | None = field_from_registry("product_features")
+    category: str | None = field_from_registry("category")
 
 
 # Sample product description

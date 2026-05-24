@@ -100,7 +100,7 @@ def _cosine(a: list[float], b: list[float]) -> float:
     dot = 0.0
     na = 0.0
     nb = 0.0
-    for x, y in zip(a, b):
+    for x, y in zip(a, b, strict=False):
         dot += x * y
         na += x * x
         nb += y * y
@@ -174,7 +174,7 @@ class FewShotExampleStore:
         inputs = [t for t, _ in examples]
         vectors = self._embed_batch(inputs)
         out: list[Example] = []
-        for (input_text, expected_output), vec in zip(examples, vectors):
+        for (input_text, expected_output), vec in zip(examples, vectors, strict=False):
             ex = Example(input_text=input_text, expected_output=expected_output)
             ex.embedding = vec
             self._examples.append(ex)

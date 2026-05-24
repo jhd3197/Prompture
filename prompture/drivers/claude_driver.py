@@ -12,7 +12,7 @@ import requests
 
 try:
     import anthropic
-except Exception:
+except ImportError:
     anthropic = None  # type: ignore[assignment]
 
 from ..infra.cost_mixin import CostMixin
@@ -353,7 +353,12 @@ class ClaudeDriver(CostMixin, Driver):
 
     def _do_generate(self, messages: list[dict[str, Any]], options: dict[str, Any]) -> dict[str, Any]:
         if anthropic is None:
-            raise RuntimeError("anthropic package not installed")
+            from ..exceptions import ConfigurationError
+
+            raise ConfigurationError(
+                "anthropic package not installed. "
+                'Install it with: pip install "prompture[anthropic]"'
+            )
 
         opts = {**{"temperature": 0.0, "max_tokens": 512}, **options}
         model = options.get("model", self.model)
@@ -467,7 +472,12 @@ class ClaudeDriver(CostMixin, Driver):
     ) -> dict[str, Any]:
         """Generate a response that may include tool calls (Anthropic)."""
         if anthropic is None:
-            raise RuntimeError("anthropic package not installed")
+            from ..exceptions import ConfigurationError
+
+            raise ConfigurationError(
+                "anthropic package not installed. "
+                'Install it with: pip install "prompture[anthropic]"'
+            )
 
         opts = {**{"temperature": 0.0, "max_tokens": 512}, **options}
         model = options.get("model", self.model)
@@ -533,7 +543,12 @@ class ClaudeDriver(CostMixin, Driver):
     ) -> Iterator[dict[str, Any]]:
         """Yield response chunks via Anthropic streaming API."""
         if anthropic is None:
-            raise RuntimeError("anthropic package not installed")
+            from ..exceptions import ConfigurationError
+
+            raise ConfigurationError(
+                "anthropic package not installed. "
+                'Install it with: pip install "prompture[anthropic]"'
+            )
 
         opts = {**{"temperature": 0.0, "max_tokens": 512}, **options}
         model = options.get("model", self.model)

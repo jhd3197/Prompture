@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from typing import Any, Literal, Union
+from typing import Any, Literal
 
 from .._internal.json_encoder import PromptureJSONEncoder
 
@@ -719,7 +719,7 @@ async def stepwise_extract_with_model(
     system_prompt: str | None = None,
     share_context: bool = False,
     reasoning_strategy: str | ReasoningStrategyProtocol | None = None,
-) -> dict[str, Union[str, dict[str, Any]]]:
+) -> dict[str, str | dict[str, Any]]:
     """Extract information field-by-field using sequential async LLM calls."""
     if not text or not text.strip():
         raise ValueError("Text input cannot be empty")
@@ -1071,7 +1071,7 @@ async def extract_with_models(
 
 
 async def extract_from_data(
-    data: Union[list[dict[str, Any]], dict[str, Any]],
+    data: list[dict[str, Any]] | dict[str, Any],
     question: str,
     json_schema: dict[str, Any],
     *,

@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from .base import Driver
 
@@ -16,7 +16,7 @@ class AirLLMDriver(Driver):
 
     MODEL_PRICING = {"default": {"prompt": 0.0, "completion": 0.0}}
 
-    def __init__(self, model: str = "meta-llama/Llama-2-7b-hf", compression: Optional[str] = None):
+    def __init__(self, model: str = "meta-llama/Llama-2-7b-hf", compression: str | None = None):
         """
         Args:
             model: HuggingFace repo ID (e.g. ``"meta-llama/Llama-2-70b-hf"``).
@@ -64,7 +64,7 @@ class AirLLMDriver(Driver):
     # ------------------------------------------------------------------
     # Driver interface
     # ------------------------------------------------------------------
-    def generate(self, prompt: str, options: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+    def generate(self, prompt: str, options: dict[str, Any] | None = None) -> dict[str, Any]:
         self._ensure_loaded()
 
         merged_options = self.options.copy()

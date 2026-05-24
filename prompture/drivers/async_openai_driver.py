@@ -9,7 +9,7 @@ from typing import Any
 
 try:
     from openai import AsyncOpenAI
-except Exception:
+except ImportError:
     AsyncOpenAI = None  # type: ignore[misc, assignment]
 
 from ..infra.cost_mixin import CostMixin
@@ -68,7 +68,12 @@ class AsyncOpenAIDriver(CostMixin, AsyncDriver):
 
     async def _do_generate(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
         if self.client is None:
-            raise RuntimeError("openai package (>=1.0.0) is not installed")
+            from ..exceptions import ConfigurationError
+
+            raise ConfigurationError(
+                "openai package (>=1.0.0) is not installed. "
+                'Install it with: pip install "prompture[openai]"'
+            )
 
         model = options.get("model", self.model)
 
@@ -123,7 +128,12 @@ class AsyncOpenAIDriver(CostMixin, AsyncDriver):
     ) -> dict[str, Any]:
         """Generate a response that may include tool calls."""
         if self.client is None:
-            raise RuntimeError("openai package (>=1.0.0) is not installed")
+            from ..exceptions import ConfigurationError
+
+            raise ConfigurationError(
+                "openai package (>=1.0.0) is not installed. "
+                'Install it with: pip install "prompture[openai]"'
+            )
 
         model = options.get("model", self.model)
         model_config = self._get_model_config("openai", model)
@@ -171,7 +181,12 @@ class AsyncOpenAIDriver(CostMixin, AsyncDriver):
     ) -> AsyncIterator[dict[str, Any]]:
         """Yield response chunks via OpenAI streaming API."""
         if self.client is None:
-            raise RuntimeError("openai package (>=1.0.0) is not installed")
+            from ..exceptions import ConfigurationError
+
+            raise ConfigurationError(
+                "openai package (>=1.0.0) is not installed. "
+                'Install it with: pip install "prompture[openai]"'
+            )
 
         model = options.get("model", self.model)
         model_config = self._get_model_config("openai", model)

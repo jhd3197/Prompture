@@ -1,4 +1,3 @@
-from typing import Optional
 
 from pydantic import BaseModel
 
@@ -29,11 +28,11 @@ register_field(
 
 class Resume(BaseModel):
     name: str = field_from_registry("name")
-    email: Optional[str] = field_from_registry("email")
-    phone: Optional[str] = field_from_registry("phone")
-    skills: Optional[list[str]] = field_from_registry("skills")
-    education: Optional[list[dict]] = field_from_registry("education_level")
-    work_experience: Optional[list[dict]] = field_from_registry("work_experience")
+    email: str | None = field_from_registry("email")
+    phone: str | None = field_from_registry("phone")
+    skills: list[str] | None = field_from_registry("skills")
+    education: list[dict] | None = field_from_registry("education_level")
+    work_experience: list[dict] | None = field_from_registry("work_experience")
 
 
 # Sample resume text

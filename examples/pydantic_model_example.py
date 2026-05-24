@@ -15,7 +15,6 @@ guide the LLM's extraction process.
 """
 
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -29,7 +28,7 @@ class Person(BaseModel):
     birth_date: datetime = Field(..., description="The person's date of birth in ISO format (YYYY-MM-DD).")
     profession: str = Field(..., description="Their main job or role.")
     is_employed: bool = Field(..., description="Whether the person is currently employed. True or False.")
-    salary: Optional[float] = Field(None, description="Annual salary in USD, if available. Numbers only e.g. 75000.50")
+    salary: float | None = Field(None, description="Annual salary in USD, if available. Numbers only e.g. 75000.50")
 
 
 # Define a Person model with default values to demonstrate default handling
@@ -40,7 +39,7 @@ class PersonWithDefaults(BaseModel):
     is_employed: bool = Field(
         False, description="Whether the person is currently employed. Default to False if unclear."
     )
-    salary: Optional[float] = Field(None, description="Annual salary in USD, if available. Numbers only e.g. 75000.50")
+    salary: float | None = Field(None, description="Annual salary in USD, if available. Numbers only e.g. 75000.50")
 
 
 # Example text to extract information from

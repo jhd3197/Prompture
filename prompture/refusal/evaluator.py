@@ -254,7 +254,7 @@ class RefusalEvaluator:
         # Group flagged responses by category so the sample set covers
         # the spectrum instead of repeating one type.
         by_cat: dict[RefusalCategory, list[tuple[str, str, RefusalResult]]] = {}
-        for prompt, response, result in zip(prompts, responses, results):
+        for prompt, response, result in zip(prompts, responses, results, strict=False):
             if not result.is_refusal or result.category is None:
                 continue
             by_cat.setdefault(result.category, []).append((prompt, response, result))

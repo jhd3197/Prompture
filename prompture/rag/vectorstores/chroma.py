@@ -102,7 +102,7 @@ class ChromaVectorStore(VectorStore):
         dists = (result.get("distances") or [[]])[0]
         embs = (result.get("embeddings") or [[None] * len(docs)])[0]
         out: list[VectorSearchResult] = []
-        for content, meta, dist, emb in zip(docs, metas, dists, embs):
+        for content, meta, dist, emb in zip(docs, metas, dists, embs, strict=False):
             out.append(
                 VectorSearchResult(
                     document=Document(content=content or "", metadata=dict(meta or {})),

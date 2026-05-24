@@ -134,7 +134,7 @@ def _values_equal(a: Any, b: Any, tolerance: float = 0.01) -> bool:
     if isinstance(a, list):
         if len(a) != len(b):
             return False
-        return all(_values_equal(ai, bi, tolerance) for ai, bi in zip(a, b))
+        return all(_values_equal(ai, bi, tolerance) for ai, bi in zip(a, b, strict=False))
 
     return bool(a == b)
 
@@ -165,7 +165,7 @@ def _find_majority_value(values: list[Any]) -> tuple[Any, int]:
     most_common_hashable, count = counter.most_common(1)[0]
 
     # Map back to original value
-    for v, h in zip(values, hashable_values):
+    for v, h in zip(values, hashable_values, strict=False):
         if h == most_common_hashable:
             return v, count
 
@@ -339,7 +339,7 @@ def _compute_weighted_average_consensus(
             # Weighted average for numeric fields
             total_weight = sum(field_weights)
             if total_weight > 0:
-                weighted_sum = sum(v * w for v, w in zip(field_values, field_weights))
+                weighted_sum = sum(v * w for v, w in zip(field_values, field_weights, strict=False))
                 avg_value = weighted_sum / total_weight
                 # Preserve int type if all inputs were ints
                 if all(isinstance(v, int) for v in field_values):

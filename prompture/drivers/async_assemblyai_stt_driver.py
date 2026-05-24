@@ -9,7 +9,7 @@ from typing import Any
 
 try:
     import httpx
-except Exception:
+except ImportError:
     httpx = None  # type: ignore[assignment]
 
 from .assemblyai_stt_driver import _format_result

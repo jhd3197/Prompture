@@ -1,7 +1,7 @@
 import json
 import logging
 import os
-from typing import Any, Optional
+from typing import Any
 
 import requests
 
@@ -65,14 +65,14 @@ class LMStudioDriver(Driver):
 
         return _prepare_openai_vision_messages(messages)
 
-    def generate(self, prompt: str, options: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+    def generate(self, prompt: str, options: dict[str, Any] | None = None) -> dict[str, Any]:
         messages = [{"role": "user", "content": prompt}]
         return self._do_generate(messages, options)
 
     def generate_messages(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
         return self._do_generate(self._prepare_messages(messages), options)
 
-    def _do_generate(self, messages: list[dict[str, str]], options: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+    def _do_generate(self, messages: list[dict[str, str]], options: dict[str, Any] | None = None) -> dict[str, Any]:
         merged_options = self.options.copy()
         if options:
             merged_options.update(options)

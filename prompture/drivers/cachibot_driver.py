@@ -18,7 +18,7 @@ from typing import Any
 
 try:
     import requests as _requests
-except Exception:
+except ImportError:
     _requests = None
 
 from ..infra.cost_mixin import CostMixin

@@ -15,7 +15,7 @@ import asyncio
 import glob as _glob
 import logging
 from pathlib import Path
-from typing import Any, Literal, Union
+from typing import Any, Literal
 
 from ..extraction.async_core import extract_with_model as _async_extract_with_model
 from ..extraction.core import extract_with_model
@@ -43,7 +43,7 @@ DEFAULT_PROMPT_TEMPLATE = (
 
 
 def _resolve_source(
-    source: Union[str, Path, list[Union[str, Path]], list[Document]],
+    source: str | Path | list[str | Path] | list[Document],
 ) -> list[Document]:
     """Turn any accepted *source* shape into a flat list of ``Document``."""
     from ..rag.loader_registry import get_loader_for_path
@@ -66,7 +66,7 @@ def _resolve_source(
     return docs
 
 
-def _expand_paths(items: list[Union[str, Path]]) -> list[Path]:
+def _expand_paths(items: list[str | Path]) -> list[Path]:
     out: list[Path] = []
     for item in items:
         s = str(item)
@@ -118,13 +118,13 @@ def _format_records(
 
 
 def generate_qa_dataset(
-    source: Union[str, Path, list[Union[str, Path]], list[Document]],
+    source: str | Path | list[str | Path] | list[Document],
     *,
     model: str,
     n_per_chunk: int = 3,
     chunker: Any = None,
     prompt_template: str = DEFAULT_PROMPT_TEMPLATE,
-    output_path: Union[str, Path, None] = None,
+    output_path: str | Path | None = None,
     output_format: OutputFormat = "jsonl",
     options: dict[str, Any] | None = None,
     on_chunk: Any = None,
@@ -217,13 +217,13 @@ def generate_qa_dataset(
 
 
 async def agenerate_qa_dataset(
-    source: Union[str, Path, list[Union[str, Path]], list[Document]],
+    source: str | Path | list[str | Path] | list[Document],
     *,
     model: str,
     n_per_chunk: int = 3,
     chunker: Any = None,
     prompt_template: str = DEFAULT_PROMPT_TEMPLATE,
-    output_path: Union[str, Path, None] = None,
+    output_path: str | Path | None = None,
     output_format: OutputFormat = "jsonl",
     options: dict[str, Any] | None = None,
     on_chunk: Any = None,

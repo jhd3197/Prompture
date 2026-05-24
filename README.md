@@ -1669,6 +1669,13 @@ request body are forwarded to the driver as schemas; if the model
 returns `tool_calls`, they appear in the response shape so the
 client can execute locally.
 
+> **Single-worker constraint:** the server keeps conversations and
+> rate-limit buckets in **per-process memory**. Run with
+> `uvicorn --workers 1` (the default) — multi-worker deployments will
+> partition state across processes, so a `conversation_id` created on
+> one worker can return 404 on another. A shared-state backend (Redis
+> / Postgres) is on the roadmap.
+
 Selected flags:
 
 | Flag | Purpose |

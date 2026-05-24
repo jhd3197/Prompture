@@ -1103,7 +1103,7 @@ class AsyncAgent(Generic[DepsType]):
         deps: Any,
         *,
         images: list[Any] | None = None,
-    ) -> AsyncGenerator[AgentStep, None]:
+    ) -> AsyncGenerator[AgentStep]:
         """Async generator that executes the agent loop and yields each step."""
         self._lifecycle = AgentState.running
         self._stop_requested = False
@@ -1130,7 +1130,7 @@ class AsyncAgent(Generic[DepsType]):
         deps: Any,
         *,
         images: list[Any] | None = None,
-    ) -> AsyncGenerator[StreamEvent, None]:
+    ) -> AsyncGenerator[StreamEvent]:
         """Async generator that executes the agent loop and yields stream events.
 
         Raises:
@@ -1253,7 +1253,7 @@ class AsyncAgentIterator:
     After async iteration completes, :attr:`result` holds the :class:`AgentResult`.
     """
 
-    def __init__(self, gen: AsyncGenerator[AgentStep, None]) -> None:
+    def __init__(self, gen: AsyncGenerator[AgentStep]) -> None:
         self._gen = gen
         self._result: AgentResult | None = None
         self._agent: AsyncAgent[Any] | None = None
@@ -1290,7 +1290,7 @@ class AsyncStreamedAgentResult:
     :attr:`result` holds the :class:`AgentResult`.
     """
 
-    def __init__(self, gen: AsyncGenerator[StreamEvent, None]) -> None:
+    def __init__(self, gen: AsyncGenerator[StreamEvent]) -> None:
         self._gen = gen
         self._result: AgentResult | None = None
 

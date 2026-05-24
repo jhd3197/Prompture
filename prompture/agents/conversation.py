@@ -6,11 +6,11 @@ import json
 import logging
 import time
 import uuid
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
-from typing import Any, Callable, Literal, Union, cast
+from typing import Any, Literal, cast
 
 from pydantic import BaseModel
 
@@ -1247,7 +1247,7 @@ class Conversation:
         fields: list[str] | None,
         field_definitions: dict[str, Any] | None,
         json_mode: Literal["auto", "on", "off"],
-    ) -> dict[str, Union[str, dict[str, Any]]]:
+    ) -> dict[str, str | dict[str, Any]]:
         """Stepwise extraction using conversation context between fields."""
         if field_definitions is None:
             field_definitions = get_registry_snapshot()

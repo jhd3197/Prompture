@@ -14,7 +14,6 @@ Both methods extract the same Person data and the comparison shows:
 
 from datetime import date
 from decimal import Decimal
-from typing import Optional
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -27,14 +26,14 @@ class Person(BaseModel):
 
     name: str = Field(..., description="Full name of the person")
     age: int = Field(..., ge=0, le=150, description="Age in years")
-    birth_date: Optional[date] = Field(None, description="Date of birth in YYYY-MM-DD format")
+    birth_date: date | None = Field(None, description="Date of birth in YYYY-MM-DD format")
     profession: str = Field(..., description="Current job or profession")
     is_employed: bool = Field(..., description="Whether the person is currently employed")
-    salary: Optional[Decimal] = Field(None, ge=0, description="Annual salary in USD")
-    email: Optional[str] = Field(None, description="Email address")
-    phone: Optional[str] = Field(None, description="Phone number")
-    city: Optional[str] = Field(None, description="City of residence")
-    years_experience: Optional[int] = Field(None, ge=0, description="Years of work experience")
+    salary: Decimal | None = Field(None, ge=0, description="Annual salary in USD")
+    email: str | None = Field(None, description="Email address")
+    phone: str | None = Field(None, description="Phone number")
+    city: str | None = Field(None, description="City of residence")
+    years_experience: int | None = Field(None, ge=0, description="Years of work experience")
 
     @field_validator("birth_date", mode="before")
     @classmethod
@@ -328,7 +327,7 @@ def print_comparison_table(results):
     print("COMPARISON SUMMARY")
     print("=" * 140)
 
-    models_tested = list(set(r["model_name"] for r in results))
+    models_tested = list({r["model_name"] for r in results})
     successful_results = [r for r in results if r["success"]]
 
     print("\nOverall Results:")

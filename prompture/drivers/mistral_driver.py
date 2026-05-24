@@ -33,7 +33,12 @@ class MistralDriver(CostMixin, Driver):
     def __init__(self, api_key: str | None = None, model: str = "mistral-large-latest"):
         self.api_key = api_key or os.getenv("MISTRAL_API_KEY")
         if not self.api_key:
-            raise ValueError("Mistral API key not found. Set MISTRAL_API_KEY env var.")
+            from ..exceptions import ConfigurationError
+
+            raise ConfigurationError(
+                "MISTRAL_API_KEY is not set. Provide api_key=... or set the "
+                "MISTRAL_API_KEY environment variable."
+            )
         self.model = model
         self.base_url = "https://api.mistral.ai/v1"
         self.headers = {
@@ -68,7 +73,9 @@ class MistralDriver(CostMixin, Driver):
 
     def _do_generate(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
         if not self.api_key:
-            raise RuntimeError("Mistral API key not found")
+            from ..exceptions import ConfigurationError
+
+            raise ConfigurationError("MISTRAL_API_KEY is not set.")
 
         model = options.get("model", self.model)
         model_config = self._get_model_config("mistral", model)
@@ -116,9 +123,15 @@ class MistralDriver(CostMixin, Driver):
             error_msg = f"Mistral API request failed: {e!s}"
             if body:
                 error_msg += f"\nResponse: {body}"
-            raise RuntimeError(error_msg) from e
+            from ..exceptions import DriverError
+
+            err = DriverError(error_msg)
+            err.status_code = e.response.status_code if e.response is not None else None
+            raise err from e
         except requests.exceptions.RequestException as e:
-            raise RuntimeError(f"Mistral API request failed: {e!s}") from e
+            from ..exceptions import DriverError
+
+            raise DriverError(f"Mistral API request failed: {e!s}") from e
 
         usage = resp.get("usage", {})
         prompt_tokens = usage.get("prompt_tokens", 0)
@@ -146,7 +159,9 @@ class MistralDriver(CostMixin, Driver):
         options: dict[str, Any],
     ) -> dict[str, Any]:
         if not self.api_key:
-            raise RuntimeError("Mistral API key not found")
+            from ..exceptions import ConfigurationError
+
+            raise ConfigurationError("MISTRAL_API_KEY is not set.")
 
         model = options.get("model", self.model)
         model_config = self._get_model_config("mistral", model)
@@ -183,9 +198,15 @@ class MistralDriver(CostMixin, Driver):
             error_msg = f"Mistral API request failed: {e!s}"
             if body:
                 error_msg += f"\nResponse: {body}"
-            raise RuntimeError(error_msg) from e
+            from ..exceptions import DriverError
+
+            err = DriverError(error_msg)
+            err.status_code = e.response.status_code if e.response is not None else None
+            raise err from e
         except requests.exceptions.RequestException as e:
-            raise RuntimeError(f"Mistral API request failed: {e!s}") from e
+            from ..exceptions import DriverError
+
+            raise DriverError(f"Mistral API request failed: {e!s}") from e
 
         usage = resp.get("usage", {})
         prompt_tokens = usage.get("prompt_tokens", 0)

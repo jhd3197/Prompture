@@ -111,7 +111,7 @@ class FAISSVectorStore(VectorStore):
         ids = ids or [str(uuid.uuid4()) for _ in documents]
         int_ids: list[int] = []
         prepped: list[list[float]] = []
-        for sid, vec, doc in zip(ids, vectors, documents):
+        for sid, vec, doc in zip(ids, vectors, documents, strict=False):
             int_id = self._next_int_id
             self._next_int_id += 1
             pvec = self._prep_vec(vec)
@@ -149,7 +149,7 @@ class FAISSVectorStore(VectorStore):
         q = np.array([self._prep_vec(vector)], dtype="float32")
         scores, ids = self._index.search(q, min(k, self._index.ntotal))
         out: list[VectorSearchResult] = []
-        for raw_score, raw_id in zip(scores[0].tolist(), ids[0].tolist()):
+        for raw_score, raw_id in zip(scores[0].tolist(), ids[0].tolist(), strict=False):
             if raw_id == -1:
                 continue
             entry = self._docstore.get(int(raw_id))

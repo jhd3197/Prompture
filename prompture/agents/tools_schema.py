@@ -24,8 +24,9 @@ from __future__ import annotations
 import inspect
 import json
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable, get_type_hints
+from typing import Any, get_type_hints
 
 logger = logging.getLogger("prompture.tools_schema")
 

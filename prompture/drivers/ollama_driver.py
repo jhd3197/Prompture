@@ -3,7 +3,7 @@ import logging
 import os
 import uuid
 from collections.abc import Iterator
-from typing import Any, Optional
+from typing import Any
 
 import requests
 
@@ -85,7 +85,7 @@ class OllamaDriver(Driver):
 
         return _prepare_ollama_vision_messages(messages)
 
-    def generate(self, prompt: str, options: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+    def generate(self, prompt: str, options: dict[str, Any] | None = None) -> dict[str, Any]:
         # Delegate to /api/chat — the /api/generate endpoint produces
         # poor results with instruction-tuned models and does not support
         # JSON schema objects in the ``format`` field.

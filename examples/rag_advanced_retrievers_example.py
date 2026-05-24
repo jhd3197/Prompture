@@ -74,7 +74,7 @@ class _CharNGramVectorStore(VectorStore):
 
     def delete(self, ids: list[str]) -> None:
         kept_docs, kept_ids = [], []
-        for doc, did in zip(self._docs, self._ids):
+        for doc, did in zip(self._docs, self._ids, strict=False):
             if did not in ids:
                 kept_docs.append(doc)
                 kept_ids.append(did)
@@ -91,7 +91,7 @@ class _CharNGramVectorStore(VectorStore):
         if not q:
             return []
         scored: list[tuple[float, Document, str]] = []
-        for doc, did in zip(self._docs, self._ids):
+        for doc, did in zip(self._docs, self._ids, strict=False):
             d = self._trigrams(doc.content)
             inter = len(q & d)
             union = len(q | d)

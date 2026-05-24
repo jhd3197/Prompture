@@ -21,7 +21,7 @@ import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Union
+from typing import TYPE_CHECKING, Any
 
 from ..groups.types import ErrorPolicy
 
@@ -50,7 +50,7 @@ class PipelineStep:
             returns False, the step is skipped.
     """
 
-    skill: Union[SkillInfo, Persona, str]
+    skill: SkillInfo | Persona | str
     output_key: str | None = None
     input_template: str | None = None
     condition: Callable[[dict[str, Any]], bool] | None = None
@@ -189,7 +189,7 @@ class SkillPipeline:
 
     def __init__(
         self,
-        steps: list[Union[SkillInfo, Persona, str, PipelineStep]],
+        steps: list[SkillInfo | Persona | str | PipelineStep],
         model_name: str = "openai/gpt-4o",
         share_conversation: bool = True,
         error_policy: ErrorPolicy = ErrorPolicy.fail_fast,
@@ -205,7 +205,7 @@ class SkillPipeline:
 
     def _normalize_steps(
         self,
-        steps: list[Union[SkillInfo, Persona, str, PipelineStep]],
+        steps: list[SkillInfo | Persona | str | PipelineStep],
     ) -> list[PipelineStep]:
         """Convert various step formats to PipelineStep instances.
 
@@ -238,7 +238,7 @@ class SkillPipeline:
                 result.append(PipelineStep(skill=step, output_key=f"step_{i}"))
         return result
 
-    def _resolve_skill(self, skill: Union[SkillInfo, Persona, str]) -> tuple[str, Persona]:
+    def _resolve_skill(self, skill: SkillInfo | Persona | str) -> tuple[str, Persona]:
         """Resolve a skill reference to a Persona instance.
 
         Args:
@@ -543,7 +543,7 @@ class SkillPipeline:
 
 
 def create_pipeline(
-    *steps: Union[SkillInfo, Persona, str, PipelineStep],
+    *steps: SkillInfo | Persona | str | PipelineStep,
     model_name: str = "openai/gpt-4o",
     share_conversation: bool = True,
     **kwargs: Any,

@@ -19,8 +19,9 @@ Usage::
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any
 
 # Type aliases for callback signatures.
 # Each callback receives a single ``dict[str, Any]`` payload and returns nothing.

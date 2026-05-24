@@ -35,6 +35,22 @@ from pydantic import BaseModel
 
 logger = logging.getLogger("prompture.tools")
 
+# Exception tuple for value-conversion catches. Covers the standard library's
+# numeric / type-coercion paths plus a couple of attribute-access fallbacks
+# the recursive converter relies on. Conversions ultimately bottom out in
+# pydantic / dateutil / tukuy, all of which raise from this set; using this
+# tuple instead of a bare ``except Exception:`` avoids swallowing programmer
+# errors (NameError, ImportError) that should propagate.
+_CONVERSION_ERRORS: tuple[type[BaseException], ...] = (
+    ValueError,
+    TypeError,
+    InvalidOperation,
+    ArithmeticError,
+    AttributeError,
+    OverflowError,
+    LookupError,  # KeyError / IndexError from dict/list coercion
+)
+
 # Lazy Tukuy transformer — tukuy is an optional dependency ([toon] extra).
 _TUKUY = None
 
@@ -183,7 +199,7 @@ def parse_shorthand_number(
     allow_percent: bool = True,
     percent_base: float = 1.0,
     as_decimal: bool | None = None,
-) -> Union[int, float, Decimal]:
+) -> int | float | Decimal:
     """
     Parse a number possibly containing:
     - currency prefix: $1,200
@@ -480,7 +496,7 @@ def convert_value(
                 result = _safe_convert_recursive(value, t)
                 logger.debug("Union conversion succeeded with type %s for value '%s'", t, value)
                 return result
-            except Exception as e:
+            except _CONVERSION_ERRORS as e:
                 conversion_errors.append((t, str(e)))
                 logger.debug("Union conversion failed for type %s: %s", t, e)
 
@@ -500,19 +516,19 @@ def convert_value(
                 try:
                     converted_item = _safe_convert_recursive(item, item_t)
                     result_items.append(converted_item)
-                except Exception as e:
+                except _CONVERSION_ERRORS as e:
                     logger.warning("Failed to convert list item %d '%s' to %s: %s", i, item, item_t, e)
                     # Try to get default for item type
                     try:
                         default_item = get_type_default(item_t)
                         result_items.append(default_item)
-                    except Exception:
+                    except _CONVERSION_ERRORS:
                         # Skip item if we can't get a default
                         continue
 
             return result_items
 
-        except Exception as e:
+        except _CONVERSION_ERRORS as e:
             error_msg = f"Cannot convert '{value}' to list: {e}"
             logger.warning("%s", error_msg)
             return _get_fallback_value(error_msg)
@@ -527,7 +543,7 @@ def convert_value(
                 for item in value:
                     try:
                         converted_items.append(_safe_convert_recursive(item, item_t))
-                    except Exception as e:
+                    except _CONVERSION_ERRORS as e:
                         logger.warning("Failed to convert tuple item '%s': %s", item, e)
                         converted_items.append(get_type_default(item_t))
                 return tuple(converted_items)
@@ -535,15 +551,15 @@ def convert_value(
                 if len(value) != len(args):
                     raise ValueError(f"Expected tuple of len {len(args)}, got {len(value)}")
                 converted_items = []
-                for v, t in zip(value, args):
+                for v, t in zip(value, args, strict=False):
                     try:
                         converted_items.append(_safe_convert_recursive(v, t))
-                    except Exception as e:
+                    except _CONVERSION_ERRORS as e:
                         logger.warning("Failed to convert tuple item '%s' to %s: %s", v, t, e)
                         converted_items.append(get_type_default(t))
                 return tuple(converted_items)
             return tuple(value)
-        except Exception as e:
+        except _CONVERSION_ERRORS as e:
             error_msg = f"Cannot convert '{value}' to tuple: {e}"
             logger.warning("%s", error_msg)
             return _get_fallback_value(error_msg)
@@ -563,14 +579,14 @@ def convert_value(
                     converted_key = _safe_convert_recursive(k, key_t)
                     converted_val = _safe_convert_recursive(v, val_t)
                     result_dict[converted_key] = converted_val
-                except Exception as e:
+                except _CONVERSION_ERRORS as e:
                     logger.warning("Failed to convert dict item %s:%s: %s", k, v, e)
                     # Skip problematic items
                     continue
 
             return result_dict
 
-        except Exception as e:
+        except _CONVERSION_ERRORS as e:
             error_msg = f"Cannot convert '{value}' to dict: {e}"
             logger.warning("%s", error_msg)
             return _get_fallback_value(error_msg)

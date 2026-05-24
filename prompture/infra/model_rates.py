@@ -12,7 +12,7 @@ import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +42,7 @@ _CACHE_FILE = _CACHE_DIR / "models_dev.json"
 _META_FILE = _CACHE_DIR / "models_dev_meta.json"
 
 _lock = threading.Lock()
-_data: Optional[dict[str, Any]] = None
+_data: dict[str, Any] | None = None
 _loaded = False
 
 # Lifecycle cache: maps models.dev provider name → {model_id: lifecycle_dict}
@@ -88,7 +88,7 @@ def _write_cache(data: dict[str, Any]) -> None:
         logger.debug("Failed to write model rates cache: %s", exc)
 
 
-def _read_cache() -> Optional[dict[str, Any]]:
+def _read_cache() -> dict[str, Any] | None:
     """Read cached API data from disk."""
     try:
         return json.loads(_CACHE_FILE.read_text(encoding="utf-8"))  # type: ignore[no-any-return]
@@ -96,7 +96,7 @@ def _read_cache() -> Optional[dict[str, Any]]:
         return None
 
 
-def _fetch_from_api() -> Optional[dict[str, Any]]:
+def _fetch_from_api() -> dict[str, Any] | None:
     """Fetch fresh data from models.dev API."""
     try:
         import requests
@@ -109,7 +109,7 @@ def _fetch_from_api() -> Optional[dict[str, Any]]:
         return None
 
 
-def _ensure_loaded() -> Optional[dict[str, Any]]:
+def _ensure_loaded() -> dict[str, Any] | None:
     """Lazy-load data: use cache if valid, otherwise fetch from API."""
     global _data, _loaded
     if _loaded:
@@ -139,7 +139,7 @@ def _ensure_loaded() -> Optional[dict[str, Any]]:
         return _data
 
 
-def _strip_to_base_model(model_id: str) -> Optional[str]:
+def _strip_to_base_model(model_id: str) -> str | None:
     """Try to derive the base model name from a versioned or fine-tuned model ID.
 
     Handles common patterns:
@@ -152,7 +152,7 @@ def _strip_to_base_model(model_id: str) -> Optional[str]:
     """
     import re
 
-    candidate: Optional[str] = None
+    candidate: str | None = None
 
     # Fine-tuned models: ft:base-model:rest
     if model_id.startswith("ft:"):
@@ -173,7 +173,7 @@ def _lookup_in_provider(
     data: dict[str, Any],
     api_provider: str,
     model_id: str,
-) -> Optional[dict[str, Any]]:
+) -> dict[str, Any] | None:
     """Lookup a model in a specific provider's data, with base-model fallback."""
     provider_data = data.get(api_provider)
     if not isinstance(provider_data, dict):
@@ -197,7 +197,7 @@ def _lookup_in_provider(
     return None
 
 
-def _lookup_model(provider: str, model_id: str) -> Optional[dict[str, Any]]:
+def _lookup_model(provider: str, model_id: str) -> dict[str, Any] | None:
     """Find a model entry in the cached data.
 
     The API structure is ``{provider: {model_id: {...}, ...}, ...}``.
@@ -254,7 +254,7 @@ def _lookup_model(provider: str, model_id: str) -> Optional[dict[str, Any]]:
 # ── Public API ──────────────────────────────────────────────────────────────
 
 
-def get_model_rates(provider: str, model_id: str) -> Optional[dict[str, float]]:
+def get_model_rates(provider: str, model_id: str) -> dict[str, float] | None:
     """Return pricing dict for a model, or ``None`` if unavailable.
 
     Resolution is delegated to the pluggable :mod:`pricing` registry —
@@ -272,7 +272,7 @@ def get_model_rates(provider: str, model_id: str) -> Optional[dict[str, float]]:
     return resolve_rates(provider, model_id)
 
 
-def get_model_info(provider: str, model_id: str) -> Optional[dict[str, Any]]:
+def get_model_info(provider: str, model_id: str) -> dict[str, Any] | None:
     """Return full model metadata (cost, limits, capabilities), or ``None``."""
     return _lookup_model(provider, model_id)
 
@@ -335,17 +335,17 @@ class ModelCapabilities:
     "the model doesn't support X" from "we have no data about X".
     """
 
-    supports_temperature: Optional[bool] = None
-    supports_tool_use: Optional[bool] = None
-    supports_structured_output: Optional[bool] = None
-    supports_vision: Optional[bool] = None
-    is_reasoning: Optional[bool] = None
-    context_window: Optional[int] = None
-    max_output_tokens: Optional[int] = None
+    supports_temperature: bool | None = None
+    supports_tool_use: bool | None = None
+    supports_structured_output: bool | None = None
+    supports_vision: bool | None = None
+    is_reasoning: bool | None = None
+    context_window: int | None = None
+    max_output_tokens: int | None = None
     modalities_input: tuple[str, ...] = ()
     modalities_output: tuple[str, ...] = ()
-    api_type: Optional[str] = None  # "openai", "anthropic", "google", "openai-compatible"
-    tokens_param: Optional[str] = None  # "max_tokens" or "max_completion_tokens"
+    api_type: str | None = None  # "openai", "anthropic", "google", "openai-compatible"
+    tokens_param: str | None = None  # "max_tokens" or "max_completion_tokens"
 
 
 # Capabilities KB loaded from per-provider JSON files in rates/
@@ -378,7 +378,7 @@ def _load_capabilities() -> dict[tuple[str, str], "ModelCapabilities"]:
 _CAPABILITIES_KB = _load_capabilities()
 
 
-def _lookup_kb(provider: str, model_id: str) -> Optional[ModelCapabilities]:
+def _lookup_kb(provider: str, model_id: str) -> ModelCapabilities | None:
     """Look up model in hardcoded capabilities knowledge base.
 
     Tries exact match first, then falls back to stripping date suffixes
@@ -397,19 +397,19 @@ def _lookup_kb(provider: str, model_id: str) -> Optional[ModelCapabilities]:
 def _parse_capabilities_from_entry(entry: dict[str, Any]) -> ModelCapabilities:
     """Parse a models.dev entry dict into a :class:`ModelCapabilities` instance."""
     # Boolean capabilities (True/False/None)
-    supports_temperature: Optional[bool] = None
+    supports_temperature: bool | None = None
     if "temperature" in entry:
         supports_temperature = bool(entry["temperature"])
 
-    supports_tool_use: Optional[bool] = None
+    supports_tool_use: bool | None = None
     if "tool_call" in entry:
         supports_tool_use = bool(entry["tool_call"])
 
-    supports_structured_output: Optional[bool] = None
+    supports_structured_output: bool | None = None
     if "structured_output" in entry:
         supports_structured_output = bool(entry["structured_output"])
 
-    is_reasoning: Optional[bool] = None
+    is_reasoning: bool | None = None
     if "reasoning" in entry:
         is_reasoning = bool(entry["reasoning"])
 
@@ -425,13 +425,13 @@ def _parse_capabilities_from_entry(entry: dict[str, Any]) -> ModelCapabilities:
         if isinstance(raw_out, (list, tuple)):
             modalities_output = tuple(str(m) for m in raw_out)
 
-    supports_vision: Optional[bool] = None
+    supports_vision: bool | None = None
     if modalities_input:
         supports_vision = "image" in modalities_input
 
     # Limits
-    context_window: Optional[int] = None
-    max_output_tokens: Optional[int] = None
+    context_window: int | None = None
+    max_output_tokens: int | None = None
     limits = entry.get("limit", {})
     if isinstance(limits, dict):
         ctx = limits.get("context")
@@ -456,7 +456,7 @@ def _parse_capabilities_from_entry(entry: dict[str, Any]) -> ModelCapabilities:
     )
 
 
-def get_model_capabilities(provider: str, model_id: str) -> Optional[ModelCapabilities]:
+def get_model_capabilities(provider: str, model_id: str) -> ModelCapabilities | None:
     """Return capability metadata for a model, or ``None`` if unavailable.
 
     Resolution order:
@@ -535,7 +535,7 @@ def _compute_family_status(provider_api_name: str) -> dict[str, dict[str, Any]]:
     now = datetime.now(timezone.utc)
 
     # Build per-family lists: {family: [(model_id, entry, release_date, is_latest_marker), ...]}
-    families: dict[str, list[tuple[str, dict[str, Any], Optional[datetime], bool]]] = {}
+    families: dict[str, list[tuple[str, dict[str, Any], datetime | None, bool]]] = {}
     for model_id, entry in models.items():
         if not isinstance(entry, dict):
             continue
@@ -544,7 +544,7 @@ def _compute_family_status(provider_api_name: str) -> dict[str, dict[str, Any]]:
         name = entry.get("name", "")
         is_latest_marker = "(latest)" in name.lower() if name else False
 
-        release_date: Optional[datetime] = None
+        release_date: datetime | None = None
         raw_date = entry.get("release_date")
         if raw_date:
             with contextlib.suppress(Exception):
@@ -588,12 +588,12 @@ def _compute_family_status(provider_api_name: str) -> dict[str, dict[str, Any]]:
                 status = "current" if i == current_idx else "unknown"
 
             # Compute superseded_by: next newer model in the family
-            superseded_by: Optional[str] = None
+            superseded_by: str | None = None
             if i > current_idx and i > 0:
                 superseded_by = members[i - 1][0]
 
             # Estimate end_of_support for legacy/deprecated: release_date + 24 months
-            end_of_support: Optional[str] = None
+            end_of_support: str | None = None
             if status in ("legacy", "deprecated") and release_date is not None:
                 eos = release_date + timedelta(days=730)  # ~24 months
                 end_of_support = eos.strftime("%Y-%m-%d")
@@ -624,7 +624,7 @@ def _infer_family(model_id: str) -> str:
     return stripped
 
 
-def get_model_lifecycle(provider: str, model_id: str) -> Optional[dict[str, Any]]:
+def get_model_lifecycle(provider: str, model_id: str) -> dict[str, Any] | None:
     """Return lifecycle/deprecation metadata for a model.
 
     Returns a dict with keys: ``status``, ``family``, ``release_date``,

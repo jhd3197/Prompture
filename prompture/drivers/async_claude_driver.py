@@ -9,7 +9,7 @@ from typing import Any
 
 try:
     import anthropic
-except Exception:
+except ImportError:
     anthropic = None  # type: ignore[assignment]
 
 from ..infra.cost_mixin import CostMixin
@@ -72,7 +72,12 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
 
     async def _do_generate(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
         if self.client is None:
-            raise RuntimeError("anthropic package not installed")
+            from ..exceptions import ConfigurationError
+
+            raise ConfigurationError(
+                "anthropic package not installed. "
+                'Install it with: pip install "prompture[anthropic]"'
+            )
 
         opts = {**{"temperature": 0.0, "max_tokens": 512}, **options}
         model = options.get("model", self.model)
@@ -166,7 +171,12 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
     ) -> dict[str, Any]:
         """Generate a response that may include tool calls (Anthropic)."""
         if self.client is None:
-            raise RuntimeError("anthropic package not installed")
+            from ..exceptions import ConfigurationError
+
+            raise ConfigurationError(
+                "anthropic package not installed. "
+                'Install it with: pip install "prompture[anthropic]"'
+            )
 
         opts = {**{"temperature": 0.0, "max_tokens": 512}, **options}
         model = options.get("model", self.model)
@@ -232,7 +242,12 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
     ) -> AsyncIterator[dict[str, Any]]:
         """Yield response chunks via Anthropic streaming API."""
         if self.client is None:
-            raise RuntimeError("anthropic package not installed")
+            from ..exceptions import ConfigurationError
+
+            raise ConfigurationError(
+                "anthropic package not installed. "
+                'Install it with: pip install "prompture[anthropic]"'
+            )
 
         opts = {**{"temperature": 0.0, "max_tokens": 512}, **options}
         model = options.get("model", self.model)

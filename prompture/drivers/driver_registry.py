@@ -8,8 +8,7 @@ that standardises registration, lookup, and plugin loading for any modality
 from __future__ import annotations
 
 import logging
-import sys
-from typing import Callable
+from collections.abc import Callable
 
 logger = logging.getLogger("prompture.drivers.registry")
 
@@ -100,14 +99,9 @@ class DriverRegistry:
             return 0
 
         count = 0
-        if sys.version_info >= (3, 10):
-            from importlib.metadata import entry_points
+        from importlib.metadata import entry_points
 
-            eps = entry_points(group=self._entry_point_group)
-        else:
-            from importlib.metadata import entry_points
-
-            eps = entry_points().get(self._entry_point_group, [])
+        eps = entry_points(group=self._entry_point_group)
 
         for ep in eps:
             try:

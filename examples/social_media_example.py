@@ -5,7 +5,6 @@ This example shows how to use Prompture for extracting insights from social medi
 It demonstrates sentiment analysis, hashtag extraction, user mentions, and topic identification.
 """
 
-from typing import Optional
 
 from pydantic import BaseModel
 
@@ -71,9 +70,9 @@ register_field(
 class SocialPost(BaseModel):
     content: str = field_from_registry("content")
     sentiment: str = field_from_registry("sentiment")
-    hashtags: Optional[list[str]] = field_from_registry("hashtags")
-    mentions: Optional[list[str]] = field_from_registry("mentions")
-    topic: Optional[str] = field_from_registry("topic")
+    hashtags: list[str] | None = field_from_registry("hashtags")
+    mentions: list[str] | None = field_from_registry("mentions")
+    topic: str | None = field_from_registry("topic")
 
 
 # Sample social media post

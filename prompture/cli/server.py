@@ -22,6 +22,18 @@ Plus Prompture-native endpoints:
 ``fastapi``, ``uvicorn``, and ``sse-starlette`` are lazy-imported so the
 module is importable without them installed.
 
+Single-worker constraint
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+``_conversations`` and the rate-limit token buckets live in
+**per-process memory**. Running with ``uvicorn --workers N`` where
+``N > 1`` will partition conversations across workers: a request that
+creates conversation ``abc`` on worker 1 followed by a turn that the
+load-balancer routes to worker 2 returns 404. **Run with
+``--workers 1`` (the default) until conversation state is moved to a
+shared backend (Redis / Postgres / etc.).** A multi-worker-safe
+backend is on the roadmap.
+
 Example::
 
     from openai import OpenAI
@@ -37,7 +49,7 @@ import logging
 import time
 import uuid
 from collections import OrderedDict
-from typing import Any, Optional
+from typing import Any
 
 from .._internal.json_encoder import PromptureJSONEncoder
 
@@ -46,13 +58,13 @@ logger = logging.getLogger("prompture.server")
 
 def create_app(
     model_name: str = "openai/gpt-4o-mini",
-    system_prompt: Optional[str] = None,
+    system_prompt: str | None = None,
     tools: Any = None,
-    cors_origins: Optional[list[str]] = None,
-    api_key: Optional[str] = None,
+    cors_origins: list[str] | None = None,
+    api_key: str | None = None,
     max_conversations: int = 1000,
-    allowed_models: Optional[list[str]] = None,
-    rate_limit: Optional[int] = None,
+    allowed_models: list[str] | None = None,
+    rate_limit: int | None = None,
 ) -> Any:
     """Create and return a FastAPI application.
 
@@ -72,6 +84,13 @@ def create_app(
             requests for models outside the list return 403.
         rate_limit: Maximum requests per minute per client IP.  ``None``
             (default) disables rate limiting.
+
+    Note:
+        The returned app keeps conversations and rate-limit buckets in
+        per-process memory. Running multiple uvicorn workers will
+        partition state across processes — same ``conversation_id``
+        can hit a worker that doesn't know about it. Use
+        ``--workers 1`` until shared-state backends land.
     """
     try:
         from fastapi import Depends, FastAPI, HTTPException, Request
@@ -99,6 +118,12 @@ def create_app(
     if api_key is None:
         logger.warning("Server starting without API key authentication — set --api-key to require Bearer auth")
 
+    logger.info(
+        "Server uses in-process state for conversations and rate-limit buckets — "
+        "run with --workers 1 (the default) or conversation_id lookups will return 404 "
+        "when load-balanced across processes."
+    )
+
     # ---- Rate limiting dependency ----
 
     _rate_buckets: dict[str, list[float]] = {}
@@ -123,9 +148,9 @@ def create_app(
 
     class ChatRequest(BaseModel):
         message: str = Field(..., max_length=500_000)
-        conversation_id: Optional[str] = Field(None, max_length=64, pattern=r"^[a-zA-Z0-9_-]+$")
+        conversation_id: str | None = Field(None, max_length=64, pattern=r"^[a-zA-Z0-9_-]+$")
         stream: bool = False
-        options: Optional[dict[str, Any]] = None
+        options: dict[str, Any] | None = None
 
     class ChatResponse(BaseModel):
         message: str
@@ -135,7 +160,7 @@ def create_app(
     class ExtractRequest(BaseModel):
         text: str = Field(..., max_length=500_000)
         schema_def: dict[str, Any] = Field(..., alias="schema")
-        conversation_id: Optional[str] = Field(None, max_length=64, pattern=r"^[a-zA-Z0-9_-]+$")
+        conversation_id: str | None = Field(None, max_length=64, pattern=r"^[a-zA-Z0-9_-]+$")
         model_config = {"populate_by_name": True}
 
     class ExtractResponse(BaseModel):
@@ -152,57 +177,57 @@ def create_app(
 
     class OAIMessage(BaseModel):
         role: str
-        content: Optional[Any] = None  # str or list (multipart) — kept loose
-        name: Optional[str] = None
-        tool_call_id: Optional[str] = None
-        tool_calls: Optional[list[dict[str, Any]]] = None
+        content: Any | None = None  # str or list (multipart) — kept loose
+        name: str | None = None
+        tool_call_id: str | None = None
+        tool_calls: list[dict[str, Any]] | None = None
 
     class OAIChatRequest(BaseModel):
-        model: Optional[str] = None
+        model: str | None = None
         messages: list[OAIMessage] = Field(..., max_length=500)
-        temperature: Optional[float] = None
-        top_p: Optional[float] = None
-        max_tokens: Optional[int] = None
+        temperature: float | None = None
+        top_p: float | None = None
+        max_tokens: int | None = None
         stream: bool = False
         n: int = 1
-        tools: Optional[list[dict[str, Any]]] = None
-        tool_choice: Optional[Any] = None
-        stop: Optional[Any] = None
-        presence_penalty: Optional[float] = None
-        frequency_penalty: Optional[float] = None
-        user: Optional[str] = None
+        tools: list[dict[str, Any]] | None = None
+        tool_choice: Any | None = None
+        stop: Any | None = None
+        presence_penalty: float | None = None
+        frequency_penalty: float | None = None
+        user: str | None = None
 
     class OAICompletionsRequest(BaseModel):
-        model: Optional[str] = None
+        model: str | None = None
         prompt: Any  # str or list
-        temperature: Optional[float] = None
-        top_p: Optional[float] = None
-        max_tokens: Optional[int] = None
+        temperature: float | None = None
+        top_p: float | None = None
+        max_tokens: int | None = None
         stream: bool = False
-        stop: Optional[Any] = None
+        stop: Any | None = None
 
     class OAIEmbeddingsRequest(BaseModel):
-        model: Optional[str] = None
+        model: str | None = None
         input: Any  # str or list[str]
-        encoding_format: Optional[str] = None
-        user: Optional[str] = None
+        encoding_format: str | None = None
+        user: str | None = None
 
     class OAIImageGenRequest(BaseModel):
-        model: Optional[str] = None
+        model: str | None = None
         prompt: str
         n: int = 1
-        size: Optional[str] = "1024x1024"
-        quality: Optional[str] = "standard"
-        style: Optional[str] = None
-        response_format: Optional[str] = "url"  # "url" | "b64_json"
-        user: Optional[str] = None
+        size: str | None = "1024x1024"
+        quality: str | None = "standard"
+        style: str | None = None
+        response_format: str | None = "url"  # "url" | "b64_json"
+        user: str | None = None
 
     class OAISpeechRequest(BaseModel):
-        model: Optional[str] = None
+        model: str | None = None
         input: str = Field(..., max_length=4096)
-        voice: Optional[str] = None
-        response_format: Optional[str] = None  # mp3, opus, wav, ...
-        speed: Optional[float] = None
+        voice: str | None = None
+        response_format: str | None = None  # mp3, opus, wav, ...
+        speed: float | None = None
 
     # ---- App ----
 
@@ -224,7 +249,7 @@ def create_app(
     # In-memory conversation store
     _conversations: OrderedDict[str, AsyncConversation] = OrderedDict()
 
-    tool_registry: Optional[ToolRegistry] = tools
+    tool_registry: ToolRegistry | None = tools
 
     # ---- Helpers ----
 
@@ -235,7 +260,7 @@ def create_app(
                 detail=f"Model '{model}' is not in the allowed models list",
             )
 
-    def _get_or_create_conversation(conv_id: Optional[str]) -> tuple[str, AsyncConversation]:
+    def _get_or_create_conversation(conv_id: str | None) -> tuple[str, AsyncConversation]:
         if conv_id and conv_id in _conversations:
             _conversations.move_to_end(conv_id)
             return conv_id, _conversations[conv_id]
@@ -262,7 +287,7 @@ def create_app(
         can pass it (with any extracted images) to ``conv.ask()``.
         """
         # Find the index of the final user message.
-        final_user_idx: Optional[int] = None
+        final_user_idx: int | None = None
         for i in range(len(messages) - 1, -1, -1):
             if messages[i].role == "user":
                 final_user_idx = i
@@ -273,7 +298,7 @@ def create_app(
         final_msg = messages[final_user_idx]
         last_user_content = _flatten_content(final_msg.content)
         last_user_images = _extract_images(final_msg.content)
-        last_system: Optional[str] = None
+        last_system: str | None = None
 
         for i, msg in enumerate(messages):
             if i == final_user_idx:
@@ -517,7 +542,7 @@ def create_app(
 
         # Surface tool_calls from the last assistant message if the
         # model emitted them without server-side execution.
-        assistant_tool_calls: Optional[list[dict[str, Any]]] = None
+        assistant_tool_calls: list[dict[str, Any]] | None = None
         finish_reason = "stop"
         if conv._messages:
             last_msg = conv._messages[-1]
@@ -745,9 +770,9 @@ def create_app(
     async def openai_audio_transcriptions(
         file: UploadFile = File(...),  # noqa: B008 — FastAPI dependency idiom
         model: str = Form(default=""),
-        language: Optional[str] = Form(default=None),
-        prompt: Optional[str] = Form(default=None),
-        response_format: Optional[str] = Form(default=None),
+        language: str | None = Form(default=None),
+        prompt: str | None = Form(default=None),
+        response_format: str | None = Form(default=None),
     ) -> Any:
         """Speech-to-text — routes to ``get_async_stt_driver_for_model``.
 
@@ -814,14 +839,14 @@ def create_app(
     class CodingAgentRunRequest(BaseModel):
         agent: str
         task: str
-        cwd: Optional[str] = None
+        cwd: str | None = None
         approval_mode: str = "default"
-        model: Optional[str] = None
-        extra_args: Optional[list[str]] = None
+        model: str | None = None
+        extra_args: list[str] | None = None
         timeout: int = 600
         stream: bool = False
         output_format: str = "text"
-        session_id: Optional[str] = None
+        session_id: str | None = None
 
     @app.post("/v1/coding-agents/run")
     async def run_coding_agent_endpoint(req: CodingAgentRunRequest, _: None = Depends(_verify_api_key)) -> Any:

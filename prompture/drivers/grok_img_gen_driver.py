@@ -8,7 +8,7 @@ from typing import Any
 
 try:
     from openai import OpenAI
-except Exception:
+except ImportError:
     OpenAI = None  # type: ignore[misc, assignment]
 
 from ..infra.cost_mixin import ImageCostMixin

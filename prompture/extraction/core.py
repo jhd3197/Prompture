@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import warnings
-from typing import TYPE_CHECKING, Any, Literal, Union
+from typing import TYPE_CHECKING, Any, Literal
 
 from .._internal.json_encoder import PromptureJSONEncoder
 
@@ -658,10 +658,10 @@ def ask_for_json(
 
 
 def extract_and_jsonify(
-    text: Union[str, Driver],  # Can be either text or driver for backward compatibility
+    text: str | Driver,  # Can be either text or driver for backward compatibility
     json_schema: dict[str, Any],
     *,  # Force keyword arguments for remaining params
-    model_name: Union[str, dict[str, Any]] = "",  # Can be schema (old) or model name (new)
+    model_name: str | dict[str, Any] = "",  # Can be schema (old) or model name (new)
     driver: Driver | None = None,
     instruction_template: str = "Extract information from the following text:",
     ai_cleanup: bool = True,
@@ -926,9 +926,9 @@ def _chunked_extract(
 
 
 def extract_with_model(
-    model_cls: Union[type[BaseModel], str],  # Can be model class or model name string for legacy support
-    text: Union[str, dict[str, Any], None] = None,  # Can be text or schema for legacy support
-    model_name: Union[str, dict[str, Any], None] = None,  # Can be model name, text, or None for routing
+    model_cls: type[BaseModel] | str,  # Can be model class or model name string for legacy support
+    text: str | dict[str, Any] | None = None,  # Can be text or schema for legacy support
+    model_name: str | dict[str, Any] | None = None,  # Can be model name, text, or None for routing
     instruction_template: str = "Extract information from the following text:",
     ai_cleanup: bool = True,
     output_format: Literal["json", "toon"] = "json",
@@ -937,7 +937,7 @@ def extract_with_model(
     json_mode: Literal["auto", "on", "off"] = "auto",
     system_prompt: str | None = None,
     images: list[ImageInput] | None = None,
-    routing: Union[str, RoutingConfig, None] = None,
+    routing: str | RoutingConfig | None = None,
     max_retries: int = 1,
     fallback: BaseModel | None = None,
     reasoning_strategy: str | ReasoningStrategyProtocol | None = None,
@@ -1314,7 +1314,7 @@ def stepwise_extract_with_model(
     system_prompt: str | None = None,
     share_context: bool = False,
     reasoning_strategy: str | ReasoningStrategyProtocol | None = None,
-) -> dict[str, Union[str, dict[str, Any]]]:
+) -> dict[str, str | dict[str, Any]]:
     """Extracts structured information into a Pydantic model by processing each field individually.
 
     For each field in the model, makes a separate LLM call to extract that specific field,
@@ -1858,7 +1858,7 @@ def extract_with_models(
     raise err
 
 
-def _json_to_toon(data: Union[list[dict[str, Any]], dict[str, Any]], data_key: str | None = None) -> str:
+def _json_to_toon(data: list[dict[str, Any]] | dict[str, Any], data_key: str | None = None) -> str:
     """Convert JSON array or dict containing array to TOON format.
 
     Args:
@@ -1996,7 +1996,7 @@ def _calculate_token_savings(json_text: str, toon_text: str) -> dict[str, Any]:
 
 
 def extract_from_data(
-    data: Union[list[dict[str, Any]], dict[str, Any]],
+    data: list[dict[str, Any]] | dict[str, Any],
     question: str,
     json_schema: dict[str, Any],
     *,

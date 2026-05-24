@@ -5,7 +5,6 @@ This example shows how to use Prompture for processing multiple documents with r
 It demonstrates batch processing of contact information with validation and comprehensive error tracking.
 """
 
-from typing import Optional
 
 from pydantic import BaseModel
 
@@ -14,9 +13,9 @@ from prompture import extract_with_model, field_from_registry
 
 class ContactInfo(BaseModel):
     name: str = field_from_registry("name")
-    email: Optional[str] = field_from_registry("email")
-    phone: Optional[str] = field_from_registry("phone")
-    company: Optional[str] = field_from_registry("company")
+    email: str | None = field_from_registry("email")
+    phone: str | None = field_from_registry("phone")
+    company: str | None = field_from_registry("company")
 
 
 # Sample contact data
