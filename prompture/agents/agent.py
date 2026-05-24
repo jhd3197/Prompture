@@ -651,12 +651,31 @@ class Agent(Generic[DepsType]):
     # ------------------------------------------------------------------
 
     def _resolve_system_prompt(self, ctx: RunContext[Any] | None = None) -> str | None:
-        """Build the system prompt, appending output schema if needed."""
+        """Build the system prompt, appending output schema if needed.
+
+        Assembly order (stable across iterations to maximise prompt-cache hits
+        on Anthropic / OpenAI auto-caching providers):
+
+        1. **persona / system_prompt content** — first, so it forms the cache
+           prefix. The Persona ``render(model=..., iteration=...)`` call only
+           substitutes placeholders the template actually references; a persona
+           template that includes ``{{iteration}}`` will rotate the cache key
+           every turn, defeating caching. Avoid per-turn variables in personas
+           if you want cache reuse.
+        2. **JSON output schema instruction** — second. Stable across calls
+           because ``self._output_type`` is fixed at Agent construction.
+
+        Variable per-call content (user query, retrieved RAG context, etc.)
+        belongs in the message stream, not the system prompt.
+        """
         parts: list[str] = []
 
         if self._system_prompt is not None:
             if isinstance(self._system_prompt, Persona):
-                # Render Persona with RunContext variables if available
+                # Render Persona with RunContext variables if available.
+                # NOTE: ``iteration`` makes the system prompt change every turn
+                # if the persona template references it — that's intentional
+                # for advanced cases but it breaks prompt caching. See docstring.
                 render_kwargs: dict[str, Any] = {}
                 if ctx is not None:
                     render_kwargs["model"] = ctx.model

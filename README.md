@@ -1286,6 +1286,37 @@ if doc.found:
 
 Both helpers return plain dataclasses with no I/O of their own.  See `examples/assistant_example.py` for the assistant + review-loop + extractor flow end-to-end.
 
+### Prompt Caching (Claude)
+
+Anthropic prompt caching cuts input-token cost on cached prefixes to ~10% of
+the normal rate. Prompture turns it on by default for `ClaudeDriver` and
+`AsyncClaudeDriver` whenever the system prompt or tools bundle is large
+enough to benefit (≥4000 chars, roughly 1024 tokens — Anthropic's minimum
+cacheable block).
+
+```python
+from prompture import Conversation
+
+# Caching is automatic. The first call writes the cache (~1.25x cost on the
+# cached portion); subsequent calls within 5 minutes hit it (~0.1x cost).
+conv = Conversation(model_name="claude/claude-sonnet-4-6", system_prompt=LONG_SYSTEM_PROMPT)
+conv.ask("First question")   # cache_creation_input_tokens > 0
+conv.ask("Second question")  # cache_read_input_tokens > 0
+```
+
+To inspect cache activity, read `cached_prompt_tokens` and
+`cache_creation_tokens` from the response meta. To disable caching for a
+specific call pass `options={"cache_prompt": False}`.
+
+Tips:
+- Put stable content (persona, tools description, JSON schema) at the
+  **start** of the system prompt; put per-call variables (user query,
+  retrieved RAG context) in the message stream so they don't bust the cache.
+- Avoid `{{iteration}}` or other per-turn variables in Persona templates —
+  they rotate the cache key every turn.
+- Block size below ~1024 tokens is silently dropped by Anthropic; below
+  the threshold Prompture skips the `cache_control` marker to avoid noise.
+
 ### Cost Pre-flight
 
 Forecast the cost of a call **before** making it.  Accepts either text
