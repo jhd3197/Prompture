@@ -20,6 +20,8 @@ logger = logging.getLogger(__name__)
 class GroqDriver(CostMixin, Driver):
     supports_json_mode = True
     supports_tool_use = True
+    supports_streaming = True
+    supports_streaming_tool_use = True
     supports_vision = True
 
     # All pricing and model config now resolved from JSON rate files (KB) and
@@ -246,3 +248,29 @@ class GroqDriver(CostMixin, Driver):
         if reasoning_content is not None:
             result["reasoning_content"] = reasoning_content
         return result
+
+    # ------------------------------------------------------------------
+    # Live streaming with interleaved tool calls
+    # ------------------------------------------------------------------
+
+    def generate_messages_with_tools_stream(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        options: dict[str, Any],
+    ):
+        """Stream one Groq turn as :class:`LiveEvent` via the shared
+        OpenAI-compat helper."""
+        if self.client is None:
+            from ..exceptions import ConfigurationError
+
+            raise ConfigurationError(
+                "groq package is not installed. "
+                'Install it with: pip install "prompture[groq]"'
+            )
+
+        from ._openai_compat_stream import stream_openai_compat_tool_call
+
+        yield from stream_openai_compat_tool_call(
+            self, messages, tools, options, provider="groq"
+        )

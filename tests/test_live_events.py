@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
 from typing import Any
 
 import pytest
 
 from prompture.agents.agent import Agent
+from prompture.agents.async_agent import AsyncAgent
+from prompture.agents.async_conversation import AsyncConversation
 from prompture.agents.conversation import Conversation
 from prompture.agents.live_events import (
     AssistantTurnStart,
@@ -22,6 +24,7 @@ from prompture.agents.live_events import (
     TurnComplete,
 )
 from prompture.agents.tools_schema import ToolRegistry
+from prompture.drivers.async_base import AsyncDriver
 from prompture.drivers.base import Driver
 
 
@@ -435,3 +438,226 @@ class TestEventTypes:
         e = TextDelta(text="x")
         with pytest.raises(Exception):  # noqa: B017 — frozen dataclass raises FrozenInstanceError
             e.text = "y"  # type: ignore[misc]
+
+
+# ---------------------------------------------------------------------------
+# Async mocks
+# ---------------------------------------------------------------------------
+
+
+class AsyncBufferedToolDriver(AsyncDriver):
+    """Async driver implementing only the buffered tool method, exercising
+    the AsyncDriver base-class default that wraps it into synthetic events."""
+
+    supports_messages = True
+    supports_tool_use = True
+    supports_streaming = False
+    supports_streaming_tool_use = False
+
+    def __init__(self, responses: list[dict[str, Any]]):
+        self._responses = list(responses)
+        self._idx = 0
+        self.model = "mock-async-buffered"
+
+    async def generate(self, prompt: str, options: dict[str, Any]) -> dict[str, Any]:
+        return self._next()
+
+    async def generate_messages(self, messages: list[dict[str, Any]], options: dict[str, Any]) -> dict[str, Any]:
+        return self._next()
+
+    async def generate_messages_with_tools(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        options: dict[str, Any],
+    ) -> dict[str, Any]:
+        return self._next()
+
+    def _next(self) -> dict[str, Any]:
+        r = self._responses[min(self._idx, len(self._responses) - 1)]
+        self._idx += 1
+        return r
+
+
+class AsyncNativeStreamingDriver(AsyncDriver):
+    """Async driver that natively emits a fixed LiveEvent sequence per turn."""
+
+    supports_messages = True
+    supports_tool_use = True
+    supports_streaming = True
+    supports_streaming_tool_use = True
+
+    def __init__(self, turn_event_sequences: list[list[LiveEvent]]):
+        self._turns = list(turn_event_sequences)
+        self._idx = 0
+        self.model = "mock-async-native"
+
+    async def generate(self, prompt: str, options: dict[str, Any]) -> dict[str, Any]:
+        return {"text": "n/a", "meta": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "cost": 0.0}}
+
+    async def generate_messages(self, messages: list[dict[str, Any]], options: dict[str, Any]) -> dict[str, Any]:
+        return await self.generate("", options)
+
+    async def generate_messages_with_tools(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        options: dict[str, Any],
+    ) -> dict[str, Any]:
+        raise AssertionError("ask_live should use generate_messages_with_tools_stream, not the buffered method")
+
+    async def generate_messages_with_tools_stream(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        options: dict[str, Any],
+    ) -> AsyncIterator[LiveEvent]:
+        events = self._turns[min(self._idx, len(self._turns) - 1)]
+        self._idx += 1
+        for ev in events:
+            yield ev
+
+
+# ---------------------------------------------------------------------------
+# Async ask_live tests
+# ---------------------------------------------------------------------------
+
+
+class TestAsyncAskLive:
+    @pytest.mark.asyncio
+    async def test_async_buffered_fallback_yields_event_sequence(self):
+        driver = AsyncBufferedToolDriver(
+            [
+                {
+                    "text": "Looking up Tokyo.",
+                    "tool_calls": [{"id": "call_1", "name": "lookup_population", "arguments": {"city": "Tokyo"}}],
+                    "meta": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15, "cost": 0.001},
+                    "stop_reason": "tool_use",
+                },
+                {
+                    "text": "Tokyo has 13,960,000 people.",
+                    "tool_calls": [],
+                    "meta": {"prompt_tokens": 20, "completion_tokens": 8, "total_tokens": 28, "cost": 0.002},
+                    "stop_reason": "end_turn",
+                },
+            ]
+        )
+        reg = ToolRegistry()
+        reg.register(lookup_population)
+        conv = AsyncConversation(driver=driver, tools=reg)
+
+        events = [ev async for ev in conv.ask_live("Tokyo?")]
+        kinds = [e.event_type for e in events]
+        assert kinds.count("assistant_turn_start") == 2
+        assert kinds.count("tool_use_start") == 1
+        assert kinds.count("tool_use_stop") == 1
+        assert kinds.count("tool_result") == 1
+        assert kinds[-1] == "turn_complete"
+        tool_result = next(e for e in events if isinstance(e, ToolResult))
+        assert "13960000" in tool_result.output
+
+    @pytest.mark.asyncio
+    async def test_async_native_interleaved_streaming(self):
+        turn1 = [
+            AssistantTurnStart(turn_index=0),
+            TextDelta(text="Looking up "),
+            TextDelta(text="Tokyo..."),
+            ToolUseStart(id="t1", name="lookup_population"),
+            ToolInputDelta(id="t1", fragment='{"city"'),
+            ToolInputDelta(id="t1", fragment=': "Tokyo"}'),
+            ToolUseStop(id="t1", name="lookup_population", input={"city": "Tokyo"}),
+            TextDelta(text=" Now Paris..."),
+            ToolUseStart(id="t2", name="lookup_population"),
+            ToolUseStop(id="t2", name="lookup_population", input={"city": "Paris"}),
+            MessageStop(
+                stop_reason="tool_use",
+                usage={"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15, "cost": 0.001},
+            ),
+        ]
+        turn2 = [
+            AssistantTurnStart(turn_index=1),
+            TextDelta(text="Tokyo has more people than Paris."),
+            MessageStop(
+                stop_reason="end_turn",
+                usage={"prompt_tokens": 20, "completion_tokens": 8, "total_tokens": 28, "cost": 0.002},
+            ),
+        ]
+        driver = AsyncNativeStreamingDriver([turn1, turn2])
+        reg = ToolRegistry()
+        reg.register(lookup_population)
+        conv = AsyncConversation(driver=driver, tools=reg)
+
+        events = [ev async for ev in conv.ask_live("Compare Tokyo and Paris.")]
+        kinds = [e.event_type for e in events]
+        assert kinds.count("tool_use_stop") == 2
+        assert kinds.count("tool_result") == 2
+        assert kinds[-1] == "turn_complete"
+
+        tool_results = [e for e in events if isinstance(e, ToolResult)]
+        outputs = [r.output for r in tool_results]
+        assert "13960000" in outputs[0]
+        assert "2161000" in outputs[1]
+
+
+# ---------------------------------------------------------------------------
+# AsyncAgent.run_live tests
+# ---------------------------------------------------------------------------
+
+
+class TestAsyncAgentRunLive:
+    @pytest.mark.asyncio
+    async def test_async_run_live_yields_events_and_returns_result(self):
+        turn1 = [
+            AssistantTurnStart(turn_index=0),
+            TextDelta(text="Checking."),
+            ToolUseStart(id="a", name="lookup_population"),
+            ToolUseStop(id="a", name="lookup_population", input={"city": "Tokyo"}),
+            MessageStop(stop_reason="tool_use", usage={"total_tokens": 5, "cost": 0.001}),
+        ]
+        turn2 = [
+            AssistantTurnStart(turn_index=1),
+            TextDelta(text="Tokyo: 13,960,000."),
+            MessageStop(stop_reason="end_turn", usage={"total_tokens": 6, "cost": 0.001}),
+        ]
+        driver = AsyncNativeStreamingDriver([turn1, turn2])
+        agent = AsyncAgent("mock/mock", driver=driver, tools=[lookup_population])
+
+        streamed = agent.run_live("Tokyo?")
+        collected: list[Any] = []
+        async for ev in streamed:
+            collected.append(ev)
+
+        kinds = [e.event_type for e in collected]
+        assert kinds.count("text_delta") >= 2
+        assert kinds.count("tool_use_stop") == 1
+        assert kinds.count("tool_result") == 1
+        assert kinds[-1] == "turn_complete"
+
+        result = streamed.result
+        assert result is not None
+        assert "Tokyo" in result.output_text
+
+    @pytest.mark.asyncio
+    async def test_async_run_live_without_tools(self):
+        class _AsyncTextStream(AsyncDriver):
+            supports_messages = True
+            supports_streaming = True
+            model = "mock-text-async"
+
+            async def generate(self, prompt, options):
+                return {"text": "ok", "meta": {"total_tokens": 1, "cost": 0.0}}
+
+            async def generate_messages(self, messages, options):
+                return await self.generate("", options)
+
+            async def generate_messages_stream(self, messages, options):
+                for piece in ("hel", "lo"):
+                    yield {"type": "delta", "text": piece}
+                yield {"type": "done", "text": "hello", "meta": {"total_tokens": 2, "cost": 0.0}}
+
+        agent = AsyncAgent("mock/mock", driver=_AsyncTextStream())
+        events: list[Any] = []
+        async for ev in agent.run_live("hi"):
+            events.append(ev)
+        text = "".join(e.text for e in events if isinstance(e, TextDelta))
+        assert text == "hello"

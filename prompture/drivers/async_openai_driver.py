@@ -32,6 +32,7 @@ class AsyncOpenAIDriver(CostMixin, AsyncDriver):
     supports_json_schema = True
     supports_tool_use = True
     supports_streaming = True
+    supports_streaming_tool_use = True
     supports_vision = True
 
     MODEL_PRICING = OpenAIDriver.MODEL_PRICING
@@ -231,3 +232,29 @@ class AsyncOpenAIDriver(CostMixin, AsyncDriver):
         yield _build_openai_stream_done(
             model, full_text, prompt_tokens, completion_tokens, total_cost, cached_prompt_tokens
         )
+
+    # ------------------------------------------------------------------
+    # Live streaming with interleaved tool calls
+    # ------------------------------------------------------------------
+
+    async def generate_messages_with_tools_stream(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        options: dict[str, Any],
+    ) -> AsyncIterator[Any]:
+        """Async streaming-tool via the shared OpenAI-compat helper."""
+        if self.client is None:
+            from ..exceptions import ConfigurationError
+
+            raise ConfigurationError(
+                "openai package (>=1.0.0) is not installed. "
+                'Install it with: pip install "prompture[openai]"'
+            )
+
+        from ._openai_compat_stream import astream_openai_compat_tool_call
+
+        async for ev in astream_openai_compat_tool_call(
+            self, messages, tools, options, provider="openai"
+        ):
+            yield ev

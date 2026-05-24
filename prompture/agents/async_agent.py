@@ -1241,6 +1241,134 @@ class AsyncAgent(Generic[DepsType]):
         finally:
             _agent_depth.reset(token)
 
+    # ------------------------------------------------------------------
+    # run_live() — interleaved tool calling with streaming text deltas
+    # ------------------------------------------------------------------
+
+    def run_live(
+        self,
+        prompt: str,
+        *,
+        deps: Any = None,
+        images: list[Any] | None = None,
+    ) -> AsyncLiveAgentResult:
+        """Execute the async agent loop yielding interleaved
+        :class:`~prompture.agents.live_events.LiveEvent` objects.
+
+        Async sibling of :meth:`Agent.run_live`. Returns an
+        :class:`AsyncLiveAgentResult` you ``async for`` over; after the
+        stream completes, ``.result`` holds the final
+        :class:`AgentResult`.
+        """
+        gen = self._execute_live(prompt, deps, images=images)
+        return AsyncLiveAgentResult(gen, agent=self)
+
+    async def _execute_live(
+        self,
+        prompt: str,
+        deps: Any,
+        *,
+        images: list[Any] | None = None,
+    ) -> AsyncGenerator[Any]:
+        """Async generator that drives ask_live and yields :class:`LiveEvent`."""
+        from ..infra.tracker import get_tracker
+        from .live_events import TextDelta, ThinkingDelta
+
+        current_depth = _agent_depth.get()
+        if current_depth >= self._max_depth:
+            raise RecursionError(f"Agent recursion depth exceeded: {current_depth} >= {self._max_depth}")
+        token = _agent_depth.set(current_depth + 1)
+        self._lifecycle = AgentState.running
+        self._stop_requested = False
+        steps: list[AgentStep] = []
+
+        try:
+            session = UsageSession()
+            driver_callbacks = DriverCallbacks(
+                on_response=session.record,
+                on_error=session.record_error,
+            )
+            ctx = self._build_run_context(prompt, deps, session, [], 0)
+            effective_prompt = self._run_input_guardrails(ctx, prompt)
+            resolved_system_prompt = self._resolve_system_prompt(ctx)
+            wrapped_tools = self._wrap_tools_with_context(ctx, session)
+
+            conv = self._build_conversation(
+                system_prompt=resolved_system_prompt,
+                tools=wrapped_tools if wrapped_tools else None,
+                driver_callbacks=driver_callbacks,
+            )
+
+            if self._agent_callbacks.on_iteration:
+                await self._invoke_callback(self._agent_callbacks.on_iteration, 0)
+
+            tracker = get_tracker()
+            agent_name = self.name or self.__class__.__name__
+
+            response_text_parts: list[str] = []
+
+            with tracker.agent(agent_name):
+                security_token = None
+                if self._security_context is not None:
+                    from tukuy.safety import set_security_context
+
+                    security_token = set_security_context(self._security_context)
+                try:
+                    async for event in conv.ask_live(effective_prompt, images=images):
+                        if isinstance(event, TextDelta):
+                            response_text_parts.append(event.text)
+                        elif isinstance(event, ThinkingDelta):
+                            pass
+                        yield event
+                finally:
+                    if security_token is not None:
+                        from tukuy.safety import reset_security_context
+
+                        reset_security_context(security_token)
+
+            response_text = "".join(response_text_parts)
+            all_tool_calls: list[dict[str, Any]] = []
+            full_results = getattr(conv, "_full_tool_results", None)
+            self._extract_steps(conv.messages, steps, all_tool_calls, full_results)
+
+            if self._output_type is not None:
+                output, output_text = await self._parse_output(
+                    conv, response_text, steps, all_tool_calls, 0.0, session
+                )
+            else:
+                output = response_text
+                output_text = response_text
+
+            result = AgentResult(
+                output=output,
+                output_text=output_text,
+                messages=conv.messages,
+                usage=conv.usage,
+                steps=steps,
+                all_tool_calls=all_tool_calls,
+                state=AgentState.idle,
+                run_usage=session.summary(),
+            )
+
+            if self._output_guardrails:
+                result = await self._run_output_guardrails(ctx, result, conv, session, steps, all_tool_calls)
+
+            if self._agent_callbacks.on_step:
+                for step in steps:
+                    await self._invoke_callback(self._agent_callbacks.on_step, step)
+            if self._agent_callbacks.on_output:
+                await self._invoke_callback(self._agent_callbacks.on_output, result)
+            if self._agent_callbacks.on_message:
+                await self._invoke_callback(self._agent_callbacks.on_message, result.output_text)
+
+            self._lifecycle = AgentState.idle
+            self._last_live_result = result
+        except Exception:
+            self._lifecycle = AgentState.errored
+            raise
+        finally:
+            _agent_depth.reset(token)
+
 
 # ------------------------------------------------------------------
 # AsyncAgentIterator
@@ -1305,6 +1433,46 @@ class AsyncStreamedAgentResult:
                 self._result = event.data
             return event
         except StopAsyncIteration:
+            raise
+
+    @property
+    def result(self) -> AgentResult | None:
+        """The final :class:`AgentResult`, available after iteration completes."""
+        return self._result
+
+
+# ------------------------------------------------------------------
+# AsyncLiveAgentResult
+# ------------------------------------------------------------------
+
+
+class AsyncLiveAgentResult:
+    """Wraps the :meth:`AsyncAgent.run_live` async generator.
+
+    Yields :class:`~prompture.agents.live_events.LiveEvent` objects.
+    After async iteration completes, :attr:`result` holds the final
+    :class:`AgentResult`.
+
+    Async generators cannot return values via :class:`StopAsyncIteration`
+    the way sync generators do, so the wrapper keeps a reference to the
+    originating agent and reads ``_last_live_result`` from it when the
+    stream terminates.
+    """
+
+    def __init__(self, gen: AsyncGenerator[Any], *, agent: AsyncAgent[Any] | None = None) -> None:
+        self._gen = gen
+        self._agent = agent
+        self._result: AgentResult | None = None
+
+    def __aiter__(self) -> AsyncLiveAgentResult:
+        return self
+
+    async def __anext__(self) -> Any:
+        try:
+            return await self._gen.__anext__()
+        except StopAsyncIteration:
+            if self._agent is not None:
+                self._result = getattr(self._agent, "_last_live_result", None)
             raise
 
     @property
