@@ -842,6 +842,8 @@ def extract_with_model(
     source: Any = None,
     chunking: Any = None,
     strategy: str | StructuredOutputStrategy | None = None,
+    examples_store: Any = None,
+    examples_k: int = 3,
 ) -> dict[str, Any]:
     """Extracts structured information into a Pydantic model instance.
 
@@ -876,6 +878,15 @@ def extract_with_model(
         chunking: Chunking configuration for large documents.  Pass ``True``
             for auto-chunking with defaults, a ``ChunkingConfig`` instance
             for full control, or ``None``/``False`` to disable.
+        examples_store: Optional :class:`~prompture.extraction.few_shot.FewShotExampleStore`.
+            When provided, the top ``examples_k`` most-similar examples are
+            retrieved by embedding similarity and injected into the prompt
+            ahead of the actual input. Published few-shot literature shows
+            5–20 percentage-point accuracy lifts on structured extraction.
+            The result's usage metadata includes a ``few_shot`` entry with
+            the selected input strings for transparency.
+        examples_k: Number of examples to retrieve from ``examples_store``.
+            Ignored when ``examples_store`` is ``None``. Defaults to 3.
 
     Returns:
         A validated instance of the Pydantic model. When routing is used,
@@ -1009,16 +1020,45 @@ def extract_with_model(
     schema = actual_cls.model_json_schema()
     logger.debug("[extract] Generated JSON schema")
 
+    # --- Few-shot example selection (Phase 4) ---
+    # Compute once per call (not per retry — examples don't change between
+    # validation retries). When examples_store is provided, the top-K most
+    # similar examples are formatted and prepended to the instruction.
+    selected_examples_meta: list[dict[str, Any]] | None = None
+    augmented_instruction = instruction_template
+    if examples_store is not None and examples_k > 0:
+        try:
+            from .few_shot import format_examples_for_prompt
+
+            picked = examples_store.select(actual_text, k=examples_k)
+            if picked:
+                examples_block = format_examples_for_prompt(picked)
+                augmented_instruction = f"{examples_block}\n{instruction_template}"
+                selected_examples_meta = [
+                    {"input": ex.input_text, "metadata": dict(ex.metadata)}
+                    for ex in picked
+                ]
+                logger.debug(
+                    "[extract] Few-shot: selected %d/%d examples for query.",
+                    len(picked),
+                    examples_k,
+                )
+        except Exception:
+            logger.warning(
+                "[extract] examples_store.select() failed; continuing without few-shot.",
+                exc_info=True,
+            )
+
     last_error: Exception | None = None
     validation_feedback: str | None = None
 
     for attempt in range(max(1, max_retries)):
         try:
             # Build instruction template with validation feedback from prior attempt
-            effective_instruction = instruction_template
+            effective_instruction = augmented_instruction
             if validation_feedback is not None and max_retries >= 2:
                 effective_instruction = (
-                    f"{instruction_template}\n\n"
+                    f"{augmented_instruction}\n\n"
                     f"Previous attempt failed validation: {validation_feedback}. "
                     "Please fix these issues."
                 )
@@ -1077,6 +1117,14 @@ def extract_with_model(
             # --- Add routing metadata if routing was used ---
             if routing_result is not None:
                 result_dict["routing"] = routing_result.to_dict()
+
+            # --- Add few-shot transparency metadata when examples were used ---
+            if selected_examples_meta is not None:
+                result_dict["usage"]["few_shot"] = {
+                    "count": len(selected_examples_meta),
+                    "k_requested": examples_k,
+                    "examples": selected_examples_meta,
+                }
 
             # --- cache store ---
             if use_cache and cache_key is not None:

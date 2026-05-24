@@ -34,6 +34,7 @@ from .chunker_registry import (
     register_async_chunker,
     register_chunker,
 )
+from .contextual import DEFAULT_CONTEXTUAL_PROMPT, ContextualChunker
 from .markdown import MarkdownChunker
 from .recursive import RecursiveCharacterChunker
 from .semantic import SemanticChunker
@@ -53,6 +54,16 @@ for _name, _cls in _BUILTIN_CHUNKERS.items():
     register_chunker(_name, _cls, overwrite=True)
 
 
+# ContextualChunker is a wrapper, not a primary splitter — it requires a
+# `base` chunker and an LLM driver at instantiation time. Register it under
+# its own factory so users can still discover it via `get_chunker`.
+def _contextual_factory(**kwargs):
+    return ContextualChunker(**kwargs)
+
+
+register_chunker("contextual", _contextual_factory, overwrite=True)
+
+
 # Async siblings: wrap the sync class in _SyncToAsyncChunker.  SemanticChunker
 # and TokenChunker require runtime arguments (embedding_driver / tiktoken
 # installed) — their factories simply forward kwargs so the caller controls
@@ -67,13 +78,23 @@ def _make_async_factory(sync_cls: type[TextChunker]):
 for _name, _cls in _BUILTIN_CHUNKERS.items():
     register_async_chunker(_name, _make_async_factory(_cls), overwrite=True)
 
+# Async sibling for ContextualChunker — same wrapping pattern. The LLM call
+# inside is sync; the adapter handles to_thread.
+register_async_chunker(
+    "contextual",
+    lambda **kw: _SyncToAsyncChunker(ContextualChunker(**kw)),
+    overwrite=True,
+)
+
 del _name, _cls
 
 __all__ = [
     "ASYNC_CHUNKER_REGISTRY",
     "CHUNKER_REGISTRY",
+    "DEFAULT_CONTEXTUAL_PROMPT",
     "AsyncTextChunker",
     "CharacterChunker",
+    "ContextualChunker",
     "MarkdownChunker",
     "RecursiveCharacterChunker",
     "SemanticChunker",
