@@ -7,17 +7,28 @@ from typing import Any
 
 import requests
 
+from ..agents.live_events import (
+    LiveEvent,
+    MessageStop,
+    TextDelta,
+    ToolInputDelta,
+    ToolUseStart,
+    ToolUseStop,
+)
+from ._prompted_tool_stream import PromptedToolStreamMixin
 from .base import Driver
 
 logger = logging.getLogger(__name__)
 
 
-class OllamaDriver(Driver):
+class OllamaDriver(PromptedToolStreamMixin, Driver):
     supports_json_mode = True
     supports_json_schema = True
     supports_streaming = True
+    supports_streaming_tool_use = True
     supports_tool_use = True
     supports_vision = True
+    prompted_tool_grammar = "xml_tags"
 
     # Ollama is free – costs are always zero.
     MODEL_PRICING = {"default": {"prompt": 0.0, "completion": 0.0}}
@@ -203,6 +214,140 @@ class OllamaDriver(Driver):
         if reasoning_content is not None:
             result["reasoning_content"] = reasoning_content
         return result
+
+    # ------------------------------------------------------------------
+    # Live streaming with interleaved tool calls
+    # ------------------------------------------------------------------
+
+    def generate_messages_with_tools_stream(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        options: dict[str, Any],
+    ) -> Iterator[LiveEvent]:
+        """Yield :class:`~prompture.agents.live_events.LiveEvent` for one
+        assistant turn that may interleave narration and tool calls.
+
+        Two modes:
+
+        - **Tier 1 (default)** — uses Ollama's native ``/api/chat`` with
+          ``stream=True`` and ``tools=[...]``. Text content streams as
+          :class:`~prompture.agents.live_events.TextDelta` events as
+          tokens arrive; tool calls land in the final ``done`` chunk
+          and are emitted as ``ToolUseStart`` / ``ToolInputDelta`` /
+          ``ToolUseStop`` events. Works on tool-trained models
+          (Llama 3.1+, Mistral Nemo, Qwen 2.5, etc.).
+        - **Tier 2** — emulated streaming-tool via prompted tool use.
+          Activated by ``options["prompted_tools"] = True``. The grammar
+          is injected into the system prompt; the parser detects tool
+          calls in the token stream character-by-character. Works on
+          *any* Ollama model (including ones without native tool
+          training like Phi-3, older Gemma, base Llama 3).
+        """
+        if options.get("prompted_tools"):
+            yield from self._stream_via_prompted_emulation(messages, tools, options)
+            return
+
+        yield from self._stream_native_with_tools(messages, tools, options)
+
+    def _stream_native_with_tools(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        options: dict[str, Any],
+    ) -> Iterator[LiveEvent]:
+        """Tier 1: native Ollama streaming with tools.
+
+        Ollama emits content tokens incrementally and reports tool calls
+        in the final chunk (``done=True``). We stream the text live and
+        emit synthetic ``ToolUseStart`` / ``ToolInputDelta`` /
+        ``ToolUseStop`` events once the tool-call list arrives.
+        """
+        merged = self.options.copy()
+        if options:
+            merged.update(options)
+
+        messages = self._prepare_messages(messages)
+        chat_endpoint = self.endpoint.replace("/api/generate", "/api/chat")
+
+        payload: dict[str, Any] = {
+            "model": merged.get("model", self.model),
+            "messages": messages,
+            "tools": tools,
+            "stream": True,
+        }
+        for key in ("temperature", "top_p", "top_k"):
+            if key in merged:
+                payload[key] = merged[key]
+
+        prompt_tokens = 0
+        completion_tokens = 0
+        stop_reason = "stop"
+        tool_calls_raw: list[dict[str, Any]] = []
+
+        r = requests.post(  # nosec B113
+            chat_endpoint,
+            json=payload,
+            timeout=merged.get("timeout", 300),
+            stream=True,
+        )
+        r.raise_for_status()
+
+        for line in r.iter_lines():
+            if not line:
+                continue
+            try:
+                chunk = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+
+            if chunk.get("done"):
+                prompt_tokens = chunk.get("prompt_eval_count", 0)
+                completion_tokens = chunk.get("eval_count", 0)
+                stop_reason = chunk.get("done_reason", "stop")
+                msg = chunk.get("message", {}) or {}
+                tool_calls_raw = msg.get("tool_calls", []) or []
+                # Some Ollama versions also include trailing content on
+                # the final chunk — emit it before tool events.
+                tail = msg.get("content", "")
+                if tail:
+                    yield TextDelta(text=tail)
+            else:
+                msg = chunk.get("message", {}) or {}
+                content = msg.get("content", "")
+                if content:
+                    yield TextDelta(text=content)
+
+        for tc in tool_calls_raw:
+            func = tc.get("function", {}) or {}
+            name = func.get("name", "")
+            args = func.get("arguments", {})
+            if isinstance(args, str):
+                try:
+                    args = json.loads(args)
+                except json.JSONDecodeError:
+                    logger.warning("Failed to parse Ollama tool args for %s: %r", name, args[:200])
+                    args = {}
+            if not isinstance(args, dict):
+                args = {}
+            tool_id = tc.get("id") or f"call_{uuid.uuid4().hex[:24]}"
+            yield ToolUseStart(id=tool_id, name=name)
+            try:
+                fragment = json.dumps(args)
+            except (TypeError, ValueError):
+                fragment = "{}"
+            if fragment and fragment != "{}":
+                yield ToolInputDelta(id=tool_id, fragment=fragment)
+            yield ToolUseStop(id=tool_id, name=name, input=args)
+
+        usage = {
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": prompt_tokens + completion_tokens,
+            "cost": 0.0,
+            "model_name": merged.get("model", self.model),
+        }
+        yield MessageStop(stop_reason=stop_reason, usage=usage)
 
     # ------------------------------------------------------------------
     # Streaming

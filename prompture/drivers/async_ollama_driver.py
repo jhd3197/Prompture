@@ -6,20 +6,33 @@ import json
 import logging
 import os
 import uuid
+from collections.abc import AsyncIterator
 from typing import Any
 
 import httpx
 
+from ..agents.live_events import (
+    LiveEvent,
+    MessageStop,
+    TextDelta,
+    ToolInputDelta,
+    ToolUseStart,
+    ToolUseStop,
+)
+from ._prompted_tool_stream import PromptedToolStreamMixin
 from .async_base import AsyncDriver
 
 logger = logging.getLogger(__name__)
 
 
-class AsyncOllamaDriver(AsyncDriver):
+class AsyncOllamaDriver(PromptedToolStreamMixin, AsyncDriver):
     supports_json_mode = True
     supports_json_schema = True
+    supports_streaming = True
+    supports_streaming_tool_use = True
     supports_tool_use = True
     supports_vision = True
+    prompted_tool_grammar = "xml_tags"
 
     MODEL_PRICING = {"default": {"prompt": 0.0, "completion": 0.0}}
 
@@ -217,3 +230,194 @@ class AsyncOllamaDriver(AsyncDriver):
         if reasoning_content is not None:
             result["reasoning_content"] = reasoning_content
         return result
+
+    # ------------------------------------------------------------------
+    # Streaming
+    # ------------------------------------------------------------------
+
+    async def generate_messages_stream(
+        self,
+        messages: list[dict[str, Any]],
+        options: dict[str, Any],
+    ) -> AsyncIterator[dict[str, Any]]:
+        """Yield response chunks via Ollama streaming API."""
+        merged = self.options.copy()
+        if options:
+            merged.update(options)
+
+        messages = self._prepare_messages(messages)
+        chat_endpoint = self.endpoint.replace("/api/generate", "/api/chat")
+
+        payload: dict[str, Any] = {
+            "model": merged.get("model", self.model),
+            "messages": messages,
+            "stream": True,
+        }
+        json_schema = merged.get("json_schema")
+        if json_schema is not None:
+            payload["format"] = json_schema
+        elif merged.get("json_mode"):
+            payload["format"] = "json"
+        for key in ("temperature", "top_p", "top_k"):
+            if key in merged:
+                payload[key] = merged[key]
+
+        full_text = ""
+        full_reasoning = ""
+        prompt_tokens = 0
+        completion_tokens = 0
+
+        async with (
+            httpx.AsyncClient(timeout=merged.get("timeout", 300.0)) as client,
+            client.stream("POST", chat_endpoint, json=payload) as r,
+        ):
+            r.raise_for_status()
+            async for line in r.aiter_lines():
+                if not line:
+                    continue
+                try:
+                    chunk = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if chunk.get("done"):
+                    prompt_tokens = chunk.get("prompt_eval_count", 0)
+                    completion_tokens = chunk.get("eval_count", 0)
+                else:
+                    msg = chunk.get("message", {}) or {}
+                    thinking = msg.get("thinking", "")
+                    if thinking:
+                        full_reasoning += thinking
+                    content = msg.get("content", "")
+                    if content:
+                        full_text += content
+                        yield {"type": "delta", "text": content}
+
+        done_chunk: dict[str, Any] = {
+            "type": "done",
+            "text": full_text,
+            "meta": {
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "total_tokens": prompt_tokens + completion_tokens,
+                "cost": 0.0,
+                "raw_response": {},
+                "model_name": merged.get("model", self.model),
+            },
+        }
+        if full_reasoning:
+            done_chunk["reasoning_content"] = full_reasoning
+        yield done_chunk
+
+    # ------------------------------------------------------------------
+    # Live streaming with interleaved tool calls
+    # ------------------------------------------------------------------
+
+    async def generate_messages_with_tools_stream(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        options: dict[str, Any],
+    ) -> AsyncIterator[LiveEvent]:
+        """Yield :class:`~prompture.agents.live_events.LiveEvent` for one
+        assistant turn that may interleave narration and tool calls.
+
+        ``options["prompted_tools"] = True`` switches to Tier 2 emulation
+        (grammar injected into system prompt; tool calls parsed out of
+        the token stream). Default is Tier 1 native: Ollama
+        ``/api/chat`` with ``stream=True`` and ``tools=[...]``, text
+        streamed live, tool calls emitted from the final ``done`` chunk.
+        """
+        if options.get("prompted_tools"):
+            async for ev in self._astream_via_prompted_emulation(messages, tools, options):
+                yield ev
+            return
+
+        async for ev in self._astream_native_with_tools(messages, tools, options):
+            yield ev
+
+    async def _astream_native_with_tools(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        options: dict[str, Any],
+    ) -> AsyncIterator[LiveEvent]:
+        """Tier 1: native async Ollama streaming with tools."""
+        merged = self.options.copy()
+        if options:
+            merged.update(options)
+
+        messages = self._prepare_messages(messages)
+        chat_endpoint = self.endpoint.replace("/api/generate", "/api/chat")
+
+        payload: dict[str, Any] = {
+            "model": merged.get("model", self.model),
+            "messages": messages,
+            "tools": tools,
+            "stream": True,
+        }
+        for key in ("temperature", "top_p", "top_k"):
+            if key in merged:
+                payload[key] = merged[key]
+
+        prompt_tokens = 0
+        completion_tokens = 0
+        stop_reason = "stop"
+        tool_calls_raw: list[dict[str, Any]] = []
+
+        async with (
+            httpx.AsyncClient(timeout=merged.get("timeout", 300.0)) as client,
+            client.stream("POST", chat_endpoint, json=payload) as r,
+        ):
+            r.raise_for_status()
+            async for line in r.aiter_lines():
+                if not line:
+                    continue
+                try:
+                    chunk = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if chunk.get("done"):
+                    prompt_tokens = chunk.get("prompt_eval_count", 0)
+                    completion_tokens = chunk.get("eval_count", 0)
+                    stop_reason = chunk.get("done_reason", "stop")
+                    msg = chunk.get("message", {}) or {}
+                    tool_calls_raw = msg.get("tool_calls", []) or []
+                    tail = msg.get("content", "")
+                    if tail:
+                        yield TextDelta(text=tail)
+                else:
+                    msg = chunk.get("message", {}) or {}
+                    content = msg.get("content", "")
+                    if content:
+                        yield TextDelta(text=content)
+
+        for tc in tool_calls_raw:
+            func = tc.get("function", {}) or {}
+            name = func.get("name", "")
+            args = func.get("arguments", {})
+            if isinstance(args, str):
+                try:
+                    args = json.loads(args)
+                except json.JSONDecodeError:
+                    logger.warning("Failed to parse Ollama tool args for %s: %r", name, args[:200])
+                    args = {}
+            if not isinstance(args, dict):
+                args = {}
+            tool_id = tc.get("id") or f"call_{uuid.uuid4().hex[:24]}"
+            yield ToolUseStart(id=tool_id, name=name)
+            try:
+                fragment = json.dumps(args)
+            except (TypeError, ValueError):
+                fragment = "{}"
+            if fragment and fragment != "{}":
+                yield ToolInputDelta(id=tool_id, fragment=fragment)
+            yield ToolUseStop(id=tool_id, name=name, input=args)
+
+        usage = {
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": prompt_tokens + completion_tokens,
+            "cost": 0.0,
+            "model_name": merged.get("model", self.model),
+        }
+        yield MessageStop(stop_reason=stop_reason, usage=usage)
