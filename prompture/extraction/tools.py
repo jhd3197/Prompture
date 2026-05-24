@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import types
 import uuid
 from collections.abc import Mapping
 from datetime import date, datetime, time, timezone
@@ -34,6 +35,16 @@ import dateutil.parser
 from pydantic import BaseModel
 
 logger = logging.getLogger("prompture.tools")
+
+# PEP-604 unions like ``str | None`` have ``get_origin(...)`` returning
+# ``types.UnionType`` instead of ``typing.Union``. Treat both shapes as the
+# same Union so optional fields validate / convert correctly under both
+# annotation styles.
+_UNION_ORIGINS: tuple[Any, ...] = (Union, types.UnionType)
+
+
+def _is_union_origin(origin: Any) -> bool:
+    return origin in _UNION_ORIGINS
 
 # Exception tuple for value-conversion catches. Covers the standard library's
 # numeric / type-coercion paths plus a couple of attribute-access fallbacks
@@ -263,8 +274,8 @@ def _base_schema_for_type(field_name: str, field_type: type[Any]) -> dict[str, A
     origin = get_origin(field_type)
     args = get_args(field_type)
 
-    # Optional / Union
-    if origin is Union:
+    # Optional / Union (handles both typing.Union[X, None] and PEP-604 X | None)
+    if _is_union_origin(origin):
         non_none = [a for a in args if a is not type(None)]
         nullable = len(non_none) < len(args)
         # Prefer single non-none; otherwise treat as "anyOf"
@@ -470,8 +481,9 @@ def convert_value(
         origin = get_origin(target_type)
         args = get_args(target_type)
 
-        # Check if target type is Optional (Union with None)
-        if origin is Union and type(None) in args:
+        # Check if target type is Optional (typing.Union with None OR PEP-604
+        # ``T | None``). Both report different origins; treat them the same.
+        if _is_union_origin(origin) and type(None) in args:
             return None
 
         # For non-optional types, use fallback
@@ -480,8 +492,8 @@ def convert_value(
     origin = get_origin(target_type)
     args = get_args(target_type)
 
-    # Optional / Union - Enhanced with better error recovery
-    if origin is Union:
+    # Optional / Union - handles both typing.Union[X, None] and PEP-604 X | None
+    if _is_union_origin(origin):
         non_none = [a for a in args if a is not type(None)]
         is_optional = type(None) in args
 
@@ -925,8 +937,8 @@ def get_type_default(field_type: type[Any]) -> Any:
     origin = get_origin(field_type)
     args = get_args(field_type)
 
-    # Handle Optional/Union types
-    if origin is Union:
+    # Handle Optional/Union types (typing.Union or PEP-604 X | None)
+    if _is_union_origin(origin):
         non_none = [a for a in args if a is not type(None)]
         if len(non_none) == 1:
             # Optional[T] -> get default for T
