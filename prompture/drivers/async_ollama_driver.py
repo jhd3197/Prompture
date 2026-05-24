@@ -168,9 +168,13 @@ class AsyncOllamaDriver(AsyncDriver):
             "stream": False,
         }
 
-        if merged_options.get("json_mode"):
-            json_schema = merged_options.get("json_schema")
-            payload["format"] = json_schema if json_schema else "json"
+        # Native JSON mode / structured output (Ollama >=0.5 accepts a JSON
+        # schema dict directly in `format`). A schema implies JSON mode.
+        json_schema = merged_options.get("json_schema")
+        if json_schema is not None:
+            payload["format"] = json_schema
+        elif merged_options.get("json_mode"):
+            payload["format"] = "json"
 
         if "temperature" in merged_options:
             payload["temperature"] = merged_options["temperature"]
