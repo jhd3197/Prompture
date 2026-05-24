@@ -695,6 +695,167 @@ class Conversation:
 
         raise RuntimeError(f"Tool execution loop exceeded {self._max_tool_rounds} rounds")
 
+    def ask_live(
+        self,
+        content: str,
+        options: dict[str, Any] | None = None,
+        images: list[ImageInput] | None = None,
+    ) -> Iterator[Any]:
+        """Run an agentic tool loop, yielding :class:`LiveEvent` as work happens.
+
+        Unlike :meth:`ask_with_tool_events`, which buffers each LLM turn and
+        emits ``tool_call`` / ``tool_result`` between rounds, ``ask_live``
+        forwards the driver's interleaved stream — so callers see text
+        deltas before, between, and after tool calls within a single turn.
+        This produces the "Claude Code feel" where the model narrates as it
+        decides what to do next.
+
+        Drivers that don't natively stream tool use (``supports_streaming_tool_use
+        == False``) fall back to the buffered method via the base-class
+        synthetic event sequence. The shape is still uniform.
+
+        Yields:
+            :class:`~prompture.agents.live_events.LiveEvent` instances:
+            ``AssistantTurnStart``, ``TextDelta``, ``ThinkingDelta``,
+            ``ToolUseStart``, ``ToolInputDelta``, ``ToolUseStop``,
+            ``ToolResult`` (after this layer executes the tool),
+            ``MessageStop`` (end of each LLM turn),
+            ``TurnComplete`` (no more tool calls pending — loop ends).
+        """
+        from .live_events import (
+            AssistantTurnStart,
+            MessageStop,
+            TextDelta,
+            ThinkingDelta,
+            ToolInputDelta,
+            ToolResult,
+            ToolUseStart,
+            ToolUseStop,
+            TurnComplete,
+        )
+
+        self._last_reasoning = None
+
+        if not self._tools:
+            for chunk in self.ask_stream(content, options, images=images):
+                yield TextDelta(text=chunk)
+            yield TurnComplete(usage=dict(self._usage))
+            return
+
+        use_native = getattr(self._driver, "supports_tool_use", False)
+        if self._simulated_tools is True or (self._simulated_tools == "auto" and not use_native):
+            for ev in self._ask_with_simulated_tool_events(content, options, images=images):
+                ev_type = ev.get("type")
+                if ev_type == "text_delta":
+                    yield TextDelta(text=ev.get("text", ""))
+                elif ev_type == "tool_call":
+                    yield ToolUseStart(id=ev.get("id", ""), name=ev.get("name", ""))
+                    yield ToolUseStop(
+                        id=ev.get("id", ""),
+                        name=ev.get("name", ""),
+                        input=ev.get("arguments", {}) or {},
+                    )
+                elif ev_type == "tool_result":
+                    yield ToolResult(
+                        id=ev.get("id", ""),
+                        name=ev.get("name", ""),
+                        output=ev.get("result", ""),
+                    )
+            yield TurnComplete(usage=dict(self._usage))
+            return
+
+        merged = {**self._options, **(options or {})}
+        tool_defs = self._tools.to_openai_format()
+
+        user_content = self._build_content_with_images(content, images)
+        self._messages.append({"role": "user", "content": user_content})
+        msgs = self._build_messages_raw()
+
+        for round_idx in range(self._max_tool_rounds):
+            self._check_budget()
+            if self._run_before_turn():
+                msgs = self._build_messages_raw()
+
+            yield AssistantTurnStart(turn_index=round_idx)
+
+            assistant_text_parts: list[str] = []
+            assistant_thinking_parts: list[str] = []
+            tool_calls_in_turn: list[dict[str, Any]] = []
+            pending_tools: list[tuple[str, str, dict[str, Any]]] = []
+            turn_usage: dict[str, Any] = {}
+            stop_reason: str = "end_turn"
+
+            stream = self._driver.generate_messages_with_tools_stream(msgs, tool_defs, merged)
+            for event in stream:
+                yield event
+                et = getattr(event, "event_type", None)
+                if et == "text_delta":
+                    assistant_text_parts.append(event.text)
+                elif et == "thinking_delta":
+                    assistant_thinking_parts.append(event.text)
+                elif et == "tool_use_stop":
+                    pending_tools.append((event.id, event.name, event.input))
+                    tool_calls_in_turn.append(
+                        {
+                            "id": event.id,
+                            "type": "function",
+                            "function": {"name": event.name, "arguments": json.dumps(event.input)},
+                        }
+                    )
+                elif et == "message_stop":
+                    turn_usage = dict(event.usage or {})
+                    stop_reason = event.stop_reason
+
+            full_text = "".join(assistant_text_parts)
+            full_thinking = "".join(assistant_thinking_parts) or None
+
+            assistant_msg: dict[str, Any] = {"role": "assistant", "content": full_text}
+            if tool_calls_in_turn:
+                assistant_msg["tool_calls"] = tool_calls_in_turn
+            if full_thinking is not None:
+                assistant_msg["reasoning_content"] = full_thinking
+                self._last_reasoning = full_thinking
+
+            self._messages.append(assistant_msg)
+            msgs.append(assistant_msg)
+            if turn_usage:
+                self._accumulate_usage(turn_usage)
+
+            if not pending_tools:
+                yield TurnComplete(usage=dict(self._usage))
+                return
+
+            for tool_id, tool_name, tool_input in pending_tools:
+                try:
+                    result = self._tools.execute(tool_name, tool_input)
+                    result_str = json.dumps(result) if not isinstance(result, str) else result
+                    is_error = False
+                except Exception as exc:
+                    result_str = (
+                        f"Error ({type(exc).__name__}): {exc}"
+                        if str(exc)
+                        else f"Error: {type(exc).__name__}: {exc!r}"
+                    )
+                    is_error = True
+
+                self._full_tool_results[tool_id] = result_str
+                yield ToolResult(id=tool_id, name=tool_name, output=result_str, is_error=is_error)
+
+                truncated = self._truncate_tool_result(result_str)
+                tool_result_msg: dict[str, Any] = {
+                    "role": "tool",
+                    "tool_call_id": tool_id,
+                    "content": truncated,
+                }
+                self._messages.append(tool_result_msg)
+                msgs.append(tool_result_msg)
+
+            # Unused stop_reason kept for symmetry with claw-code's loop;
+            # the real signal is whether pending_tools was non-empty.
+            del stop_reason
+
+        raise RuntimeError(f"ask_live exceeded {self._max_tool_rounds} rounds")
+
     def _ask_with_simulated_tool_events(
         self,
         content: str,

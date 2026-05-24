@@ -153,6 +153,7 @@ class Driver(ABC):
     supports_messages: bool = False
     supports_tool_use: bool = False
     supports_streaming: bool = False
+    supports_streaming_tool_use: bool = False
     supports_vision: bool = False
 
     callbacks: DriverCallbacks | None = None
@@ -228,6 +229,70 @@ class Driver(ABC):
         ``supports_streaming = True``.
         """
         raise NotImplementedError(f"{self.__class__.__name__} does not support streaming")
+
+    # ------------------------------------------------------------------
+    # Live streaming with interleaved tool calls
+    # ------------------------------------------------------------------
+
+    def generate_messages_with_tools_stream(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        options: dict[str, Any],
+    ) -> Iterator[Any]:
+        """Yield :class:`~prompture.agents.live_events.LiveEvent` for one
+        assistant turn that may interleave text and tool calls.
+
+        The driver is responsible only for one turn — from the model deciding
+        what to say/call to ``MessageStop``. The conversation layer drives the
+        outer loop, executes tools, and re-invokes this method for the next
+        turn.
+
+        Default implementation: wraps the buffered
+        :meth:`generate_messages_with_tools` into a synthetic event sequence
+        so callers always get a uniform interface, even on drivers that don't
+        natively stream tool use. Drivers that DO support native interleaved
+        streaming should override this and set
+        ``supports_streaming_tool_use = True`` — they'll feel like Claude Code
+        (narration between tool calls) instead of "buffered then dumped".
+        """
+        from ..agents.live_events import (
+            MessageStop,
+            TextDelta,
+            ThinkingDelta,
+            ToolInputDelta,
+            ToolUseStart,
+            ToolUseStop,
+        )
+
+        resp = self.generate_messages_with_tools(messages, tools, options)
+        text = resp.get("text", "") or ""
+        reasoning = resp.get("reasoning_content")
+        tool_calls = resp.get("tool_calls", []) or []
+        stop_reason = resp.get("stop_reason", "end_turn") or "end_turn"
+        meta = resp.get("meta", {}) or {}
+
+        if reasoning:
+            yield ThinkingDelta(text=reasoning)
+        if text:
+            yield TextDelta(text=text)
+
+        import json as _json
+
+        for tc in tool_calls:
+            tc_id = tc.get("id", "") or ""
+            tc_name = tc.get("name", "") or ""
+            tc_args = tc.get("arguments", {}) or {}
+            yield ToolUseStart(id=tc_id, name=tc_name)
+            try:
+                fragment = _json.dumps(tc_args)
+            except (TypeError, ValueError):
+                fragment = "{}"
+            if fragment and fragment != "{}":
+                yield ToolInputDelta(id=tc_id, fragment=fragment)
+            yield ToolUseStop(id=tc_id, name=tc_name, input=tc_args)
+
+        yield MessageStop(stop_reason=stop_reason, usage=meta)
 
     # ------------------------------------------------------------------
     # Hook-aware wrappers

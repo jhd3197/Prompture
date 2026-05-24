@@ -129,6 +129,7 @@ class OpenAIDriver(CostMixin, Driver):
     supports_json_schema = True
     supports_tool_use = True
     supports_streaming = True
+    supports_streaming_tool_use = True
     supports_vision = True
 
     # All pricing and model config now resolved from JSON rate files (KB) and
@@ -341,3 +342,156 @@ class OpenAIDriver(CostMixin, Driver):
         yield _build_openai_stream_done(
             model, full_text, prompt_tokens, completion_tokens, total_cost, cached_prompt_tokens
         )
+
+    # ------------------------------------------------------------------
+    # Live streaming with interleaved tool calls
+    # ------------------------------------------------------------------
+
+    def generate_messages_with_tools_stream(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        options: dict[str, Any],
+    ) -> Iterator[Any]:
+        """Stream one OpenAI turn as :class:`LiveEvent`.
+
+        Maps ``delta.content`` to ``TextDelta`` and assembles
+        ``delta.tool_calls[index].function.{name,arguments}`` fragments
+        into ``ToolUseStart`` (on first appearance, when id/name arrive)
+        plus ``ToolInputDelta`` (per argument fragment). At the end of the
+        stream, yields ``ToolUseStop`` for each tool (OpenAI has no
+        per-block stop event), then ``MessageStop`` with usage.
+        """
+        if self.client is None:
+            from ..exceptions import ConfigurationError
+
+            raise ConfigurationError(
+                "openai package (>=1.0.0) is not installed. "
+                'Install it with: pip install "prompture[openai]"'
+            )
+
+        from ..agents.live_events import (
+            MessageStop,
+            TextDelta,
+            ToolInputDelta,
+            ToolUseStart,
+            ToolUseStop,
+        )
+
+        model = options.get("model", self.model)
+        model_config = self._get_model_config("openai", model)
+        tokens_param = model_config["tokens_param"]
+        supports_temperature = model_config["supports_temperature"]
+
+        opts = {"temperature": 1.0, "max_tokens": 4096, **options}
+        kwargs = _build_openai_base_kwargs(
+            model,
+            messages,
+            opts,
+            tokens_param,
+            supports_temperature,
+            4096,
+            extra={
+                "tools": tools,
+                "stream": True,
+                "stream_options": {"include_usage": True},
+            },
+        )
+
+        stream = self.client.chat.completions.create(**kwargs)
+
+        prompt_tokens = 0
+        completion_tokens = 0
+        cached_prompt_tokens = 0
+        finish_reason = "stop"
+
+        tool_calls_by_index: dict[int, dict[str, Any]] = {}
+
+        import json as _json
+
+        for chunk in stream:
+            if getattr(chunk, "usage", None):
+                prompt_tokens = chunk.usage.prompt_tokens or 0
+                completion_tokens = chunk.usage.completion_tokens or 0
+                cached_prompt_tokens = _extract_openai_cached_tokens(chunk.usage)
+
+            if not chunk.choices:
+                continue
+
+            choice = chunk.choices[0]
+            delta = getattr(choice, "delta", None)
+            if delta is None:
+                fr = getattr(choice, "finish_reason", None)
+                if fr:
+                    finish_reason = fr
+                continue
+
+            content = getattr(delta, "content", None) or ""
+            if content:
+                yield TextDelta(text=content)
+
+            delta_tool_calls = getattr(delta, "tool_calls", None) or []
+            for tc in delta_tool_calls:
+                idx = getattr(tc, "index", 0) or 0
+                bucket = tool_calls_by_index.setdefault(
+                    idx,
+                    {"id": "", "name": "", "args_fragments": [], "start_emitted": False},
+                )
+                tc_id = getattr(tc, "id", None)
+                if tc_id and not bucket["id"]:
+                    bucket["id"] = tc_id
+                fn = getattr(tc, "function", None)
+                if fn is not None:
+                    fn_name = getattr(fn, "name", None)
+                    if fn_name and not bucket["name"]:
+                        bucket["name"] = fn_name
+                    fn_args = getattr(fn, "arguments", None)
+                    if fn_args:
+                        bucket["args_fragments"].append(fn_args)
+                if (
+                    not bucket["start_emitted"]
+                    and bucket["id"]
+                    and bucket["name"]
+                ):
+                    bucket["start_emitted"] = True
+                    yield ToolUseStart(id=bucket["id"], name=bucket["name"])
+                if bucket["start_emitted"]:
+                    fn_args_now = getattr(fn, "arguments", None) if fn is not None else None
+                    if fn_args_now:
+                        yield ToolInputDelta(id=bucket["id"], fragment=fn_args_now)
+
+            fr = getattr(choice, "finish_reason", None)
+            if fr:
+                finish_reason = fr
+
+        for idx in sorted(tool_calls_by_index.keys()):
+            bucket = tool_calls_by_index[idx]
+            if not bucket["start_emitted"] and bucket["id"] and bucket["name"]:
+                yield ToolUseStart(id=bucket["id"], name=bucket["name"])
+                bucket["start_emitted"] = True
+            args_str = "".join(bucket["args_fragments"])
+            try:
+                parsed = _json.loads(args_str) if args_str else {}
+                if not isinstance(parsed, dict):
+                    parsed = {}
+            except _json.JSONDecodeError:
+                logger.warning(
+                    "Failed to parse streamed tool input for %s: %r",
+                    bucket["name"],
+                    args_str[:200],
+                )
+                parsed = {}
+            yield ToolUseStop(id=bucket["id"], name=bucket["name"], input=parsed)
+
+        total_cost = self._calculate_cost(
+            "openai", model, prompt_tokens, completion_tokens, cached_tokens=cached_prompt_tokens
+        )
+        meta = {
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": prompt_tokens + completion_tokens,
+            "cached_prompt_tokens": cached_prompt_tokens,
+            "cost": round(total_cost, 6),
+            "model_name": model,
+        }
+        yield MessageStop(stop_reason=finish_reason, usage=meta)
