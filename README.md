@@ -1028,6 +1028,46 @@ conv = Conversation("openai/gpt-4", tools=registry, simulated_tools=False)
 
 The simulation loop describes tools in the system prompt, asks the model to respond with JSON (`tool_call` or `final_answer`), executes tools, and feeds results back — all transparent to the caller.
 
+### Live Streaming Tool Calls (any model, including local Ollama)
+
+`Conversation.ask_live` / `Agent.run_live` yields an interleaved event stream — text deltas, tool calls, tool results — *as the model produces them*. This is the "Claude Code feel" where the model narrates between actions instead of buffering everything into one chunk per turn.
+
+For Claude, OpenAI, Groq, Grok, Mistral, OpenRouter and friends, this runs on the provider's native streaming-tool API. For **local Ollama models** Prompture ships two delivery tiers:
+
+```python
+from prompture import Agent
+
+# Tier 1 — native Ollama streaming + tool calls.
+# Works on tool-trained models (Llama 3.1+, Mistral Nemo, Qwen 2.5, …).
+agent = Agent("ollama/llama3.1:8b", tools=[lookup_country, lookup_population])
+for event in agent.run_live("Which is bigger, Tokyo or Paris?"):
+    ...   # TextDelta / ToolUseStart / ToolUseStop / ToolResult / TurnComplete
+
+# Tier 2 — prompted-tool emulation.
+# Works on ANY model — Phi-3, base Gemma, raw Llama 3 7B, etc.
+# Tool schemas are injected into the system prompt; tool calls are parsed
+# out of the token stream character-by-character via a state-machine parser.
+for event in agent.run_live(prompt, options={"prompted_tools": True}):
+    ...
+```
+
+Tier 2's grammar is pluggable (`prompture.agents.tool_grammars`). The default `xml_tags` grammar uses `<tool_call name="search">{"q": "..."}</tool_call>` blocks — explicit delimiters that don't clash with markdown narration and let `ToolUseStart` fire the moment the opening tag is seen, before the arguments finish streaming.
+
+Any text-streaming driver can opt into Tier 2 by mixing in `PromptedToolStreamMixin`:
+
+```python
+from prompture.drivers._prompted_tool_stream import PromptedToolStreamMixin
+
+class MyDriver(PromptedToolStreamMixin, Driver):
+    supports_streaming_tool_use = True
+    prompted_tool_grammar = "xml_tags"
+
+    def generate_messages_with_tools_stream(self, messages, tools, options):
+        yield from self._stream_via_prompted_emulation(messages, tools, options)
+```
+
+See `examples/agent_live_stream_ollama.py` for a complete demo of both tiers.
+
 ### Sandboxed Python execution
 
 `PythonSandboxTool` ships a ready-to-register `python_execute` tool backed

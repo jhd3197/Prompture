@@ -62,22 +62,32 @@ def test_capability_resolution_uses_driver_instance() -> None:
 
     Pre-fix, ``_populate_from_descriptors`` registered sync flags at the
     provider level and ``get_capabilities`` returned them before consulting
-    the live driver instance.  Async ollama therefore claimed streaming
-    support (inherited from the sync sibling's registry entry) even though
-    ``AsyncOllamaDriver`` does not implement ``generate_messages_stream``.
+    the live driver instance, so async drivers could claim capabilities
+    they didn't implement.
+
+    We synthesize a stripped-down ``AsyncOllamaDriver`` subclass that
+    drops streaming support to exercise the lookup path with a known
+    mismatch between provider-level claims and instance-level reality.
     """
+    from prompture.drivers.async_base import AsyncDriver
     from prompture.drivers.async_ollama_driver import AsyncOllamaDriver
     from prompture.drivers.ollama_driver import OllamaDriver
     from prompture.infra.capabilities import get_capabilities
 
     assert OllamaDriver.supports_streaming is True
-    assert getattr(AsyncOllamaDriver, "supports_streaming", False) is False
+    assert AsyncOllamaDriver.supports_streaming is True
 
-    async_driver = AsyncOllamaDriver(endpoint="http://localhost:11434")
+    class NoStreamAsyncOllama(AsyncOllamaDriver):
+        supports_streaming = False
+        # Drop the override so it falls back to AsyncDriver's NotImplementedError default.
+        generate_messages_stream = AsyncDriver.generate_messages_stream
+
+    async_driver = NoStreamAsyncOllama(endpoint="http://localhost:11434")
     caps = get_capabilities("ollama/llama3", driver=async_driver)
     assert caps.streaming is False, (
-        "Capability registry returned streaming=True for an AsyncOllamaDriver "
-        "instance — the provider-level cache is shadowing live driver flags."
+        "Capability registry returned streaming=True for an async driver "
+        "instance that explicitly opts out — the provider-level cache is "
+        "shadowing live driver flags."
     )
 
 
@@ -103,6 +113,7 @@ def test_capability_resolution_user_override_beats_driver() -> None:
 def test_validate_driver_capabilities_returns_violations() -> None:
     """Programmatic API returns a list — useful for plugin authors who
     want to integrate the check into their own assertions or CI logic."""
+    from prompture.drivers.base import Driver
     from prompture.drivers.ollama_driver import OllamaDriver
     from prompture.testing import validate_driver_capabilities
 
@@ -113,7 +124,7 @@ def test_validate_driver_capabilities_returns_violations() -> None:
         pass
 
     BrokenDriver.supports_streaming = True
-    BrokenDriver.generate_messages_stream = OllamaDriver.__bases__[0].generate_messages_stream
+    BrokenDriver.generate_messages_stream = Driver.generate_messages_stream
 
     violations = validate_driver_capabilities(BrokenDriver)
     assert any("supports_streaming" in v for v in violations)
