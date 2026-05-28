@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Prompture Installer</title>
+  <meta name="description" content="Pick the providers and features you want and get a copy-paste pip install command plus a starter .env for Prompture." />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="hero">
+    <div class="hero-inner">
+      <h1>Prompture Installer</h1>
+      <p class="tagline">
+        Pick the providers and features you want.
+        Get a copy-paste <code>pip install</code> command and a starter
+        <code>.env</code> with only the keys you'll actually use.
+      </p>
+      <div class="hero-links">
+        <a href="https://github.com/jhd3197/prompture" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://pypi.org/project/prompture/" target="_blank" rel="noopener">PyPI</a>
+        <a href="../INTEGRATIONS.md">Integrations</a>
+        <a href="../MULTIMODAL.md">Multimodal</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="picker" aria-label="Provider and feature picker">
+      <div class="picker-toolbar">
+        <input
+          id="search"
+          type="search"
+          placeholder="Filter providers and features…"
+          aria-label="Filter providers and features"
+          autocomplete="off"
+        />
+        <button type="button" id="clear-btn" class="ghost-btn">Clear all</button>
+      </div>
+      <div id="sections"></div>
+    </section>
+
+    <aside class="output" aria-label="Generated install command and env">
+      <div class="card">
+        <header class="card-header">
+          <h2>pip install</h2>
+          <button type="button" class="copy-btn" data-target="install-cmd">Copy</button>
+        </header>
+        <pre id="install-cmd" class="code"></pre>
+        <p class="muted" id="install-note"></p>
+      </div>
+
+      <div class="card">
+        <header class="card-header">
+          <h2>.env</h2>
+          <div class="card-actions">
+            <button type="button" class="copy-btn" data-target="env-file">Copy</button>
+            <button type="button" id="download-env" class="ghost-btn">Download</button>
+          </div>
+        </header>
+        <pre id="env-file" class="code env"></pre>
+        <p class="muted" id="env-note">Nothing selected yet.</p>
+      </div>
+
+      <div class="card">
+        <header class="card-header">
+          <h2>Quick start</h2>
+          <button type="button" class="copy-btn" data-target="snippet">Copy</button>
+        </header>
+        <pre id="snippet" class="code"></pre>
+      </div>
+    </aside>
+  </main>
+
+  <footer class="foot">
+    <p>
+      Built for <a href="https://github.com/jhd3197/prompture" target="_blank" rel="noopener">Prompture</a>.
+      Static page — runs entirely in your browser.
+    </p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
