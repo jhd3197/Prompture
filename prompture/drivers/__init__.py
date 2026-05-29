@@ -107,6 +107,12 @@ from .openai_moderation_driver import OpenAIModerationDriver
 from .openai_stt_driver import OpenAISTTDriver
 from .openai_tts_driver import OpenAITTSDriver
 from .openrouter_driver import OpenRouterDriver
+from .provider_branding import (
+    PROVIDER_BRANDS,
+    ProviderBrand,
+    get_provider_brand,
+    icon_url,
+)
 from .provider_descriptors import (
     PROVIDER_DESCRIPTOR_MAP,
     PROVIDER_DESCRIPTORS,
@@ -745,4 +751,9 @@ __all__ = [
     "unregister_stt_driver",
     "unregister_tts_driver",
     "unregister_video_gen_driver",
+    # Branding (display metadata)
+    "ProviderBrand",
+    "PROVIDER_BRANDS",
+    "get_provider_brand",
+    "icon_url",
 ]
