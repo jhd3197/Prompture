@@ -34,6 +34,11 @@ class ImageGenDriver:
     supported_sizes: list[str] = []
     max_images: int = 10
 
+    # Editing capabilities (default: not supported). Drivers that implement
+    # editing flip these so callers can feature-detect before offering UI.
+    supports_edit: bool = False
+    supports_variation: bool = False
+
     callbacks: DriverCallbacks | None = None
 
     def generate_image(self, prompt: str, options: dict[str, Any]) -> dict[str, Any]:
@@ -47,6 +52,45 @@ class ImageGenDriver:
             Dict with ``images`` and ``meta`` keys.
         """
         raise NotImplementedError
+
+    def edit_image(
+        self,
+        image: bytes,
+        prompt: str,
+        options: dict[str, Any],
+        *,
+        mask: bytes | None = None,
+    ) -> dict[str, Any]:
+        """Edit an existing image with a text instruction (image-to-image).
+
+        Args:
+            image: Source image bytes (PNG/JPEG).
+            prompt: Instruction describing the desired change.
+            options: Provider-specific options (size, n, model, etc.).
+            mask: Optional PNG mask; transparent pixels mark the region to edit
+                (inpainting). When omitted the whole image is editable.
+
+        Returns:
+            Dict with ``images`` and ``meta`` keys (same contract as
+            :meth:`generate_image`).
+        """
+        raise NotImplementedError(
+            f"{self.__class__.__name__} does not support image editing"
+        )
+
+    def create_variation(self, image: bytes, options: dict[str, Any]) -> dict[str, Any]:
+        """Produce variation(s) of an existing image (no prompt).
+
+        Args:
+            image: Source image bytes (PNG).
+            options: Provider-specific options (size, n, model, etc.).
+
+        Returns:
+            Dict with ``images`` and ``meta`` keys.
+        """
+        raise NotImplementedError(
+            f"{self.__class__.__name__} does not support variations"
+        )
 
     # ------------------------------------------------------------------
     # Hook-aware wrapper
