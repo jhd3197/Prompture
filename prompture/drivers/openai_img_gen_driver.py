@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import logging
 import os
 from typing import Any
@@ -23,6 +24,8 @@ class OpenAIImageGenDriver(ImageCostMixin, ImageGenDriver):
 
     supports_multiple = True
     supports_size_variants = True
+    supports_edit = True
+    supports_variation = True
     supported_sizes = [
         "256x256",
         "512x512",
@@ -148,3 +151,80 @@ class OpenAIImageGenDriver(ImageCostMixin, ImageGenDriver):
                 "raw_response": {},
             },
         }
+
+    # ------------------------------------------------------------------
+    # Editing
+    # ------------------------------------------------------------------
+
+    _VARIATION_SIZES = {"256x256", "512x512", "1024x1024"}
+
+    def _safe_cost(self, model: str, size: str, n: int, quality: str = "standard") -> float:
+        try:
+            return round(self._calculate_image_cost("openai", model, size=size, quality=quality, n=n), 6)
+        except Exception:  # pragma: no cover - pricing table gaps shouldn't break a call
+            return 0.0
+
+    def _result(self, data: Any, model: str, size: str, n: int) -> dict[str, Any]:
+        images = [image_from_base64(d.b64_json, media_type="image/png") for d in data]
+        return {
+            "images": images,
+            "meta": {
+                "image_count": len(images),
+                "size": size,
+                "revised_prompt": None,
+                "cost": self._safe_cost(model, size, n),
+                "model_name": f"openai/{model}",
+                "raw_response": {},
+            },
+        }
+
+    def edit_image(
+        self,
+        image: bytes,
+        prompt: str,
+        options: dict[str, Any],
+        *,
+        mask: bytes | None = None,
+    ) -> dict[str, Any]:
+        """Edit an image with an instruction. Uses gpt-image-1 by default."""
+        if self.client is None:
+            raise RuntimeError("openai package (>=1.0.0) is not installed")
+
+        model = options.get("model", "gpt-image-1")
+        size = options.get("size", "1024x1024")
+        n = options.get("n", 1)
+        kwargs: dict[str, Any] = {
+            "model": model,
+            "prompt": prompt,
+            "image": ("image.png", io.BytesIO(image), "image/png"),
+            "n": n,
+            "size": size,
+        }
+        if mask is not None:
+            kwargs["mask"] = ("mask.png", io.BytesIO(mask), "image/png")
+        # gpt-image-* always returns b64; DALL·E 2 edits need it requested.
+        if not model.startswith("gpt-image"):
+            kwargs["response_format"] = "b64_json"
+
+        resp = self.client.images.edit(**kwargs)
+        return self._result(resp.data, model, size, n)
+
+    def create_variation(self, image: bytes, options: dict[str, Any]) -> dict[str, Any]:
+        """Produce variation(s) of an image. Only DALL·E 2 supports this."""
+        if self.client is None:
+            raise RuntimeError("openai package (>=1.0.0) is not installed")
+
+        model = "dall-e-2"  # the only OpenAI model with a variations endpoint
+        size = options.get("size", "1024x1024")
+        if size not in self._VARIATION_SIZES:
+            size = "1024x1024"
+        n = options.get("n", 1)
+
+        resp = self.client.images.create_variation(
+            model=model,
+            image=("image.png", io.BytesIO(image), "image/png"),
+            n=n,
+            size=size,
+            response_format="b64_json",
+        )
+        return self._result(resp.data, model, size, n)
