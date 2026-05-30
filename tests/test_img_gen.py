@@ -398,3 +398,30 @@ class TestImageModelControls:
         c = get_image_model_controls("madeup/no-such-model")
         assert c["sizes"] == [{"label": "Square", "ratio": "1:1", "value": "1024x1024"}]
         assert c["size_param"] == "size"
+
+
+# ── Vertex AI image generation (Gemini flash-image via generate_content) ──
+
+
+class TestVertexImageGen:
+    def test_driver_class_lookup_for_vertex_aliases(self):
+        from prompture.drivers.vertex_img_gen_driver import VertexImageGenDriver
+        from prompture.infra.discovery import _img_gen_driver_class
+
+        # The dashboard uses the "vertex_ai/" prefix; aliases must map to the driver.
+        for prov in ("vertex_ai", "google_vertexai", "vertex"):
+            assert _img_gen_driver_class(prov) is VertexImageGenDriver
+
+    def test_controls_are_aspect_ratio_single_image(self):
+        from prompture.infra.discovery import get_image_model_controls
+
+        c = get_image_model_controls("vertex_ai/gemini-2.5-flash-image")
+        assert c["size_param"] == "aspect_ratio"
+        assert c["max_n"] == 1
+        assert {"Square", "Landscape", "Portrait"} <= {s["label"] for s in c["sizes"]}
+
+    def test_pricing_keys(self):
+        from prompture.drivers.vertex_img_gen_driver import VertexImageGenDriver
+
+        assert "gemini-2.5-flash-image" in VertexImageGenDriver.IMAGE_PRICING
+        assert VertexImageGenDriver.max_images == 1
