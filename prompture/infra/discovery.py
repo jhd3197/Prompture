@@ -1325,6 +1325,15 @@ def get_available_image_gen_models(
         for model_id in BFLImageGenDriver.KNOWN_MODELS:
             available.add(f"bfl/{model_id}")
 
+    # Vertex AI Gemini image models (generate_content with image output).
+    if _cfg_value(env, "google_vertex_api_key", "GOOGLE_VERTEX_API_KEY") or _cfg_value(
+        env, "google_vertex_project_id", "GOOGLE_VERTEX_PROJECT_ID"
+    ):
+        from ..drivers.vertex_img_gen_driver import VertexImageGenDriver
+
+        for model_id in VertexImageGenDriver.KNOWN_MODELS:
+            available.add(f"vertex_ai/{model_id}")
+
     # Dynamic discovery: check modalities_output from models.dev capabilities
     # for any models that the pricing dicts don't know about yet.
     from .model_rates import get_model_capabilities
@@ -1347,6 +1356,9 @@ _IMG_SIZE_PARAM: dict[str, str] = {
     "stability": "aspect_ratio",
     "ideogram": "aspect_ratio",
     "runway": "ratio",
+    "vertex_ai": "aspect_ratio",
+    "google_vertexai": "aspect_ratio",
+    "vertex": "aspect_ratio",
 }
 
 # Preferred representative ratio per orientation, used when a model offers it.
@@ -1371,6 +1383,9 @@ def _img_gen_driver_class(provider: str):
         if provider in ("grok", "xai"):
             from ..drivers.grok_img_gen_driver import GrokImageGenDriver
             return GrokImageGenDriver
+        if provider in ("vertex_ai", "google_vertexai", "vertex", "vertexai"):
+            from ..drivers.vertex_img_gen_driver import VertexImageGenDriver
+            return VertexImageGenDriver
         if provider == "stability":
             from ..drivers.stability_img_gen_driver import StabilityImageGenDriver
             return StabilityImageGenDriver

@@ -63,6 +63,13 @@ class GooglePlugin(ProviderPlugin):
             "location": "google_vertex_location",
             "access_token": "google_vertex_access_token",  # nosec B105
         }
+        # Image gen uses google-genai with vertexai=True; access_token isn't a
+        # constructor arg for the image driver, so use a trimmed kwarg map.
+        vertex_img_kw = {
+            "api_key": "google_vertex_api_key",
+            "project_id": "google_vertex_project_id",
+            "location": "google_vertex_location",
+        }
         vertex_desc = ProviderDescriptor(
             name="google_vertexai",
             **_llm(
@@ -72,6 +79,11 @@ class GooglePlugin(ProviderPlugin):
                 "AsyncGoogleVertexAIDriver",
                 vertex_kw,
                 "google_vertex_model",
+            ),
+            img_gen_sync=DriverSpec(
+                "vertex_img_gen_driver.VertexImageGenDriver",
+                vertex_img_kw,
+                "gemini-2.5-flash-image",
             ),
             display_name="Google Vertex AI",
             is_configured_fn=_google_vertexai_is_configured,
@@ -87,6 +99,9 @@ class GooglePlugin(ProviderPlugin):
             google_desc,
             vertex_desc,
             build_alias("gemini", google_desc, {"llm", "img_gen"}),
-            build_alias("vertex", vertex_desc, {"llm"}),
-            build_alias("vertexai", vertex_desc, {"llm"}),
+            build_alias("vertex", vertex_desc, {"llm", "img_gen"}),
+            build_alias("vertexai", vertex_desc, {"llm", "img_gen"}),
+            # The dashboard (and OpenAI-style "provider/model" ids) use the
+            # "vertex_ai" prefix — alias it for both LLM and image gen.
+            build_alias("vertex_ai", vertex_desc, {"llm", "img_gen"}),
         ]
