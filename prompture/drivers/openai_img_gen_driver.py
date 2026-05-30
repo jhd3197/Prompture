@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import logging
 import os
+import re
 from typing import Any
 
 try:
@@ -96,6 +97,51 @@ class OpenAIImageGenDriver(ImageCostMixin, ImageGenDriver):
         resp.raise_for_status()
         return resp.content
 
+    @staticmethod
+    def _unknown_param(exc) -> str | None:
+        """Return the parameter name from an OpenAI ``unknown_parameter`` 400, else None.
+
+        OpenAI periodically drops parameters from the images API per model
+        (e.g. dall-e-3 no longer accepts ``response_format`` or ``style``).
+        """
+        code = getattr(exc, "code", None)
+        param = getattr(exc, "param", None)
+        body = getattr(exc, "body", None)
+        if isinstance(body, dict):
+            code = code or body.get("code")
+            param = param or body.get("param")
+        if code == "unknown_parameter" and param:
+            return str(param)
+        msg = str(getattr(exc, "message", "") or exc)
+        if "unknown parameter" in msg.lower():
+            m = re.search(r"'([^']+)'", msg)
+            if m:
+                return m.group(1)
+        return None
+
+    # Core params that must never be stripped by the self-heal retry below.
+    _REQUIRED_GEN_PARAMS = frozenset({"model", "prompt", "n", "size"})
+
+    def _generate(self, **kwargs):
+        """``images.generate`` that self-heals against OpenAI dropping params.
+
+        If the API rejects a parameter as unknown (e.g. ``style`` on dall-e-3),
+        that param is stripped and the call retried, leaving required params
+        intact. Bounded by the number of optional params, so it can't loop.
+        """
+        from openai import BadRequestError
+
+        while True:
+            try:
+                return self.client.images.generate(**kwargs)
+            except BadRequestError as exc:
+                param = self._unknown_param(exc)
+                if param and param in kwargs and param not in self._REQUIRED_GEN_PARAMS:
+                    logger.warning("OpenAI rejected image param %r; retrying without it", param)
+                    kwargs.pop(param, None)
+                    continue
+                raise
+
     def _collect_images(self, data: Any) -> tuple[list, str | None]:
         """Normalize an images response, whether it carries ``b64_json`` or a ``url``."""
         images: list = []
@@ -136,7 +182,6 @@ class OpenAIImageGenDriver(ImageCostMixin, ImageGenDriver):
         default_quality = "high" if is_gpt_image else "standard"
         quality = options.get("quality", default_quality)
         n = options.get("n", 1)
-        style = options.get("style", "vivid")
 
         images = []
         revised_prompt = None
@@ -158,14 +203,14 @@ class OpenAIImageGenDriver(ImageCostMixin, ImageGenDriver):
                 # gpt-image-* always return b64; response_format is rejected.
                 kwargs["quality"] = quality
             elif is_dalle3:
-                # DALL·E 3 takes quality/style. It no longer accepts
-                # response_format (rejected like gpt-image-*), so it's omitted
-                # and any returned URL is downloaded in _collect_images.
+                # DALL·E 3 takes quality. It no longer accepts response_format
+                # or style (rejected like gpt-image-*); style is dropped here
+                # and any returned URL is downloaded in _collect_images. The
+                # _generate retry strips anything else OpenAI later rejects.
                 kwargs["quality"] = quality
-                kwargs["style"] = style
             # dall-e-2: no extra kwargs; response_format intentionally omitted.
 
-            resp = self.client.images.generate(**kwargs)
+            resp = self._generate(**kwargs)
 
             batch_images, batch_revised = self._collect_images(resp.data)
             images.extend(batch_images)
