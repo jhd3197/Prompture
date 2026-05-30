@@ -13,7 +13,7 @@ except ImportError:
     OpenAI = None  # type: ignore[misc, assignment]
 
 from ..infra.cost_mixin import ImageCostMixin
-from ..media.image import image_from_base64
+from ..media.image import image_from_base64, image_from_bytes
 from .img_gen_base import ImageGenDriver
 
 logger = logging.getLogger(__name__)
@@ -81,6 +81,41 @@ class OpenAIImageGenDriver(ImageCostMixin, ImageGenDriver):
         else:
             self.client = None
 
+    @staticmethod
+    def _download_image(url: str) -> bytes:
+        """Fetch image bytes from a result URL.
+
+        The images API returns a ``url`` (not base64) unless
+        ``response_format='b64_json'`` is requested — and current models
+        reject that parameter outright. So URL results are downloaded here to
+        keep a single ``{images, meta}`` contract for callers.
+        """
+        import httpx
+
+        resp = httpx.get(url, timeout=60.0)
+        resp.raise_for_status()
+        return resp.content
+
+    def _collect_images(self, data: Any) -> tuple[list, str | None]:
+        """Normalize an images response, whether it carries ``b64_json`` or a ``url``."""
+        images: list = []
+        revised_prompt: str | None = None
+        for item in data:
+            b64 = getattr(item, "b64_json", None)
+            if b64:
+                images.append(image_from_base64(b64, media_type="image/png"))
+            else:
+                url = getattr(item, "url", None)
+                if not url:
+                    raise RuntimeError(
+                        "OpenAI image response contained neither b64_json nor url"
+                    )
+                images.append(image_from_bytes(self._download_image(url), media_type="image/png"))
+            revised = getattr(item, "revised_prompt", None)
+            if revised and revised_prompt is None:
+                revised_prompt = revised
+        return images, revised_prompt
+
     def generate_image(self, prompt: str, options: dict[str, Any]) -> dict[str, Any]:
         """Generate image(s) using OpenAI DALL-E API.
 
@@ -120,21 +155,22 @@ class OpenAIImageGenDriver(ImageCostMixin, ImageGenDriver):
                 "size": size,
             }
             if is_gpt_image:
-                # gpt-image-* always returns b64; passing response_format is rejected.
+                # gpt-image-* always return b64; response_format is rejected.
                 kwargs["quality"] = quality
-            else:
-                kwargs["response_format"] = "b64_json"
-                if is_dalle3:
-                    kwargs["quality"] = quality
-                    kwargs["style"] = style
+            elif is_dalle3:
+                # DALL·E 3 takes quality/style. It no longer accepts
+                # response_format (rejected like gpt-image-*), so it's omitted
+                # and any returned URL is downloaded in _collect_images.
+                kwargs["quality"] = quality
+                kwargs["style"] = style
+            # dall-e-2: no extra kwargs; response_format intentionally omitted.
 
             resp = self.client.images.generate(**kwargs)
 
-            for img_data in resp.data:
-                b64 = img_data.b64_json
-                images.append(image_from_base64(b64, media_type="image/png"))
-                if img_data.revised_prompt and revised_prompt is None:
-                    revised_prompt = img_data.revised_prompt
+            batch_images, batch_revised = self._collect_images(resp.data)
+            images.extend(batch_images)
+            if batch_revised and revised_prompt is None:
+                revised_prompt = batch_revised
 
             remaining -= batch_n
 
@@ -165,7 +201,7 @@ class OpenAIImageGenDriver(ImageCostMixin, ImageGenDriver):
             return 0.0
 
     def _result(self, data: Any, model: str, size: str, n: int) -> dict[str, Any]:
-        images = [image_from_base64(d.b64_json, media_type="image/png") for d in data]
+        images, _ = self._collect_images(data)
         return {
             "images": images,
             "meta": {
@@ -202,9 +238,6 @@ class OpenAIImageGenDriver(ImageCostMixin, ImageGenDriver):
         }
         if mask is not None:
             kwargs["mask"] = ("mask.png", io.BytesIO(mask), "image/png")
-        # gpt-image-* always returns b64; DALL·E 2 edits need it requested.
-        if not model.startswith("gpt-image"):
-            kwargs["response_format"] = "b64_json"
 
         resp = self.client.images.edit(**kwargs)
         return self._result(resp.data, model, size, n)
@@ -225,6 +258,5 @@ class OpenAIImageGenDriver(ImageCostMixin, ImageGenDriver):
             image=("image.png", io.BytesIO(image), "image/png"),
             n=n,
             size=size,
-            response_format="b64_json",
         )
         return self._result(resp.data, model, size, n)
