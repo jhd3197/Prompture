@@ -1325,6 +1325,15 @@ def get_available_image_gen_models(
         for model_id in BFLImageGenDriver.KNOWN_MODELS:
             available.add(f"bfl/{model_id}")
 
+    # Vertex AI Gemini image models (generate_content with image output).
+    if _cfg_value(env, "google_vertex_api_key", "GOOGLE_VERTEX_API_KEY") or _cfg_value(
+        env, "google_vertex_project_id", "GOOGLE_VERTEX_PROJECT_ID"
+    ):
+        from ..drivers.vertex_img_gen_driver import VertexImageGenDriver
+
+        for model_id in VertexImageGenDriver.KNOWN_MODELS:
+            available.add(f"vertex_ai/{model_id}")
+
     # Dynamic discovery: check modalities_output from models.dev capabilities
     # for any models that the pricing dicts don't know about yet.
     from .model_rates import get_model_capabilities
@@ -1339,6 +1348,156 @@ def get_available_image_gen_models(
             available.add(model_str)
 
     return sorted(available)
+
+
+# Image providers whose drivers take the chosen size as something other than a
+# pixel ``size`` kwarg; everything else uses ``size``.
+_IMG_SIZE_PARAM: dict[str, str] = {
+    "stability": "aspect_ratio",
+    "ideogram": "aspect_ratio",
+    "runway": "ratio",
+    "vertex_ai": "aspect_ratio",
+    "google_vertexai": "aspect_ratio",
+    "vertex": "aspect_ratio",
+}
+
+# Preferred representative ratio per orientation, used when a model offers it.
+_IMG_PREFERRED_RATIO: dict[str, tuple[int, int]] = {
+    "Square": (1, 1),
+    "Landscape": (16, 9),
+    "Portrait": (9, 16),
+}
+
+
+def _img_gen_driver_class(provider: str):
+    """Return the image-gen driver *class* for a provider without instantiating
+    it (so no API key is required just to read its declared capabilities)."""
+    provider = (provider or "").lower()
+    try:
+        if provider == "openai":
+            from ..drivers.openai_img_gen_driver import OpenAIImageGenDriver
+            return OpenAIImageGenDriver
+        if provider in ("google", "gemini"):
+            from ..drivers.google_img_gen_driver import GoogleImageGenDriver
+            return GoogleImageGenDriver
+        if provider in ("grok", "xai"):
+            from ..drivers.grok_img_gen_driver import GrokImageGenDriver
+            return GrokImageGenDriver
+        if provider in ("vertex_ai", "google_vertexai", "vertex", "vertexai"):
+            from ..drivers.vertex_img_gen_driver import VertexImageGenDriver
+            return VertexImageGenDriver
+        if provider == "stability":
+            from ..drivers.stability_img_gen_driver import StabilityImageGenDriver
+            return StabilityImageGenDriver
+        if provider == "ideogram":
+            from ..drivers.ideogram_img_gen_driver import IdeogramImageGenDriver
+            return IdeogramImageGenDriver
+        if provider == "bfl":
+            from ..drivers.bfl_img_gen_driver import BFLImageGenDriver
+            return BFLImageGenDriver
+        if provider == "runway":
+            from ..drivers.runway_img_gen_driver import RunwayImageGenDriver
+            return RunwayImageGenDriver
+        if provider == "fal":
+            from ..drivers.fal_img_gen_driver import FalImageGenDriver
+            return FalImageGenDriver
+        if provider == "kling":
+            from ..drivers.kling_img_gen_driver import KlingImageGenDriver
+            return KlingImageGenDriver
+    except Exception:  # pragma: no cover — optional provider deps may be absent
+        return None
+    return None
+
+
+def _parse_img_dims(value: str) -> tuple[int, int] | None:
+    """Parse a size string into ``(w, h)``. Handles ``"1024x1024"`` and ``"16:9"``."""
+    for sep in (":", "x", "X"):
+        if sep in value:
+            left, _, right = value.partition(sep)
+            try:
+                return int(left.strip()), int(right.strip())
+            except ValueError:
+                return None
+    return None
+
+
+def _img_ratio_label(w: int, h: int) -> str:
+    from math import gcd
+
+    g = gcd(w, h) or 1
+    return f"{w // g}:{h // g}"
+
+
+def get_image_model_controls(model_str: str) -> dict:
+    """Derive UI-ready generation controls for an image model from its driver.
+
+    Reads the driver's declared ``supported_sizes`` / ``max_images`` /
+    ``supports_size_variants`` (class attributes — no instantiation, so no API
+    key needed) and normalizes them into one representative size per
+    orientation: Square / Landscape / Portrait.
+
+    Returns::
+
+        {
+            "sizes": [{"label": "Square", "ratio": "1:1", "value": "1024x1024"}, ...],
+            "size_param": "size" | "aspect_ratio" | "ratio",
+            "max_n": int,
+        }
+
+    Notes:
+        - ``value`` is the exact string the driver expects (pixel size or
+          aspect ratio), and ``size_param`` names the kwarg to pass it under.
+        - ``supported_sizes`` is declared per *driver*, so for a provider whose
+          driver serves several models (e.g. OpenAI) it's a superset; callers
+          that need per-model accuracy can override.
+        - Falls back to a single 1024x1024 square for unknown providers.
+    """
+    provider, _, _model_id = model_str.partition("/")
+    size_param = _IMG_SIZE_PARAM.get(provider.lower(), "size")
+    cls = _img_gen_driver_class(provider)
+
+    fallback = {
+        "sizes": [{"label": "Square", "ratio": "1:1", "value": "1024x1024"}],
+        "size_param": size_param,
+        "max_n": 1,
+    }
+    if cls is None:
+        return fallback
+
+    raw_sizes = list(getattr(cls, "supported_sizes", []) or [])
+    max_n = int(getattr(cls, "max_images", 1) or 1)
+    if not getattr(cls, "supports_size_variants", True):
+        raw_sizes = raw_sizes[:1]
+
+    by_orient: dict[str, list[tuple[int, int, str]]] = {}
+    for value in raw_sizes:
+        dims = _parse_img_dims(value)
+        if not dims:
+            continue
+        w, h = dims
+        if w <= 0 or h <= 0:
+            continue
+        orient = "Square" if w == h else ("Landscape" if w > h else "Portrait")
+        by_orient.setdefault(orient, []).append((w, h, value))
+
+    sizes: list[dict] = []
+    for orient in ("Square", "Landscape", "Portrait"):
+        candidates = by_orient.get(orient)
+        if not candidates:
+            continue
+        pref_w, pref_h = _IMG_PREFERRED_RATIO[orient]
+        pref_label = f"{pref_w}:{pref_h}"
+        # Prefer the model's standard ratio for this orientation; among the
+        # matches (or all candidates if none match) take the highest resolution.
+        pref_matches = [c for c in candidates if _img_ratio_label(c[0], c[1]) == pref_label]
+        pool = pref_matches or candidates
+        w, h, value = max(pool, key=lambda t: t[0] * t[1])
+        sizes.append({"label": orient, "ratio": _img_ratio_label(w, h), "value": value})
+
+    if not sizes:
+        return fallback
+
+    return {"sizes": sizes, "size_param": size_param, "max_n": max_n}
 
 
 def get_available_video_gen_models(
