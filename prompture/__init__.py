@@ -63,6 +63,7 @@ from .exceptions import (
 )
 from .extraction import *
 from .groups import *
+from .imaging import *
 from .infra import *
 from .ingestion import *
 from .integrations import *

@@ -57,6 +57,7 @@ class IdeogramImageGenDriver(ImageCostMixin, ImageGenDriver):
     supports_size_variants = True
     supported_sizes = sorted(_ALLOWED_RATIOS)
     max_images = 8
+    supports_negative_prompt = True
 
     KNOWN_MODELS = sorted(_V3_MODELS | _LEGACY_MODELS)
 

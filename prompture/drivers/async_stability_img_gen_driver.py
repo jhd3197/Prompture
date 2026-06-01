@@ -23,6 +23,7 @@ class AsyncStabilityImageGenDriver(ImageCostMixin, AsyncImageGenDriver):
     supports_size_variants = StabilityImageGenDriver.supports_size_variants
     supported_sizes = StabilityImageGenDriver.supported_sizes
     max_images = StabilityImageGenDriver.max_images
+    supports_negative_prompt = StabilityImageGenDriver.supports_negative_prompt
 
     IMAGE_PRICING = StabilityImageGenDriver.IMAGE_PRICING
 

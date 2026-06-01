@@ -59,6 +59,7 @@ class FalImageGenDriver(ImageCostMixin, ImageGenDriver):
     supports_size_variants = True
     supported_sizes = []
     max_images = 4
+    supports_negative_prompt = True
 
     KNOWN_MODELS = [
         "fal-ai/flux/dev",
@@ -182,6 +183,7 @@ class AsyncFalImageGenDriver(ImageCostMixin, AsyncImageGenDriver):
     supports_size_variants = FalImageGenDriver.supports_size_variants
     supported_sizes = FalImageGenDriver.supported_sizes
     max_images = FalImageGenDriver.max_images
+    supports_negative_prompt = FalImageGenDriver.supports_negative_prompt
 
     KNOWN_MODELS = FalImageGenDriver.KNOWN_MODELS
     IMAGE_PRICING = FalImageGenDriver.IMAGE_PRICING

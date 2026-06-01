@@ -26,6 +26,7 @@ class AsyncIdeogramImageGenDriver(ImageCostMixin, AsyncImageGenDriver):
     supports_size_variants = IdeogramImageGenDriver.supports_size_variants
     supported_sizes = IdeogramImageGenDriver.supported_sizes
     max_images = IdeogramImageGenDriver.max_images
+    supports_negative_prompt = IdeogramImageGenDriver.supports_negative_prompt
 
     KNOWN_MODELS = IdeogramImageGenDriver.KNOWN_MODELS
     IMAGE_PRICING = IdeogramImageGenDriver.IMAGE_PRICING
