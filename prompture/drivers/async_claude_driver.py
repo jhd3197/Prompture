@@ -102,13 +102,15 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
         common_kwargs: dict[str, Any] = {
             "model": model,
             "messages": api_messages,
-            "max_tokens": opts["max_tokens"],
+            "max_tokens": self._effective_max_tokens(model, opts),
         }
         if supports_temperature:
             common_kwargs["temperature"] = opts["temperature"]
         wrapped_system = _apply_cache_control_to_system(system_content, cache_prompt=cache_prompt)
         if wrapped_system is not None:
             common_kwargs["system"] = wrapped_system
+        if opts.get("timeout") is not None:
+            common_kwargs["timeout"] = opts["timeout"]
 
         # Native JSON mode: use tool-use for schema enforcement
         if options.get("json_mode"):
@@ -159,6 +161,23 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
     # Helpers
     # ------------------------------------------------------------------
 
+    def _effective_max_tokens(self, model: str, opts: dict[str, Any]) -> int:
+        """Clamp the requested max_tokens to the model's known output cap.
+
+        Callers commonly pass a generous default (e.g. 65536). Anthropic
+        rejects values above the model ceiling (Claude 4 family: 64000),
+        and the SDK refuses long non-streaming requests outright - so
+        clamp when the capabilities KB knows the real limit.
+        """
+        requested = int(opts.get("max_tokens") or 512)
+        try:
+            cap = self._get_model_config("claude", model).get("max_output_tokens")
+        except Exception:
+            cap = None
+        if cap and requested > int(cap):
+            return int(cap)
+        return requested
+
     def _extract_system_and_messages(self, messages: list[dict[str, Any]]) -> tuple[str | None, list[dict[str, Any]]]:
         return _extract_anthropic_system_and_messages(messages)
 
@@ -196,7 +215,7 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
         kwargs: dict[str, Any] = {
             "model": model,
             "messages": api_messages,
-            "max_tokens": opts["max_tokens"],
+            "max_tokens": self._effective_max_tokens(model, opts),
             "tools": anthropic_tools,
         }
         if supports_temperature:
@@ -204,6 +223,8 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
         wrapped_system = _apply_cache_control_to_system(system_content, cache_prompt=cache_prompt)
         if wrapped_system is not None:
             kwargs["system"] = wrapped_system
+        if opts.get("timeout") is not None:
+            kwargs["timeout"] = opts["timeout"]
 
         resp = await client.messages.create(**kwargs)
 
@@ -259,13 +280,15 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
         kwargs: dict[str, Any] = {
             "model": model,
             "messages": api_messages,
-            "max_tokens": opts["max_tokens"],
+            "max_tokens": self._effective_max_tokens(model, opts),
         }
         if supports_temperature:
             kwargs["temperature"] = opts["temperature"]
         wrapped_system = _apply_cache_control_to_system(system_content, cache_prompt=cache_prompt)
         if wrapped_system is not None:
             kwargs["system"] = wrapped_system
+        if opts.get("timeout") is not None:
+            kwargs["timeout"] = opts["timeout"]
 
         full_text = ""
         full_reasoning = ""
@@ -360,7 +383,7 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
         kwargs: dict[str, Any] = {
             "model": model,
             "messages": api_messages,
-            "max_tokens": opts["max_tokens"],
+            "max_tokens": self._effective_max_tokens(model, opts),
             "tools": anthropic_tools,
         }
         if supports_temperature:
@@ -368,6 +391,8 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
         wrapped_system = _apply_cache_control_to_system(system_content, cache_prompt=cache_prompt)
         if wrapped_system is not None:
             kwargs["system"] = wrapped_system
+        if opts.get("timeout") is not None:
+            kwargs["timeout"] = opts["timeout"]
 
         block_kinds: dict[int, str] = {}
         tool_block_info: dict[int, dict[str, Any]] = {}

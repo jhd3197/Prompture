@@ -26,6 +26,38 @@ logger = logging.getLogger(__name__)
 # ----------------------------------------------------------------------
 
 
+def _normalize_anthropic_content(content):
+    """Convert provider-neutral image blocks into Anthropic's wire format.
+
+    Conversations attach images as ``{"type": "image", "source": ImageContent}``
+    (a dataclass) — the SDK needs ``{"type": "base64", "media_type", "data"}``
+    (or a url source). Non-list content and unknown blocks pass through.
+    """
+    if not isinstance(content, list):
+        return content
+    from ..media.image import ImageContent
+
+    out = []
+    for block in content:
+        if isinstance(block, dict) and block.get("type") == "image":
+            src = block.get("source")
+            if isinstance(src, ImageContent):
+                if src.source_type == "url" and src.url:
+                    out.append({"type": "image", "source": {"type": "url", "url": src.url}})
+                else:
+                    out.append({
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": src.media_type,
+                            "data": src.data,
+                        },
+                    })
+                continue
+        out.append(block)
+    return out
+
+
 def _extract_anthropic_system_and_messages(
     messages: list[dict[str, Any]],
 ) -> tuple[str | None, list[dict[str, Any]]]:
@@ -86,6 +118,9 @@ def _extract_anthropic_system_and_messages(
                 api_messages.append({"role": "user", "content": [result_block]})
             continue
 
+        content = msg.get("content")
+        if isinstance(content, list):
+            msg = {**msg, "content": _normalize_anthropic_content(content)}
         api_messages.append(msg)
     return system_content, api_messages
 
@@ -389,13 +424,15 @@ class ClaudeDriver(CostMixin, Driver):
         common_kwargs: dict[str, Any] = {
             "model": model,
             "messages": api_messages,
-            "max_tokens": opts["max_tokens"],
+            "max_tokens": self._effective_max_tokens(model, opts),
         }
         if supports_temperature:
             common_kwargs["temperature"] = opts["temperature"]
         wrapped_system = _apply_cache_control_to_system(system_content, cache_prompt=cache_prompt)
         if wrapped_system is not None:
             common_kwargs["system"] = wrapped_system
+        if opts.get("timeout") is not None:
+            common_kwargs["timeout"] = opts["timeout"]
 
         # Native JSON mode: use tool-use for schema enforcement
         if options.get("json_mode"):
@@ -457,6 +494,23 @@ class ClaudeDriver(CostMixin, Driver):
                     parts.append(thinking_text)
         return "\n".join(parts) if parts else None
 
+    def _effective_max_tokens(self, model: str, opts: dict[str, Any]) -> int:
+        """Clamp the requested max_tokens to the model's known output cap.
+
+        Callers commonly pass a generous default (e.g. 65536). Anthropic
+        rejects values above the model ceiling (Claude 4 family: 64000),
+        and the SDK refuses long non-streaming requests outright - so
+        clamp when the capabilities KB knows the real limit.
+        """
+        requested = int(opts.get("max_tokens") or 512)
+        try:
+            cap = self._get_model_config("claude", model).get("max_output_tokens")
+        except Exception:
+            cap = None
+        if cap and requested > int(cap):
+            return int(cap)
+        return requested
+
     def _extract_system_and_messages(self, messages: list[dict[str, Any]]) -> tuple[str | None, list[dict[str, Any]]]:
         return _extract_anthropic_system_and_messages(messages)
 
@@ -494,7 +548,7 @@ class ClaudeDriver(CostMixin, Driver):
         kwargs: dict[str, Any] = {
             "model": model,
             "messages": api_messages,
-            "max_tokens": opts["max_tokens"],
+            "max_tokens": self._effective_max_tokens(model, opts),
             "tools": anthropic_tools,
         }
         if supports_temperature:
@@ -502,6 +556,8 @@ class ClaudeDriver(CostMixin, Driver):
         wrapped_system = _apply_cache_control_to_system(system_content, cache_prompt=cache_prompt)
         if wrapped_system is not None:
             kwargs["system"] = wrapped_system
+        if opts.get("timeout") is not None:
+            kwargs["timeout"] = opts["timeout"]
 
         resp = client.messages.create(**kwargs)
 
@@ -557,13 +613,15 @@ class ClaudeDriver(CostMixin, Driver):
         kwargs: dict[str, Any] = {
             "model": model,
             "messages": api_messages,
-            "max_tokens": opts["max_tokens"],
+            "max_tokens": self._effective_max_tokens(model, opts),
         }
         if supports_temperature:
             kwargs["temperature"] = opts["temperature"]
         wrapped_system = _apply_cache_control_to_system(system_content, cache_prompt=cache_prompt)
         if wrapped_system is not None:
             kwargs["system"] = wrapped_system
+        if opts.get("timeout") is not None:
+            kwargs["timeout"] = opts["timeout"]
 
         full_text = ""
         full_reasoning = ""
@@ -667,7 +725,7 @@ class ClaudeDriver(CostMixin, Driver):
         kwargs: dict[str, Any] = {
             "model": model,
             "messages": api_messages,
-            "max_tokens": opts["max_tokens"],
+            "max_tokens": self._effective_max_tokens(model, opts),
             "tools": anthropic_tools,
         }
         if supports_temperature:
@@ -675,6 +733,8 @@ class ClaudeDriver(CostMixin, Driver):
         wrapped_system = _apply_cache_control_to_system(system_content, cache_prompt=cache_prompt)
         if wrapped_system is not None:
             kwargs["system"] = wrapped_system
+        if opts.get("timeout") is not None:
+            kwargs["timeout"] = opts["timeout"]
 
         block_kinds: dict[int, str] = {}
         tool_block_info: dict[int, dict[str, Any]] = {}
