@@ -162,3 +162,46 @@ class TestFilteredExecution:
         sub = reg.exclude({"file_read"})
         result = sub.execute("file_write", {"path": "/tmp/f", "content": "data"})
         assert result == "/tmp/f: data"
+
+
+# ---------------------------------------------------------------------------
+# metadata (host annotations, e.g. is_write for a confirmation gate)
+# ---------------------------------------------------------------------------
+
+
+class TestMetadata:
+    def _reg(self) -> ToolRegistry:
+        reg = ToolRegistry()
+
+        def read_battery() -> str:
+            """Read the battery."""
+            return "100%"
+
+        def wipe(path: str) -> str:
+            """Delete a path."""
+            return f"wiped {path}"
+
+        reg.register(read_battery, metadata={"is_write": False})
+        reg.register(wipe, metadata={"is_write": True, "category": "fs"})
+        return reg
+
+    def test_metadata_is_stored(self):
+        reg = self._reg()
+        assert reg.get("wipe").metadata == {"is_write": True, "category": "fs"}
+
+    def test_metadata_defaults_to_empty_and_not_shared(self):
+        reg = ToolRegistry()
+        a = reg.register(lambda: "a", name="a")
+        b = reg.register(lambda: "b", name="b")
+        assert a.metadata == {} and b.metadata == {}
+        a.metadata["x"] = 1
+        assert b.metadata == {}  # no shared mutable default
+
+    def test_filter_by_metadata_preserves_schema_and_exec(self):
+        reg = self._reg()
+        read_only = reg.filter(lambda td: not td.metadata.get("is_write"))
+        assert read_only.names == ["read_battery"]
+        assert "wipe" not in read_only
+        # schema + metadata survive the filter
+        assert reg.get("wipe").parameters["properties"].keys() == {"path"}
+        assert read_only.execute("read_battery", {}) == "100%"

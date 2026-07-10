@@ -81,12 +81,17 @@ class ToolDefinition:
         description: Human-readable description shown to the LLM.
         parameters: JSON Schema describing the function parameters.
         function: The Python callable to execute.
+        metadata: Free-form host annotations (e.g. ``is_write``, RBAC hints, a
+            category). Prompture never interprets these — they let a host filter the
+            registry (``registry.filter(...)``) or gate execution around a tool without
+            subclassing ``ToolDefinition``.
     """
 
     name: str
     description: str
     parameters: dict[str, Any]
     function: Callable[..., Any]
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     # ------------------------------------------------------------------
     # Serialisation helpers
@@ -233,7 +238,11 @@ def _parse_docstring_params(docstring: str | None) -> dict[str, str]:
 
 
 def tool_from_function(
-    fn: Callable[..., Any], *, name: str | None = None, description: str | None = None
+    fn: Callable[..., Any],
+    *,
+    name: str | None = None,
+    description: str | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> ToolDefinition:
     """Build a :class:`ToolDefinition` by inspecting *fn*'s signature and docstring.
 
@@ -241,6 +250,8 @@ def tool_from_function(
         fn: The callable to wrap.
         name: Override the tool name (defaults to ``fn.__name__``).
         description: Override the description (defaults to the first line of the docstring).
+        metadata: Free-form host annotations attached to the tool (see
+            :class:`ToolDefinition`).
     """
     tool_name = name or fn.__name__
     raw_doc = inspect.getdoc(fn) or ""
@@ -290,6 +301,7 @@ def tool_from_function(
         description=tool_desc,
         parameters=parameters,
         function=fn,
+        metadata=dict(metadata) if metadata else {},
     )
 
 
@@ -320,9 +332,10 @@ class ToolRegistry:
         *,
         name: str | None = None,
         description: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> ToolDefinition:
         """Register *fn* as a tool and return the :class:`ToolDefinition`."""
-        td = tool_from_function(fn, name=name, description=description)
+        td = tool_from_function(fn, name=name, description=description, metadata=metadata)
         self._tools[td.name] = td
         return td
 
