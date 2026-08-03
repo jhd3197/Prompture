@@ -1341,36 +1341,78 @@ if doc.found:
 
 Both helpers return plain dataclasses with no I/O of their own.  See `examples/assistant_example.py` for the assistant + review-loop + extractor flow end-to-end.
 
-### Prompt Caching (Claude)
+### Prompt Caching
 
-Anthropic prompt caching cuts input-token cost on cached prefixes to ~10% of
-the normal rate. Prompture turns it on by default for `ClaudeDriver` and
-`AsyncClaudeDriver` whenever the system prompt or tools bundle is large
-enough to benefit (≥4000 chars, roughly 1024 tokens — Anthropic's minimum
-cacheable block).
+Prompt caching cuts input-token cost on the repeated prefix to ~10% of the
+normal rate. Prompture turns it on by default, and how it works depends on
+the provider:
+
+| Provider | Mechanism | What Prompture does |
+| --- | --- | --- |
+| Claude API, Bedrock | Explicit `cache_control` breakpoints | Marks `system`, `tools`, **and the message array** |
+| OpenAI | Automatic, routed per machine | Sends a `prompt_cache_key` derived from the stable prefix |
+| Grok, DeepSeek, Moonshot, Groq | Fully automatic | Nothing to send — reports `cached_prompt_tokens` |
+| Google Gemini | Implicit (2.5+) / explicit `CachedContent` | Implicit only; explicit caching is not wired up yet |
 
 ```python
 from prompture import Conversation
 
 # Caching is automatic. The first call writes the cache (~1.25x cost on the
-# cached portion); subsequent calls within 5 minutes hit it (~0.1x cost).
+# cached portion); subsequent calls within the TTL hit it (~0.1x cost).
 conv = Conversation(model_name="claude/claude-sonnet-4-6", system_prompt=LONG_SYSTEM_PROMPT)
 conv.ask("First question")   # cache_creation_input_tokens > 0
 conv.ask("Second question")  # cache_read_input_tokens > 0
 ```
 
 To inspect cache activity, read `cached_prompt_tokens` and
-`cache_creation_tokens` from the response meta. To disable caching for a
-specific call pass `options={"cache_prompt": False}`.
+`cache_creation_tokens` from the response meta.
+
+**Options** (all per-call, via `options={...}`):
+
+| Option | Default | Effect |
+| --- | --- | --- |
+| `cache_prompt` | `True` | Set `False` to disable caching entirely for the call |
+| `cache_ttl` | `"5m"` | `"1h"` keeps entries alive across gaps; writes cost 2x input instead of 1.25x |
+| `prompt_cache_key` | derived | OpenAI only — override the routing key |
+
+Use `cache_ttl="1h"` for **bursty or scheduled** workloads. A job that runs
+once every 30 minutes writes a 5-minute cache entry that always expires
+before the next run — paying the write premium for zero reads, which is the
+most common cause of a low reported cache hit rate.
+
+#### Message-level breakpoints
+
+`system` and `tools` are a fixed-size prefix; the **message array** is what
+grows during an agentic tool loop, and it is usually the larger share of the
+tokens. Prompture places two breakpoints on it: a rolling one on the last
+message, and a stride-aligned anchor counted from the front that stays put as
+the conversation grows (so its cache entry remains readable inside
+Anthropic's 20-block lookback window). Anthropic caps a request at 4
+breakpoints total, and the budget is allocated `system` → `tools` → messages.
+
+#### Per-model minimums
+
+Blocks below Anthropic's minimum cacheable size are silently ignored — no
+error, just no cache entry. The minimum is **not** monotonic across models,
+so Prompture looks it up per model rather than using one threshold:
+
+| Models | Minimum |
+| --- | --- |
+| Opus 5, Fable 5, Mythos 5 | 512 tokens |
+| Opus 4.8, Sonnet 5, Sonnet 4.6/4.5 | 1024 tokens |
+| Opus 4.7, Haiku 3.5 | 2048 tokens |
+| Opus 4.6, Opus 4.5, Haiku 4.5 | 4096 tokens |
 
 Tips:
 - Put stable content (persona, tools description, JSON schema) at the
   **start** of the system prompt; put per-call variables (user query,
   retrieved RAG context) in the message stream so they don't bust the cache.
-- Avoid `{{iteration}}` or other per-turn variables in Persona templates —
-  they rotate the cache key every turn.
-- Block size below ~1024 tokens is silently dropped by Anthropic; below
-  the threshold Prompture skips the `cache_control` marker to avoid noise.
+- Avoid `{{current_datetime}}`, `{{current_timestamp}}`, `{{iteration}}` or
+  other volatile variables in Persona templates — they rotate the cache key
+  every request and silently disable caching for the whole prefix.
+- Trimming history from the front (`max_history_messages`) shifts the prefix
+  and invalidates the cache on **every** provider. Prefer a larger window, or
+  accept the trade deliberately.
 
 ### Cost Pre-flight
 

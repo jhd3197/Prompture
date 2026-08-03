@@ -13,6 +13,7 @@ except ImportError:
     OpenAI = None  # type: ignore[misc, assignment]
 
 from ..infra.cost_mixin import CostMixin, prepare_strict_schema
+from ._prompt_cache import derive_prompt_cache_key
 from .base import Driver, _parse_tool_arguments
 
 logger = logging.getLogger(__name__)
@@ -32,6 +33,7 @@ def _build_openai_base_kwargs(
     default_max_tokens: int,
     *,
     extra: dict[str, Any] | None = None,
+    prompt_cache_key: str | None = None,
 ) -> dict[str, Any]:
     kwargs: dict[str, Any] = {"model": model, "messages": messages}
     if extra:
@@ -39,7 +41,42 @@ def _build_openai_base_kwargs(
     kwargs[tokens_param] = opts.get("max_tokens", default_max_tokens)
     if supports_temperature and "temperature" in opts:
         kwargs["temperature"] = opts["temperature"]
+    # Opt-in only: OpenAI-compatible third-party endpoints (Grok, DeepSeek,
+    # Moonshot, Groq) share this builder and reject unknown fields, so
+    # callers pass the key explicitly rather than it being derived here.
+    if prompt_cache_key:
+        kwargs["prompt_cache_key"] = prompt_cache_key
     return kwargs
+
+
+def _openai_prompt_cache_key(
+    messages: list[dict[str, Any]],
+    opts: dict[str, Any],
+    tools: list[dict[str, Any]] | None = None,
+) -> str | None:
+    """Derive OpenAI's ``prompt_cache_key`` from the stable request prefix.
+
+    OpenAI caches prefixes automatically — there is no ``cache_control``
+    equivalent to send — but it routes requests across machines, and two
+    requests only share a cache if they land on the same one. Hashing the
+    system prompt and tool definitions (the stable prefix, never the
+    volatile message tail) sends every request built on that prefix to
+    the same node, which is what lifts the hit rate at any real volume.
+
+    Honours an explicit ``prompt_cache_key`` option, and is disabled
+    alongside the rest of caching via ``cache_prompt=False``.
+    """
+    if not opts.get("cache_prompt", True):
+        return None
+    system_text = next(
+        (str(m.get("content", "")) for m in messages if m.get("role") == "system"),
+        None,
+    )
+    return derive_prompt_cache_key(
+        system=system_text,
+        tools=tools,
+        explicit=opts.get("prompt_cache_key"),
+    )
 
 
 def _build_openai_json_mode_response_format(json_schema: dict[str, Any]) -> dict[str, Any]:
@@ -199,7 +236,15 @@ class OpenAIDriver(CostMixin, Driver):
         )
 
         opts = {"temperature": 1.0, "max_tokens": 512, **options}
-        kwargs = _build_openai_base_kwargs(model, messages, opts, tokens_param, supports_temperature, 512)
+        kwargs = _build_openai_base_kwargs(
+            model,
+            messages,
+            opts,
+            tokens_param,
+            supports_temperature,
+            512,
+            prompt_cache_key=_openai_prompt_cache_key(messages, opts),
+        )
 
         # Native JSON mode support — with graceful fallback
         if options.get("json_mode"):
@@ -253,7 +298,14 @@ class OpenAIDriver(CostMixin, Driver):
 
         opts = {"temperature": 1.0, "max_tokens": 4096, **options}
         kwargs = _build_openai_base_kwargs(
-            model, messages, opts, tokens_param, supports_temperature, 4096, extra={"tools": tools}
+            model,
+            messages,
+            opts,
+            tokens_param,
+            supports_temperature,
+            4096,
+            extra={"tools": tools},
+            prompt_cache_key=_openai_prompt_cache_key(messages, opts, tools),
         )
 
         resp = self.client.chat.completions.create(**kwargs)
@@ -310,6 +362,7 @@ class OpenAIDriver(CostMixin, Driver):
             supports_temperature,
             512,
             extra={"stream": True, "stream_options": {"include_usage": True}},
+            prompt_cache_key=_openai_prompt_cache_key(messages, opts),
         )
 
         stream = self.client.chat.completions.create(**kwargs)

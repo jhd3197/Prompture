@@ -14,14 +14,28 @@ except ImportError:
     anthropic = None  # type: ignore[assignment]
 
 from ..infra.cost_mixin import CostMixin
+from ._prompt_cache import (
+    apply_cache_control_to_messages as _apply_cache_control_to_messages,
+)
+from ._prompt_cache import (
+    apply_cache_control_to_system as _apply_cache_control_to_system,
+)
+from ._prompt_cache import (
+    apply_cache_control_to_tools as _apply_cache_control_to_tools,
+)
+from ._prompt_cache import (
+    breakpoint_budget as _breakpoint_budget,
+)
+from ._prompt_cache import (
+    cache_write_multiplier as _cache_write_multiplier,
+)
 from .async_base import AsyncDriver
 from .claude_driver import (
     ClaudeDriver,
-    _apply_cache_control_to_system,
-    _apply_cache_control_to_tools,
     _build_anthropic_json_mode_tool_def,
     _build_anthropic_meta,
     _build_anthropic_stream_done,
+    _cache_opts,
     _convert_tools_to_anthropic,
     _extract_anthropic_cache_tokens,
     _extract_anthropic_system_and_messages,
@@ -84,7 +98,6 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
 
         opts = {**{"temperature": 0.0, "max_tokens": 512}, **options}
         model = options.get("model", self.model)
-        cache_prompt = opts.get("cache_prompt", True)
 
         # Validate capabilities against models.dev metadata
         self._validate_model_capabilities(
@@ -99,6 +112,25 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
 
         system_content, api_messages = _extract_anthropic_system_and_messages(messages)
 
+        cache_kwargs = _cache_opts(opts, model)
+        wrapped_system = _apply_cache_control_to_system(system_content, **cache_kwargs)
+
+        # Native JSON mode: use tool-use for schema enforcement
+        json_mode_tools: list[dict[str, Any]] | None = None
+        if options.get("json_mode") and options.get("json_schema"):
+            json_mode_tools = _apply_cache_control_to_tools(
+                [_build_anthropic_json_mode_tool_def(options["json_schema"])],
+                **cache_kwargs,
+            )
+
+        # Messages last: the breakpoint budget is whatever system and
+        # tools didn't already spend (Anthropic hard-errors on a 5th).
+        api_messages = _apply_cache_control_to_messages(
+            api_messages,
+            max_breakpoints=_breakpoint_budget(wrapped_system, json_mode_tools),
+            **cache_kwargs,
+        )
+
         common_kwargs: dict[str, Any] = {
             "model": model,
             "messages": api_messages,
@@ -106,18 +138,11 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
         }
         if supports_temperature:
             common_kwargs["temperature"] = opts["temperature"]
-        wrapped_system = _apply_cache_control_to_system(system_content, cache_prompt=cache_prompt)
         if wrapped_system is not None:
             common_kwargs["system"] = wrapped_system
 
-        # Native JSON mode: use tool-use for schema enforcement
         if options.get("json_mode"):
-            json_schema = options.get("json_schema")
-            if json_schema:
-                json_mode_tools = _apply_cache_control_to_tools(
-                    [_build_anthropic_json_mode_tool_def(json_schema)],
-                    cache_prompt=cache_prompt,
-                )
+            if json_mode_tools is not None:
                 resp = await client.messages.create(  # type: ignore[call-overload]
                     **common_kwargs,
                     tools=json_mode_tools,
@@ -147,6 +172,7 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
             resp.usage.output_tokens,
             cached_tokens=cache_read,
             cache_creation_tokens=cache_create,
+            cache_write_multiplier=_cache_write_multiplier(opts.get("cache_ttl", "5m")),
         )
         meta = _build_anthropic_meta(resp, model, total_cost)
 
@@ -182,7 +208,6 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
 
         opts = {**{"temperature": 0.0, "max_tokens": 512}, **options}
         model = options.get("model", self.model)
-        cache_prompt = opts.get("cache_prompt", True)
 
         self._validate_model_capabilities("claude", model, using_tool_use=True)
 
@@ -191,7 +216,14 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
         client = self.client
 
         system_content, api_messages = _extract_anthropic_system_and_messages(messages)
-        anthropic_tools = _apply_cache_control_to_tools(_convert_tools_to_anthropic(tools), cache_prompt=cache_prompt)
+        cache_kwargs = _cache_opts(opts, model)
+        anthropic_tools = _apply_cache_control_to_tools(_convert_tools_to_anthropic(tools), **cache_kwargs)
+        wrapped_system = _apply_cache_control_to_system(system_content, **cache_kwargs)
+        api_messages = _apply_cache_control_to_messages(
+            api_messages,
+            max_breakpoints=_breakpoint_budget(wrapped_system, anthropic_tools),
+            **cache_kwargs,
+        )
 
         kwargs: dict[str, Any] = {
             "model": model,
@@ -201,7 +233,6 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
         }
         if supports_temperature:
             kwargs["temperature"] = opts["temperature"]
-        wrapped_system = _apply_cache_control_to_system(system_content, cache_prompt=cache_prompt)
         if wrapped_system is not None:
             kwargs["system"] = wrapped_system
 
@@ -215,6 +246,7 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
             resp.usage.output_tokens,
             cached_tokens=cache_read,
             cache_creation_tokens=cache_create,
+            cache_write_multiplier=_cache_write_multiplier(opts.get("cache_ttl", "5m")),
         )
         meta = _build_anthropic_meta(resp, model, total_cost)
 
@@ -250,11 +282,17 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
 
         opts = {**{"temperature": 0.0, "max_tokens": 512}, **options}
         model = options.get("model", self.model)
-        cache_prompt = opts.get("cache_prompt", True)
         supports_temperature = self._get_model_config("claude", model)["supports_temperature"]
         client = self.client
 
         system_content, api_messages = _extract_anthropic_system_and_messages(messages)
+        cache_kwargs = _cache_opts(opts, model)
+        wrapped_system = _apply_cache_control_to_system(system_content, **cache_kwargs)
+        api_messages = _apply_cache_control_to_messages(
+            api_messages,
+            max_breakpoints=_breakpoint_budget(wrapped_system),
+            **cache_kwargs,
+        )
 
         kwargs: dict[str, Any] = {
             "model": model,
@@ -263,7 +301,6 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
         }
         if supports_temperature:
             kwargs["temperature"] = opts["temperature"]
-        wrapped_system = _apply_cache_control_to_system(system_content, cache_prompt=cache_prompt)
         if wrapped_system is not None:
             kwargs["system"] = wrapped_system
 
@@ -305,6 +342,7 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
             completion_tokens,
             cached_tokens=cache_read,
             cache_creation_tokens=cache_create,
+            cache_write_multiplier=_cache_write_multiplier(opts.get("cache_ttl", "5m")),
         )
         yield _build_anthropic_stream_done(
             model,
@@ -350,12 +388,18 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
 
         opts = {**{"temperature": 0.0, "max_tokens": 4096}, **options}
         model = options.get("model", self.model)
-        cache_prompt = opts.get("cache_prompt", True)
         supports_temperature = self._get_model_config("claude", model)["supports_temperature"]
         client = self.client
 
         system_content, api_messages = _extract_anthropic_system_and_messages(messages)
-        anthropic_tools = _apply_cache_control_to_tools(_convert_tools_to_anthropic(tools), cache_prompt=cache_prompt)
+        cache_kwargs = _cache_opts(opts, model)
+        anthropic_tools = _apply_cache_control_to_tools(_convert_tools_to_anthropic(tools), **cache_kwargs)
+        wrapped_system = _apply_cache_control_to_system(system_content, **cache_kwargs)
+        api_messages = _apply_cache_control_to_messages(
+            api_messages,
+            max_breakpoints=_breakpoint_budget(wrapped_system, anthropic_tools),
+            **cache_kwargs,
+        )
 
         kwargs: dict[str, Any] = {
             "model": model,
@@ -365,7 +409,6 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
         }
         if supports_temperature:
             kwargs["temperature"] = opts["temperature"]
-        wrapped_system = _apply_cache_control_to_system(system_content, cache_prompt=cache_prompt)
         if wrapped_system is not None:
             kwargs["system"] = wrapped_system
 
@@ -453,6 +496,7 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
             completion_tokens,
             cached_tokens=cache_read,
             cache_creation_tokens=cache_create,
+            cache_write_multiplier=_cache_write_multiplier(opts.get("cache_ttl", "5m")),
         )
         meta = {
             "prompt_tokens": prompt_tokens,
