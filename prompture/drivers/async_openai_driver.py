@@ -22,6 +22,7 @@ from .openai_driver import (
     _extract_openai_cached_tokens,
     _extract_openai_meta,
     _extract_openai_tool_calls,
+    _openai_prompt_cache_key,
 )
 
 logger = logging.getLogger(__name__)
@@ -89,7 +90,15 @@ class AsyncOpenAIDriver(CostMixin, AsyncDriver):
         )
 
         opts = {"temperature": 1.0, "max_tokens": 512, **options}
-        kwargs = _build_openai_base_kwargs(model, messages, opts, tokens_param, supports_temperature, 512)
+        kwargs = _build_openai_base_kwargs(
+            model,
+            messages,
+            opts,
+            tokens_param,
+            supports_temperature,
+            512,
+            prompt_cache_key=_openai_prompt_cache_key(messages, opts),
+        )
 
         # Native JSON mode support — with graceful fallback
         if options.get("json_mode"):
@@ -143,7 +152,14 @@ class AsyncOpenAIDriver(CostMixin, AsyncDriver):
 
         opts = {"temperature": 1.0, "max_tokens": 4096, **options}
         kwargs = _build_openai_base_kwargs(
-            model, messages, opts, tokens_param, supports_temperature, 4096, extra={"tools": tools}
+            model,
+            messages,
+            opts,
+            tokens_param,
+            supports_temperature,
+            4096,
+            extra={"tools": tools},
+            prompt_cache_key=_openai_prompt_cache_key(messages, opts, tools),
         )
 
         resp = await self.client.chat.completions.create(**kwargs)
@@ -200,6 +216,7 @@ class AsyncOpenAIDriver(CostMixin, AsyncDriver):
             supports_temperature,
             512,
             extra={"stream": True, "stream_options": {"include_usage": True}},
+            prompt_cache_key=_openai_prompt_cache_key(messages, opts),
         )
 
         stream = await self.client.chat.completions.create(**kwargs)

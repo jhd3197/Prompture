@@ -92,6 +92,7 @@ class CostMixin:
         *,
         cached_tokens: int | float = 0,
         cache_creation_tokens: int | float = 0,
+        cache_write_multiplier: float = 1.0,
     ) -> float:
         """Calculate USD cost for a generation call.
 
@@ -102,6 +103,11 @@ class CostMixin:
         ``cache_read`` rate (and ``cache_write`` rate for Anthropic-style
         cache writes) when the rate is available; otherwise they fall back
         to the full input rate.
+
+        ``cache_write_multiplier`` scales the stored ``cache_write`` rate.
+        Rate tables carry Anthropic's 5-minute write price (1.25x input);
+        a 1-hour write costs 2x input, so that TTL passes 1.6 here rather
+        than duplicating every model's rate row.
 
         ``prompt_tokens`` is treated as the *total* prompt token count
         reported by the provider (which already includes any cached tokens
@@ -117,7 +123,7 @@ class CostMixin:
         input_rate = live_rates.get("input", 0.0)
         output_rate = live_rates.get("output", 0.0)
         cache_read_rate = live_rates.get("cache_read", input_rate)
-        cache_write_rate = live_rates.get("cache_write", input_rate)
+        cache_write_rate = live_rates.get("cache_write", input_rate) * cache_write_multiplier
 
         cached = max(0, cached_tokens)
         cache_created = max(0, cache_creation_tokens)

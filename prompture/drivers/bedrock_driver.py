@@ -42,6 +42,12 @@ except ImportError:  # pragma: no cover - exercised in tests via patch
     _BOTO3_AVAILABLE = False
 
 from ..infra.cost_mixin import CostMixin
+from ._prompt_cache import (
+    apply_cache_control_to_messages,
+    apply_cache_control_to_system,
+    apply_cache_control_to_tools,
+    breakpoint_budget,
+)
 from .base import Driver
 
 logger = logging.getLogger(__name__)
@@ -188,17 +194,36 @@ def _build_anthropic_request(
 ) -> dict[str, Any]:
     system_content, api_messages = _extract_system_and_messages(messages)
     api_messages = _prepare_anthropic_messages_for_bedrock(api_messages)
+
+    # Bedrock serves the same Anthropic Messages body, so the same
+    # cache_control breakpoints apply — system, tools, and (crucially for
+    # agentic loops) the message array itself.
+    cache_kwargs = {
+        "cache_prompt": options.get("cache_prompt", True),
+        "model": options.get("model"),
+        "ttl": options.get("cache_ttl", "5m"),
+    }
+    wrapped_system = apply_cache_control_to_system(system_content, **cache_kwargs)
+    anthropic_tools = (
+        apply_cache_control_to_tools(_convert_tools_to_anthropic_bedrock(tools), **cache_kwargs) if tools else None
+    )
+    api_messages = apply_cache_control_to_messages(
+        api_messages,
+        max_breakpoints=breakpoint_budget(wrapped_system, anthropic_tools),
+        **cache_kwargs,
+    )
+
     body: dict[str, Any] = {
         "anthropic_version": "bedrock-2023-05-31",
         "max_tokens": int(options.get("max_tokens", 512)),
         "messages": api_messages,
     }
-    if system_content:
-        body["system"] = system_content
+    if wrapped_system is not None:
+        body["system"] = wrapped_system
     if "temperature" in options:
         body["temperature"] = options["temperature"]
-    if tools:
-        body["tools"] = _convert_tools_to_anthropic_bedrock(tools)
+    if anthropic_tools is not None:
+        body["tools"] = anthropic_tools
     return body
 
 
