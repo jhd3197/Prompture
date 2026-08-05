@@ -30,6 +30,11 @@ from typing import Any, get_type_hints
 
 logger = logging.getLogger("prompture.tools_schema")
 
+#: Default cap on a tool description's length.  OpenAI rejects ``function``
+#: descriptions longer than 1024 characters; other providers are more lenient.
+#: Pass ``max_description_chars=None`` to opt out of truncation.
+MAX_TOOL_DESCRIPTION_CHARS = 1024
+
 # Mapping from Python types to JSON Schema types
 _TYPE_MAP: dict[type, str] = {
     str: "string",
@@ -152,7 +157,11 @@ class ToolDefinition:
 
     def to_prompt_format(self) -> str:
         """Plain-text description suitable for prompt-based tool calling."""
-        lines = [f"Tool: {self.name}", f"  Description: {self.description}", "  Parameters:"]
+        desc_lines = self.description.strip().split("\n")
+        lines = [f"Tool: {self.name}", f"  Description: {desc_lines[0]}"]
+        # Keep continuation lines under the Description label so the block stays readable.
+        lines.extend(f"    {line.strip()}" if line.strip() else "" for line in desc_lines[1:])
+        lines.append("  Parameters:")
         props = self.parameters.get("properties", {})
         required = set(self.parameters.get("required", []))
         if not props:
@@ -169,13 +178,122 @@ class ToolDefinition:
         return "\n".join(lines)
 
 
+#: Google-style section headers recognised when splitting a docstring.
+_ARGS_HEADERS = ("args", "arguments", "parameters")
+_RETURNS_HEADERS = ("returns", "return")
+_YIELDS_HEADERS = ("yields", "yield")
+_SECTION_HEADERS = frozenset(
+    _ARGS_HEADERS
+    + _RETURNS_HEADERS
+    + _YIELDS_HEADERS
+    + (
+        "raises",
+        "raise",
+        "exceptions",
+        "examples",
+        "example",
+        "notes",
+        "note",
+        "warning",
+        "warnings",
+        "attributes",
+        "see also",
+        "references",
+        "todo",
+    )
+)
+
+
+def _section_key(line: str) -> str | None:
+    """Return the normalised section name if *line* is a docstring section header."""
+    stripped = line.strip()
+    if not stripped.endswith(":"):
+        return None
+    key = stripped[:-1].strip().lower()
+    return key if key in _SECTION_HEADERS else None
+
+
+def _split_docstring(docstring: str | None) -> tuple[str, dict[str, list[str]]]:
+    """Split a Google-style docstring into its lead text and named sections.
+
+    Returns ``(lead, sections)`` where *lead* is everything before the first
+    recognised section header (summary line plus any extended description) and
+    *sections* maps a lower-cased section name to its still-indented lines.
+    """
+    if not docstring:
+        return "", {}
+
+    lead: list[str] = []
+    sections: dict[str, list[str]] = {}
+    current: list[str] | None = None
+
+    for line in docstring.split("\n"):
+        key = _section_key(line)
+        if key is not None:
+            current = sections.setdefault(key, [])
+            continue
+        if current is None:
+            lead.append(line)
+        else:
+            current.append(line)
+
+    return "\n".join(lead).strip(), sections
+
+
+def _first_section(sections: dict[str, list[str]], *keys: str) -> list[str]:
+    """Return the first present section among *keys* (empty list if none)."""
+    for key in keys:
+        if key in sections:
+            return sections[key]
+    return []
+
+
+def _collapse(lines: list[str]) -> str:
+    """Flatten a docstring section into a single space-joined paragraph."""
+    return " ".join(stripped for line in lines if (stripped := line.strip()))
+
+
+def _docstring_description(docstring: str | None) -> str:
+    """Build the tool description the model sees from *docstring*.
+
+    Keeps the summary line **and** the extended description that follows it —
+    that prose is usually the only place a tool's scope, caveats, and intended
+    use are written down.  ``Args:`` is dropped (it is already encoded in the
+    parameter schema), while ``Returns:``/``Yields:`` are appended as a single
+    line so the model knows what it gets back.
+    """
+    lead, sections = _split_docstring(docstring)
+    parts: list[str] = [lead] if lead else []
+
+    for label, keys in (("Returns", _RETURNS_HEADERS), ("Yields", _YIELDS_HEADERS)):
+        body = _collapse(_first_section(sections, *keys))
+        if body:
+            parts.append(f"{label}: {body}")
+
+    return "\n\n".join(parts).strip()
+
+
+def _truncate_description(text: str, limit: int | None) -> str:
+    """Trim *text* to *limit* characters on a paragraph, sentence, or word boundary."""
+    if limit is None or len(text) <= limit:
+        return text
+    head = text[: limit - 1]
+    for sep in ("\n\n", ". ", " "):
+        idx = head.rfind(sep)
+        if idx > limit // 2:
+            head = head[:idx]
+            break
+    return head.rstrip(" \n.,;:") + "…"
+
+
 def _parse_docstring_params(docstring: str | None) -> dict[str, str]:
     """Extract parameter descriptions from a Google-style docstring ``Args:`` section."""
-    if not docstring:
+    _, sections = _split_docstring(docstring)
+    lines = _first_section(sections, *_ARGS_HEADERS)
+    if not lines:
         return {}
-    lines = docstring.split("\n")
+
     params: dict[str, str] = {}
-    in_args = False
     current_param: str | None = None
     current_desc_parts: list[str] = []
     args_indent: int | None = None
@@ -183,23 +301,7 @@ def _parse_docstring_params(docstring: str | None) -> dict[str, str]:
     for line in lines:
         stripped = line.strip()
 
-        # Detect start of Args section
-        if stripped in ("Args:", "Arguments:", "Parameters:"):
-            in_args = True
-            args_indent = None
-            continue
-
-        if not in_args:
-            continue
-
-        # Detect end of Args section (next section header like Returns:, Raises:, etc.)
-        if stripped and not stripped.startswith("-") and stripped.endswith(":") and " " not in stripped:
-            # Save last param
-            if current_param is not None:
-                params[current_param] = " ".join(current_desc_parts).strip()
-            break
-
-        # Empty line inside Args might end the section or just be spacing
+        # Blank lines inside Args are just spacing
         if not stripped:
             continue
 
@@ -233,18 +335,28 @@ def _parse_docstring_params(docstring: str | None) -> dict[str, str]:
 
 
 def tool_from_function(
-    fn: Callable[..., Any], *, name: str | None = None, description: str | None = None
+    fn: Callable[..., Any],
+    *,
+    name: str | None = None,
+    description: str | None = None,
+    max_description_chars: int | None = MAX_TOOL_DESCRIPTION_CHARS,
 ) -> ToolDefinition:
     """Build a :class:`ToolDefinition` by inspecting *fn*'s signature and docstring.
 
     Parameters:
         fn: The callable to wrap.
         name: Override the tool name (defaults to ``fn.__name__``).
-        description: Override the description (defaults to the first line of the docstring).
+        description: Override the description.  By default the docstring's
+            summary *and* extended description are used, with ``Returns:``
+            appended; ``Args:`` is omitted because it already lives in the
+            parameter schema.
+        max_description_chars: Truncate the description to this many characters
+            (see :data:`MAX_TOOL_DESCRIPTION_CHARS`).  ``None`` disables it.
     """
     tool_name = name or fn.__name__
     raw_doc = inspect.getdoc(fn) or ""
-    tool_desc = description or raw_doc.split("\n")[0] or f"Call {tool_name}"
+    tool_desc = description or _docstring_description(raw_doc) or f"Call {tool_name}"
+    tool_desc = _truncate_description(tool_desc, max_description_chars)
     param_docs = _parse_docstring_params(raw_doc)
 
     sig = inspect.signature(fn)
@@ -320,9 +432,10 @@ class ToolRegistry:
         *,
         name: str | None = None,
         description: str | None = None,
+        max_description_chars: int | None = MAX_TOOL_DESCRIPTION_CHARS,
     ) -> ToolDefinition:
         """Register *fn* as a tool and return the :class:`ToolDefinition`."""
-        td = tool_from_function(fn, name=name, description=description)
+        td = tool_from_function(fn, name=name, description=description, max_description_chars=max_description_chars)
         self._tools[td.name] = td
         return td
 

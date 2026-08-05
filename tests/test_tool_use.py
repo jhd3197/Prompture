@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 
 from prompture.agents.conversation import Conversation
-from prompture.agents.tools_schema import ToolRegistry, tool_from_function
+from prompture.agents.tools_schema import MAX_TOOL_DESCRIPTION_CHARS, ToolRegistry, tool_from_function
 from prompture.drivers.base import Driver
 
 # ---------------------------------------------------------------------------
@@ -66,6 +66,104 @@ class TestToolFromFunction:
         fmt = td.to_anthropic_format()
         assert fmt["name"] == "f"
         assert "input_schema" in fmt
+
+
+class TestDocstringDescription:
+    def test_extended_description_is_kept(self):
+        def search(query: str) -> str:
+            """Search the internal wiki.
+
+            Covers engineering runbooks and onboarding docs only.
+            Does not reach public web pages.
+
+            Args:
+                query: Full-text search query.
+
+            Returns:
+                The top matching page as markdown.
+            """
+            return query
+
+        td = tool_from_function(search)
+        assert td.description.startswith("Search the internal wiki.")
+        assert "engineering runbooks" in td.description
+        assert "Does not reach public web pages." in td.description
+        # Args live in the parameter schema, not the description
+        assert "Full-text search query" not in td.description
+        assert td.parameters["properties"]["query"]["description"] == "Full-text search query."
+        # Returns is appended so the model knows what comes back
+        assert "Returns: The top matching page as markdown." in td.description
+
+    def test_summary_only_docstring_unchanged(self):
+        def ping() -> str:
+            """Check liveness."""
+            return "ok"
+
+        assert tool_from_function(ping).description == "Check liveness."
+
+    def test_no_docstring_falls_back(self):
+        def bare(x: int) -> int:
+            return x
+
+        assert tool_from_function(bare).description == "Call bare"
+
+    def test_sections_after_args_are_dropped(self):
+        def f(x: int) -> int:
+            """Do a thing.
+
+            Args:
+                x: A number.
+
+            Raises:
+                ValueError: If x is negative.
+
+            Examples:
+                >>> f(1)
+                1
+            """
+            return x
+
+        td = tool_from_function(f)
+        assert td.description == "Do a thing."
+        assert td.parameters["properties"]["x"]["description"] == "A number."
+
+    def test_description_truncated_to_limit(self):
+        def f() -> None:
+            """Summary line.
+
+            {body}
+            """
+
+        f.__doc__ = "Summary line.\n\n" + ("word " * 500)
+        td = tool_from_function(f, max_description_chars=200)
+        assert len(td.description) <= 200
+        assert td.description.startswith("Summary line.")
+        assert td.description.endswith("…")
+
+    def test_truncation_can_be_disabled(self):
+        def f() -> None:
+            pass
+
+        f.__doc__ = "Summary line.\n\n" + ("word " * 500)
+        td = tool_from_function(f, max_description_chars=None)
+        assert len(td.description) > MAX_TOOL_DESCRIPTION_CHARS
+
+    def test_prompt_format_indents_multiline_description(self):
+        def f(x: int) -> int:
+            """Do a thing.
+
+            With a second paragraph.
+
+            Args:
+                x: A number.
+            """
+            return x
+
+        text = tool_from_function(f).to_prompt_format()
+        assert "  Description: Do a thing." in text
+        assert "    With a second paragraph." in text
+        # Parameters block still renders after the description
+        assert text.index("  Parameters:") > text.index("With a second paragraph.")
 
 
 # ---------------------------------------------------------------------------

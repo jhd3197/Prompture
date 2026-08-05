@@ -103,7 +103,10 @@ def _xml_render_system_prompt(tools: list[dict[str, Any]]) -> str:
         desc = fn.get("description", "") or "(no description)"
         params = fn.get("parameters", {}) or {}
         params_json = json.dumps(params, separators=(",", ":"))
-        lines.append(f"- **{name}** — {desc}")
+        desc_lines = desc.strip().split("\n")
+        lines.append(f"- **{name}** — {desc_lines[0]}")
+        # Indent continuation lines so a multi-line description stays inside the bullet.
+        lines.extend(f"  {line.strip()}" if line.strip() else "" for line in desc_lines[1:])
         lines.append(f"  Parameters JSON Schema: `{params_json}`")
     lines.extend(
         [
