@@ -26,6 +26,8 @@ Example::
 
 from __future__ import annotations
 
+import asyncio
+import concurrent.futures
 import contextvars
 import inspect
 import json
@@ -39,7 +41,7 @@ from pydantic import BaseModel
 
 from ..drivers.base import Driver
 from ..extraction.tools import clean_json_text
-from ..infra.budget import BudgetPolicy, BudgetState, enforce_budget, resolve_budget_policy
+from ..infra.budget import BudgetPolicy, resolve_budget_policy
 from ..infra.callbacks import DriverCallbacks
 from ..infra.provider_env import ProviderEnvironment
 from ..infra.session import UsageSession
@@ -131,6 +133,34 @@ def _get_first_param_name(fn: Callable[..., Any]) -> str:
     return ""
 
 
+def _invoke_cb_sync(callback: Callable[..., Any], *cb_args: Any) -> Any:
+    """Invoke *callback* from sync code, driving awaitables to completion.
+
+    Async callbacks (e.g. ``async def on_approval_needed(...)``) return a
+    coroutine when called bare — which is always truthy and previously
+    caused silent auto-approval.  This bridge detects awaitables and runs
+    them: directly with :func:`asyncio.run` when no loop is running, or on
+    a worker thread (carrying over ``contextvars``) when a loop is already
+    running in the current thread.
+    """
+    result = callback(*cb_args)
+    if not inspect.isawaitable(result):
+        return result
+
+    async def _await_result() -> Any:
+        return await result
+
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+    if loop is not None and loop.is_running():
+        ctx_snapshot = contextvars.copy_context()
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            return pool.submit(ctx_snapshot.run, lambda: asyncio.run(_await_result())).result()
+    return asyncio.run(_await_result())
+
+
 # ------------------------------------------------------------------
 # Agent
 # ------------------------------------------------------------------
@@ -180,6 +210,11 @@ class Agent(Generic[DepsType]):
         skill_config: Optional configuration dict injected as a
             :class:`SkillContext` into tukuy skill ``invoke()`` calls.
             When ``None`` (default) no config is injected.
+        tool_timeout: Per-tool wall-clock budget in seconds.  A tool that
+            overruns it yields an error result the model can react to
+            instead of wedging the run forever.  ``None`` (default) means
+            no timeout.  Can be overridden per call via
+            ``options={"tool_timeout": ...}``.
     """
 
     def __init__(
@@ -209,6 +244,7 @@ class Agent(Generic[DepsType]):
         auto_approve_safe_only: bool = False,
         skill_config: dict[str, Any] | None = None,
         max_tool_result_length: int | None = None,
+        tool_timeout: float | None = None,
         max_depth: int = _DEFAULT_MAX_AGENT_DEPTH,
         env: ProviderEnvironment | None = None,
     ) -> None:
@@ -240,7 +276,12 @@ class Agent(Generic[DepsType]):
         self._auto_approve_safe_only = auto_approve_safe_only
         self._skill_config = skill_config
         self._max_tool_result_length = max_tool_result_length
+        self._tool_timeout = tool_timeout
         self._conversation: Conversation | None = None
+        # The conversation driving the current run.  Tracked separately from
+        # ``_conversation`` (which only holds persistent ones) so that
+        # ``stop()`` can reach the loop of a non-persistent run too.
+        self._active_conversation: Conversation | None = None
 
         # Build internal tool registry
         self._tools = ToolRegistry()
@@ -279,8 +320,21 @@ class Agent(Generic[DepsType]):
         return self._lifecycle
 
     def stop(self) -> None:
-        """Request graceful shutdown after the current iteration."""
+        """Request graceful shutdown after the current iteration.
+
+        Sets the agent-level flag and forwards the request to the
+        conversation driving the current run (cooperative stop) so its
+        tool-round loop exits gracefully between rounds instead of starting
+        another round.  Works for non-persistent agents too: the in-flight
+        conversation is tracked in ``_active_conversation`` for the duration
+        of the run, so the flag is never merely decorative.
+
+        Safe to call from a tool, a callback, or another thread.
+        """
         self._stop_requested = True
+        conv = self._active_conversation or self._conversation
+        if conv is not None:
+            conv.request_stop()
 
     @property
     def callbacks(self) -> AgentCallbacks:
@@ -375,6 +429,7 @@ class Agent(Generic[DepsType]):
         token = _agent_depth.set(current_depth + 1)
         self._lifecycle = AgentState.running
         self._stop_requested = False
+        self._active_conversation = None
         steps: list[AgentStep] = []
 
         try:
@@ -409,20 +464,61 @@ class Agent(Generic[DepsType]):
             prompt=prompt,
         )
 
+    def _make_live_ctx_fn(
+        self,
+        prompt: str,
+        deps: Any,
+        session: UsageSession,
+        run_state: dict[str, Any],
+    ) -> Callable[[], RunContext[Any]]:
+        """Return a factory that builds a fresh :class:`RunContext` per call.
+
+        The factory reads the current conversation from *run_state* (key
+        ``"conv"``) so tools invoked in later tool rounds see live
+        ``iteration``/``messages``/``usage`` instead of the snapshot taken
+        at the start of the run.  ``run_state["conv"]`` must be assigned
+        once the conversation is built; before that, an empty context is
+        produced.
+        """
+
+        def _live_ctx() -> RunContext[Any]:
+            conv = run_state.get("conv")
+            messages = conv.messages if conv is not None else []
+            iteration = max(
+                0,
+                sum(1 for m in messages if m.get("role") == "assistant" and m.get("tool_calls")) - 1,
+            )
+            return self._build_run_context(prompt, deps, session, messages, iteration)
+
+        return _live_ctx
+
     # ------------------------------------------------------------------
     # Tool wrapping (RunContext injection + ModelRetry + callbacks)
     # ------------------------------------------------------------------
 
-    def _wrap_tools_with_context(self, ctx: RunContext[Any], session: UsageSession | None = None) -> ToolRegistry:
+    def _wrap_tools_with_context(
+        self,
+        ctx: RunContext[Any],
+        session: UsageSession | None = None,
+        ctx_fn: Callable[[], RunContext[Any]] | None = None,
+        tool_timings: list[dict[str, Any]] | None = None,
+    ) -> ToolRegistry:
         """Return a new :class:`ToolRegistry` with wrapped tool functions.
 
         For each registered tool:
-        - If the tool's first param is ``RunContext``, inject *ctx* automatically.
+        - If the tool's first param is ``RunContext``, inject the live context
+          automatically.  When *ctx_fn* is provided it is called at each tool
+          invocation so tools see the current iteration/messages; otherwise the
+          static *ctx* snapshot is used.
         - Catch :class:`ModelRetry` and convert to an error string.
-        - Fire ``agent_callbacks.on_tool_start`` / ``on_tool_end``.
+        - Fire ``agent_callbacks.on_tool_start`` / ``on_tool_end`` (awaitable
+          callbacks are driven to completion via :func:`_invoke_cb_sync`).
         - Strip the ``RunContext`` parameter from the JSON schema sent to the LLM.
         - If the tool wraps a child agent (via ``as_tool``), aggregate its
           usage into the parent *session*.
+        - When *tool_timings* is provided, append a
+          ``{"name", "timestamp", "duration_ms"}`` record per invocation so
+          step extraction can populate ``AgentStep.duration_ms``.
         """
         if not self._tools:
             return ToolRegistry()
@@ -442,10 +538,14 @@ class Agent(Generic[DepsType]):
                 _name: str,
                 _cb: AgentCallbacks = cb,
                 _session: UsageSession | None = session,
+                _ctx_fn: Callable[[], RunContext[Any]] | None = ctx_fn,
+                _timings: list[dict[str, Any]] | None = tool_timings,
             ) -> Callable[..., Any]:
                 def wrapper(**kwargs: Any) -> Any:
+                    call_ctx = _ctx_fn() if _ctx_fn is not None else ctx
+                    start = time.perf_counter()
                     if _cb.on_tool_start:
-                        _cb.on_tool_start(_name, kwargs)
+                        _invoke_cb_sync(_cb.on_tool_start, _name, kwargs)
                     try:
                         # Inject skill config via SkillContext for tukuy skills
                         if self._skill_config is not None:
@@ -474,18 +574,18 @@ class Agent(Generic[DepsType]):
                                     )
 
                         if _wants:
-                            result = _fn(ctx, **kwargs)
+                            result = _fn(call_ctx, **kwargs)
                         else:
                             result = _fn(**kwargs)
                     except ApprovalRequired as exc:
                         # Handle approval request
                         if _cb.on_approval_needed:
-                            approved = _cb.on_approval_needed(exc.tool_name, exc.action, exc.details)
+                            approved = _invoke_cb_sync(_cb.on_approval_needed, exc.tool_name, exc.action, exc.details)
                             if approved:
                                 # Retry the tool call after approval
                                 try:
                                     if _wants:
-                                        result = _fn(ctx, **kwargs)
+                                        result = _fn(call_ctx, **kwargs)
                                     else:
                                         result = _fn(**kwargs)
                                 except ApprovalRequired:
@@ -518,8 +618,17 @@ class Agent(Generic[DepsType]):
                                 }
                             )
 
+                    if _timings is not None:
+                        _timings.append(
+                            {
+                                "name": _name,
+                                "timestamp": time.time(),
+                                "duration_ms": (time.perf_counter() - start) * 1000,
+                            }
+                        )
+
                     if _cb.on_tool_end:
-                        _cb.on_tool_end(_name, result)
+                        _invoke_cb_sync(_cb.on_tool_end, _name, result)
                     return result
 
                 return wrapper
@@ -718,16 +827,30 @@ class Agent(Generic[DepsType]):
         # Reuse existing conversation in persistent mode
         if self._persistent_conversation and self._conversation is not None:
             conv = self._conversation
-            # Update tools and callbacks for this run
-            if tools is not None:
-                conv._tools = tools
-            if driver_callbacks is not None:
-                conv._driver.callbacks = driver_callbacks
-            # Propagate before_turn hook (subclasses may set this)
-            hook = getattr(self, "_before_turn_hook", None)
-            if hook is not None:
-                conv._before_turn = hook
-            return conv
+            # If the agent's driver was swapped after the conversation was
+            # built (e.g. a budget fallback forced a rebuild), the cached
+            # conversation still holds the old driver — discard it and fall
+            # through to build a fresh one.
+            driver_stale = self._driver is not None and getattr(conv, "_driver", None) is not self._driver
+            if not driver_stale:
+                # Respect the newly resolved system prompt for this run.
+                if system_prompt is not None:
+                    conv.system_prompt = system_prompt
+                # Update tools and callbacks for this run.
+                # NOTE: assigning ``callbacks`` mutates the driver instance,
+                # which may be shared (e.g. passed to several agents).  A
+                # persistent-conversation agent should treat its driver as
+                # exclusively owned by the agent.
+                if tools is not None:
+                    conv._tools = tools
+                if driver_callbacks is not None:
+                    conv._driver.callbacks = driver_callbacks
+                # Propagate before_turn hook (subclasses may set this)
+                hook = getattr(self, "_before_turn_hook", None)
+                if hook is not None:
+                    conv._before_turn = hook
+                return self._track_active(conv)
+            self._conversation = None
 
         effective_tools = tools if tools is not None else (self._tools if self._tools else None)
 
@@ -742,6 +865,8 @@ class Agent(Generic[DepsType]):
             kwargs["before_turn"] = hook
         if self._max_tool_result_length is not None:
             kwargs["max_tool_result_length"] = self._max_tool_result_length
+        if self._tool_timeout is not None:
+            kwargs["tool_timeout"] = self._tool_timeout
         if self._options:
             kwargs["options"] = self._options
         if driver_callbacks is not None:
@@ -769,6 +894,19 @@ class Agent(Generic[DepsType]):
         conv = Conversation(**kwargs)
         if self._persistent_conversation:
             self._conversation = conv
+        return self._track_active(conv)
+
+    def _track_active(self, conv: Conversation) -> Conversation:
+        """Record *conv* as the conversation driving the current run.
+
+        Lets :meth:`stop` reach the tool-round loop of a non-persistent run.
+        If ``stop()`` was already called between the run starting and the
+        conversation being built, the request is replayed onto *conv* so it
+        is not lost to that race.
+        """
+        self._active_conversation = conv
+        if self._stop_requested:
+            conv.request_stop()
         return conv
 
     def _execute(self, prompt: str, steps: list[AgentStep], deps: Any) -> AgentResult:
@@ -793,8 +931,16 @@ class Agent(Generic[DepsType]):
         # 4. Resolve system prompt (call it if callable, passing ctx)
         resolved_system_prompt = self._resolve_system_prompt(ctx)
 
-        # 5. Wrap tools with context (pass session for child agent usage aggregation)
-        wrapped_tools = self._wrap_tools_with_context(ctx, session)
+        # 5. Wrap tools with context (pass session for child agent usage
+        #    aggregation; ctx_fn refreshes RunContext per tool round)
+        run_state: dict[str, Any] = {}
+        tool_timings: list[dict[str, Any]] = []
+        wrapped_tools = self._wrap_tools_with_context(
+            ctx,
+            session,
+            ctx_fn=self._make_live_ctx_fn(prompt, deps, session, run_state),
+            tool_timings=tool_timings,
+        )
 
         # 6. Build Conversation
         conv = self._build_conversation(
@@ -802,36 +948,16 @@ class Agent(Generic[DepsType]):
             tools=wrapped_tools if wrapped_tools else None,
             driver_callbacks=driver_callbacks,
         )
+        run_state["conv"] = conv
 
         # 7. Fire on_iteration callback
         if self._agent_callbacks.on_iteration:
             self._agent_callbacks.on_iteration(0)
 
-        # 8. Enforce budget policy at the agent level (pre-call)
-        if self._budget_policy is not None:
-            state = BudgetState(
-                cost_used=session.cost,
-                tokens_used=session.total_tokens,
-                max_cost=self._max_cost,
-                max_tokens=self._max_tokens,
-            )
-            new_model = enforce_budget(
-                state,
-                self._budget_policy,
-                fallback_models=self._fallback_models,
-                current_model=self._model,
-                on_model_fallback=self._on_model_fallback,
-            )
-            if new_model is not None:
-                self._model = new_model
-                self._driver = None  # force rebuild
-                conv = self._build_conversation(
-                    system_prompt=resolved_system_prompt,
-                    tools=wrapped_tools if wrapped_tools else None,
-                    driver_callbacks=driver_callbacks,
-                )
-
-        # 9. Ask the conversation (handles full tool loop internally)
+        # 8. Ask the conversation (handles full tool loop internally)
+        #    Note: budget policy is enforced inside the Conversation
+        #    (``_check_budget``); the agent-level pre-call check was removed
+        #    because it read a fresh, always-empty UsageSession.
         agent_name = self.name or self.__class__.__name__
         with tracker.agent(agent_name):
             t0 = time.perf_counter()
@@ -856,6 +982,7 @@ class Agent(Generic[DepsType]):
                 steps,
                 all_tool_calls,
                 getattr(conv, "_full_tool_results", None),
+                tool_timings,
             )
 
             # Handle output_type parsing
@@ -906,10 +1033,41 @@ class Agent(Generic[DepsType]):
         steps: list[AgentStep],
         all_tool_calls: list[dict[str, Any]],
         full_tool_results: dict[str, str] | None = None,
+        tool_timings: list[dict[str, Any]] | None = None,
     ) -> None:
-        """Scan conversation messages and populate steps and tool_calls."""
+        """Scan conversation messages and populate steps and tool_calls.
+
+        Args:
+            messages: Conversation messages to scan.
+            steps: List to append :class:`AgentStep` records to.
+            all_tool_calls: List to append tool-call dicts to.
+            full_tool_results: Optional map of tool_call_id to the full
+                (pre-truncation) tool result string.
+            tool_timings: Optional list of ``{"name", "timestamp",
+                "duration_ms"}`` records captured by the tool wrappers.
+                Consumed in FIFO order per tool name to populate
+                ``duration_ms`` and a real execution timestamp on
+                ``tool_result`` steps.
+        """
 
         now = time.time()
+
+        # Map tool_call_id -> tool name from assistant tool_calls messages so
+        # tool_result steps record the real tool name, not the call id.
+        id_to_name: dict[str, str] = {}
+        for msg in messages:
+            if msg.get("role") == "assistant":
+                for tc in msg.get("tool_calls") or []:
+                    tc_fn = tc.get("function", {})
+                    tc_name = tc_fn.get("name", tc.get("name", ""))
+                    tc_id = tc.get("id", "")
+                    if tc_id and tc_name:
+                        id_to_name[tc_id] = tc_name
+
+        # FIFO queues of timing records per tool name
+        timings_by_name: dict[str, list[dict[str, Any]]] = {}
+        for rec in tool_timings or []:
+            timings_by_name.setdefault(rec.get("name", ""), []).append(rec)
 
         for msg in messages:
             role = msg.get("role", "")
@@ -981,13 +1139,23 @@ class Agent(Generic[DepsType]):
                 full_result = None
                 if full_tool_results and tool_call_id:
                     full_result = full_tool_results.get(tool_call_id)
+                # Resolve the real tool name from the originating assistant
+                # tool_calls message (fall back to the raw id).
+                tool_name = id_to_name.get(tool_call_id, tool_call_id)
+                # Pop the matching timing record (FIFO) if available.
+                timing = None
+                if tool_name is not None:
+                    queue = timings_by_name.get(tool_name)
+                    if queue:
+                        timing = queue.pop(0)
                 steps.append(
                     AgentStep(
                         step_type=StepType.tool_result,
-                        timestamp=now,
+                        timestamp=timing["timestamp"] if timing else now,
                         content=msg.get("content", ""),
-                        tool_name=tool_call_id,
+                        tool_name=tool_name,
                         tool_result=full_result,
+                        duration_ms=timing["duration_ms"] if timing else 0.0,
                     )
                 )
 
@@ -1081,9 +1249,18 @@ class Agent(Generic[DepsType]):
         return AgentIterator(gen)
 
     def _execute_iter(self, prompt: str, deps: Any) -> Generator[AgentStep, None, AgentResult]:
-        """Generator that executes the agent loop and yields each step."""
+        """Generator that executes the agent loop and yields each step.
+
+        Raises:
+            RecursionError: If the agent nesting depth exceeds ``max_depth``.
+        """
+        current_depth = _agent_depth.get()
+        if current_depth >= self._max_depth:
+            raise RecursionError(f"Agent recursion depth exceeded: {current_depth} >= {self._max_depth}")
+        token = _agent_depth.set(current_depth + 1)
         self._lifecycle = AgentState.running
         self._stop_requested = False
+        self._active_conversation = None
         steps: list[AgentStep] = []
 
         try:
@@ -1095,6 +1272,8 @@ class Agent(Generic[DepsType]):
         except Exception:
             self._lifecycle = AgentState.errored
             raise
+        finally:
+            _agent_depth.reset(token)
 
     # ------------------------------------------------------------------
     # run_stream() — streaming output
@@ -1108,17 +1287,29 @@ class Agent(Generic[DepsType]):
         final :class:`AgentResult` is available via
         :attr:`StreamedAgentResult.result`.
 
-        When tools are registered, streaming falls back to non-streaming
-        ``conv.ask()`` and yields the full response as a single
-        ``text_delta`` event.
+        When tools are registered, the tool loop runs via
+        ``conv.ask_with_tool_events()``: ``tool_call`` and ``tool_result``
+        events are emitted as tools execute, and the final LLM response is
+        yielded as a single ``text_delta`` event (per-turn text is not
+        token-streamed in this mode).  Without tools, the driver's native
+        streaming is used when available.
         """
         gen = self._execute_stream(prompt, deps)
         return StreamedAgentResult(gen)
 
     def _execute_stream(self, prompt: str, deps: Any) -> Generator[StreamEvent, None, AgentResult]:
-        """Generator that executes the agent loop and yields stream events."""
+        """Generator that executes the agent loop and yields stream events.
+
+        Raises:
+            RecursionError: If the agent nesting depth exceeds ``max_depth``.
+        """
+        current_depth = _agent_depth.get()
+        if current_depth >= self._max_depth:
+            raise RecursionError(f"Agent recursion depth exceeded: {current_depth} >= {self._max_depth}")
+        token = _agent_depth.set(current_depth + 1)
         self._lifecycle = AgentState.running
         self._stop_requested = False
+        self._active_conversation = None
         steps: list[AgentStep] = []
 
         try:
@@ -1139,7 +1330,14 @@ class Agent(Generic[DepsType]):
             resolved_system_prompt = self._resolve_system_prompt(ctx)
 
             # 5. Wrap tools with context (pass session for child agent usage aggregation)
-            wrapped_tools = self._wrap_tools_with_context(ctx, session)
+            run_state: dict[str, Any] = {}
+            tool_timings: list[dict[str, Any]] = []
+            wrapped_tools = self._wrap_tools_with_context(
+                ctx,
+                session,
+                ctx_fn=self._make_live_ctx_fn(prompt, deps, session, run_state),
+                tool_timings=tool_timings,
+            )
             has_tools = bool(wrapped_tools)
 
             # 6. Build Conversation
@@ -1148,6 +1346,7 @@ class Agent(Generic[DepsType]):
                 tools=wrapped_tools if wrapped_tools else None,
                 driver_callbacks=driver_callbacks,
             )
+            run_state["conv"] = conv
 
             # 7. Fire on_iteration callback
             if self._agent_callbacks.on_iteration:
@@ -1207,6 +1406,7 @@ class Agent(Generic[DepsType]):
                 steps,
                 all_tool_calls,
                 getattr(conv, "_full_tool_results", None),
+                tool_timings,
             )
 
             # 9. Parse output
@@ -1257,6 +1457,8 @@ class Agent(Generic[DepsType]):
         except Exception:
             self._lifecycle = AgentState.errored
             raise
+        finally:
+            _agent_depth.reset(token)
 
     # ------------------------------------------------------------------
     # run_live() — interleaved tool calling with streaming text deltas
@@ -1292,6 +1494,7 @@ class Agent(Generic[DepsType]):
         token = _agent_depth.set(current_depth + 1)
         self._lifecycle = AgentState.running
         self._stop_requested = False
+        self._active_conversation = None
         steps: list[AgentStep] = []
 
         try:
@@ -1303,13 +1506,21 @@ class Agent(Generic[DepsType]):
             ctx = self._build_run_context(prompt, deps, session, [], 0)
             effective_prompt = self._run_input_guardrails(ctx, prompt)
             resolved_system_prompt = self._resolve_system_prompt(ctx)
-            wrapped_tools = self._wrap_tools_with_context(ctx, session)
+            run_state: dict[str, Any] = {}
+            tool_timings: list[dict[str, Any]] = []
+            wrapped_tools = self._wrap_tools_with_context(
+                ctx,
+                session,
+                ctx_fn=self._make_live_ctx_fn(prompt, deps, session, run_state),
+                tool_timings=tool_timings,
+            )
 
             conv = self._build_conversation(
                 system_prompt=resolved_system_prompt,
                 tools=wrapped_tools if wrapped_tools else None,
                 driver_callbacks=driver_callbacks,
             )
+            run_state["conv"] = conv
 
             if self._agent_callbacks.on_iteration:
                 self._agent_callbacks.on_iteration(0)
@@ -1346,6 +1557,7 @@ class Agent(Generic[DepsType]):
                 steps,
                 all_tool_calls,
                 getattr(conv, "_full_tool_results", None),
+                tool_timings,
             )
 
             if self._output_type is not None:

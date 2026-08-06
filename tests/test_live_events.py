@@ -809,7 +809,10 @@ class TestRawHttpHelper:
         assert tool_stop.input == {"city": "Tokyo"}
 
         message_stop = events[-1]
-        assert message_stop.stop_reason == "tool_calls"
+        # stop_reason uses the shared vocabulary, so OpenAI's "tool_calls"
+        # surfaces as "tool_use"; the provider's raw value is preserved.
+        assert message_stop.stop_reason == "tool_use"
+        assert message_stop.usage["raw_stop_reason"] == "tool_calls"
         assert message_stop.usage["prompt_tokens"] == 12
         assert message_stop.usage["completion_tokens"] == 9
         # Cost = 0.0001 * 12 + 0.0005 * 9 = 0.0012 + 0.0045 = 0.0057

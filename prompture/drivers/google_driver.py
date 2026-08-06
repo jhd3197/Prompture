@@ -7,13 +7,16 @@ from typing import Any
 
 try:
     from google import genai
+    from google.genai import errors as genai_errors
     from google.genai import types
 except ImportError:
     genai = None  # type: ignore[assignment]
+    genai_errors = None  # type: ignore[assignment]
     types = None  # type: ignore[assignment]
 
+from ..exceptions import DriverError
 from ..infra.cost_mixin import CostMixin
-from .base import Driver
+from .base import Driver, DriverHTTPError, _normalize_stop_reason, _translate_tool_choice
 
 logger = logging.getLogger(__name__)
 
@@ -256,7 +259,14 @@ class GoogleDriver(CostMixin, Driver):
             elif role == "tool":
                 # Tool result → user with function_response part
                 tc_id = msg.get("tool_call_id", "")
-                name = tool_call_names.get(tc_id, "unknown_tool")
+                name = tool_call_names.get(tc_id)
+                if name is None:
+                    raise DriverError(
+                        f"Tool result message references unknown tool_call_id {tc_id!r}: "
+                        "no matching assistant tool call exists in the conversation "
+                        "history, and Gemini rejects function_response parts with a "
+                        "fabricated name."
+                    )
                 result_content = content
                 if isinstance(result_content, str):
                     try:
@@ -337,11 +347,13 @@ class GoogleDriver(CostMixin, Driver):
 
             return {"text": response.text, "meta": meta}
 
-        except Exception as e:
+        except (genai_errors.APIError, ValueError) as e:
             logger.error(f"Google API request failed: {e}")
-            from ..exceptions import DriverError
-
-            raise DriverError(f"Google API request failed: {e}") from e
+            raise DriverHTTPError(
+                f"Google API request failed: {e}",
+                status_code=getattr(e, "code", None),
+                provider="google",
+            ) from e
 
     # ------------------------------------------------------------------
     # Tool use
@@ -394,6 +406,12 @@ class GoogleDriver(CostMixin, Driver):
 
         config_dict["tools"] = [types.Tool(function_declarations=function_declarations)]
 
+        tool_choice = _translate_tool_choice(options.get("tool_choice"), "google")
+        if tool_choice is not None:
+            config_dict["tool_config"] = types.ToolConfig(
+                function_calling_config=types.FunctionCallingConfig(**tool_choice)
+            )
+
         try:
             config = types.GenerateContentConfig(**config_dict)
             response = self._client.models.generate_content(
@@ -411,7 +429,7 @@ class GoogleDriver(CostMixin, Driver):
 
             text = ""
             tool_calls_out: list[dict[str, Any]] = []
-            stop_reason = "stop"
+            raw_stop_reason: Any = None
 
             for candidate in response.candidates or []:
                 if candidate.content is None or candidate.content.parts is None:
@@ -431,12 +449,10 @@ class GoogleDriver(CostMixin, Driver):
 
                 finish_reason = getattr(candidate, "finish_reason", None)
                 if finish_reason is not None:
-                    # Map Gemini finish reasons to standard stop reasons
-                    reason_map = {1: "stop", 2: "max_tokens", 3: "safety", 4: "recitation", 5: "other"}
-                    stop_reason = reason_map.get(finish_reason, "stop")
+                    raw_stop_reason = finish_reason
 
-            if tool_calls_out:
-                stop_reason = "tool_use"
+            stop_reason = _normalize_stop_reason(raw_stop_reason, tool_calls_present=bool(tool_calls_out))
+            meta["raw_stop_reason"] = str(raw_stop_reason) if raw_stop_reason is not None else None
 
             return {
                 "text": text,
@@ -445,11 +461,13 @@ class GoogleDriver(CostMixin, Driver):
                 "stop_reason": stop_reason,
             }
 
-        except Exception as e:
+        except (genai_errors.APIError, ValueError) as e:
             logger.error(f"Google API tool call request failed: {e}")
-            from ..exceptions import DriverError
-
-            raise DriverError(f"Google API tool call request failed: {e}") from e
+            raise DriverHTTPError(
+                f"Google API tool call request failed: {e}",
+                status_code=getattr(e, "code", None),
+                provider="google",
+            ) from e
 
     # ------------------------------------------------------------------
     # Streaming
@@ -491,8 +509,10 @@ class GoogleDriver(CostMixin, Driver):
                 },
             }
 
-        except Exception as e:
+        except (genai_errors.APIError, ValueError) as e:
             logger.error(f"Google API streaming request failed: {e}")
-            from ..exceptions import DriverError
-
-            raise DriverError(f"Google API streaming request failed: {e}") from e
+            raise DriverHTTPError(
+                f"Google API streaming request failed: {e}",
+                status_code=getattr(e, "code", None),
+                provider="google",
+            ) from e

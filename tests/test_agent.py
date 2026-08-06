@@ -2172,3 +2172,642 @@ class TestRunStreamUsageTracking:
             assert result.run_usage["call_count"] >= 1
 
         asyncio.run(_test())
+
+
+# ===========================================================================
+# Tool-calling audit fixes (A1, H2, C2, C4, M8/A11, L6/A12, L10/A5, M10)
+# ===========================================================================
+
+
+def _tool_call_response(call_id: str, name: str, arguments: dict) -> dict:
+    """Build a driver response dict requesting a single tool call."""
+    return {
+        "text": "",
+        "meta": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15, "cost": 0.001},
+        "tool_calls": [{"id": call_id, "name": name, "arguments": arguments}],
+        "stop_reason": "tool_use",
+    }
+
+
+def _text_response(text: str) -> dict:
+    """Build a plain final-text driver response dict."""
+    return {
+        "text": text,
+        "meta": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15, "cost": 0.001},
+        "tool_calls": [],
+        "stop_reason": "end_turn",
+    }
+
+
+def _tool_message_contents(result: AgentResult) -> list[str]:
+    return [m.get("content", "") for m in result.messages if m.get("role") == "tool"]
+
+
+# ---------------------------------------------------------------------------
+# A1: sync approval flow (incl. awaitable approval handlers)
+# ---------------------------------------------------------------------------
+
+
+class TestSyncApprovalFlow:
+    def test_approval_granted_retries_and_executes(self):
+        """Granted approval retries the tool and uses its real result."""
+        from prompture.agents.types import ApprovalRequired
+
+        calls = {"n": 0}
+        approval_log: list[tuple[str, str]] = []
+
+        def risky_tool(command: str) -> str:
+            """Run a risky command."""
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise ApprovalRequired("risky_tool", f"Execute: {command}")
+            return f"ran: {command}"
+
+        def approve(tool_name: str, action: str, details: dict) -> bool:
+            approval_log.append((tool_name, action))
+            return True
+
+        responses = [
+            _tool_call_response("call_1", "risky_tool", {"command": "ls"}),
+            _text_response("Done."),
+        ]
+        cb = AgentCallbacks(on_approval_needed=approve)
+        agent = Agent("test/model", driver=MockToolDriver(responses), tools=[risky_tool], agent_callbacks=cb)
+        result = agent.run("run ls")
+
+        assert approval_log == [("risky_tool", "Execute: ls")]
+        assert calls["n"] == 2  # initial attempt + approved retry
+        assert any("ran: ls" in c for c in _tool_message_contents(result))
+
+    def test_approval_denied_returns_denial_string(self):
+        """Denied approval feeds a denial string back as the tool result."""
+        from prompture.agents.types import ApprovalRequired
+
+        def risky_tool(command: str) -> str:
+            """Run a risky command."""
+            raise ApprovalRequired("risky_tool", f"Execute: {command}")
+
+        responses = [
+            _tool_call_response("call_1", "risky_tool", {"command": "rm -rf"}),
+            _text_response("Understood."),
+        ]
+        cb = AgentCallbacks(on_approval_needed=lambda name, action, details: False)
+        agent = Agent("test/model", driver=MockToolDriver(responses), tools=[risky_tool], agent_callbacks=cb)
+        result = agent.run("delete everything")
+
+        assert any("execution denied" in c for c in _tool_message_contents(result))
+
+    def test_no_approval_handler_returns_error_string(self):
+        """Without an approval handler, an explanatory error is fed back."""
+        from prompture.agents.types import ApprovalRequired
+
+        def risky_tool(command: str) -> str:
+            """Run a risky command."""
+            raise ApprovalRequired("risky_tool", f"Execute: {command}")
+
+        responses = [
+            _tool_call_response("call_1", "risky_tool", {"command": "ls"}),
+            _text_response("OK."),
+        ]
+        agent = Agent("test/model", driver=MockToolDriver(responses), tools=[risky_tool])
+        result = agent.run("run ls")
+
+        assert any("no approval handler is configured" in c for c in _tool_message_contents(result))
+
+    def test_approval_granted_but_tool_raises_again_no_infinite_loop(self):
+        """A tool that re-raises ApprovalRequired after approval stops after one retry."""
+        from prompture.agents.types import ApprovalRequired
+
+        approval_calls = {"n": 0}
+
+        def always_risky(command: str) -> str:
+            """Always requires approval."""
+            raise ApprovalRequired("always_risky", f"Execute: {command}")
+
+        def approve(tool_name: str, action: str, details: dict) -> bool:
+            approval_calls["n"] += 1
+            return True
+
+        responses = [
+            _tool_call_response("call_1", "always_risky", {"command": "ls"}),
+            _text_response("Done."),
+        ]
+        cb = AgentCallbacks(on_approval_needed=approve)
+        agent = Agent("test/model", driver=MockToolDriver(responses), tools=[always_risky], agent_callbacks=cb)
+        result = agent.run("run ls")
+
+        assert approval_calls["n"] == 1  # handler consulted exactly once
+        assert any("approval was already granted" in c for c in _tool_message_contents(result))
+
+    def test_async_approval_handler_is_awaited(self):
+        """An ``async def`` approval handler returning False must DENY.
+
+        Regression for A1: calling the handler bare returns a truthy
+        coroutine, which silently auto-approved everything.
+        """
+        from prompture.agents.types import ApprovalRequired
+
+        def risky_tool(command: str) -> str:
+            """Run a risky command."""
+            raise ApprovalRequired("risky_tool", f"Execute: {command}")
+
+        async def deny_async(tool_name: str, action: str, details: dict) -> bool:
+            return False
+
+        responses = [
+            _tool_call_response("call_1", "risky_tool", {"command": "rm -rf"}),
+            _text_response("Understood."),
+        ]
+        cb = AgentCallbacks(on_approval_needed=deny_async)
+        agent = Agent("test/model", driver=MockToolDriver(responses), tools=[risky_tool], agent_callbacks=cb)
+        result = agent.run("delete everything")
+
+        assert any("execution denied" in c for c in _tool_message_contents(result))
+
+
+# ---------------------------------------------------------------------------
+# H2: genuinely async tools through AsyncAgent
+# ---------------------------------------------------------------------------
+
+
+class TestAsyncToolExecution:
+    def test_async_def_tool_executed_through_async_agent(self):
+        """An ``async def`` tool runs to completion in AsyncAgent.run()."""
+
+        async def async_echo(text: str) -> str:
+            """Echo text asynchronously."""
+            await asyncio.sleep(0)
+            return f"async: {text}"
+
+        responses = [
+            _tool_call_response("call_1", "async_echo", {"text": "hi"}),
+            _text_response("Done."),
+        ]
+        agent = AsyncAgent("test/model", driver=MockAsyncToolDriver(responses), tools=[async_echo])
+        result = asyncio.run(agent.run("echo hi"))
+
+        assert result.output == "Done."
+        assert any("async: hi" in c for c in _tool_message_contents(result))
+
+    def test_async_tool_wrapper_registers_async_fn(self):
+        """Wrapped async tools expose ``_async_fn`` for ToolRegistry.aexecute."""
+        from prompture.infra.session import UsageSession
+
+        async def a_fn(x: str) -> str:
+            """Async tool."""
+            return f"got {x}"
+
+        agent = AsyncAgent("test/model", driver=MockAsyncDriver(), tools=[a_fn])
+        ctx = agent._build_run_context("test", None, UsageSession(), [], 0)
+        wrapped = agent._wrap_tools_with_context(ctx)
+
+        td = wrapped.get("a_fn")
+        assert td is not None
+        async_fn = getattr(td.function, "_async_fn", None)
+        assert async_fn is not None
+        assert asyncio.run(async_fn(x="hey")) == "got hey"
+
+    def test_async_tool_sees_current_tool_call_id_contextvar(self):
+        """Contextvars propagate into async tools (no thread/asyncio.run bridge)."""
+        from prompture.extraction.tukuy_bridge import current_tool_call_id
+
+        seen: list[str | None] = []
+
+        async def ctx_probe() -> str:
+            """Record the ambient tool_call_id."""
+            seen.append(current_tool_call_id.get())
+            return "ok"
+
+        responses = [
+            _tool_call_response("call_42", "ctx_probe", {}),
+            _text_response("Done."),
+        ]
+        agent = AsyncAgent("test/model", driver=MockAsyncToolDriver(responses), tools=[ctx_probe])
+        asyncio.run(agent.run("probe"))
+
+        assert seen == ["call_42"]
+
+    def test_async_tool_with_async_approval_handler(self):
+        """Async approval handler is awaited in the async wrapper path."""
+        from prompture.agents.types import ApprovalRequired
+
+        calls = {"n": 0}
+
+        async def risky_async(command: str) -> str:
+            """Risky async tool."""
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise ApprovalRequired("risky_async", f"Execute: {command}")
+            return f"ran: {command}"
+
+        async def approve_async(tool_name: str, action: str, details: dict) -> bool:
+            return True
+
+        responses = [
+            _tool_call_response("call_1", "risky_async", {"command": "ls"}),
+            _text_response("Done."),
+        ]
+        cb = AgentCallbacks(on_approval_needed=approve_async)
+        agent = AsyncAgent("test/model", driver=MockAsyncToolDriver(responses), tools=[risky_async], agent_callbacks=cb)
+        result = asyncio.run(agent.run("run ls"))
+
+        assert calls["n"] == 2
+        assert any("ran: ls" in c for c in _tool_message_contents(result))
+
+
+# ---------------------------------------------------------------------------
+# C2: Agent.stop() cooperative shutdown
+# ---------------------------------------------------------------------------
+
+
+class TestAgentStopDelegation:
+    def test_stop_delegates_to_conversation_request_stop(self):
+        """stop() sets the agent flag and forwards to the conversation."""
+
+        class FakeConv:
+            def __init__(self):
+                self.calls = 0
+
+            def request_stop(self):
+                self.calls += 1
+
+        agent = Agent("test/model", driver=MockDriver())
+        fake = FakeConv()
+        agent._conversation = fake  # type: ignore[assignment]
+        agent.stop()
+
+        assert agent._stop_requested is True
+        assert fake.calls == 1
+
+    def test_stop_without_conversation_is_safe(self):
+        """stop() with no active conversation only sets the agent flag."""
+        agent = Agent("test/model", driver=MockDriver())
+        agent.stop()
+        assert agent._stop_requested is True
+
+    def test_stop_halts_running_tool_loop(self):
+        """A tool calling agent.stop() ends the loop with a graceful answer."""
+        holder: dict[str, Any] = {}
+
+        def stopper() -> str:
+            """Request the agent to stop."""
+            holder["agent"].stop()
+            return "stop requested"
+
+        responses = [
+            _tool_call_response("call_1", "stopper", {}),
+            _text_response("final answer after stop"),
+        ]
+        driver = MockToolDriver(responses)
+        agent = Agent(
+            "test/model",
+            driver=driver,
+            tools=[stopper],
+            max_iterations=5,
+            persistent_conversation=True,
+        )
+        holder["agent"] = agent
+        result = agent.run("start")
+
+        assert result.output == "final answer after stop"
+        # 1 tool-call round + 1 final answer call; the loop did not run all 5 rounds
+        assert driver._call_idx == 2
+
+    def test_async_stop_delegates_to_conversation_request_stop(self):
+        """AsyncAgent.stop() forwards to the conversation as well."""
+
+        class FakeConv:
+            def __init__(self):
+                self.calls = 0
+
+            def request_stop(self):
+                self.calls += 1
+
+        agent = AsyncAgent("test/model", driver=MockAsyncDriver())
+        fake = FakeConv()
+        agent._conversation = fake
+        agent.stop()
+
+        assert agent._stop_requested is True
+        assert fake.calls == 1
+
+    def test_stop_halts_loop_without_persistent_conversation(self):
+        """stop() reaches the loop of a default (non-persistent) agent.
+
+        Regression guard: ``_conversation`` is only populated when
+        ``persistent_conversation=True``, so forwarding solely through it made
+        ``stop()`` a silent no-op for the default agent.
+        """
+        holder: dict[str, Any] = {}
+
+        def stopper() -> str:
+            """Request the agent to stop."""
+            holder["agent"].stop()
+            return "stop requested"
+
+        responses = [
+            _tool_call_response("call_1", "stopper", {}),
+            _text_response("final answer after stop"),
+        ]
+        driver = MockToolDriver(responses)
+        agent = Agent("test/model", driver=driver, tools=[stopper], max_iterations=5)
+        holder["agent"] = agent
+        result = agent.run("start")
+
+        assert result.output == "final answer after stop"
+        # 1 tool-call round + 1 final answer; the loop did not run all 5 rounds.
+        assert driver._call_idx == 2
+
+    def test_stop_before_run_is_not_lost_to_the_race(self):
+        """A stop() landing before the conversation exists is replayed onto it."""
+
+        def ping() -> str:
+            """Ping."""
+            return "pong"
+
+        agent = Agent("test/model", driver=MockToolDriver([_text_response("hi")]), tools=[ping])
+        conv = agent._build_conversation()
+        assert conv._stop_requested is False
+
+        agent.stop()
+        # Rebuilding mid-run must carry the pending request over.
+        conv2 = agent._build_conversation()
+        assert conv2._stop_requested is True
+
+    def test_async_stop_halts_loop_without_persistent_conversation(self):
+        """AsyncAgent.stop() also reaches a non-persistent run's loop."""
+        holder: dict[str, Any] = {}
+
+        def stopper() -> str:
+            """Request the agent to stop."""
+            holder["agent"].stop()
+            return "stop requested"
+
+        async def _test():
+            responses = [
+                _tool_call_response("call_1", "stopper", {}),
+                _text_response("async final answer after stop"),
+            ]
+            driver = MockAsyncToolDriver(responses)
+            agent = AsyncAgent("test/model", driver=driver, tools=[stopper], max_iterations=5)
+            holder["agent"] = agent
+            result = await agent.run("start")
+
+            assert result.output == "async final answer after stop"
+            assert driver._call_idx == 2
+
+        asyncio.run(_test())
+
+
+# ---------------------------------------------------------------------------
+# Per-tool timeout plumbed from the Agent
+# ---------------------------------------------------------------------------
+
+
+class TestAgentToolTimeout:
+    def test_tool_timeout_forwarded_to_conversation(self):
+        """Agent(tool_timeout=...) reaches the Conversation that runs tools."""
+
+        def ping() -> str:
+            """Ping."""
+            return "pong"
+
+        agent = Agent("test/model", driver=MockToolDriver([_text_response("hi")]), tools=[ping], tool_timeout=2.5)
+        conv = agent._build_conversation()
+        assert conv._tool_timeout == 2.5
+
+    def test_tool_timeout_defaults_to_none(self):
+        """No timeout unless asked for, preserving the previous behaviour."""
+        agent = Agent("test/model", driver=MockToolDriver([_text_response("hi")]))
+        assert agent._build_conversation()._tool_timeout is None
+
+    def test_slow_tool_times_out_and_reports_to_the_model(self):
+        """A tool overrunning the budget yields an error result, not a hang."""
+        import time as _time
+
+        def slow() -> str:
+            """Sleep past the timeout."""
+            _time.sleep(5)
+            return "never returned"
+
+        responses = [
+            _tool_call_response("call_1", "slow", {}),
+            _text_response("gave up on the slow tool"),
+        ]
+        agent = Agent(
+            "test/model",
+            driver=MockToolDriver(responses),
+            tools=[slow],
+            tool_timeout=0.05,
+        )
+        result = agent.run("call the slow tool")
+
+        assert result.output == "gave up on the slow tool"
+        assert any("timed out" in c for c in _tool_message_contents(result))
+
+    def test_async_tool_timeout_forwarded_to_conversation(self):
+        """AsyncAgent(tool_timeout=...) reaches the AsyncConversation too."""
+        agent = AsyncAgent("test/model", driver=MockAsyncToolDriver([_text_response("hi")]), tool_timeout=1.5)
+        assert agent._build_conversation()._tool_timeout == 1.5
+
+
+# ---------------------------------------------------------------------------
+# C4: graceful finish when max_iterations is exhausted
+# ---------------------------------------------------------------------------
+
+
+class TestMaxIterationsGraceful:
+    def test_max_iterations_graceful_finish(self):
+        """Exhausting max_iterations yields a final answer instead of RuntimeError."""
+
+        def ping() -> str:
+            """Ping."""
+            return "pong"
+
+        responses = [
+            _tool_call_response("call_1", "ping", {}),
+            _tool_call_response("call_2", "ping", {}),
+            _text_response("Answering from what I have."),
+        ]
+        driver = MockToolDriver(responses)
+        agent = Agent(
+            "test/model",
+            driver=driver,
+            tools=[ping],
+            max_iterations=2,
+            persistent_conversation=True,
+        )
+        result = agent.run("keep pinging")
+
+        assert result.output == "Answering from what I have."
+        assert result.state == AgentState.idle
+        assert agent.conversation is not None
+        assert agent.conversation.max_rounds_reached is True
+
+    def test_async_max_iterations_graceful_finish(self):
+        """AsyncAgent also finishes gracefully when tool rounds are exhausted."""
+
+        def ping() -> str:
+            """Ping."""
+            return "pong"
+
+        async def _test():
+            responses = [
+                _tool_call_response("call_1", "ping", {}),
+                _tool_call_response("call_2", "ping", {}),
+                _text_response("Async final answer."),
+            ]
+            driver = MockAsyncToolDriver(responses)
+            agent = AsyncAgent(
+                "test/model",
+                driver=driver,
+                tools=[ping],
+                max_iterations=2,
+                persistent_conversation=True,
+            )
+            result = await agent.run("keep pinging")
+            assert result.output == "Async final answer."
+            assert agent.conversation is not None
+            assert agent.conversation.max_rounds_reached is True
+
+        asyncio.run(_test())
+
+
+# ---------------------------------------------------------------------------
+# L10/A5 + M8/A11 + L6/A12: live RunContext, real tool names, durations
+# ---------------------------------------------------------------------------
+
+
+class TestLiveRunContextAndSteps:
+    def test_run_context_refreshed_per_tool_round(self):
+        """Tools see live iteration/messages instead of the run-start snapshot."""
+        snapshots: list[tuple[int, int]] = []
+
+        def probe(ctx: RunContext, note: str) -> str:
+            """Record iteration and message count."""
+            snapshots.append((ctx.iteration, len(ctx.messages)))
+            return f"noted {note}"
+
+        responses = [
+            _tool_call_response("call_1", "probe", {"note": "a"}),
+            _tool_call_response("call_2", "probe", {"note": "b"}),
+            _text_response("done"),
+        ]
+        agent = Agent("test/model", driver=MockToolDriver(responses), tools=[probe], max_iterations=5)
+        agent.run("go")
+
+        assert len(snapshots) == 2
+        assert snapshots[0][0] == 0  # first tool round
+        assert snapshots[1][0] == 1  # second tool round
+        assert snapshots[1][1] > snapshots[0][1]  # message history grew
+
+    def test_tool_result_step_records_real_tool_name(self):
+        """tool_result steps carry the tool name, not the tool_call_id."""
+
+        def my_tool() -> str:
+            """A named tool."""
+            return "result"
+
+        responses = [
+            _tool_call_response("call_xyz", "my_tool", {}),
+            _text_response("ok"),
+        ]
+        agent = Agent("test/model", driver=MockToolDriver(responses), tools=[my_tool])
+        result = agent.run("go")
+
+        tr_steps = [s for s in result.steps if s.step_type == StepType.tool_result]
+        assert len(tr_steps) == 1
+        assert tr_steps[0].tool_name == "my_tool"
+
+    def test_tool_result_step_has_duration_ms(self):
+        """tool_result steps carry a measured duration."""
+        import time as _time
+
+        def slow_tool() -> str:
+            """A slow tool."""
+            _time.sleep(0.02)
+            return "done"
+
+        responses = [
+            _tool_call_response("call_9", "slow_tool", {}),
+            _text_response("ok"),
+        ]
+        agent = Agent("test/model", driver=MockToolDriver(responses), tools=[slow_tool])
+        result = agent.run("go")
+
+        tr_steps = [s for s in result.steps if s.step_type == StepType.tool_result]
+        assert len(tr_steps) == 1
+        assert tr_steps[0].duration_ms >= 10
+
+    def test_async_run_context_refreshed_per_tool_round(self):
+        """AsyncAgent tools also see live iteration/messages."""
+        snapshots: list[tuple[int, int]] = []
+
+        async def aprobe(ctx: RunContext, note: str) -> str:
+            """Record iteration and message count."""
+            snapshots.append((ctx.iteration, len(ctx.messages)))
+            return f"noted {note}"
+
+        async def _test():
+            responses = [
+                _tool_call_response("call_1", "aprobe", {"note": "a"}),
+                _tool_call_response("call_2", "aprobe", {"note": "b"}),
+                _text_response("done"),
+            ]
+            agent = AsyncAgent("test/model", driver=MockAsyncToolDriver(responses), tools=[aprobe], max_iterations=5)
+            await agent.run("go")
+
+        asyncio.run(_test())
+
+        assert len(snapshots) == 2
+        assert snapshots[0][0] == 0
+        assert snapshots[1][0] == 1
+        assert snapshots[1][1] > snapshots[0][1]
+
+
+# ---------------------------------------------------------------------------
+# M10: persistent conversation reuse respects new system prompt / driver
+# ---------------------------------------------------------------------------
+
+
+class TestPersistentConversationReuse:
+    def test_reuse_updates_system_prompt(self):
+        """A reused conversation picks up the newly resolved system prompt."""
+        driver = MockDriver(["one", "two"])
+        agent = Agent("test/model", driver=driver, system_prompt="prompt A", persistent_conversation=True)
+
+        agent.run("hi")
+        assert agent.conversation is not None
+        assert agent.conversation.system_prompt == "prompt A"
+
+        agent._system_prompt = "prompt B"
+        agent.run("hi again")
+        assert agent.conversation.system_prompt == "prompt B"
+
+    def test_reuse_rebuilds_when_driver_swapped(self):
+        """Swapping the agent's driver discards the stale conversation."""
+        d1 = MockDriver(["one"])
+        d2 = MockDriver(["two"])
+        agent = Agent("test/model", driver=d1, persistent_conversation=True)
+
+        agent.run("hi")
+        conv1 = agent.conversation
+        assert conv1 is not None
+
+        agent._driver = d2
+        result = agent.run("hi again")
+
+        assert result.output == "two"
+        assert agent.conversation is not conv1
+        assert agent.conversation._driver is d2
+
+    def test_reuse_keeps_conversation_when_driver_unchanged(self):
+        """Same driver + same config reuses the conversation (history grows)."""
+        driver = MockDriver(["one", "two"])
+        agent = Agent("test/model", driver=driver, persistent_conversation=True)
+
+        agent.run("hi")
+        conv1 = agent.conversation
+        agent.run("hi again")
+
+        assert agent.conversation is conv1

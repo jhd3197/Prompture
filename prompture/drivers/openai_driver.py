@@ -14,7 +14,7 @@ except ImportError:
 
 from ..infra.cost_mixin import CostMixin, prepare_strict_schema
 from ._prompt_cache import derive_prompt_cache_key
-from .base import Driver, _parse_tool_arguments
+from .base import Driver, _apply_openai_tool_options, _normalize_stop_reason, _tool_call_dict
 
 logger = logging.getLogger(__name__)
 
@@ -127,13 +127,8 @@ def _extract_openai_tool_calls(message: Any, stop_reason: str | None) -> list[di
     tool_calls_out: list[dict[str, Any]] = []
     if message.tool_calls:
         for tc in message.tool_calls:
-            args = _parse_tool_arguments(tc.function.arguments, tc.function.name, stop_reason)
             tool_calls_out.append(
-                {
-                    "id": tc.id,
-                    "name": tc.function.name,
-                    "arguments": args,
-                }
+                _tool_call_dict(getattr(tc, "id", None), tc.function.name, tc.function.arguments, stop_reason)
             )
     return tool_calls_out
 
@@ -307,6 +302,7 @@ class OpenAIDriver(CostMixin, Driver):
             extra={"tools": tools},
             prompt_cache_key=_openai_prompt_cache_key(messages, opts, tools),
         )
+        _apply_openai_tool_options(kwargs, options)
 
         resp = self.client.chat.completions.create(**kwargs)
 
@@ -321,8 +317,10 @@ class OpenAIDriver(CostMixin, Driver):
 
         choice = resp.choices[0]
         text = choice.message.content or ""
-        stop_reason = choice.finish_reason
-        tool_calls_out = _extract_openai_tool_calls(choice.message, stop_reason)
+        raw_stop_reason = choice.finish_reason
+        tool_calls_out = _extract_openai_tool_calls(choice.message, raw_stop_reason)
+        stop_reason = _normalize_stop_reason(raw_stop_reason, tool_calls_present=bool(tool_calls_out))
+        meta["raw_stop_reason"] = raw_stop_reason
 
         return {
             "text": text,

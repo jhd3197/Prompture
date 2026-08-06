@@ -15,6 +15,8 @@ Example::
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
+import contextvars
 import inspect
 import json
 import logging
@@ -26,7 +28,7 @@ from typing import Any, Generic
 from pydantic import BaseModel
 
 from ..extraction.tools import clean_json_text
-from ..infra.budget import BudgetPolicy, BudgetState, enforce_budget, resolve_budget_policy
+from ..infra.budget import BudgetPolicy, resolve_budget_policy
 from ..infra.callbacks import DriverCallbacks
 from ..infra.provider_env import ProviderEnvironment
 from ..infra.session import UsageSession
@@ -68,6 +70,32 @@ def _is_async_callable(fn: Callable[..., Any]) -> bool:
     # Check if the object has an async __call__ method (callable class)
     dunder_call = type(fn).__call__ if callable(fn) else None
     return dunder_call is not None and asyncio.iscoroutinefunction(dunder_call)
+
+
+def _run_awaitable_sync(awaitable: Any) -> Any:
+    """Drive *awaitable* to completion from sync code.
+
+    Used only as a fallback when a sync caller (``ToolRegistry.execute``)
+    hits an async tool/callback.  When a loop is already running in the
+    current thread the awaitable runs on a worker thread with the caller's
+    ``contextvars`` copied over, so values such as tukuy's
+    ``SecurityContext`` and ``current_tool_call_id`` survive the hop.
+    The preferred path is the ``_async_fn`` hook awaited by
+    :meth:`ToolRegistry.aexecute`, which needs no thread bridge at all.
+    """
+
+    async def _await_it() -> Any:
+        return await awaitable
+
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+    if loop is not None and loop.is_running():
+        ctx_snapshot = contextvars.copy_context()
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            return pool.submit(ctx_snapshot.run, lambda: asyncio.run(_await_it())).result()
+    return asyncio.run(_await_it())
 
 
 def _tool_wants_context(fn: Callable[..., Any]) -> bool:
@@ -160,6 +188,11 @@ class AsyncAgent(Generic[DepsType]):
         skill_config: Optional configuration dict injected as a
             :class:`SkillContext` into tukuy skill ``invoke()`` calls.
             When ``None`` (default) no config is injected.
+        tool_timeout: Per-tool wall-clock budget in seconds.  A tool that
+            overruns it yields an error result the model can react to
+            instead of wedging the run forever.  ``None`` (default) means
+            no timeout.  Can be overridden per call via
+            ``options={"tool_timeout": ...}``.
     """
 
     def __init__(
@@ -189,6 +222,7 @@ class AsyncAgent(Generic[DepsType]):
         auto_approve_safe_only: bool = False,
         skill_config: dict[str, Any] | None = None,
         max_tool_result_length: int | None = None,
+        tool_timeout: float | None = None,
         max_depth: int = _DEFAULT_MAX_AGENT_DEPTH,
         env: ProviderEnvironment | None = None,
     ) -> None:
@@ -220,7 +254,12 @@ class AsyncAgent(Generic[DepsType]):
         self._auto_approve_safe_only = auto_approve_safe_only
         self._skill_config = skill_config
         self._max_tool_result_length = max_tool_result_length
+        self._tool_timeout = tool_timeout
         self._conversation: Any = None
+        # The conversation driving the current run.  Tracked separately from
+        # ``_conversation`` (which only holds persistent ones) so that
+        # ``stop()`` can reach the loop of a non-persistent run too.
+        self._active_conversation: Any = None
 
         # Build internal tool registry
         self._tools = ToolRegistry()
@@ -256,8 +295,21 @@ class AsyncAgent(Generic[DepsType]):
         return self._lifecycle
 
     def stop(self) -> None:
-        """Request graceful shutdown after the current iteration."""
+        """Request graceful shutdown after the current iteration.
+
+        Sets the agent-level flag and forwards the request to the conversation
+        driving the current run (cooperative stop) so its tool-round loop
+        exits gracefully between rounds instead of starting another round.
+        Works for non-persistent agents too: the in-flight conversation is
+        tracked in ``_active_conversation`` for the duration of the run, so
+        the flag is never merely decorative.
+
+        Safe to call from a tool, a callback, or another thread.
+        """
         self._stop_requested = True
+        conv = self._active_conversation or self._conversation
+        if conv is not None:
+            conv.request_stop()
 
     @property
     def callbacks(self) -> AgentCallbacks:
@@ -317,8 +369,6 @@ class AsyncAgent(Generic[DepsType]):
                 loop = None
 
             if loop is not None and loop.is_running():
-                import concurrent.futures
-
                 with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
                     result = pool.submit(asyncio.run, agent.run(prompt)).result()
             else:
@@ -329,8 +379,26 @@ class AsyncAgent(Generic[DepsType]):
                 return extractor(result)
             return result.output_text
 
+        async def _call_agent_async(prompt: str) -> str:
+            """Run the wrapped async agent, awaited in the current loop.
+
+            Registered as ``_async_fn`` so :meth:`ToolRegistry.aexecute`
+            awaits this directly instead of using the thread bridge in
+            ``_call_agent`` (which drops ``contextvars`` such as tukuy's
+            ``SecurityContext`` and ``current_tool_call_id``).
+            """
+            result = await agent.run(prompt)
+            _call_agent._last_agent_result = result  # type: ignore[attr-defined]
+            if extractor is not None:
+                extracted = extractor(result)
+                if inspect.isawaitable(extracted):
+                    extracted = await extracted
+                return extracted
+            return result.output_text
+
         _call_agent._source_agent = agent  # type: ignore[attr-defined]
         _call_agent._last_agent_result = None  # type: ignore[attr-defined]
+        _call_agent._async_fn = _call_agent_async  # type: ignore[attr-defined]
 
         return ToolDefinition(
             name=tool_name,
@@ -371,6 +439,7 @@ class AsyncAgent(Generic[DepsType]):
         token = _agent_depth.set(current_depth + 1)
         self._lifecycle = AgentState.running
         self._stop_requested = False
+        self._active_conversation = None
         steps: list[AgentStep] = []
 
         try:
@@ -444,17 +513,67 @@ class AsyncAgent(Generic[DepsType]):
             prompt=prompt,
         )
 
+    def _make_live_ctx_fn(
+        self,
+        prompt: str,
+        deps: Any,
+        session: UsageSession,
+        run_state: dict[str, Any],
+    ) -> Callable[[], RunContext[Any]]:
+        """Return a factory that builds a fresh :class:`RunContext` per call.
+
+        The factory reads the current conversation from *run_state* (key
+        ``"conv"``) so tools invoked in later tool rounds see live
+        ``iteration``/``messages``/``usage`` instead of the snapshot taken
+        at the start of the run.  ``run_state["conv"]`` must be assigned
+        once the conversation is built; before that, an empty context is
+        produced.
+        """
+
+        def _live_ctx() -> RunContext[Any]:
+            conv = run_state.get("conv")
+            messages = conv.messages if conv is not None else []
+            iteration = max(
+                0,
+                sum(1 for m in messages if m.get("role") == "assistant" and m.get("tool_calls")) - 1,
+            )
+            return self._build_run_context(prompt, deps, session, messages, iteration)
+
+        return _live_ctx
+
     # ------------------------------------------------------------------
     # Tool wrapping (RunContext injection + ModelRetry + callbacks)
     # ------------------------------------------------------------------
 
-    def _wrap_tools_with_context(self, ctx: RunContext[Any], session: UsageSession | None = None) -> ToolRegistry:
+    def _wrap_tools_with_context(
+        self,
+        ctx: RunContext[Any],
+        session: UsageSession | None = None,
+        ctx_fn: Callable[[], RunContext[Any]] | None = None,
+        tool_timings: list[dict[str, Any]] | None = None,
+    ) -> ToolRegistry:
         """Return a new :class:`ToolRegistry` with wrapped tool functions.
 
-        All wrappers are **sync** so they work with ``ToolRegistry.execute()``.
-        For async tool functions, the wrapper uses
-        ``asyncio.get_event_loop().run_until_complete()`` as a fallback.
-        If *session* is provided, child agent usage is aggregated into it.
+        For each registered tool:
+        - If the tool's first param is ``RunContext``, inject the live context
+          automatically.  When *ctx_fn* is provided it is called at each tool
+          invocation so tools see the current iteration/messages; otherwise the
+          static *ctx* snapshot is used.
+        - Catch :class:`ModelRetry` and convert to an error string.
+        - Fire ``agent_callbacks.on_tool_start`` / ``on_tool_end``.
+        - Strip the ``RunContext`` parameter from the JSON schema sent to the LLM.
+        - If the tool wraps a child agent (via ``as_tool``), aggregate its
+          usage into the parent *session*.
+        - When *tool_timings* is provided, append a
+          ``{"name", "timestamp", "duration_ms"}`` record per invocation.
+
+        Async tool functions additionally get an ``async`` wrapper attached
+        as ``_async_fn`` on the sync wrapper.  :meth:`ToolRegistry.aexecute`
+        prefers and awaits that hook, so inside ``AsyncConversation`` the
+        coroutine runs on the current event loop — no thread/asyncio.run
+        bridge, and ``contextvars`` (tukuy ``SecurityContext``,
+        ``current_tool_call_id``) propagate naturally.  The sync wrapper
+        remains as a fallback for plain :meth:`ToolRegistry.execute` calls.
         """
         if not self._tools:
             return ToolRegistry()
@@ -475,111 +594,50 @@ class AsyncAgent(Generic[DepsType]):
                 _is_async: bool,
                 _cb: AgentCallbacks = cb,
                 _session: UsageSession | None = session,
+                _ctx_fn: Callable[[], RunContext[Any]] | None = ctx_fn,
+                _timings: list[dict[str, Any]] | None = tool_timings,
             ) -> Callable[..., Any]:
                 def _invoke_cb_sync(callback: Callable[..., Any], *cb_args: Any) -> Any:
                     """Invoke a possibly-async callback from a sync tool wrapper."""
-                    if _is_async_callable(callback):
-                        try:
-                            loop = asyncio.get_running_loop()
-                        except RuntimeError:
-                            loop = None
-                        if loop is not None and loop.is_running():
-                            import concurrent.futures
+                    result = callback(*cb_args)
+                    if inspect.isawaitable(result):
+                        return _run_awaitable_sync(result)
+                    return result
 
-                            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                                return pool.submit(asyncio.run, callback(*cb_args)).result()
-                        else:
-                            return asyncio.run(callback(*cb_args))
-                    return callback(*cb_args)
+                def _prepare_call(kwargs: dict[str, Any]) -> dict[str, Any]:
+                    """Apply skill-config injection and the auto-approve gate."""
+                    # Inject skill config via SkillContext for tukuy skills
+                    if self._skill_config is not None:
+                        _skill_obj = getattr(_fn, "__skill__", None)
+                        if _skill_obj is not None:
+                            from tukuy import SkillContext
 
-                def wrapper(**kwargs: Any) -> Any:
-                    if _cb.on_tool_start:
-                        _invoke_cb_sync(_cb.on_tool_start, _name, kwargs)
-                    try:
-                        # Inject skill config via SkillContext for tukuy skills
-                        if self._skill_config is not None:
-                            _skill_obj = getattr(_fn, "__skill__", None)
-                            if _skill_obj is not None:
-                                from tukuy import SkillContext
+                            kwargs["context"] = SkillContext(config=self._skill_config)
 
-                                kwargs["context"] = SkillContext(config=self._skill_config)
+                    # Auto-approve gate: block tukuy skills with side effects
+                    if self._auto_approve_safe_only:
+                        skill_obj = getattr(_fn, "__skill__", None)
+                        if skill_obj is not None:
+                            desc = skill_obj.descriptor
+                            has_side_effects = getattr(desc, "side_effects", False)
+                            has_network = getattr(desc, "requires_network", False)
+                            if has_side_effects or has_network:
+                                raise ApprovalRequired(
+                                    tool_name=_name,
+                                    action="execute tool with side effects",
+                                    details={
+                                        "side_effects": has_side_effects,
+                                        "requires_network": has_network,
+                                        "skill_name": desc.name,
+                                    },
+                                )
+                    return kwargs
 
-                        # Auto-approve gate: block tukuy skills with side effects
-                        if self._auto_approve_safe_only:
-                            skill_obj = getattr(_fn, "__skill__", None)
-                            if skill_obj is not None:
-                                desc = skill_obj.descriptor
-                                has_side_effects = getattr(desc, "side_effects", False)
-                                has_network = getattr(desc, "requires_network", False)
-                                if has_side_effects or has_network:
-                                    raise ApprovalRequired(
-                                        tool_name=_name,
-                                        action="execute tool with side effects",
-                                        details={
-                                            "side_effects": has_side_effects,
-                                            "requires_network": has_network,
-                                            "skill_name": desc.name,
-                                        },
-                                    )
+                def _call_args(call_ctx: RunContext[Any]) -> tuple[Any, ...]:
+                    return (call_ctx,) if _wants else ()
 
-                        if _wants:
-                            call_args: tuple[Any, ...] = (ctx,)
-                        else:
-                            call_args = ()
-
-                        if _is_async:
-                            coro = _fn(*call_args, **kwargs)
-                            # Try to get running loop; if none, use asyncio.run()
-                            try:
-                                loop = asyncio.get_running_loop()
-                            except RuntimeError:
-                                loop = None
-                            if loop is not None and loop.is_running():
-                                # We're inside an async context — create a new thread
-                                import concurrent.futures
-
-                                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                                    result = pool.submit(asyncio.run, coro).result()
-                            else:
-                                result = asyncio.run(coro)
-                        else:
-                            result = _fn(*call_args, **kwargs)
-                    except ApprovalRequired as exc:
-                        # Handle approval request
-                        if _cb.on_approval_needed:
-                            approved = _invoke_cb_sync(_cb.on_approval_needed, exc.tool_name, exc.action, exc.details)
-                            if approved:
-                                try:
-                                    if _is_async:
-                                        coro = _fn(*call_args, **kwargs) if not _wants else _fn(ctx, **kwargs)
-                                        try:
-                                            loop = asyncio.get_running_loop()
-                                        except RuntimeError:
-                                            loop = None
-                                        if loop is not None and loop.is_running():
-                                            import concurrent.futures
-
-                                            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                                                result = pool.submit(asyncio.run, coro).result()
-                                        else:
-                                            result = asyncio.run(coro)
-                                    else:
-                                        if _wants:
-                                            result = _fn(ctx, **kwargs)
-                                        else:
-                                            result = _fn(**kwargs)
-                                except ApprovalRequired:
-                                    result = f"Error: Tool '{_name}' requires approval but approval was already granted"
-                                except ModelRetry as retry_exc:
-                                    result = f"Error: {retry_exc.message}"
-                            else:
-                                result = f"Error: Tool '{_name}' execution denied - approval required: {exc.action}"
-                        else:
-                            result = f"Error: Tool '{_name}' requires approval but no approval handler is configured"
-                    except ModelRetry as exc:
-                        result = f"Error: {exc.message}"
-
-                    # Aggregate child agent usage to parent session
+                def _aggregate_child_usage() -> None:
+                    """Aggregate child agent usage to the parent session."""
                     if _session is not None and hasattr(_fn, "_source_agent"):
                         agent_result = getattr(_fn, "_last_agent_result", None)
                         if agent_result is not None and hasattr(agent_result, "run_usage"):
@@ -597,10 +655,97 @@ class AsyncAgent(Generic[DepsType]):
                                 }
                             )
 
+                def _record_timing(start: float) -> None:
+                    if _timings is not None:
+                        _timings.append(
+                            {
+                                "name": _name,
+                                "timestamp": time.time(),
+                                "duration_ms": (time.perf_counter() - start) * 1000,
+                            }
+                        )
+
+                def wrapper(**kwargs: Any) -> Any:
+                    call_ctx = _ctx_fn() if _ctx_fn is not None else ctx
+                    start = time.perf_counter()
+                    if _cb.on_tool_start:
+                        _invoke_cb_sync(_cb.on_tool_start, _name, kwargs)
+                    try:
+                        _prepare_call(kwargs)
+                        if _is_async:
+                            result = _run_awaitable_sync(_fn(*_call_args(call_ctx), **kwargs))
+                        else:
+                            result = _fn(*_call_args(call_ctx), **kwargs)
+                    except ApprovalRequired as exc:
+                        # Handle approval request
+                        if _cb.on_approval_needed:
+                            approved = _invoke_cb_sync(_cb.on_approval_needed, exc.tool_name, exc.action, exc.details)
+                            if approved:
+                                # Retry the tool call after approval
+                                try:
+                                    if _is_async:
+                                        result = _run_awaitable_sync(_fn(*_call_args(call_ctx), **kwargs))
+                                    else:
+                                        result = _fn(*_call_args(call_ctx), **kwargs)
+                                except ApprovalRequired:
+                                    # Tool raised ApprovalRequired again - don't loop
+                                    result = f"Error: Tool '{_name}' requires approval but approval was already granted"
+                                except ModelRetry as retry_exc:
+                                    result = f"Error: {retry_exc.message}"
+                            else:
+                                result = f"Error: Tool '{_name}' execution denied - approval required: {exc.action}"
+                        else:
+                            result = f"Error: Tool '{_name}' requires approval but no approval handler is configured"
+                    except ModelRetry as exc:
+                        result = f"Error: {exc.message}"
+
+                    _aggregate_child_usage()
+                    _record_timing(start)
+
                     if _cb.on_tool_end:
                         _invoke_cb_sync(_cb.on_tool_end, _name, result)
                     return result
 
+                async def async_wrapper(**kwargs: Any) -> Any:
+                    """Fully-async wrapper: awaited directly via ``_async_fn``."""
+                    call_ctx = _ctx_fn() if _ctx_fn is not None else ctx
+                    start = time.perf_counter()
+                    if _cb.on_tool_start:
+                        await AsyncAgent._invoke_callback(_cb.on_tool_start, _name, kwargs)
+                    try:
+                        _prepare_call(kwargs)
+                        result = await _fn(*_call_args(call_ctx), **kwargs)
+                    except ApprovalRequired as exc:
+                        # Handle approval request
+                        if _cb.on_approval_needed:
+                            approved = await AsyncAgent._invoke_callback(
+                                _cb.on_approval_needed, exc.tool_name, exc.action, exc.details
+                            )
+                            if approved:
+                                # Retry the tool call after approval
+                                try:
+                                    result = await _fn(*_call_args(call_ctx), **kwargs)
+                                except ApprovalRequired:
+                                    # Tool raised ApprovalRequired again - don't loop
+                                    result = f"Error: Tool '{_name}' requires approval but approval was already granted"
+                                except ModelRetry as retry_exc:
+                                    result = f"Error: {retry_exc.message}"
+                            else:
+                                result = f"Error: Tool '{_name}' execution denied - approval required: {exc.action}"
+                        else:
+                            result = f"Error: Tool '{_name}' requires approval but no approval handler is configured"
+                    except ModelRetry as exc:
+                        result = f"Error: {exc.message}"
+
+                    _aggregate_child_usage()
+                    _record_timing(start)
+
+                    if _cb.on_tool_end:
+                        await AsyncAgent._invoke_callback(_cb.on_tool_end, _name, result)
+                    return result
+
+                if _is_async:
+                    wrapper._async_fn = async_wrapper  # type: ignore[attr-defined]
                 return wrapper
 
             wrapped = _make_wrapper(original_fn, wants_ctx, tool_name, is_async)
@@ -758,14 +903,28 @@ class AsyncAgent(Generic[DepsType]):
         # Reuse existing conversation in persistent mode
         if self._persistent_conversation and self._conversation is not None:
             conv = self._conversation
-            if tools is not None:
-                conv._tools = tools
-            if driver_callbacks is not None:
-                conv._driver.callbacks = driver_callbacks
-            hook = getattr(self, "_before_turn_hook", None)
-            if hook is not None:
-                conv._before_turn = hook
-            return conv
+            # If the agent's driver was swapped after the conversation was
+            # built (e.g. a budget fallback forced a rebuild), the cached
+            # conversation still holds the old driver — discard it and fall
+            # through to build a fresh one.
+            driver_stale = self._driver is not None and getattr(conv, "_driver", None) is not self._driver
+            if not driver_stale:
+                # Respect the newly resolved system prompt for this run.
+                if system_prompt is not None:
+                    conv.system_prompt = system_prompt
+                # NOTE: assigning ``callbacks`` mutates the driver instance,
+                # which may be shared (e.g. passed to several agents).  A
+                # persistent-conversation agent should treat its driver as
+                # exclusively owned by the agent.
+                if tools is not None:
+                    conv._tools = tools
+                if driver_callbacks is not None:
+                    conv._driver.callbacks = driver_callbacks
+                hook = getattr(self, "_before_turn_hook", None)
+                if hook is not None:
+                    conv._before_turn = hook
+                return self._track_active(conv)
+            self._conversation = None
 
         effective_tools = tools if tools is not None else (self._tools if self._tools else None)
 
@@ -779,6 +938,8 @@ class AsyncAgent(Generic[DepsType]):
             kwargs["before_turn"] = hook
         if self._max_tool_result_length is not None:
             kwargs["max_tool_result_length"] = self._max_tool_result_length
+        if self._tool_timeout is not None:
+            kwargs["tool_timeout"] = self._tool_timeout
         if self._options:
             kwargs["options"] = self._options
         if driver_callbacks is not None:
@@ -806,6 +967,19 @@ class AsyncAgent(Generic[DepsType]):
         conv = AsyncConversation(**kwargs)
         if self._persistent_conversation:
             self._conversation = conv
+        return self._track_active(conv)
+
+    def _track_active(self, conv: Any) -> Any:
+        """Record *conv* as the conversation driving the current run.
+
+        Lets :meth:`stop` reach the tool-round loop of a non-persistent run.
+        If ``stop()`` was already called between the run starting and the
+        conversation being built, the request is replayed onto *conv* so it
+        is not lost to that race.
+        """
+        self._active_conversation = conv
+        if self._stop_requested:
+            conv.request_stop()
         return conv
 
     async def _execute(
@@ -837,8 +1011,16 @@ class AsyncAgent(Generic[DepsType]):
         # 4. Resolve system prompt
         resolved_system_prompt = self._resolve_system_prompt(ctx)
 
-        # 5. Wrap tools with context (pass session for child agent usage aggregation)
-        wrapped_tools = self._wrap_tools_with_context(ctx, session)
+        # 5. Wrap tools with context (pass session for child agent usage
+        #    aggregation; ctx_fn refreshes RunContext per tool round)
+        run_state: dict[str, Any] = {}
+        tool_timings: list[dict[str, Any]] = []
+        wrapped_tools = self._wrap_tools_with_context(
+            ctx,
+            session,
+            ctx_fn=self._make_live_ctx_fn(prompt, deps, session, run_state),
+            tool_timings=tool_timings,
+        )
 
         # 6. Build AsyncConversation
         conv = self._build_conversation(
@@ -846,36 +1028,16 @@ class AsyncAgent(Generic[DepsType]):
             tools=wrapped_tools if wrapped_tools else None,
             driver_callbacks=driver_callbacks,
         )
+        run_state["conv"] = conv
 
         # 7. Fire on_iteration callback
         if self._agent_callbacks.on_iteration:
             await self._invoke_callback(self._agent_callbacks.on_iteration, 0)
 
-        # 8. Enforce budget policy at the agent level (pre-call)
-        if self._budget_policy is not None:
-            state = BudgetState(
-                cost_used=session.cost,
-                tokens_used=session.total_tokens,
-                max_cost=self._max_cost,
-                max_tokens=self._max_tokens,
-            )
-            new_model = enforce_budget(
-                state,
-                self._budget_policy,
-                fallback_models=self._fallback_models,
-                current_model=self._model,
-                on_model_fallback=self._on_model_fallback,
-            )
-            if new_model is not None:
-                self._model = new_model
-                self._driver = None  # force rebuild
-                conv = self._build_conversation(
-                    system_prompt=resolved_system_prompt,
-                    tools=wrapped_tools if wrapped_tools else None,
-                    driver_callbacks=driver_callbacks,
-                )
-
-        # 9. Ask the conversation (handles full tool loop internally)
+        # 8. Ask the conversation (handles full tool loop internally)
+        #    Note: budget policy is enforced inside the conversation; the
+        #    agent-level pre-call check was removed because it read a fresh,
+        #    always-empty UsageSession.
         agent_name = self.name or self.__class__.__name__
         with tracker.agent(agent_name):
             t0 = time.perf_counter()
@@ -896,7 +1058,7 @@ class AsyncAgent(Generic[DepsType]):
             # 9. Extract steps and tool calls
             all_tool_calls: list[dict[str, Any]] = []
             full_results = getattr(conv, "_full_tool_results", None)
-            self._extract_steps(conv.messages, steps, all_tool_calls, full_results)
+            self._extract_steps(conv.messages, steps, all_tool_calls, full_results, tool_timings)
 
             # Handle output_type parsing
             if self._output_type is not None:
@@ -944,9 +1106,40 @@ class AsyncAgent(Generic[DepsType]):
         steps: list[AgentStep],
         all_tool_calls: list[dict[str, Any]],
         full_tool_results: dict[str, str] | None = None,
+        tool_timings: list[dict[str, Any]] | None = None,
     ) -> None:
-        """Scan conversation messages and populate steps and tool_calls."""
+        """Scan conversation messages and populate steps and tool_calls.
+
+        Args:
+            messages: Conversation messages to scan.
+            steps: List to append :class:`AgentStep` records to.
+            all_tool_calls: List to append tool-call dicts to.
+            full_tool_results: Optional map of tool_call_id to the full
+                (pre-truncation) tool result string.
+            tool_timings: Optional list of ``{"name", "timestamp",
+                "duration_ms"}`` records captured by the tool wrappers.
+                Consumed in FIFO order per tool name to populate
+                ``duration_ms`` and a real execution timestamp on
+                ``tool_result`` steps.
+        """
         now = time.time()
+
+        # Map tool_call_id -> tool name from assistant tool_calls messages so
+        # tool_result steps record the real tool name, not the call id.
+        id_to_name: dict[str, str] = {}
+        for msg in messages:
+            if msg.get("role") == "assistant":
+                for tc in msg.get("tool_calls") or []:
+                    tc_fn = tc.get("function", {})
+                    tc_name = tc_fn.get("name", tc.get("name", ""))
+                    tc_id = tc.get("id", "")
+                    if tc_id and tc_name:
+                        id_to_name[tc_id] = tc_name
+
+        # FIFO queues of timing records per tool name
+        timings_by_name: dict[str, list[dict[str, Any]]] = {}
+        for rec in tool_timings or []:
+            timings_by_name.setdefault(rec.get("name", ""), []).append(rec)
 
         for msg in messages:
             role = msg.get("role", "")
@@ -1018,13 +1211,23 @@ class AsyncAgent(Generic[DepsType]):
                 full_result = None
                 if full_tool_results and tool_call_id:
                     full_result = full_tool_results.get(tool_call_id)
+                # Resolve the real tool name from the originating assistant
+                # tool_calls message (fall back to the raw id).
+                tool_name = id_to_name.get(tool_call_id, tool_call_id)
+                # Pop the matching timing record (FIFO) if available.
+                timing = None
+                if tool_name is not None:
+                    queue = timings_by_name.get(tool_name)
+                    if queue:
+                        timing = queue.pop(0)
                 steps.append(
                     AgentStep(
                         step_type=StepType.tool_result,
-                        timestamp=now,
+                        timestamp=timing["timestamp"] if timing else now,
                         content=msg.get("content", ""),
-                        tool_name=tool_call_id,
+                        tool_name=tool_name,
                         tool_result=full_result,
+                        duration_ms=timing["duration_ms"] if timing else 0.0,
                     )
                 )
 
@@ -1104,9 +1307,18 @@ class AsyncAgent(Generic[DepsType]):
         *,
         images: list[Any] | None = None,
     ) -> AsyncGenerator[AgentStep]:
-        """Async generator that executes the agent loop and yields each step."""
+        """Async generator that executes the agent loop and yields each step.
+
+        Raises:
+            RecursionError: If the agent nesting depth exceeds ``max_depth``.
+        """
+        current_depth = _agent_depth.get()
+        if current_depth >= self._max_depth:
+            raise RecursionError(f"Agent recursion depth exceeded: {current_depth} >= {self._max_depth}")
+        token = _agent_depth.set(current_depth + 1)
         self._lifecycle = AgentState.running
         self._stop_requested = False
+        self._active_conversation = None
         steps: list[AgentStep] = []
 
         try:
@@ -1119,6 +1331,8 @@ class AsyncAgent(Generic[DepsType]):
         except Exception:
             self._lifecycle = AgentState.errored
             raise
+        finally:
+            _agent_depth.reset(token)
 
     # ------------------------------------------------------------------
     # run_stream() — async streaming
@@ -1142,6 +1356,7 @@ class AsyncAgent(Generic[DepsType]):
         token = _agent_depth.set(current_depth + 1)
         self._lifecycle = AgentState.running
         self._stop_requested = False
+        self._active_conversation = None
         steps: list[AgentStep] = []
 
         try:
@@ -1154,7 +1369,14 @@ class AsyncAgent(Generic[DepsType]):
             ctx = self._build_run_context(prompt, deps, session, [], 0)
             effective_prompt = self._run_input_guardrails(ctx, prompt)
             resolved_system_prompt = self._resolve_system_prompt(ctx)
-            wrapped_tools = self._wrap_tools_with_context(ctx, session)
+            run_state: dict[str, Any] = {}
+            tool_timings: list[dict[str, Any]] = []
+            wrapped_tools = self._wrap_tools_with_context(
+                ctx,
+                session,
+                ctx_fn=self._make_live_ctx_fn(prompt, deps, session, run_state),
+                tool_timings=tool_timings,
+            )
             has_tools = bool(wrapped_tools)
 
             conv = self._build_conversation(
@@ -1162,6 +1384,7 @@ class AsyncAgent(Generic[DepsType]):
                 tools=wrapped_tools if wrapped_tools else None,
                 driver_callbacks=driver_callbacks,
             )
+            run_state["conv"] = conv
 
             if self._agent_callbacks.on_iteration:
                 await self._invoke_callback(self._agent_callbacks.on_iteration, 0)
@@ -1199,7 +1422,7 @@ class AsyncAgent(Generic[DepsType]):
             # Extract steps
             all_tool_calls: list[dict[str, Any]] = []
             full_results = getattr(conv, "_full_tool_results", None)
-            self._extract_steps(conv.messages, steps, all_tool_calls, full_results)
+            self._extract_steps(conv.messages, steps, all_tool_calls, full_results, tool_timings)
 
             # Parse output
             if self._output_type is not None:
@@ -1280,6 +1503,7 @@ class AsyncAgent(Generic[DepsType]):
         token = _agent_depth.set(current_depth + 1)
         self._lifecycle = AgentState.running
         self._stop_requested = False
+        self._active_conversation = None
         steps: list[AgentStep] = []
 
         try:
@@ -1291,13 +1515,21 @@ class AsyncAgent(Generic[DepsType]):
             ctx = self._build_run_context(prompt, deps, session, [], 0)
             effective_prompt = self._run_input_guardrails(ctx, prompt)
             resolved_system_prompt = self._resolve_system_prompt(ctx)
-            wrapped_tools = self._wrap_tools_with_context(ctx, session)
+            run_state: dict[str, Any] = {}
+            tool_timings: list[dict[str, Any]] = []
+            wrapped_tools = self._wrap_tools_with_context(
+                ctx,
+                session,
+                ctx_fn=self._make_live_ctx_fn(prompt, deps, session, run_state),
+                tool_timings=tool_timings,
+            )
 
             conv = self._build_conversation(
                 system_prompt=resolved_system_prompt,
                 tools=wrapped_tools if wrapped_tools else None,
                 driver_callbacks=driver_callbacks,
             )
+            run_state["conv"] = conv
 
             if self._agent_callbacks.on_iteration:
                 await self._invoke_callback(self._agent_callbacks.on_iteration, 0)
@@ -1329,7 +1561,7 @@ class AsyncAgent(Generic[DepsType]):
             response_text = "".join(response_text_parts)
             all_tool_calls: list[dict[str, Any]] = []
             full_results = getattr(conv, "_full_tool_results", None)
-            self._extract_steps(conv.messages, steps, all_tool_calls, full_results)
+            self._extract_steps(conv.messages, steps, all_tool_calls, full_results, tool_timings)
 
             if self._output_type is not None:
                 output, output_text = await self._parse_output(conv, response_text, steps, all_tool_calls, 0.0, session)

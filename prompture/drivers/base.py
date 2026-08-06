@@ -16,14 +16,260 @@ except ImportError:
 
 import contextlib
 
+from ..exceptions import DriverError as _DriverError
 from ..infra.callbacks import DriverCallbacks
 
 logger = logging.getLogger("prompture.driver")
 
 
 # ------------------------------------------------------------------
+# Shared driver error with HTTP context
+# ------------------------------------------------------------------
+
+
+class DriverHTTPError(_DriverError):
+    """A driver request failed with HTTP/provider context attached.
+
+    Subclasses :class:`prompture.exceptions.DriverError` so existing
+    ``except DriverError`` callers keep working, while adding structured
+    fields for retry logic and observability:
+
+    - ``status_code`` — HTTP status when the provider returned one.
+    - ``provider`` — pricing-table/provider key (``"grok"``, ``"ollama"`` …).
+    - ``retryable`` — heuristic: timeouts/5xx/429 are worth retrying,
+      4xx auth/validation errors are not.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        status_code: int | None = None,
+        provider: str | None = None,
+        retryable: bool | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.provider = provider
+        if retryable is None:
+            retryable = status_code is None or status_code in (408, 409, 425, 429) or status_code >= 500
+        self.retryable = retryable
+
+
+# ------------------------------------------------------------------
+# Shared stop-reason normalization (driver boundary)
+# ------------------------------------------------------------------
+
+#: Canonical stop-reason vocabulary shared by all drivers.
+STOP_REASONS: frozenset[str] = frozenset({"end_turn", "tool_use", "max_tokens", "content_filter", "error"})
+
+_STOP_REASON_MAP: dict[str, str] = {
+    # OpenAI-compatible finish_reason values
+    "stop": "end_turn",
+    "length": "max_tokens",
+    "tool_calls": "tool_use",
+    "function_call": "tool_use",
+    "content_filter": "content_filter",
+    # Anthropic (already canonical, listed for completeness)
+    "end_turn": "end_turn",
+    "tool_use": "tool_use",
+    "max_tokens": "max_tokens",
+    "stop_sequence": "end_turn",
+    "refusal": "content_filter",
+    # Cohere v2 finish_reason values
+    "complete": "end_turn",
+    "tool_call": "tool_use",
+    "error": "error",
+    "error_limit": "error",
+    # Ollama done_reason values ("stop"/"length" covered above)
+    "load": "end_turn",
+    "unload": "end_turn",
+    # Google Gemini FinishReason enum values (string form)
+    "safety": "content_filter",
+    "recitation": "content_filter",
+    "blocklist": "content_filter",
+    "prohibited_content": "content_filter",
+    "image_safety": "content_filter",
+    "malformed_function_call": "error",
+    "finish_reason_unspecified": "end_turn",
+    "other": "end_turn",
+}
+
+#: Google Gemini numeric FinishReason enum values.
+_GOOGLE_STOP_REASON_MAP: dict[int, str] = {
+    1: "end_turn",  # STOP
+    2: "max_tokens",  # MAX_TOKENS
+    3: "content_filter",  # SAFETY
+    4: "content_filter",  # RECITATION
+    5: "end_turn",  # OTHER
+}
+
+
+def _normalize_stop_reason(raw: Any, *, tool_calls_present: bool = False) -> str:
+    """Normalize a provider stop/finish reason to the shared vocabulary.
+
+    Returns one of ``end_turn``, ``tool_use``, ``max_tokens``,
+    ``content_filter``, ``error``.  Unknown strings pass through unchanged
+    so no information is lost.  When the response contains tool calls but
+    the provider reported a plain end-of-turn (Ollama does this), the
+    reason is upgraded to ``tool_use``.
+    """
+    import enum
+
+    if isinstance(raw, enum.Enum):
+        raw = raw.value
+    if isinstance(raw, bool):
+        normalized = "end_turn"
+    elif isinstance(raw, int):
+        normalized = _GOOGLE_STOP_REASON_MAP.get(raw, "end_turn")
+    elif isinstance(raw, str):
+        normalized = _STOP_REASON_MAP.get(raw.lower(), raw)
+    else:
+        normalized = "end_turn"
+    if tool_calls_present and normalized == "end_turn":
+        return "tool_use"
+    return normalized
+
+
+# ------------------------------------------------------------------
+# Shared tool_choice translation
+# ------------------------------------------------------------------
+
+
+def _translate_tool_choice(tool_choice: Any, api: str) -> Any:
+    """Translate a normalized ``tool_choice`` option into wire format.
+
+    Accepted normalized input: ``"auto"``, ``"none"``, ``"required"``, or
+    ``{"name": "<tool>"}`` to force a specific tool.  Provider-shaped
+    values (already carrying ``type``/``mode`` keys) pass through
+    unchanged so advanced users keep an escape hatch.
+
+    *api* is ``"openai"`` (OpenAI-compatible chat completions),
+    ``"anthropic"``, or ``"google"`` (returns a ``function_calling_config``
+    dict the caller wraps in ``types.ToolConfig``).
+
+    Returns ``None`` when *tool_choice* is ``None`` or unusable (a
+    warning is logged in the latter case).
+    """
+    if tool_choice is None:
+        return None
+
+    if api == "anthropic":
+        if isinstance(tool_choice, str):
+            mapping = {"auto": "auto", "none": "none", "required": "any"}
+            t = mapping.get(tool_choice)
+            if t is None:
+                logger.warning("Unsupported tool_choice %r for anthropic; ignoring", tool_choice)
+                return None
+            return {"type": t}
+        if isinstance(tool_choice, dict):
+            if "type" in tool_choice:
+                return tool_choice
+            if "name" in tool_choice:
+                return {"type": "tool", "name": tool_choice["name"]}
+        logger.warning("Unsupported tool_choice %r for anthropic; ignoring", tool_choice)
+        return None
+
+    if api == "google":
+        if isinstance(tool_choice, str):
+            mapping = {"auto": "AUTO", "none": "NONE", "required": "ANY"}
+            m = mapping.get(tool_choice)
+            if m is None:
+                logger.warning("Unsupported tool_choice %r for google; ignoring", tool_choice)
+                return None
+            return {"mode": m}
+        if isinstance(tool_choice, dict):
+            if "mode" in tool_choice:
+                return tool_choice
+            if "name" in tool_choice:
+                return {"mode": "ANY", "allowed_function_names": [tool_choice["name"]]}
+        logger.warning("Unsupported tool_choice %r for google; ignoring", tool_choice)
+        return None
+
+    # OpenAI-compatible wire format
+    if isinstance(tool_choice, str):
+        if tool_choice in ("auto", "none", "required"):
+            return tool_choice
+        logger.warning("Unsupported tool_choice %r for openai-compatible API; ignoring", tool_choice)
+        return None
+    if isinstance(tool_choice, dict):
+        if "type" in tool_choice:
+            return tool_choice
+        if "name" in tool_choice:
+            return {"type": "function", "function": {"name": tool_choice["name"]}}
+    logger.warning("Unsupported tool_choice %r for openai-compatible API; ignoring", tool_choice)
+    return None
+
+
+def _apply_openai_tool_options(kwargs: dict[str, Any], options: dict[str, Any]) -> None:
+    """Pass ``tool_choice`` / ``parallel_tool_calls`` through to an
+    OpenAI-compatible request payload, translating ``tool_choice`` from
+    the normalized form (see :func:`_translate_tool_choice`)."""
+    if "tool_choice" in options:
+        translated = _translate_tool_choice(options["tool_choice"], "openai")
+        if translated is not None:
+            kwargs["tool_choice"] = translated
+    if "parallel_tool_calls" in options:
+        kwargs["parallel_tool_calls"] = options["parallel_tool_calls"]
+
+
+# ------------------------------------------------------------------
 # Shared tool-argument parser for OpenAI-compatible drivers
 # ------------------------------------------------------------------
+
+
+def _parse_tool_arguments_with_error(
+    raw_args: Any, tool_name: str, stop_reason: str | None = None
+) -> tuple[dict[str, Any], str | None]:
+    """Parse tool call arguments, returning ``(arguments, error)``.
+
+    Same resilience contract as :func:`_parse_tool_arguments` (never
+    raises, falls back to ``{}``) but also returns a human-readable
+    error message when parsing failed or truncation is detected, so
+    callers can attach ``tc["arguments_error"]`` and the conversation
+    layer can ask the model to retry instead of executing garbage.
+    """
+    if isinstance(raw_args, dict):
+        return raw_args, None
+    if isinstance(raw_args, str):
+        try:
+            parsed = json.loads(raw_args)
+            if isinstance(parsed, dict):
+                return parsed, None
+            msg = f"Tool arguments for {tool_name} parsed to non-object JSON: {raw_args[:200]!r}"
+            logger.warning("Tool arguments for %s parsed to non-object JSON: %r", tool_name, raw_args[:200])
+            return {}, msg
+        except json.JSONDecodeError:
+            if stop_reason in ("length", "max_tokens"):
+                msg = (
+                    f"Tool arguments for {tool_name} were truncated due to the max_tokens limit. "
+                    "Increase max_tokens in options to allow longer tool outputs."
+                )
+                logger.warning(
+                    "Tool arguments for %s were truncated due to max_tokens limit. "
+                    "Increase max_tokens in options to allow longer tool outputs. "
+                    "Truncated arguments: %r",
+                    tool_name,
+                    raw_args[:200] if raw_args else raw_args,
+                )
+            else:
+                msg = f"Failed to parse tool arguments for {tool_name} as JSON: {raw_args[:200]!r}"
+                logger.warning(
+                    "Failed to parse tool arguments for %s: %r",
+                    tool_name,
+                    raw_args[:200] if raw_args else raw_args,
+                )
+            return {}, msg
+    if raw_args is None:
+        return {}, None
+    msg = f"Unexpected argument type {type(raw_args).__name__} for tool {tool_name}"
+    logger.warning(
+        "Unexpected argument type %s for tool %s: %r",
+        type(raw_args).__name__,
+        tool_name,
+        raw_args,
+    )
+    return {}, msg
 
 
 def _parse_tool_arguments(raw_args: Any, tool_name: str, stop_reason: str | None = None) -> dict[str, Any]:
@@ -33,37 +279,36 @@ def _parse_tool_arguments(raw_args: Any, tool_name: str, stop_reason: str | None
     already-parsed dict.  Calling ``json.loads()`` on a dict raises
     ``TypeError`` which previously caused a silent fallback to ``{}``.
     """
-    if isinstance(raw_args, dict):
-        return raw_args
-    if isinstance(raw_args, str):
-        try:
-            parsed = json.loads(raw_args)
-            return parsed if isinstance(parsed, dict) else {}
-        except json.JSONDecodeError:
-            if stop_reason == "length":
-                logger.warning(
-                    "Tool arguments for %s were truncated due to max_tokens limit. "
-                    "Increase max_tokens in options to allow longer tool outputs. "
-                    "Truncated arguments: %r",
-                    tool_name,
-                    raw_args[:200] if raw_args else raw_args,
-                )
-            else:
-                logger.warning(
-                    "Failed to parse tool arguments for %s: %r",
-                    tool_name,
-                    raw_args[:200] if raw_args else raw_args,
-                )
-            return {}
-    if raw_args is None:
-        return {}
-    logger.warning(
-        "Unexpected argument type %s for tool %s: %r",
-        type(raw_args).__name__,
-        tool_name,
-        raw_args,
-    )
-    return {}
+    args, _error = _parse_tool_arguments_with_error(raw_args, tool_name, stop_reason)
+    return args
+
+
+def _tool_call_dict(
+    tool_id: Any,
+    name: str,
+    raw_args: Any,
+    stop_reason: str | None = None,
+    *,
+    generate_id: bool = True,
+) -> dict[str, Any]:
+    """Build a normalized tool-call dict for ``generate_messages_with_tools``.
+
+    Generates a ``call_<uuid4>`` fallback id when the provider omits one
+    (OpenAI-compat streaming and some raw-HTTP providers do) and attaches
+    ``arguments_error`` when argument parsing failed or truncation is
+    detected (contract C1).
+    """
+    import uuid as _uuid
+
+    args, args_error = _parse_tool_arguments_with_error(raw_args, name, stop_reason)
+    tc: dict[str, Any] = {
+        "id": tool_id or (f"call_{_uuid.uuid4().hex[:24]}" if generate_id else ""),
+        "name": name,
+        "arguments": args,
+    }
+    if args_error:
+        tc["arguments_error"] = args_error
+    return tc
 
 
 # ------------------------------------------------------------------
@@ -278,9 +523,10 @@ class Driver(ABC):
             yield TextDelta(text=text)
 
         import json as _json
+        import uuid as _uuid
 
         for tc in tool_calls:
-            tc_id = tc.get("id", "") or ""
+            tc_id = tc.get("id") or f"call_{_uuid.uuid4().hex[:24]}"
             tc_name = tc.get("name", "") or ""
             tc_args = tc.get("arguments", {}) or {}
             yield ToolUseStart(id=tc_id, name=tc_name)
@@ -290,7 +536,13 @@ class Driver(ABC):
                 fragment = "{}"
             if fragment and fragment != "{}":
                 yield ToolInputDelta(id=tc_id, fragment=fragment)
-            yield ToolUseStop(id=tc_id, name=tc_name, input=tc_args)
+            yield ToolUseStop(
+                id=tc_id,
+                name=tc_name,
+                input=tc_args,
+                truncated=bool(tc.get("arguments_error")) and stop_reason in ("length", "max_tokens"),
+                raw_stop_reason=meta.get("raw_stop_reason") if tc.get("arguments_error") else None,
+            )
 
         yield MessageStop(stop_reason=stop_reason, usage=meta)
 

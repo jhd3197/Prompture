@@ -10,13 +10,16 @@ from typing import Any
 
 try:
     from google import genai
+    from google.genai import errors as genai_errors
     from google.genai import types
 except ImportError:
     genai = None  # type: ignore[assignment]
+    genai_errors = None  # type: ignore[assignment]
     types = None  # type: ignore[assignment]
 
 from ..infra.cost_mixin import CostMixin
 from .async_base import AsyncDriver
+from .base import DriverHTTPError, _normalize_stop_reason, _translate_tool_choice
 from .google_driver import GoogleDriver
 
 logger = logging.getLogger(__name__)
@@ -232,11 +235,13 @@ class AsyncGoogleDriver(CostMixin, AsyncDriver):
 
             return {"text": response.text, "meta": meta}
 
-        except Exception as e:
+        except (genai_errors.APIError, ValueError) as e:
             logger.error(f"Google API request failed: {e}")
-            from ..exceptions import DriverError
-
-            raise DriverError(f"Google API request failed: {e}") from e
+            raise DriverHTTPError(
+                f"Google API request failed: {e}",
+                status_code=getattr(e, "code", None),
+                provider="google",
+            ) from e
 
     # ------------------------------------------------------------------
     # Tool use
@@ -288,6 +293,12 @@ class AsyncGoogleDriver(CostMixin, AsyncDriver):
 
         config_dict["tools"] = [types.Tool(function_declarations=function_declarations)]
 
+        tool_choice = _translate_tool_choice(options.get("tool_choice"), "google")
+        if tool_choice is not None:
+            config_dict["tool_config"] = types.ToolConfig(
+                function_calling_config=types.FunctionCallingConfig(**tool_choice)
+            )
+
         try:
             config = types.GenerateContentConfig(**config_dict)
             response = await self._client.aio.models.generate_content(
@@ -305,7 +316,7 @@ class AsyncGoogleDriver(CostMixin, AsyncDriver):
 
             text = ""
             tool_calls_out: list[dict[str, Any]] = []
-            stop_reason = "stop"
+            raw_stop_reason: Any = None
 
             for candidate in response.candidates or []:
                 if candidate.content is None or candidate.content.parts is None:
@@ -325,11 +336,10 @@ class AsyncGoogleDriver(CostMixin, AsyncDriver):
 
                 finish_reason = getattr(candidate, "finish_reason", None)
                 if finish_reason is not None:
-                    reason_map = {1: "stop", 2: "max_tokens", 3: "safety", 4: "recitation", 5: "other"}
-                    stop_reason = reason_map.get(finish_reason, "stop")
+                    raw_stop_reason = finish_reason
 
-            if tool_calls_out:
-                stop_reason = "tool_use"
+            stop_reason = _normalize_stop_reason(raw_stop_reason, tool_calls_present=bool(tool_calls_out))
+            meta["raw_stop_reason"] = str(raw_stop_reason) if raw_stop_reason is not None else None
 
             return {
                 "text": text,
@@ -338,11 +348,13 @@ class AsyncGoogleDriver(CostMixin, AsyncDriver):
                 "stop_reason": stop_reason,
             }
 
-        except Exception as e:
+        except (genai_errors.APIError, ValueError) as e:
             logger.error(f"Google API tool call request failed: {e}")
-            from ..exceptions import DriverError
-
-            raise DriverError(f"Google API tool call request failed: {e}") from e
+            raise DriverHTTPError(
+                f"Google API tool call request failed: {e}",
+                status_code=getattr(e, "code", None),
+                provider="google",
+            ) from e
 
     # ------------------------------------------------------------------
     # Streaming
@@ -384,8 +396,10 @@ class AsyncGoogleDriver(CostMixin, AsyncDriver):
                 },
             }
 
-        except Exception as e:
+        except (genai_errors.APIError, ValueError) as e:
             logger.error(f"Google API streaming request failed: {e}")
-            from ..exceptions import DriverError
-
-            raise DriverError(f"Google API streaming request failed: {e}") from e
+            raise DriverHTTPError(
+                f"Google API streaming request failed: {e}",
+                status_code=getattr(e, "code", None),
+                provider="google",
+            ) from e
