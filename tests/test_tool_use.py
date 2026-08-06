@@ -318,14 +318,15 @@ class TestConversationToolUse:
         result = conv.ask("Hi")
         assert result == "Hello!"
 
-    def test_max_tool_rounds_exceeded(self):
-        """Raise RuntimeError when tool loop exceeds max rounds."""
+    def test_max_tool_rounds_graceful_final_answer(self):
+        """Exhausting max_tool_rounds yields one final no-tools answer instead of raising."""
 
         def noop() -> str:
             """Do nothing."""
             return "ok"
 
-        # Every response has tool_calls
+        # Every loop response has tool_calls; the final graceful call (no
+        # tools) returns plain text.
         responses = [
             {
                 "text": "",
@@ -333,8 +334,14 @@ class TestConversationToolUse:
                 "tool_calls": [{"id": f"call_{i}", "name": "noop", "arguments": {}}],
                 "stop_reason": "tool_use",
             }
-            for i in range(5)
+            for i in range(3)
         ]
+        responses.append(
+            {
+                "text": "Final answer without tools.",
+                "meta": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2, "cost": 0.0},
+            }
+        )
 
         reg = ToolRegistry()
         reg.register(noop)
@@ -342,8 +349,9 @@ class TestConversationToolUse:
         driver = MockToolDriver(responses)
         conv = Conversation(driver=driver, tools=reg, max_tool_rounds=3)
 
-        with pytest.raises(RuntimeError, match="exceeded"):
-            conv.ask("Do something")
+        result = conv.ask("Do something")
+        assert result == "Final answer without tools."
+        assert conv.max_rounds_reached is True
 
     def test_register_tool_method(self):
         """Conversation.register_tool convenience method works."""

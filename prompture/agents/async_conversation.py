@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import time
@@ -59,8 +60,10 @@ class AsyncConversation:
         callbacks: DriverCallbacks | None = None,
         tools: ToolRegistry | None = None,
         max_tool_rounds: int = 10,
-        max_tool_result_length: int | None = None,
+        max_tool_result_length: int | None = 16000,
         simulated_tools: bool | Literal["auto"] = "auto",
+        tool_timeout: float | None = None,
+        sequential_tools: bool = False,
         conversation_id: str | None = None,
         auto_save: str | Path | None = None,
         tags: list[str] | None = None,
@@ -126,6 +129,12 @@ class AsyncConversation:
         self._max_tool_result_length = max_tool_result_length
         self._simulated_tools = simulated_tools
         self._max_history_messages = max_history_messages
+        self._tool_timeout = tool_timeout
+        self._sequential_tools = sequential_tools
+
+        # Cooperative stop (C2) and graceful max-rounds (C4) state.
+        self._stop_requested = False
+        self._max_rounds_reached = False
 
         # Budget enforcement
         self._max_cost = max_cost
@@ -191,6 +200,21 @@ class AsyncConversation:
     def clear(self) -> None:
         """Reset message history (keeps system_prompt and driver)."""
         self._messages.clear()
+        self._full_tool_results.clear()
+
+    def request_stop(self) -> None:
+        """Request a cooperative stop of the tool loop.
+
+        The loop checks the flag between rounds; when set, it finishes
+        with one final no-tools answer instead of executing more tools.
+        """
+        self._stop_requested = True
+
+    @property
+    def max_rounds_reached(self) -> bool:
+        """``True`` when the last tool loop hit ``max_tool_rounds`` and
+        completed with a graceful final answer instead of raising."""
+        return self._max_rounds_reached
 
     def add_context(self, role: str, content: str, images: list[ImageInput] | None = None) -> None:
         """Seed the history with a user or assistant message."""
@@ -425,6 +449,130 @@ class AsyncConversation:
             result_str[: self._max_tool_result_length] + f"\n\n[... result truncated ({len(result_str):,} chars total)]"
         )
 
+    def _trim_history(self) -> None:
+        """Trim history to the sliding window without orphaning tool pairs.
+
+        A naive tail-slice can cut between an assistant ``tool_calls``
+        message and its ``tool`` results, which providers reject with a
+        400.  After slicing, drop any leading ``tool`` messages whose
+        matching assistant message was cut.
+        """
+        if self._max_history_messages is None or len(self._messages) <= self._max_history_messages:
+            return
+        self._messages = self._messages[-self._max_history_messages :]
+        while self._messages and self._messages[0].get("role") == "tool":
+            self._messages.pop(0)
+
+    @staticmethod
+    def _malformed_arguments_message(tc: dict[str, Any]) -> str | None:
+        """Return an error tool-result string when the driver flagged the
+        tool call's arguments as malformed (``arguments_error``, C1) or
+        truncated (C3); ``None`` when the call is safe to execute."""
+        args_error = tc.get("arguments_error")
+        if args_error:
+            return (
+                f"Error: arguments for tool '{tc.get('name')}' could not be parsed ({args_error}). "
+                "Retry the tool call with valid JSON arguments."
+            )
+        if tc.get("truncated"):
+            return (
+                f"Error: arguments for tool '{tc.get('name')}' were truncated. "
+                "Retry the tool call with smaller, valid arguments."
+            )
+        return None
+
+    async def _execute_tool_call(self, tc: dict[str, Any], timeout: float | None) -> tuple[str, bool]:
+        """Execute one tool call, returning ``(result_str, is_error)``.
+
+        Never executes the tool when its arguments were flagged as
+        malformed/truncated — the error is fed back as the tool result so
+        the model can retry with valid arguments.
+        """
+        malformed = self._malformed_arguments_message(tc)
+        if malformed is not None:
+            return malformed, True
+        from ..extraction.tukuy_bridge import current_tool_call_id
+
+        token = current_tool_call_id.set(tc["id"])
+        try:
+            if timeout is not None:
+                result = await asyncio.wait_for(self._tools.aexecute(tc["name"], tc["arguments"]), timeout)
+            else:
+                result = await self._tools.aexecute(tc["name"], tc["arguments"])
+            return (json.dumps(result) if not isinstance(result, str) else result), False
+        except (TimeoutError, asyncio.TimeoutError):
+            return f"Error: tool '{tc['name']}' timed out after {timeout}s", True
+        except Exception as exc:
+            return (
+                f"Error ({type(exc).__name__}): {exc}" if str(exc) else f"Error: {type(exc).__name__}: {exc!r}"
+            ), True
+        finally:
+            current_tool_call_id.reset(token)
+
+    async def _run_tool_calls(self, tool_calls: list[dict[str, Any]], merged: dict[str, Any]) -> list[tuple[str, bool]]:
+        """Execute one turn's tool calls, returning ``(result_str, is_error)``
+        pairs in the same order as *tool_calls*.
+
+        Independent calls run concurrently via ``asyncio.gather`` (result
+        order is preserved regardless of completion order) unless
+        ``sequential_tools`` is set on the conversation or in *merged*
+        options.
+        """
+        timeout = merged.get("tool_timeout", self._tool_timeout)
+        sequential = merged.get("sequential_tools", self._sequential_tools)
+        if sequential or len(tool_calls) <= 1:
+            return [await self._execute_tool_call(tc, timeout) for tc in tool_calls]
+        return list(await asyncio.gather(*(self._execute_tool_call(tc, timeout) for tc in tool_calls)))
+
+    async def _final_answer_without_tools(self, msgs: list[dict[str, Any]], merged: dict[str, Any]) -> str:
+        """One final driver call with tools removed, asking the model to
+        answer from the tool results it already has.
+
+        Used for graceful exits: max-rounds exhaustion (C4) and
+        cooperative stop (C2).
+        """
+        self._check_budget()
+        final_msgs = [
+            *msgs,
+            {
+                "role": "user",
+                "content": (
+                    "You cannot call any more tools. Answer the user's question now, "
+                    "using only the tool results already gathered above."
+                ),
+            },
+        ]
+        resp = await self._driver.generate_messages_with_hooks(final_msgs, merged)
+        text: str = resp.get("text", "")
+        self._last_reasoning = resp.get("reasoning_content")
+        self._accumulate_usage(resp.get("meta", {}))
+        self._messages.append({"role": "assistant", "content": text})
+        return text
+
+    async def _final_answer_simulated(self, augmented_system: str, merged: dict[str, Any]) -> str:
+        """Graceful-exit final call for the simulated-tools loop (C4/C2)."""
+        from .simulated_tools import parse_simulated_response
+
+        self._check_budget()
+        msgs: list[dict[str, Any]] = [{"role": "system", "content": augmented_system}]
+        msgs.extend(self._messages)
+        msgs.append(
+            {
+                "role": "user",
+                "content": (
+                    "You cannot call any more tools. Provide your final answer now "
+                    "(in the final_answer format) based on the tool results already gathered."
+                ),
+            }
+        )
+        resp = await self._driver.generate_messages_with_hooks(msgs, merged)
+        text = resp.get("text", "")
+        self._accumulate_usage(resp.get("meta", {}))
+        parsed = parse_simulated_response(text, self._tools)
+        answer: str = parsed["content"] if parsed["type"] == "final_answer" else text
+        self._messages.append({"role": "assistant", "content": answer})
+        return answer
+
     def _build_messages(self, user_content: str, images: list[ImageInput] | None = None) -> list[dict[str, Any]]:
         """Build the full messages array for an API call."""
         msgs: list[dict[str, Any]] = []
@@ -455,8 +603,7 @@ class AsyncConversation:
             self._usage["turns"],
         )
         # Trim history to sliding window (system prompt lives outside _messages)
-        if self._max_history_messages is not None and len(self._messages) > self._max_history_messages:
-            self._messages = self._messages[-self._max_history_messages :]
+        self._trim_history()
         self._maybe_auto_save()
 
     async def ask(
@@ -479,6 +626,10 @@ class AsyncConversation:
                 return await self._ask_with_simulated_tools(content, options, images=images)
             elif use_native and self._simulated_tools is not True:  # type: ignore[comparison-overlap]
                 return await self._ask_with_tools(content, options, images=images)
+            logger.warning(
+                "Tools are registered but the driver does not support tool use and "
+                "simulated_tools is disabled; tools are being ignored for this call."
+            )
 
         self._check_budget()
         merged = {**self._options, **(options or {})}
@@ -503,6 +654,8 @@ class AsyncConversation:
         images: list[ImageInput] | None = None,
     ) -> str:
         """Async tool-use loop: send -> check tool_calls -> execute -> re-send."""
+        self._stop_requested = False
+        self._max_rounds_reached = False
         merged = {**self._options, **(options or {})}
         tool_defs = self._tools.to_openai_format()
 
@@ -511,6 +664,9 @@ class AsyncConversation:
         msgs = self._build_messages_raw()
 
         for _round in range(self._max_tool_rounds):
+            if self._stop_requested:
+                logger.info("Stop requested; finishing with a final answer (no more tool calls)")
+                return await self._final_answer_without_tools(msgs, merged)
             self._check_budget()
             if await self._run_before_turn():
                 msgs = self._build_messages_raw()
@@ -526,6 +682,12 @@ class AsyncConversation:
                 self._last_reasoning = resp.get("reasoning_content")
                 self._messages.append({"role": "assistant", "content": text})
                 return text
+
+            # Ensure every tool call has a usable id so parallel calls
+            # can't collide in _full_tool_results.
+            for tc in tool_calls:
+                if not tc.get("id"):
+                    tc["id"] = f"call_{uuid.uuid4().hex}"
 
             assistant_msg: dict[str, Any] = {"role": "assistant", "content": text}
             assistant_msg["tool_calls"] = [
@@ -544,20 +706,8 @@ class AsyncConversation:
             self._messages.append(assistant_msg)
             msgs.append(assistant_msg)
 
-            for tc in tool_calls:
-                from ..extraction.tukuy_bridge import current_tool_call_id as _ask_tc_id
-
-                _ask_token = _ask_tc_id.set(tc["id"])
-                try:
-                    result = await self._tools.aexecute(tc["name"], tc["arguments"])
-                    result_str = json.dumps(result) if not isinstance(result, str) else result
-                except Exception as exc:
-                    result_str = (
-                        f"Error ({type(exc).__name__}): {exc}" if str(exc) else f"Error: {type(exc).__name__}: {exc!r}"
-                    )
-                finally:
-                    _ask_tc_id.reset(_ask_token)
-
+            results = await self._run_tool_calls(tool_calls, merged)
+            for tc, (result_str, _is_error) in zip(tool_calls, results, strict=True):
                 # Preserve full result for step extraction before truncating
                 self._full_tool_results[tc["id"]] = result_str
 
@@ -569,7 +719,14 @@ class AsyncConversation:
                 self._messages.append(tool_result_msg)
                 msgs.append(tool_result_msg)
 
-        raise RuntimeError(f"Tool execution loop exceeded {self._max_tool_rounds} rounds")
+        # Max rounds exhausted — one graceful final answer without tools
+        # instead of raising (C4).
+        logger.warning(
+            "Tool loop reached max_tool_rounds=%d; requesting a final answer without tools",
+            self._max_tool_rounds,
+        )
+        self._max_rounds_reached = True
+        return await self._final_answer_without_tools(msgs, merged)
 
     async def ask_with_tool_events(
         self,
@@ -597,6 +754,8 @@ class AsyncConversation:
             return
 
         # Native tool calling with event emission
+        self._stop_requested = False
+        self._max_rounds_reached = False
         merged = {**self._options, **(options or {})}
         tool_defs = self._tools.to_openai_format()
 
@@ -605,6 +764,12 @@ class AsyncConversation:
         msgs = self._build_messages_raw()
 
         for _round in range(self._max_tool_rounds):
+            if self._stop_requested:
+                logger.info("Stop requested; finishing with a final answer (no more tool calls)")
+                final_text = await self._final_answer_without_tools(msgs, merged)
+                yield {"type": "text_delta", "text": final_text}
+                return
+            self._check_budget()
             if await self._run_before_turn():
                 msgs = self._build_messages_raw()
             resp = await self._driver.generate_messages_with_tools_with_hooks(msgs, tool_defs, merged)
@@ -620,6 +785,12 @@ class AsyncConversation:
                 self._messages.append({"role": "assistant", "content": text})
                 yield {"type": "text_delta", "text": text}
                 return
+
+            # Ensure every tool call has a usable id so parallel calls
+            # can't collide in _full_tool_results.
+            for tc in tool_calls:
+                if not tc.get("id"):
+                    tc["id"] = f"call_{uuid.uuid4().hex}"
 
             assistant_msg: dict[str, Any] = {"role": "assistant", "content": text}
             assistant_msg["tool_calls"] = [
@@ -643,22 +814,11 @@ class AsyncConversation:
                     "arguments": tc["arguments"],
                     "id": tc["id"],
                 }
-                # Set the current tool_call_id so downstream code (e.g. the
-                # tukuy bridge instruction wrapper) can associate streaming
-                # deltas with the correct tool call.
-                from ..extraction.tukuy_bridge import current_tool_call_id
 
-                _tc_token = current_tool_call_id.set(tc["id"])
-                try:
-                    result = await self._tools.aexecute(tc["name"], tc["arguments"])
-                    result_str = json.dumps(result) if not isinstance(result, str) else result
-                except Exception as exc:
-                    result_str = (
-                        f"Error ({type(exc).__name__}): {exc}" if str(exc) else f"Error: {type(exc).__name__}: {exc!r}"
-                    )
-                finally:
-                    current_tool_call_id.reset(_tc_token)
-
+            # Independent calls run concurrently; results stay in call order
+            # so tool_call_id <-> result matching holds.
+            results = await self._run_tool_calls(tool_calls, merged)
+            for tc, (result_str, _is_error) in zip(tool_calls, results, strict=True):
                 # Preserve full result for step extraction before truncating
                 self._full_tool_results[tc["id"]] = result_str
 
@@ -679,7 +839,14 @@ class AsyncConversation:
                 self._messages.append(tool_result_msg)
                 msgs.append(tool_result_msg)
 
-        raise RuntimeError(f"Tool execution loop exceeded {self._max_tool_rounds} rounds")
+        # Max rounds exhausted — graceful final answer without tools (C4).
+        logger.warning(
+            "Tool loop reached max_tool_rounds=%d; requesting a final answer without tools",
+            self._max_tool_rounds,
+        )
+        self._max_rounds_reached = True
+        final_text = await self._final_answer_without_tools(msgs, merged)
+        yield {"type": "text_delta", "text": final_text}
 
     async def ask_live(
         self,
@@ -734,6 +901,8 @@ class AsyncConversation:
             yield TurnComplete(usage=dict(self._usage))
             return
 
+        self._stop_requested = False
+        self._max_rounds_reached = False
         merged = {**self._options, **(options or {})}
         tool_defs = self._tools.to_openai_format()
 
@@ -742,6 +911,12 @@ class AsyncConversation:
         msgs = self._build_messages_raw()
 
         for round_idx in range(self._max_tool_rounds):
+            if self._stop_requested:
+                logger.info("Stop requested; finishing with a final answer (no more tool calls)")
+                final_text = await self._final_answer_without_tools(msgs, merged)
+                yield TextDelta(text=final_text)
+                yield TurnComplete(usage=dict(self._usage))
+                return
             self._check_budget()
             if await self._run_before_turn():
                 msgs = self._build_messages_raw()
@@ -751,7 +926,7 @@ class AsyncConversation:
             assistant_text_parts: list[str] = []
             assistant_thinking_parts: list[str] = []
             tool_calls_in_turn: list[dict[str, Any]] = []
-            pending_tools: list[tuple[str, str, dict[str, Any]]] = []
+            pending_tools: list[dict[str, Any]] = []
             turn_usage: dict[str, Any] = {}
 
             stream = self._driver.generate_messages_with_tools_stream(msgs, tool_defs, merged)
@@ -763,10 +938,18 @@ class AsyncConversation:
                 elif et == "thinking_delta":
                     assistant_thinking_parts.append(event.text)
                 elif et == "tool_use_stop":
-                    pending_tools.append((event.id, event.name, event.input))
+                    tool_use_id = event.id or f"call_{uuid.uuid4().hex}"
+                    pending_tools.append(
+                        {
+                            "id": tool_use_id,
+                            "name": event.name,
+                            "arguments": event.input,
+                            "truncated": getattr(event, "truncated", False),
+                        }
+                    )
                     tool_calls_in_turn.append(
                         {
-                            "id": event.id,
+                            "id": tool_use_id,
                             "type": "function",
                             "function": {"name": event.name, "arguments": json.dumps(event.input)},
                         }
@@ -793,35 +976,31 @@ class AsyncConversation:
                 yield TurnComplete(usage=dict(self._usage))
                 return
 
-            for tool_id, tool_name, tool_input in pending_tools:
-                from ..extraction.tukuy_bridge import current_tool_call_id
+            # Independent calls run concurrently; results stay in call order
+            # so tool_call_id <-> result matching holds.
+            results = await self._run_tool_calls(pending_tools, merged)
+            for tc, (result_str, is_error) in zip(pending_tools, results, strict=True):
+                self._full_tool_results[tc["id"]] = result_str
+                yield ToolResult(id=tc["id"], name=tc["name"], output=result_str, is_error=is_error)
 
-                _tok = current_tool_call_id.set(tool_id)
-                try:
-                    result = await self._tools.aexecute(tool_name, tool_input)
-                    result_str = json.dumps(result) if not isinstance(result, str) else result
-                    is_error = False
-                except Exception as exc:
-                    result_str = (
-                        f"Error ({type(exc).__name__}): {exc}" if str(exc) else f"Error: {type(exc).__name__}: {exc!r}"
-                    )
-                    is_error = True
-                finally:
-                    current_tool_call_id.reset(_tok)
-
-                self._full_tool_results[tool_id] = result_str
-                yield ToolResult(id=tool_id, name=tool_name, output=result_str, is_error=is_error)
-
-                truncated = self._truncate_tool_result(result_str)
+                truncated_result = self._truncate_tool_result(result_str)
                 tool_result_msg: dict[str, Any] = {
                     "role": "tool",
-                    "tool_call_id": tool_id,
-                    "content": truncated,
+                    "tool_call_id": tc["id"],
+                    "content": truncated_result,
                 }
                 self._messages.append(tool_result_msg)
                 msgs.append(tool_result_msg)
 
-        raise RuntimeError(f"ask_live exceeded {self._max_tool_rounds} rounds")
+        # Max rounds exhausted — graceful final answer without tools (C4).
+        logger.warning(
+            "ask_live reached max_tool_rounds=%d; requesting a final answer without tools",
+            self._max_tool_rounds,
+        )
+        self._max_rounds_reached = True
+        final_text = await self._final_answer_without_tools(msgs, merged)
+        yield TextDelta(text=final_text)
+        yield TurnComplete(usage=dict(self._usage))
 
     async def _ask_with_simulated_tool_events(
         self,
@@ -832,6 +1011,8 @@ class AsyncConversation:
         """Async simulated tool calling with event emission."""
         from .simulated_tools import build_tool_prompt, format_tool_result, parse_simulated_response
 
+        self._stop_requested = False
+        self._max_rounds_reached = False
         merged = {**self._options, **(options or {})}
         tool_prompt = build_tool_prompt(self._tools)
 
@@ -843,6 +1024,12 @@ class AsyncConversation:
         self._messages.append({"role": "user", "content": user_content})
 
         for _round in range(self._max_tool_rounds):
+            if self._stop_requested:
+                logger.info("Stop requested; finishing with a final answer (no more tool calls)")
+                answer = await self._final_answer_simulated(augmented_system, merged)
+                yield {"type": "text_delta", "text": answer}
+                return
+            self._check_budget()
             await self._run_before_turn()
             msgs: list[dict[str, Any]] = []
             msgs.append({"role": "system", "content": augmented_system})
@@ -868,12 +1055,18 @@ class AsyncConversation:
 
             yield {"type": "tool_call", "name": tool_name, "arguments": tool_args, "id": ""}
 
+            timeout = merged.get("tool_timeout", self._tool_timeout)
             from ..extraction.tukuy_bridge import current_tool_call_id as _sim_tc_id
 
             _sim_token = _sim_tc_id.set("")
             try:
-                result = await self._tools.aexecute(tool_name, tool_args)
+                if timeout is not None:
+                    result = await asyncio.wait_for(self._tools.aexecute(tool_name, tool_args), timeout)
+                else:
+                    result = await self._tools.aexecute(tool_name, tool_args)
                 result_msg = format_tool_result(tool_name, result)
+            except (TimeoutError, asyncio.TimeoutError):
+                result_msg = format_tool_result(tool_name, f"Error: tool '{tool_name}' timed out after {timeout}s")
             except Exception as exc:
                 result_msg = format_tool_result(tool_name, f"Error: {exc}")
             finally:
@@ -883,7 +1076,14 @@ class AsyncConversation:
 
             self._messages.append({"role": "user", "content": self._truncate_tool_result(result_msg)})
 
-        raise RuntimeError(f"Simulated tool execution loop exceeded {self._max_tool_rounds} rounds")
+        # Max rounds exhausted — graceful final answer without tools (C4).
+        logger.warning(
+            "Simulated tool loop reached max_tool_rounds=%d; requesting a final answer without tools",
+            self._max_tool_rounds,
+        )
+        self._max_rounds_reached = True
+        answer = await self._final_answer_simulated(augmented_system, merged)
+        yield {"type": "text_delta", "text": answer}
 
     async def _ask_with_simulated_tools(
         self,
@@ -894,6 +1094,8 @@ class AsyncConversation:
         """Async prompt-based tool calling for drivers without native tool use."""
         from .simulated_tools import build_tool_prompt, format_tool_result, parse_simulated_response
 
+        self._stop_requested = False
+        self._max_rounds_reached = False
         merged = {**self._options, **(options or {})}
         tool_prompt = build_tool_prompt(self._tools)
 
@@ -907,6 +1109,9 @@ class AsyncConversation:
         self._messages.append({"role": "user", "content": user_content})
 
         for _round in range(self._max_tool_rounds):
+            if self._stop_requested:
+                logger.info("Stop requested; finishing with a final answer (no more tool calls)")
+                return await self._final_answer_simulated(augmented_system, merged)
             self._check_budget()
             await self._run_before_turn()
             # Build messages with the augmented system prompt
@@ -933,16 +1138,28 @@ class AsyncConversation:
             # Record assistant's tool call as an assistant message
             self._messages.append({"role": "assistant", "content": text})
 
+            timeout = merged.get("tool_timeout", self._tool_timeout)
             try:
-                result = await self._tools.aexecute(tool_name, tool_args)
+                if timeout is not None:
+                    result = await asyncio.wait_for(self._tools.aexecute(tool_name, tool_args), timeout)
+                else:
+                    result = await self._tools.aexecute(tool_name, tool_args)
                 result_msg = format_tool_result(tool_name, result)
+            except (TimeoutError, asyncio.TimeoutError):
+                result_msg = format_tool_result(tool_name, f"Error: tool '{tool_name}' timed out after {timeout}s")
             except Exception as exc:
                 result_msg = format_tool_result(tool_name, f"Error: {exc}")
 
             # Record tool result as a user message (truncated for the LLM)
             self._messages.append({"role": "user", "content": self._truncate_tool_result(result_msg)})
 
-        raise RuntimeError(f"Simulated tool execution loop exceeded {self._max_tool_rounds} rounds")
+        # Max rounds exhausted — graceful final answer without tools (C4).
+        logger.warning(
+            "Simulated tool loop reached max_tool_rounds=%d; requesting a final answer without tools",
+            self._max_tool_rounds,
+        )
+        self._max_rounds_reached = True
+        return await self._final_answer_simulated(augmented_system, merged)
 
     def _build_messages_raw(self) -> list[dict[str, Any]]:
         """Build messages array from system prompt + full history (including tool messages)."""
