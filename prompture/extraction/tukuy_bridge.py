@@ -13,9 +13,9 @@ import contextvars
 import inspect
 import logging
 from collections.abc import Callable
-from typing import Any
+from typing import Any, get_type_hints
 
-from ..agents.tools_schema import ToolDefinition, ToolRegistry
+from ..agents.tools_schema import ToolDefinition, ToolRegistry, _python_type_to_json_schema
 
 logger = logging.getLogger("prompture.tukuy_bridge")
 
@@ -29,6 +29,80 @@ current_tool_call_id: contextvars.ContextVar[str | None] = contextvars.ContextVa
 # ------------------------------------------------------------------
 # Skill → ToolDefinition
 # ------------------------------------------------------------------
+
+# Keys that describe a parameter's *shape*.  When we recover a better
+# annotation than tukuy managed, these are the ones we replace; anything
+# else tukuy attached (description, default, examples) is preserved.
+_SCHEMA_SHAPE_KEYS = frozenset(
+    {
+        "type",
+        "items",
+        "properties",
+        "required",
+        "additionalProperties",
+        "enum",
+        "anyOf",
+        "$ref",
+        "$defs",
+        "format",
+    }
+)
+
+
+def _resolved_param_schemas(skill_obj: Any) -> dict[str, dict[str, Any]]:
+    """JSON Schema fragments for *skill_obj*'s params, from resolved hints.
+
+    tukuy derives its schema from the raw ``__annotations__``, so a skill
+    defined in a module using ``from __future__ import annotations`` (PEP
+    563) hands it the *string* ``"int"`` rather than :class:`int` — and every
+    such parameter silently degrades to ``{"type": "string"}``.  That used to
+    merely misinform the model; now that arguments are validated against the
+    schema it rejects correct calls outright.
+
+    :func:`typing.get_type_hints` resolves those strings, so re-derive the
+    fragments here.  Unannotated parameters are absent from the hints and so
+    are left to tukuy.  Returns ``{}`` when the skill exposes no
+    introspectable function.
+    """
+    fn = getattr(skill_obj, "fn", None)
+    if fn is None or not callable(fn):
+        return {}
+    try:
+        hints = get_type_hints(fn)
+    except Exception:  # unresolvable forward refs, exotic annotations, …
+        logger.debug("Could not resolve type hints for tukuy skill %r", skill_obj, exc_info=True)
+        return {}
+    return {name: _python_type_to_json_schema(hint) for name, hint in hints.items() if name != "return"}
+
+
+def _repair_parameter_types(skill_obj: Any, parameters: dict[str, Any]) -> dict[str, Any]:
+    """Return *parameters* with PEP 563-degraded property types corrected.
+
+    Only properties tukuy already emitted are touched, so parameters it
+    deliberately hides (``context``, config params) stay hidden.
+    """
+    properties = parameters.get("properties")
+    if not isinstance(properties, dict):
+        return parameters
+    resolved = _resolved_param_schemas(skill_obj)
+    if not resolved:
+        return parameters
+
+    repaired: dict[str, Any] = {}
+    for name, prop in properties.items():
+        better = resolved.get(name)
+        if better is None or not isinstance(prop, dict):
+            repaired[name] = prop
+            continue
+        merged = dict(better)
+        for key, value in prop.items():
+            if key not in _SCHEMA_SHAPE_KEYS:
+                merged[key] = value
+        repaired[name] = merged
+
+    out = dict(parameters)
+    out["properties"] = repaired
+    return out
 
 
 def skill_to_tool_definition(skill_or_fn: Any, *, config: dict[str, Any] | None = None) -> ToolDefinition:
@@ -56,7 +130,7 @@ def skill_to_tool_definition(skill_or_fn: Any, *, config: dict[str, Any] | None 
     skill_obj = _normalize(skill_or_fn)
     desc = skill_obj.descriptor
 
-    parameters = _wrap_as_parameters(skill_obj)
+    parameters = _repair_parameter_types(skill_obj, _wrap_as_parameters(skill_obj))
 
     # Build wrapper that calls invoke() and unwraps SkillResult
     def _wrapper(**kwargs: Any) -> Any:

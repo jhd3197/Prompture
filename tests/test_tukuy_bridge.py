@@ -67,6 +67,30 @@ class TestSkillToToolDefinition:
         td = skill_to_tool_definition(skill_obj)
         assert td.name == "double"
 
+    def test_param_types_survive_pep563_annotations(self):
+        """``x: int`` stays an integer even under ``from __future__ import annotations``.
+
+        tukuy builds its schema from raw ``__annotations__``, so with PEP 563
+        in effect it sees the *string* ``"int"`` and degrades every parameter
+        to ``{"type": "string"}``.  Since arguments are now validated against
+        the schema, that made correct calls fail outright — the bridge
+        re-derives the types from resolved hints.  This module uses
+        ``from __future__ import annotations``, so it is the real case.
+        """
+        td = skill_to_tool_definition(double)
+        assert td.parameters["properties"]["x"]["type"] == "integer"
+
+    def test_pep563_skill_executes_with_native_types(self):
+        """The end-to-end path an agent takes: schema, validation, execution."""
+        reg = skills_to_registry([double])
+        assert reg.execute("double", {"x": 21}) == 42
+
+    def test_str_param_still_typed_as_string(self):
+        """Repairing types must not mangle parameters tukuy already got right."""
+        td = skill_to_tool_definition(greet)
+        assert td.parameters["properties"]["name"]["type"] == "string"
+        assert td.function(name="Ada") == "Hello, Ada!"
+
     def test_wrapper_execution_success(self):
         td = skill_to_tool_definition(double)
         result = td.function(x=5)
