@@ -27,7 +27,8 @@ import logging
 import re
 import uuid
 from collections.abc import Callable, Mapping
-from dataclasses import asdict, dataclass, field, is_dataclass
+from dataclasses import MISSING, asdict, dataclass, field, is_dataclass
+from dataclasses import fields as dataclass_fields
 from datetime import date, datetime, time
 from enum import Enum
 from typing import Any, Literal, get_args, get_origin, get_type_hints, is_typeddict
@@ -98,6 +99,60 @@ def _is_structured_type(annotation: Any) -> bool:
     return issubclass(annotation, BaseModel)
 
 
+def _structured_required_fields(annotation: Any, hints: dict[str, Any]) -> list[str] | None:
+    """Required field names of a structured type, or ``None`` if undeterminable.
+
+    ``None`` (rather than "all of them") keeps us from over-constraining a
+    type whose optionality we cannot read.
+    """
+    if is_typeddict(annotation):
+        required = getattr(annotation, "__required_keys__", None)
+        if required is None:
+            return None
+        return [name for name in hints if name in required]
+    if is_dataclass(annotation):
+        return [
+            f.name
+            for f in dataclass_fields(annotation)
+            if f.default is MISSING and f.default_factory is MISSING  # type: ignore[misc]
+        ]
+    if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+        return [name for name, f in annotation.model_fields.items() if f.is_required()]
+    return None
+
+
+def _structured_fallback_schema(annotation: Any) -> dict[str, Any] | None:
+    """Object schema for a structured type :class:`TypeAdapter` cannot handle.
+
+    pydantic refuses ``typing.TypedDict`` on Python < 3.12 (it requires the
+    ``typing_extensions`` variant), which on two of the four supported Python
+    versions left such a parameter advertised as a bare string — the exact
+    silent degradation the richer type mapping exists to prevent.  Rebuild the
+    object schema from resolved hints so the model still sees the real field
+    names and types.
+
+    Returns ``None`` when the type exposes nothing introspectable, leaving the
+    caller's own fallback in charge.
+    """
+    try:
+        hints = get_type_hints(annotation)
+    except Exception:
+        logger.debug("Could not resolve type hints for structured type %r", annotation, exc_info=True)
+        return None
+    hints.pop("return", None)
+    if not hints:
+        return None
+
+    schema: dict[str, Any] = {
+        "type": "object",
+        "properties": {name: _python_type_to_json_schema(hint) for name, hint in hints.items()},
+    }
+    required = _structured_required_fields(annotation, hints)
+    if required:
+        schema["required"] = required
+    return schema
+
+
 def _python_type_to_json_schema(annotation: Any) -> dict[str, Any]:
     """Convert a Python type annotation to a JSON Schema snippet.
 
@@ -106,8 +161,10 @@ def _python_type_to_json_schema(annotation: Any) -> dict[str, Any]:
     ``enum``, ``datetime``/``date``/``time``/``UUID`` as formatted strings,
     ``list``/``tuple``/``dict`` containers (``dict[str, X]`` gets
     ``additionalProperties``), nested pydantic models, dataclasses and
-    ``TypedDict`` via :class:`pydantic.TypeAdapter`, and ``Any`` as the empty
-    schema. Unknown types fall back to ``{"type": "string"}``.
+    ``TypedDict`` via :class:`pydantic.TypeAdapter` (falling back to
+    :func:`_structured_fallback_schema` on the Python versions where pydantic
+    refuses a given structured type), and ``Any`` as the empty schema. Unknown
+    types fall back to ``{"type": "string"}``.
 
     A *missing* annotation yields the empty (unconstrained) schema rather than
     a string: an unannotated parameter means "type unknown", and since
@@ -176,8 +233,11 @@ def _python_type_to_json_schema(annotation: Any) -> dict[str, Any]:
     if _is_structured_type(annotation):
         try:
             return TypeAdapter(annotation).json_schema()
-        except Exception as exc:  # pragma: no cover - defensive
+        except Exception as exc:
             logger.debug("TypeAdapter schema generation failed for %r: %s", annotation, exc)
+            manual = _structured_fallback_schema(annotation)
+            if manual is not None:
+                return manual
 
     # Simple types
     json_type = _TYPE_MAP.get(annotation, "string")

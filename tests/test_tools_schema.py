@@ -449,3 +449,92 @@ class TestToolFromFunctionRichTypes:
         td: ToolDefinition = tool_from_function(configure)
         wire = td.to_openai_format()
         assert wire["function"]["parameters"]["properties"]["mode"]["enum"] == ["fast", "slow"]
+
+
+# ---------------------------------------------------------------------------
+# Structured types when pydantic's TypeAdapter refuses them
+#
+# pydantic rejects `typing.TypedDict` on Python < 3.12 (it wants the
+# typing_extensions variant), so on two of the four supported Python versions
+# TypeAdapter raises and the parameter used to be advertised as a bare string.
+# The failure is forced here so the fallback is covered on every version.
+# ---------------------------------------------------------------------------
+
+
+class PartialMovie(TypedDict, total=False):
+    title: str
+    year: int
+
+
+@dataclass
+class BoxWithDefaults:
+    w: int
+    h: int = 3
+
+
+class PointWithOptional(BaseModel):
+    x: int
+    y: int | None = None
+
+
+@pytest.fixture
+def type_adapter_unavailable(monkeypatch):
+    """Make TypeAdapter raise, as it does for typing.TypedDict on Py < 3.12."""
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError("simulated: unsupported on this Python version")
+
+    monkeypatch.setattr("prompture.agents.tools_schema.TypeAdapter", _boom)
+
+
+class TestStructuredTypeFallback:
+    def test_typed_dict_still_expands(self, type_adapter_unavailable):
+        schema = _python_type_to_json_schema(Movie)
+        assert schema["type"] == "object"
+        assert schema["properties"]["year"] == {"type": "integer"}
+        assert schema["properties"]["title"] == {"type": "string"}
+        assert sorted(schema["required"]) == ["title", "year"]
+
+    def test_never_degrades_to_a_bare_string(self, type_adapter_unavailable):
+        """The regression this guards: a whole object described as a string."""
+        assert _python_type_to_json_schema(Movie) != {"type": "string"}
+
+    def test_total_false_typed_dict_has_no_required_keys(self, type_adapter_unavailable):
+        schema = _python_type_to_json_schema(PartialMovie)
+        assert set(schema["properties"]) == {"title", "year"}
+        assert "required" not in schema
+
+    def test_dataclass_defaults_are_not_required(self, type_adapter_unavailable):
+        schema = _python_type_to_json_schema(BoxWithDefaults)
+        assert schema["required"] == ["w"]
+        assert schema["properties"]["h"] == {"type": "integer"}
+
+    def test_model_optional_fields_are_not_required(self, type_adapter_unavailable):
+        schema = _python_type_to_json_schema(PointWithOptional)
+        assert schema["required"] == ["x"]
+        assert schema["properties"]["y"] == {"anyOf": [{"type": "integer"}, {"type": "null"}]}
+
+    def test_nested_annotations_are_resolved_recursively(self, type_adapter_unavailable):
+        @dataclass
+        class Outer:
+            tags: list[str]
+            where: Movie
+
+        schema = _python_type_to_json_schema(Outer)
+        assert schema["properties"]["tags"] == {"type": "array", "items": {"type": "string"}}
+        assert schema["properties"]["where"]["properties"]["year"] == {"type": "integer"}
+
+    def test_tool_parameter_keeps_its_object_shape(self, type_adapter_unavailable):
+        def rate(movie: Movie) -> str:
+            """Rate a movie.
+
+            Args:
+                movie: The movie to rate.
+            """
+            return movie["title"]
+
+        prop = tool_from_function(rate).parameters["properties"]["movie"]
+        assert prop["type"] == "object"
+        assert set(prop["properties"]) == {"title", "year"}
+        # The docstring description survives the fallback.
+        assert prop["description"] == "The movie to rate."
