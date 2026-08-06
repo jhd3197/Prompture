@@ -118,6 +118,39 @@ except ValidationError:
     pass
 ```
 
+### MCP (Model Context Protocol) Tools
+
+Prompture can consume tools from any MCP server. MCP tools are registered
+into a `ToolRegistry` just like native tools or skills, so agents call them
+through the normal tool-calling path. Requires the optional extra:
+
+```bash
+pip install 'prompture[mcp]'
+```
+
+```python
+import asyncio
+from prompture import AsyncAgent, ToolRegistry
+from prompture.integrations.mcp_bridge import mcp_session_from_stdio, register_mcp_tools
+
+async def main():
+    registry = ToolRegistry()
+    async with mcp_session_from_stdio("npx", ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]) as session:
+        await register_mcp_tools(registry, session, prefix="fs")
+        agent = AsyncAgent("openai/gpt-4o", tools=registry)
+        result = await agent.run("List the files in /tmp")
+        print(result.output_text)
+
+asyncio.run(main())
+```
+
+With an already-initialized `mcp.ClientSession` (any transport), use
+`await register_mcp_tools(registry, session)` directly. For sync `Agent`
+code outside an event loop, `register_mcp_tools_sync(registry, session)`
+does the same thing. MCP tool results are flattened to strings: text blocks
+are joined, non-text blocks (images, resources) become a short placeholder,
+and MCP call errors are returned to the model as `Error: ...` strings.
+
 ---
 
 ## Extending Prompture
