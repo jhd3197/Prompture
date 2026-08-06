@@ -132,9 +132,10 @@ class AsyncDriver(ABC):
             yield TextDelta(text=text)
 
         import json as _json
+        import uuid as _uuid
 
         for tc in tool_calls:
-            tc_id = tc.get("id", "") or ""
+            tc_id = tc.get("id") or f"call_{_uuid.uuid4().hex[:24]}"
             tc_name = tc.get("name", "") or ""
             tc_args = tc.get("arguments", {}) or {}
             yield ToolUseStart(id=tc_id, name=tc_name)
@@ -144,7 +145,13 @@ class AsyncDriver(ABC):
                 fragment = "{}"
             if fragment and fragment != "{}":
                 yield ToolInputDelta(id=tc_id, fragment=fragment)
-            yield ToolUseStop(id=tc_id, name=tc_name, input=tc_args)
+            yield ToolUseStop(
+                id=tc_id,
+                name=tc_name,
+                input=tc_args,
+                truncated=bool(tc.get("arguments_error")) and stop_reason in ("length", "max_tokens"),
+                raw_stop_reason=meta.get("raw_stop_reason") if tc.get("arguments_error") else None,
+            )
 
         yield MessageStop(stop_reason=stop_reason, usage=meta)
 

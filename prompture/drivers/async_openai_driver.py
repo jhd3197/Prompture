@@ -14,6 +14,7 @@ except ImportError:
 
 from ..infra.cost_mixin import CostMixin
 from .async_base import AsyncDriver
+from .base import _apply_openai_tool_options, _normalize_stop_reason
 from .openai_driver import (
     OpenAIDriver,
     _build_openai_base_kwargs,
@@ -161,6 +162,7 @@ class AsyncOpenAIDriver(CostMixin, AsyncDriver):
             extra={"tools": tools},
             prompt_cache_key=_openai_prompt_cache_key(messages, opts, tools),
         )
+        _apply_openai_tool_options(kwargs, options)
 
         resp = await self.client.chat.completions.create(**kwargs)
 
@@ -175,8 +177,10 @@ class AsyncOpenAIDriver(CostMixin, AsyncDriver):
 
         choice = resp.choices[0]
         text = choice.message.content or ""
-        stop_reason = choice.finish_reason
-        tool_calls_out = _extract_openai_tool_calls(choice.message, stop_reason)
+        raw_stop_reason = choice.finish_reason
+        tool_calls_out = _extract_openai_tool_calls(choice.message, raw_stop_reason)
+        stop_reason = _normalize_stop_reason(raw_stop_reason, tool_calls_present=bool(tool_calls_out))
+        meta["raw_stop_reason"] = raw_stop_reason
 
         return {
             "text": text,

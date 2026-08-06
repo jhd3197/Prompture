@@ -83,7 +83,7 @@ def _process_chunk(
     ``state["cached_prompt_tokens"]``, ``state["finish_reason"]``,
     ``state["tool_calls"]`` (dict indexed by tool-call slot).
     """
-    from ..agents.live_events import TextDelta, ToolInputDelta, ToolUseStart
+    from ..agents.live_events import TextDelta, ThinkingDelta, ToolInputDelta, ToolUseStart
 
     if getattr(chunk, "usage", None):
         state["prompt_tokens"] = chunk.usage.prompt_tokens or 0
@@ -100,6 +100,11 @@ def _process_chunk(
         if fr:
             state["finish_reason"] = fr
         return
+
+    # Reasoning/thinking deltas (Grok, DeepSeek, Moonshot reasoning models)
+    reasoning = getattr(delta, "reasoning_content", None)
+    if reasoning:
+        yield ThinkingDelta(text=reasoning)
 
     content = getattr(delta, "content", None) or ""
     if content:
@@ -137,27 +142,55 @@ def _process_chunk(
 
 
 def _finalize_tool_use_stops(state: dict[str, Any]) -> Iterator[Any]:
-    """After the stream ends, emit ``ToolUseStop`` per accumulated tool."""
+    """After the stream ends, emit ``ToolUseStop`` per accumulated tool.
+
+    Guarantees a ``ToolUseStart`` always precedes its ``ToolUseStop``
+    (synthesizing one here when the provider's chunks never completed the
+    start conditions) and generates a ``call_<uuid4>`` fallback id when the
+    provider omitted tool-call ids.  When the finish reason was
+    ``length``/``max_tokens`` and the assembled arguments fail to parse,
+    the stop is flagged ``truncated=True`` (contract C3).
+    """
+    import uuid
+
     from ..agents.live_events import ToolUseStart, ToolUseStop
 
+    finish_reason = state.get("finish_reason")
     for idx in sorted(state["tool_calls"].keys()):
         bucket = state["tool_calls"][idx]
-        if not bucket["start_emitted"] and bucket["id"] and bucket["name"]:
+        if not bucket["id"]:
+            bucket["id"] = f"call_{uuid.uuid4().hex[:24]}"
+        if not bucket["start_emitted"]:
             yield ToolUseStart(id=bucket["id"], name=bucket["name"])
             bucket["start_emitted"] = True
         args_str = "".join(bucket["args_fragments"])
+        parse_failed = False
         try:
             parsed = json.loads(args_str) if args_str else {}
             if not isinstance(parsed, dict):
+                parse_failed = True
+                logger.warning(
+                    "Streamed tool input for %s parsed to non-object JSON: %r",
+                    bucket["name"],
+                    args_str[:200],
+                )
                 parsed = {}
         except json.JSONDecodeError:
+            parse_failed = True
             logger.warning(
                 "Failed to parse streamed tool input for %s: %r",
                 bucket["name"],
                 args_str[:200],
             )
             parsed = {}
-        yield ToolUseStop(id=bucket["id"], name=bucket["name"], input=parsed)
+        truncated = parse_failed and finish_reason in ("length", "max_tokens")
+        yield ToolUseStop(
+            id=bucket["id"],
+            name=bucket["name"],
+            input=parsed,
+            truncated=truncated,
+            raw_stop_reason=finish_reason if parse_failed else None,
+        )
 
 
 def _build_meta(state: dict[str, Any], model: str, cost: float) -> dict[str, Any]:
@@ -169,6 +202,22 @@ def _build_meta(state: dict[str, Any], model: str, cost: float) -> dict[str, Any
         "cost": round(cost, 6),
         "model_name": model,
     }
+
+
+def _build_message_stop(state: dict[str, Any], model: str, cost: float) -> Any:
+    """Build the terminal ``MessageStop`` with a normalized ``stop_reason``
+    (shared vocabulary, contract M3); the provider's raw finish reason is
+    preserved in ``usage["raw_stop_reason"]``."""
+    from ..agents.live_events import MessageStop
+    from .base import _normalize_stop_reason
+
+    meta = _build_meta(state, model, cost)
+    raw_finish_reason = state.get("finish_reason")
+    meta["raw_stop_reason"] = raw_finish_reason
+    return MessageStop(
+        stop_reason=_normalize_stop_reason(raw_finish_reason, tool_calls_present=bool(state["tool_calls"])),
+        usage=meta,
+    )
 
 
 def _fresh_state() -> dict[str, Any]:
@@ -201,8 +250,6 @@ def iter_openai_compat_live_events(
     ``stream_options={"include_usage": True}`` to populate usage in the
     final chunk; without it ``cost_fn`` will receive zeros.
     """
-    from ..agents.live_events import MessageStop
-
     state = _fresh_state()
     for chunk in stream:
         yield from _process_chunk(chunk, state)
@@ -212,7 +259,7 @@ def iter_openai_compat_live_events(
         state["completion_tokens"],
         state["cached_prompt_tokens"],
     )
-    yield MessageStop(stop_reason=state["finish_reason"], usage=_build_meta(state, model, cost))
+    yield _build_message_stop(state, model, cost)
 
 
 async def aiter_openai_compat_live_events(
@@ -227,8 +274,6 @@ async def aiter_openai_compat_live_events(
     """
     import inspect
 
-    from ..agents.live_events import MessageStop
-
     state = _fresh_state()
     async for chunk in stream:
         for ev in _process_chunk(chunk, state):
@@ -241,7 +286,7 @@ async def aiter_openai_compat_live_events(
         state["cached_prompt_tokens"],
     )
     cost = await raw_cost if inspect.isawaitable(raw_cost) else raw_cost
-    yield MessageStop(stop_reason=state["finish_reason"], usage=_build_meta(state, model, cost))
+    yield _build_message_stop(state, model, cost)
 
 
 # ----------------------------------------------------------------------
@@ -268,6 +313,7 @@ def stream_openai_compat_tool_call(
     The driver must satisfy the contract described in this module's
     docstring. *provider* is the pricing-table key (e.g. ``"groq"``).
     """
+    from .base import _apply_openai_tool_options
     from .openai_driver import _build_openai_base_kwargs
 
     model = options.get("model", driver.model)
@@ -276,6 +322,16 @@ def stream_openai_compat_tool_call(
     supports_temperature = model_config["supports_temperature"]
 
     opts = {"temperature": default_temperature, "max_tokens": default_max_tokens, **options}
+
+    # Only first-party OpenAI gets prompt_cache_key — third-party
+    # OpenAI-compatible endpoints reject unknown fields (see
+    # _build_openai_base_kwargs). Mirrors the buffered path.
+    prompt_cache_key = None
+    if provider == "openai":
+        from .openai_driver import _openai_prompt_cache_key
+
+        prompt_cache_key = _openai_prompt_cache_key(messages, opts, tools)
+
     kwargs = _build_openai_base_kwargs(
         model,
         messages,
@@ -288,7 +344,9 @@ def stream_openai_compat_tool_call(
             "stream": True,
             "stream_options": {"include_usage": True},
         },
+        prompt_cache_key=prompt_cache_key,
     )
+    _apply_openai_tool_options(kwargs, options)
 
     stream = driver.client.chat.completions.create(**kwargs)
 
@@ -309,6 +367,7 @@ async def astream_openai_compat_tool_call(
     default_temperature: float = 1.0,
 ) -> AsyncIterator[Any]:
     """Async sibling of :func:`stream_openai_compat_tool_call`."""
+    from .base import _apply_openai_tool_options
     from .openai_driver import _build_openai_base_kwargs
 
     model = options.get("model", driver.model)
@@ -317,6 +376,13 @@ async def astream_openai_compat_tool_call(
     supports_temperature = model_config["supports_temperature"]
 
     opts = {"temperature": default_temperature, "max_tokens": default_max_tokens, **options}
+
+    prompt_cache_key = None
+    if provider == "openai":
+        from .openai_driver import _openai_prompt_cache_key
+
+        prompt_cache_key = _openai_prompt_cache_key(messages, opts, tools)
+
     kwargs = _build_openai_base_kwargs(
         model,
         messages,
@@ -329,7 +395,9 @@ async def astream_openai_compat_tool_call(
             "stream": True,
             "stream_options": {"include_usage": True},
         },
+        prompt_cache_key=prompt_cache_key,
     )
+    _apply_openai_tool_options(kwargs, options)
 
     stream = await driver.client.chat.completions.create(**kwargs)
 
@@ -394,8 +462,10 @@ def _build_raw_http_payload(
     payload[tokens_param] = opts.get("max_tokens", default_max_tokens)
     if supports_temperature and "temperature" in opts:
         payload["temperature"] = opts["temperature"]
-    if "tool_choice" in options:
-        payload["tool_choice"] = options["tool_choice"]
+
+    from .base import _apply_openai_tool_options
+
+    _apply_openai_tool_options(payload, options)
 
     return model, payload
 
@@ -428,8 +498,6 @@ def stream_raw_http_compat_tool_call(
     Override *url* or *headers* if the driver uses a different shape.
     """
     import requests
-
-    from ..agents.live_events import MessageStop
 
     model, payload = _build_raw_http_payload(
         driver,
@@ -476,7 +544,7 @@ def stream_raw_http_compat_tool_call(
         state["completion_tokens"],
         cached_tokens=state["cached_prompt_tokens"],
     )
-    yield MessageStop(stop_reason=state["finish_reason"], usage=_build_meta(state, model, cost))
+    yield _build_message_stop(state, model, cost)
 
 
 async def astream_raw_http_compat_tool_call(
@@ -495,8 +563,6 @@ async def astream_raw_http_compat_tool_call(
     """Async sibling of :func:`stream_raw_http_compat_tool_call` using
     ``httpx.AsyncClient.stream``."""
     import httpx
-
-    from ..agents.live_events import MessageStop
 
     model, payload = _build_raw_http_payload(
         driver,
@@ -547,7 +613,7 @@ async def astream_raw_http_compat_tool_call(
         state["completion_tokens"],
         cached_tokens=state["cached_prompt_tokens"],
     )
-    yield MessageStop(stop_reason=state["finish_reason"], usage=_build_meta(state, model, cost))
+    yield _build_message_stop(state, model, cost)
 
 
 __all__ = [

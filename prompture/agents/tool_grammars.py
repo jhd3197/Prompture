@@ -66,20 +66,29 @@ class ToolGrammar:
     """Given the OpenAI-style ``tools`` list, return the instruction block
     appended to the system prompt so the model emits this grammar."""
 
+    open_prefix: str = "<tool_call"
+    """Literal leading characters of :attr:`open_regex`. The streaming
+    parser derives its holdback from this: while in narration it never
+    emits a trailing run of characters that could still grow into this
+    prefix, so a delimiter split across chunks is still detected."""
+
 
 # ---------------------------------------------------------------------------
 # Default grammar: XML-style tags with name + id attributes
 # ---------------------------------------------------------------------------
 
 # Matches  <tool_call name="x">  or  <tool_call name="x" id="y">
+# Attribute values may be double- or single-quoted.
 _XML_OPEN_RE = re.compile(
-    r"<tool_call\s+name\s*=\s*\"(?P<name>[^\"]+)\""
-    r"(?:\s+id\s*=\s*\"(?P<id>[^\"]+)\")?\s*>"
+    r"<tool_call\s+name\s*=\s*(?:\"(?P<name_dq>[^\"]+)\"|'(?P<name_sq>[^']+)')"
+    r"(?:\s+id\s*=\s*(?:\"(?P<id_dq>[^\"]+)\"|'(?P<id_sq>[^']+)'))?\s*>"
 )
 
 
 def _xml_parse_open(match: re.Match[str]) -> tuple[str, str | None]:
-    return match.group("name"), match.group("id")
+    name = match.group("name_dq") or match.group("name_sq")
+    tag_id = match.group("id_dq") or match.group("id_sq")
+    return name, tag_id
 
 
 def _xml_render_system_prompt(tools: list[dict[str, Any]]) -> str:
@@ -138,6 +147,7 @@ XML_TAGS_GRAMMAR = ToolGrammar(
     close_marker="</tool_call>",
     parse_open_tag=_xml_parse_open,
     render_system_prompt=_xml_render_system_prompt,
+    open_prefix="<tool_call",
 )
 """Default prompted-tool grammar — XML-style ``<tool_call name="..." [id="..."]>{json}</tool_call>``.
 

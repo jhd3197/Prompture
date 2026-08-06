@@ -35,7 +35,7 @@ from ._prompt_cache import (
 from ._prompt_cache import (
     cache_write_multiplier as _cache_write_multiplier,
 )
-from .base import Driver
+from .base import Driver, _normalize_stop_reason, _translate_tool_choice
 
 logger = logging.getLogger(__name__)
 
@@ -470,7 +470,7 @@ class ClaudeDriver(CostMixin, Driver):
                 'anthropic package not installed. Install it with: pip install "prompture[anthropic]"'
             )
 
-        opts = {**{"temperature": 0.0, "max_tokens": 512}, **options}
+        opts = {**{"temperature": 0.0, "max_tokens": 4096}, **options}
         model = options.get("model", self.model)
 
         self._validate_model_capabilities("claude", model, using_tool_use=True)
@@ -499,6 +499,9 @@ class ClaudeDriver(CostMixin, Driver):
             kwargs["temperature"] = opts["temperature"]
         if wrapped_system is not None:
             kwargs["system"] = wrapped_system
+        tool_choice = _translate_tool_choice(options.get("tool_choice"), "anthropic")
+        if tool_choice is not None:
+            kwargs["tool_choice"] = tool_choice
 
         resp = client.messages.create(**kwargs)
 
@@ -513,6 +516,7 @@ class ClaudeDriver(CostMixin, Driver):
             cache_write_multiplier=_cache_write_multiplier(opts.get("cache_ttl", "5m")),
         )
         meta = _build_anthropic_meta(resp, model, total_cost)
+        meta["raw_stop_reason"] = resp.stop_reason
 
         text, tool_calls_out = _extract_anthropic_text_and_tool_calls(resp.content)
         reasoning_content = self._extract_thinking(resp.content)
@@ -521,7 +525,7 @@ class ClaudeDriver(CostMixin, Driver):
             "text": text,
             "meta": meta,
             "tool_calls": tool_calls_out,
-            "stop_reason": resp.stop_reason,
+            "stop_reason": _normalize_stop_reason(resp.stop_reason, tool_calls_present=bool(tool_calls_out)),
         }
         if reasoning_content is not None:
             result["reasoning_content"] = reasoning_content
@@ -684,10 +688,17 @@ class ClaudeDriver(CostMixin, Driver):
             kwargs["temperature"] = opts["temperature"]
         if wrapped_system is not None:
             kwargs["system"] = wrapped_system
+        tool_choice = _translate_tool_choice(options.get("tool_choice"), "anthropic")
+        if tool_choice is not None:
+            kwargs["tool_choice"] = tool_choice
 
         block_kinds: dict[int, str] = {}
         tool_block_info: dict[int, dict[str, Any]] = {}
         tool_input_buffers: dict[int, list[str]] = {}
+        # Tool blocks whose input JSON failed to parse are withheld until
+        # the message-level stop_reason arrives (message_delta comes AFTER
+        # content_block_stop) so truncation can be flagged accurately.
+        pending_failed_stops: list[dict[str, Any]] = []
 
         base_input = 0
         cache_read = 0
@@ -737,22 +748,28 @@ class ClaudeDriver(CostMixin, Driver):
                     if block_kinds.get(idx) == "tool_use":
                         info = tool_block_info.get(idx, {})
                         buf = "".join(tool_input_buffers.get(idx, []))
+                        parse_failed = False
                         try:
                             parsed = json.loads(buf) if buf else {}
                             if not isinstance(parsed, dict):
+                                parse_failed = True
                                 parsed = {}
                         except json.JSONDecodeError:
+                            parse_failed = True
+                            parsed = {}
+                        if parse_failed:
                             logger.warning(
                                 "Failed to parse streamed tool input for %s: %r",
                                 info.get("name", "?"),
                                 buf[:200],
                             )
-                            parsed = {}
-                        yield ToolUseStop(
-                            id=info.get("id", ""),
-                            name=info.get("name", ""),
-                            input=parsed,
-                        )
+                            pending_failed_stops.append({"info": info})
+                        else:
+                            yield ToolUseStop(
+                                id=info.get("id", ""),
+                                name=info.get("name", ""),
+                                input=parsed,
+                            )
                 elif ev_type == "message_delta":
                     usage = getattr(event, "usage", None)
                     if usage is not None:
@@ -760,6 +777,18 @@ class ClaudeDriver(CostMixin, Driver):
                     sr = getattr(getattr(event, "delta", None), "stop_reason", None)
                     if sr:
                         stop_reason = sr
+
+        # Flush tool stops whose input failed to parse, now that the final
+        # stop_reason is known (contract C3: truncated iff max_tokens).
+        for pending in pending_failed_stops:
+            info = pending["info"]
+            yield ToolUseStop(
+                id=info.get("id", ""),
+                name=info.get("name", ""),
+                input={},
+                truncated=stop_reason == "max_tokens",
+                raw_stop_reason=stop_reason,
+            )
 
         prompt_tokens = base_input + cache_read + cache_create
         total_cost = self._calculate_cost(
@@ -779,5 +808,6 @@ class ClaudeDriver(CostMixin, Driver):
             "cache_creation_tokens": cache_create,
             "cost": round(total_cost, 6),
             "model_name": model,
+            "raw_stop_reason": stop_reason,
         }
-        yield MessageStop(stop_reason=stop_reason, usage=meta)
+        yield MessageStop(stop_reason=_normalize_stop_reason(stop_reason), usage=meta)

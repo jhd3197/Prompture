@@ -60,18 +60,13 @@ from ..agents.tool_grammars import ToolGrammar, get_grammar, inject_tool_instruc
 logger = logging.getLogger(__name__)
 
 
-# The opening-delimiter prefix the parser scans for. When in narration
-# mode, the parser holds back the tail of un-emitted text that could
-# still grow into this prefix.
-_OPEN_PREFIX = "<tool_call"
-
-
 class _ParserState(Enum):
     """Parser state machine vertices."""
 
     NARRATION = "narration"
     """Emitting :class:`~prompture.agents.live_events.TextDelta` events for
-    plain text — watching for ``_OPEN_PREFIX`` to start a tool call."""
+    plain text — watching for the grammar's ``open_prefix`` to start a tool
+    call."""
 
     TOOL_ARGS = "tool_args"
     """Inside a tool-call block — emitting
@@ -111,7 +106,7 @@ class PromptedToolStreamParser:
         self._state = _ParserState.NARRATION
         self._narration_buf = ""
         self._current_tool: _ToolInProgress | None = None
-        self._open_holdback = len(_OPEN_PREFIX) - 1
+        self._open_holdback = max(0, len(grammar.open_prefix) - 1)
         self._close_holdback = max(0, len(grammar.close_marker) - 1)
 
     def feed(self, chunk: str) -> Iterator[LiveEvent]:
@@ -178,8 +173,16 @@ class PromptedToolStreamParser:
             match = self.grammar.open_regex.search(self._narration_buf)
             if match is None:
                 # No opening tag yet. Emit everything except a tail that
-                # could still grow into ``<tool_call``.
-                if self._buffer_could_become_open_tag():
+                # could still grow into the grammar's opening delimiter:
+                # either a *complete* ``open_prefix`` whose tag terminator
+                # hasn't arrived yet (worst case it's prose mentioning the
+                # prefix — emission is merely delayed until finish()), or a
+                # partial prefix at the buffer tail.
+                prefix = self.grammar.open_prefix
+                hold_from = self._narration_buf.rfind(prefix) if prefix else -1
+                if hold_from != -1:
+                    safe_len = hold_from
+                elif self._buffer_could_become_open_tag():
                     safe_len = max(0, len(self._narration_buf) - self._open_holdback)
                 else:
                     safe_len = len(self._narration_buf)
@@ -264,19 +267,20 @@ class PromptedToolStreamParser:
         opening tag with more characters appended.
 
         Cheap O(holdback) check that avoids unnecessary text holdback
-        when the buffer's tail clearly can't be the start of
-        ``<tool_call``.
+        when the buffer's tail clearly can't be the start of the grammar's
+        ``open_prefix``.
         """
-        if self._open_holdback <= 0:
+        prefix = self.grammar.open_prefix
+        if self._open_holdback <= 0 or not prefix:
             return False
         tail = self._narration_buf[-self._open_holdback :]
         if not tail:
             return False
-        lt = tail.rfind("<")
-        if lt == -1:
+        start = tail.rfind(prefix[0])
+        if start == -1:
             return False
-        candidate = tail[lt:]
-        return _OPEN_PREFIX.startswith(candidate)
+        candidate = tail[start:]
+        return prefix.startswith(candidate)
 
     def _parse_tool_args(self, raw: str) -> dict[str, Any]:
         """Parse the accumulated args JSON, with graceful fallback."""
