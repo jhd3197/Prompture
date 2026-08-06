@@ -257,6 +257,10 @@ class TestCodingAgentRunEndpoint:
 
     def test_run_endpoint_streams_sse_events(self, client):
         """When stream=true, the endpoint emits SSE-framed events."""
+        # SSE streaming needs the `serve` extra; the endpoint answers 501
+        # without it, which is correct behaviour rather than a failure.
+        pytest.importorskip("sse_starlette")
+
         from prompture.infra.coding_agent_events import CodingAgentEvent
 
         async def _fake_stream(*args, **kwargs):
