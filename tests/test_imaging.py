@@ -11,13 +11,16 @@ from prompture.drivers.async_base import AsyncDriver
 from prompture.drivers.base import Driver
 from prompture.imaging import (
     DEFAULT_STYLE_PRESETS,
+    EnhancedPrompt,
     ImageSetPlan,
     ImageSpec,
     StylePreset,
     aenhance_image_prompt,
+    aenhance_image_prompt_detailed,
     aplan_image_set,
     compose_negative_prompt,
     enhance_image_prompt,
+    enhance_image_prompt_detailed,
     get_style_preset,
     list_style_presets,
     model_supports_negative_prompt,
@@ -66,6 +69,68 @@ class _AsyncJsonDriver(AsyncDriver):
 
     def _resp(self) -> dict[str, Any]:
         return {"text": self._text, "meta": {"cost": 0.0, "model_name": "mock-async-model", "raw_response": {}}}
+
+
+class _UsageDriver(Driver):
+    """Sync driver that reports real token/cost meta, like a live provider."""
+
+    supports_json_mode = True
+    supports_json_schema = False
+    supports_messages = True
+
+    def __init__(self, text: str):
+        self._text = text
+        self.model = "mock-model"
+
+    def generate(self, prompt: str, options: dict[str, Any]) -> dict[str, Any]:
+        return self._resp()
+
+    def generate_messages(self, messages: list[dict[str, Any]], options: dict[str, Any]) -> dict[str, Any]:
+        return self._resp()
+
+    def _resp(self) -> dict[str, Any]:
+        return {
+            "text": self._text,
+            "meta": {
+                "prompt_tokens": 120,
+                "completion_tokens": 45,
+                "total_tokens": 165,
+                "cost": 0.00042,
+                "model_name": "mock-model",
+                "raw_response": {},
+            },
+        }
+
+
+class _AsyncUsageDriver(AsyncDriver):
+    """Async twin of :class:`_UsageDriver`."""
+
+    supports_json_mode = True
+    supports_json_schema = False
+    supports_messages = True
+
+    def __init__(self, text: str):
+        self._text = text
+        self.model = "mock-async-model"
+
+    async def generate(self, prompt: str, options: dict[str, Any]) -> dict[str, Any]:
+        return self._resp()
+
+    async def generate_messages(self, messages: list[dict[str, Any]], options: dict[str, Any]) -> dict[str, Any]:
+        return self._resp()
+
+    def _resp(self) -> dict[str, Any]:
+        return {
+            "text": self._text,
+            "meta": {
+                "prompt_tokens": 120,
+                "completion_tokens": 45,
+                "total_tokens": 165,
+                "cost": 0.00042,
+                "model_name": "mock-async-model",
+                "raw_response": {},
+            },
+        }
 
 
 class _RaisingDriver(Driver):
@@ -201,6 +266,23 @@ class TestSetPlanner:
         assert len(plan) == 2
         assert plan.images[0].prompt == "a wide hero banner"
 
+    # Planning is a real text-model call. Without these, a caller totalling what
+    # an image set cost silently omits it and the set looks cheaper than it was.
+    def test_plan_reports_usage(self):
+        plan = plan_image_set("a launch set", driver=_UsageDriver(_PLAN_JSON), max_images=3)
+        assert plan.usage["total_tokens"] == 165
+        assert plan.usage["cost"] == pytest.approx(0.00042)
+
+    @pytest.mark.asyncio
+    async def test_aplan_reports_usage(self):
+        plan = await aplan_image_set("set", driver=_AsyncUsageDriver(_PLAN_JSON), max_images=2)
+        assert plan.usage["total_tokens"] == 165
+        assert plan.usage["cost"] == pytest.approx(0.00042)
+
+    def test_plan_usage_defaults_to_empty(self):
+        plan = ImageSetPlan(images=[], brief="b")
+        assert plan.usage == {}
+
 
 # --------------------------------------------------------------------------
 # Prompt enhancer
@@ -235,3 +317,58 @@ class TestEnhancer:
         driver = _AsyncJsonDriver(json.dumps({"enhanced_prompt": "vivid cat"}))
         out = await aenhance_image_prompt("a cat", driver=driver)
         assert out == "vivid cat"
+
+
+# --------------------------------------------------------------------------
+# Prompt enhancer — usage-reporting variant
+# --------------------------------------------------------------------------
+
+
+class TestEnhancerDetailed:
+    def test_detailed_reports_prompt_and_usage(self):
+        driver = _UsageDriver(json.dumps({"enhanced_prompt": "a richly detailed cat"}))
+        res = enhance_image_prompt_detailed("a cat", driver=driver)
+        assert isinstance(res, EnhancedPrompt)
+        assert res.prompt == "a richly detailed cat"
+        assert res.original == "a cat"
+        assert res.changed is True
+        assert res.usage["total_tokens"] == 165
+        assert res.usage["cost"] == pytest.approx(0.00042)
+
+    @pytest.mark.asyncio
+    async def test_adetailed_reports_prompt_and_usage(self):
+        driver = _AsyncUsageDriver(json.dumps({"enhanced_prompt": "vivid cat"}))
+        res = await aenhance_image_prompt_detailed("a cat", driver=driver)
+        assert res.prompt == "vivid cat"
+        assert res.usage["total_tokens"] == 165
+
+    def test_plain_form_still_returns_a_string(self):
+        """The bare-string API is what most callers use — it must not change."""
+        driver = _UsageDriver(json.dumps({"enhanced_prompt": "styled cat"}))
+        out = enhance_image_prompt("a cat", driver=driver)
+        assert isinstance(out, str)
+        assert out == "styled cat"
+
+    def test_empty_result_still_bills(self):
+        """A useless rewrite was still paid for, so usage is reported anyway."""
+        res = enhance_image_prompt_detailed(
+            "a cat", driver=_UsageDriver(json.dumps({"enhanced_prompt": ""}))
+        )
+        assert res.prompt == "a cat"
+        assert res.changed is False
+        assert res.usage["total_tokens"] == 165
+
+    def test_failure_has_no_usage(self):
+        res = enhance_image_prompt_detailed("a cat", driver=_RaisingDriver())
+        assert res.prompt == "a cat"
+        assert res.changed is False
+        assert res.usage == {}
+
+    def test_empty_prompt_makes_no_call(self):
+        res = enhance_image_prompt_detailed("   ", driver=_UsageDriver("{}"))
+        assert res.prompt == "   "
+        assert res.usage == {}
+
+    def test_str_is_the_prompt(self):
+        driver = _UsageDriver(json.dumps({"enhanced_prompt": "styled cat"}))
+        assert str(enhance_image_prompt_detailed("a cat", driver=driver)) == "styled cat"

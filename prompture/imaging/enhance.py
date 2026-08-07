@@ -10,6 +10,7 @@ generation.
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -30,6 +31,30 @@ _ENHANCE_SCHEMA = {
     "properties": {"enhanced_prompt": {"type": "string"}},
     "required": ["enhanced_prompt"],
 }
+
+
+@dataclass(frozen=True)
+class EnhancedPrompt:
+    """The enhancer's full result — the rewrite plus what it cost.
+
+    :func:`enhance_image_prompt` returns a bare ``str`` and always will; this
+    is for callers that also need the token/cost summary (``usage``, in the
+    shape ``ask_for_json`` returns). ``changed`` is ``False`` when the rewrite
+    fell back to the original — no model, an LLM error, or an empty result —
+    in which case ``usage`` is empty.
+    """
+
+    prompt: str
+    original: str
+    model: str | None = None
+    usage: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def changed(self) -> bool:
+        return self.prompt != self.original
+
+    def __str__(self) -> str:
+        return self.prompt
 
 
 def _build_instruction(
@@ -64,6 +89,83 @@ def _read_enhanced(result: dict[str, Any], fallback: str) -> str:
     return enhanced or fallback
 
 
+def enhance_image_prompt_detailed(
+    prompt: str,
+    *,
+    model: str | None = None,
+    driver: Any | None = None,
+    style: str | StylePreset | None = None,
+    target_model: str | None = None,
+    max_words: int = 120,
+    env: Any | None = None,
+    options: dict[str, Any] | None = None,
+) -> EnhancedPrompt:
+    """Expand ``prompt`` and report what the rewrite cost.
+
+    Same behaviour as :func:`enhance_image_prompt` — it is this function's
+    ``.prompt`` — but returns an :class:`EnhancedPrompt` carrying ``usage``.
+    Never raises: every failure path falls back to the original prompt with
+    empty usage.
+    """
+    from ..agents.conversation import Conversation
+
+    if not (prompt and prompt.strip()):
+        return EnhancedPrompt(prompt=prompt, original=prompt, model=model)
+    try:
+        conv = Conversation(model_name=model, driver=driver, system_prompt=_ENHANCE_SYSTEM, env=env)
+        result = conv.ask_for_json(
+            _build_instruction(prompt, style, target_model, max_words),
+            _ENHANCE_SCHEMA,
+            options=options,
+        )
+        return EnhancedPrompt(
+            prompt=_read_enhanced(result, prompt),
+            original=prompt,
+            model=model,
+            # Billed even when the model returned nothing usable, so usage is
+            # reported on the empty-result path too — only the no-call and
+            # exception paths leave it empty.
+            usage=dict(result.get("usage") or {}),
+        )
+    except Exception:
+        logger.warning("Prompt enhancement failed; returning the original prompt.", exc_info=True)
+        return EnhancedPrompt(prompt=prompt, original=prompt, model=model)
+
+
+async def aenhance_image_prompt_detailed(
+    prompt: str,
+    *,
+    model: str | None = None,
+    driver: Any | None = None,
+    style: str | StylePreset | None = None,
+    target_model: str | None = None,
+    max_words: int = 120,
+    env: Any | None = None,
+    options: dict[str, Any] | None = None,
+) -> EnhancedPrompt:
+    """Async twin of :func:`enhance_image_prompt_detailed`."""
+    from ..agents.async_conversation import AsyncConversation
+
+    if not (prompt and prompt.strip()):
+        return EnhancedPrompt(prompt=prompt, original=prompt, model=model)
+    try:
+        conv = AsyncConversation(model_name=model, driver=driver, system_prompt=_ENHANCE_SYSTEM, env=env)
+        result = await conv.ask_for_json(
+            _build_instruction(prompt, style, target_model, max_words),
+            _ENHANCE_SCHEMA,
+            options=options,
+        )
+        return EnhancedPrompt(
+            prompt=_read_enhanced(result, prompt),
+            original=prompt,
+            model=model,
+            usage=dict(result.get("usage") or {}),
+        )
+    except Exception:
+        logger.warning("Async prompt enhancement failed; returning the original prompt.", exc_info=True)
+        return EnhancedPrompt(prompt=prompt, original=prompt, model=model)
+
+
 def enhance_image_prompt(
     prompt: str,
     *,
@@ -80,22 +182,20 @@ def enhance_image_prompt(
     Provide either ``model`` (e.g. ``"openai/gpt-4o-mini"``) or a ready
     ``driver``. ``style`` accepts a :class:`StylePreset` or a registered preset
     id to bias the rewrite. Returns the original prompt on any failure.
-    """
-    from ..agents.conversation import Conversation
 
-    if not (prompt and prompt.strip()):
-        return prompt
-    try:
-        conv = Conversation(model_name=model, driver=driver, system_prompt=_ENHANCE_SYSTEM, env=env)
-        result = conv.ask_for_json(
-            _build_instruction(prompt, style, target_model, max_words),
-            _ENHANCE_SCHEMA,
-            options=options,
-        )
-        return _read_enhanced(result, prompt)
-    except Exception:
-        logger.warning("Prompt enhancement failed; returning the original prompt.", exc_info=True)
-        return prompt
+    Use :func:`enhance_image_prompt_detailed` when you also need the call's
+    token/cost usage.
+    """
+    return enhance_image_prompt_detailed(
+        prompt,
+        model=model,
+        driver=driver,
+        style=style,
+        target_model=target_model,
+        max_words=max_words,
+        env=env,
+        options=options,
+    ).prompt
 
 
 async def aenhance_image_prompt(
@@ -110,18 +210,14 @@ async def aenhance_image_prompt(
     options: dict[str, Any] | None = None,
 ) -> str:
     """Async twin of :func:`enhance_image_prompt`."""
-    from ..agents.async_conversation import AsyncConversation
-
-    if not (prompt and prompt.strip()):
-        return prompt
-    try:
-        conv = AsyncConversation(model_name=model, driver=driver, system_prompt=_ENHANCE_SYSTEM, env=env)
-        result = await conv.ask_for_json(
-            _build_instruction(prompt, style, target_model, max_words),
-            _ENHANCE_SCHEMA,
-            options=options,
-        )
-        return _read_enhanced(result, prompt)
-    except Exception:
-        logger.warning("Async prompt enhancement failed; returning the original prompt.", exc_info=True)
-        return prompt
+    result = await aenhance_image_prompt_detailed(
+        prompt,
+        model=model,
+        driver=driver,
+        style=style,
+        target_model=target_model,
+        max_words=max_words,
+        env=env,
+        options=options,
+    )
+    return result.prompt

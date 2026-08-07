@@ -62,12 +62,22 @@ class ImageSpec:
 
 @dataclass(frozen=True)
 class ImageSetPlan:
-    """A planned set of images derived from a brief."""
+    """A planned set of images derived from a brief.
+
+    ``usage`` is the planner call's token/cost summary, in the same shape
+    ``ask_for_json`` returns (``prompt_tokens`` / ``completion_tokens`` /
+    ``total_tokens`` / ``cost``). Planning is a real text-model call, so a
+    caller totalling what an image set cost has to be able to see it —
+    without this the planning step is invisible and the set looks cheaper
+    than it was. Empty when the plan came from somewhere other than a live
+    call.
+    """
 
     images: list[ImageSpec]
     brief: str
     model: str | None = None
     raw: dict[str, Any] = field(default_factory=dict)
+    usage: dict[str, Any] = field(default_factory=dict)
 
     def __len__(self) -> int:
         return len(self.images)
@@ -120,7 +130,13 @@ def plan_image_set(
     conv = Conversation(model_name=model, driver=driver, system_prompt=system_prompt or _PLAN_SYSTEM, env=env)
     result = conv.ask_for_json(_build_prompt(brief, max_images, style_guidance), _PLAN_SCHEMA, options=options)
     raw = result.get("json_object") or {}
-    return ImageSetPlan(images=_coerce_specs(raw.get("images"), max_images), brief=brief, model=model, raw=raw)
+    return ImageSetPlan(
+        images=_coerce_specs(raw.get("images"), max_images),
+        brief=brief,
+        model=model,
+        raw=raw,
+        usage=dict(result.get("usage") or {}),
+    )
 
 
 async def aplan_image_set(
@@ -140,4 +156,10 @@ async def aplan_image_set(
     conv = AsyncConversation(model_name=model, driver=driver, system_prompt=system_prompt or _PLAN_SYSTEM, env=env)
     result = await conv.ask_for_json(_build_prompt(brief, max_images, style_guidance), _PLAN_SCHEMA, options=options)
     raw = result.get("json_object") or {}
-    return ImageSetPlan(images=_coerce_specs(raw.get("images"), max_images), brief=brief, model=model, raw=raw)
+    return ImageSetPlan(
+        images=_coerce_specs(raw.get("images"), max_images),
+        brief=brief,
+        model=model,
+        raw=raw,
+        usage=dict(result.get("usage") or {}),
+    )
