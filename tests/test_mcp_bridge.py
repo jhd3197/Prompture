@@ -26,6 +26,23 @@ def _tool(name, description=None, input_schema=None):
     )
 
 
+def _sdk_tool(name, description=None, input_schema=None):
+    """A tool shaped like the ``mcp`` SDK's own model, not like the wire JSON.
+
+    The SDK exposes ``input_schema``/``is_error`` as the *attributes* and keeps
+    the camelCase spellings as pydantic aliases. Every mock in this file used
+    the camelCase spelling — the same one the code read — so both spellings
+    being needed went unnoticed until an SDK generation flipped which is the
+    attribute, at which point tools were silently advertised with no
+    parameters and failed calls silently looked successful.
+    """
+    return SimpleNamespace(
+        name=name,
+        description=description,
+        input_schema=input_schema,
+    )
+
+
 def _text_block(text):
     return SimpleNamespace(type="text", text=text)
 
@@ -72,6 +89,19 @@ class TestRegistration:
         assert td is not None
         assert td.description == "Get weather"
         assert td.parameters == WEATHER_SCHEMA  # JSON Schema passed through unchanged
+
+    async def test_registers_schema_under_sdk_field_name(self):
+        """``input_schema`` (SDK attribute) must work as well as ``inputSchema``."""
+        session = FakeSession(tools=[_sdk_tool("get_weather", "Get weather", WEATHER_SCHEMA)])
+        registry = ToolRegistry()
+
+        names = await register_mcp_tools(registry, session)
+
+        assert names == ["get_weather"]
+        td = registry.get("get_weather")
+        assert td.parameters == WEATHER_SCHEMA, (
+            "schema lost: the model would be told this tool takes no arguments"
+        )
 
     async def test_prefix_applied_to_names(self):
         session = FakeSession(tools=[_tool("read_file", "Read a file")])
@@ -181,6 +211,21 @@ class TestErrorMapping:
     async def test_is_error_result_becomes_error_string(self):
         result = SimpleNamespace(content=[_text_block("no such file")], isError=True)
         session = FakeSession(tools=[_tool("read_file")], call_result=result)
+        registry = ToolRegistry()
+        await register_mcp_tools(registry, session)
+
+        output = await registry.aexecute("read_file", {})
+
+        assert output == "Error from MCP tool 'read_file': no such file"
+
+    async def test_is_error_under_sdk_field_name(self):
+        """``is_error`` (SDK attribute) must also mark the result as an error.
+
+        Missing it doesn't fail loudly — it hands the model a failure message
+        formatted as ordinary output, which reads as data.
+        """
+        result = SimpleNamespace(content=[_text_block("no such file")], is_error=True)
+        session = FakeSession(tools=[_sdk_tool("read_file")], call_result=result)
         registry = ToolRegistry()
         await register_mcp_tools(registry, session)
 

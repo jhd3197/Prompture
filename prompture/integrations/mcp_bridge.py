@@ -57,6 +57,32 @@ def _sanitize_name(name: str, prefix: str | None = None) -> str:
     return sanitized
 
 
+def _mcp_field(obj: Any, *names: str, default: Any = None) -> Any:
+    """Read the first present field from *names*, by attribute then by key.
+
+    MCP's own JSON uses camelCase (``inputSchema``, ``isError``), but the
+    ``mcp`` Python SDK models expose snake_case attributes with the camelCase
+    spelling as a pydantic *alias* — and which one is the attribute changed
+    between SDK generations. Reading a single spelling therefore fails
+    silently: the value comes back as the default, and nothing raises.
+
+    That is exactly how two bugs shipped. ``inputSchema`` read as absent left
+    every MCP tool advertised to the model with an empty parameter schema (so a
+    tool needing arguments looked like it took none), and ``isError`` read as
+    absent turned every failed MCP call into an apparently successful one. Both
+    were invisible to the tests, whose mocks used the same spelling as the code.
+    """
+    for name in names:
+        value = getattr(obj, name, None)
+        if value is not None:
+            return value
+    if isinstance(obj, dict):
+        for name in names:
+            if obj.get(name) is not None:
+                return obj[name]
+    return default
+
+
 def _serialize_content_block(block: Any) -> str:
     """Serialize a single MCP content block to a string.
 
@@ -97,7 +123,7 @@ def _make_mcp_tool_function(session: mcp.ClientSession, mcp_name: str) -> Any:
             # MCP call errors become LLM-friendly error strings (registry convention).
             return f"Error calling MCP tool '{mcp_name}': {exc}"
         text = _serialize_call_result(result)
-        if getattr(result, "isError", False):
+        if _mcp_field(result, "isError", "is_error", default=False):
             return f"Error from MCP tool '{mcp_name}': {text}"
         return text
 
@@ -149,12 +175,12 @@ async def register_mcp_tools(
 
     registered: list[str] = []
     for tool in tools:
-        mcp_name = getattr(tool, "name", None)
+        mcp_name = _mcp_field(tool, "name")
         if not mcp_name:
             continue
         name = _sanitize_name(str(mcp_name), prefix)
-        description = getattr(tool, "description", None) or f"MCP tool {mcp_name}"
-        parameters = getattr(tool, "inputSchema", None)
+        description = _mcp_field(tool, "description") or f"MCP tool {mcp_name}"
+        parameters = _mcp_field(tool, "inputSchema", "input_schema")
         if not isinstance(parameters, dict):
             parameters = {"type": "object", "properties": {}}
         registry.add(
