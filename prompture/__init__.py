@@ -10,7 +10,13 @@ except ImportError:  # tukuy not installed
     TukuyLLMBackend = None  # type: ignore[assignment,misc]
     create_tukuy_backend = None  # type: ignore[assignment]
 from . import eval as eval
-from . import plugins, rag
+from . import (
+    jobs,
+    mcp,
+    plugins,
+    rag,
+    workflow,
+)
 from .checkpoints import (
     Checkpoint,
     CheckpointManager,
@@ -42,6 +48,12 @@ from .dataset import (
     to_sharegpt,
 )
 from .drivers import *
+from .drivers.media_capabilities import (
+    MediaModelInfo,
+    get_model_schema,
+    get_models_by_modality,
+    get_models_by_op,
+)
 from .eval import (
     EvalError,
     FaithfulnessEvaluator,
@@ -64,8 +76,10 @@ from .exceptions import (
 from .extraction import *
 from .groups import *
 from .infra import *
+from .infra.media_pricing import estimate_cost, get_media_rate, register_media_rate
 from .ingestion import *
 from .integrations import *
+from .jobs import JobHandle, JobResult, JobStatus, MediaAsset
 from .kg import (
     Entity,
     EntityStore,
@@ -78,6 +92,7 @@ from .kg import (
     extract_relations,
 )
 from .media import *
+from .media.agent_tools import media_tool_definitions, register_media_tools
 from .persistence import *
 from .pipeline import *
 from .refusal import (
@@ -133,6 +148,17 @@ from .tools import (
     WebSearchTool,
     python_execute_tool,
     web_search_tool,
+)
+from .workflow import (
+    ArchitectResult,
+    CompiledWorkflow,
+    Graph,
+    GraphRunner,
+    Node,
+    architect,
+    build_graph,
+    compile_graph,
+    run_graph,
 )
 
 # Tukuy type re-exports (aliased to avoid collision with Prompture names)

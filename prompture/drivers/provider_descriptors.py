@@ -78,6 +78,12 @@ class ProviderDescriptor:
     moderation_sync: DriverSpec | None = None
     moderation_async: DriverSpec | None = None
 
+    lipsync_sync: DriverSpec | None = None
+    lipsync_async: DriverSpec | None = None
+
+    music_sync: DriverSpec | None = None
+    music_async: DriverSpec | None = None
+
     # Human-friendly name for display purposes (e.g. "OpenAI", "Google Gemini").
     # Aliases get None.
     display_name: str | None = None
@@ -182,7 +188,9 @@ def register_all_builtin_drivers() -> None:
         register_async_driver,
         register_async_embedding_driver,
         register_async_img_gen_driver,
+        register_async_lipsync_driver,
         register_async_moderation_driver,
+        register_async_music_driver,
         register_async_rerank_driver,
         register_async_stt_driver,
         register_async_tts_driver,
@@ -190,7 +198,9 @@ def register_all_builtin_drivers() -> None:
         register_driver,
         register_embedding_driver,
         register_img_gen_driver,
+        register_lipsync_driver,
         register_moderation_driver,
+        register_music_driver,
         register_rerank_driver,
         register_stt_driver,
         register_tts_driver,
@@ -214,6 +224,10 @@ def register_all_builtin_drivers() -> None:
         "rerank_async": register_async_rerank_driver,
         "moderation_sync": register_moderation_driver,
         "moderation_async": register_async_moderation_driver,
+        "lipsync_sync": register_lipsync_driver,
+        "lipsync_async": register_async_lipsync_driver,
+        "music_sync": register_music_driver,
+        "music_async": register_async_music_driver,
     }
 
     for desc in _PROVIDER_DESCRIPTORS_CACHE:

@@ -256,11 +256,19 @@ from .img_gen_registry import (
     get_async_img_gen_driver_for_model,
     get_img_gen_driver_for_model,
 )
+from .lipsync_registry import (
+    get_async_lipsync_driver_for_model,
+    get_lipsync_driver_for_model,
+)
 from .moderation_registry import (
     ASYNC_MODERATION_DRIVER_REGISTRY,
     MODERATION_DRIVER_REGISTRY,
     get_async_moderation_driver_for_model,
     get_moderation_driver_for_model,
+)
+from .music_registry import (
+    get_async_music_driver_for_model,
+    get_music_driver_for_model,
 )
 from .rerank_registry import (
     ASYNC_RERANK_DRIVER_REGISTRY,
@@ -513,6 +521,7 @@ __all__ = [
     # Embedding model dimension metadata
     "EMBEDDING_MODEL_DIMENSIONS",
     "MODERATION_DRIVER_REGISTRY",
+    "PROVIDER_BRANDS",
     "PROVIDER_DESCRIPTORS",
     # Provider descriptors
     "PROVIDER_DESCRIPTOR_MAP",
@@ -614,6 +623,8 @@ __all__ = [
     "OpenAISTTDriver",
     "OpenAITTSDriver",
     "OpenRouterDriver",
+    # Branding (display metadata)
+    "ProviderBrand",
     # Rerank base + result types
     "RerankDriver",
     "RerankResult",
@@ -640,10 +651,12 @@ __all__ = [
     "get_async_img_gen_driver_factory",
     # Image gen factory functions
     "get_async_img_gen_driver_for_model",
+    "get_async_lipsync_driver_for_model",
     # Moderation registry query functions
     "get_async_moderation_driver_factory",
     # Moderation factory functions
     "get_async_moderation_driver_for_model",
+    "get_async_music_driver_for_model",
     # Rerank registry query functions
     "get_async_rerank_driver_factory",
     # Rerank factory functions
@@ -665,8 +678,11 @@ __all__ = [
     "get_embedding_driver_for_model",
     "get_img_gen_driver_factory",
     "get_img_gen_driver_for_model",
+    "get_lipsync_driver_for_model",
     "get_moderation_driver_factory",
     "get_moderation_driver_for_model",
+    "get_music_driver_for_model",
+    "get_provider_brand",
     "get_rerank_driver_factory",
     "get_rerank_driver_for_model",
     "get_runway_model_info",
@@ -678,6 +694,7 @@ __all__ = [
     "get_tts_driver_for_model",
     "get_video_gen_driver_factory",
     "get_video_gen_driver_for_model",
+    "icon_url",
     # Other registry query functions
     "is_async_driver_registered",
     "is_async_embedding_driver_registered",
@@ -751,9 +768,4 @@ __all__ = [
     "unregister_stt_driver",
     "unregister_tts_driver",
     "unregister_video_gen_driver",
-    # Branding (display metadata)
-    "ProviderBrand",
-    "PROVIDER_BRANDS",
-    "get_provider_brand",
-    "icon_url",
 ]

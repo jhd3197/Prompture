@@ -237,3 +237,4 @@ prompts/
 /examples/runway_video_outputs
 .planning/*
 image*.png
+.wf-gap-analysis.js

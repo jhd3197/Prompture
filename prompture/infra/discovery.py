@@ -1376,33 +1376,43 @@ def _img_gen_driver_class(provider: str):
     try:
         if provider == "openai":
             from ..drivers.openai_img_gen_driver import OpenAIImageGenDriver
+
             return OpenAIImageGenDriver
         if provider in ("google", "gemini"):
             from ..drivers.google_img_gen_driver import GoogleImageGenDriver
+
             return GoogleImageGenDriver
         if provider in ("grok", "xai"):
             from ..drivers.grok_img_gen_driver import GrokImageGenDriver
+
             return GrokImageGenDriver
         if provider in ("vertex_ai", "google_vertexai", "vertex", "vertexai"):
             from ..drivers.vertex_img_gen_driver import VertexImageGenDriver
+
             return VertexImageGenDriver
         if provider == "stability":
             from ..drivers.stability_img_gen_driver import StabilityImageGenDriver
+
             return StabilityImageGenDriver
         if provider == "ideogram":
             from ..drivers.ideogram_img_gen_driver import IdeogramImageGenDriver
+
             return IdeogramImageGenDriver
         if provider == "bfl":
             from ..drivers.bfl_img_gen_driver import BFLImageGenDriver
+
             return BFLImageGenDriver
         if provider == "runway":
             from ..drivers.runway_img_gen_driver import RunwayImageGenDriver
+
             return RunwayImageGenDriver
         if provider == "fal":
             from ..drivers.fal_img_gen_driver import FalImageGenDriver
+
             return FalImageGenDriver
         if provider == "kling":
             from ..drivers.kling_img_gen_driver import KlingImageGenDriver
+
             return KlingImageGenDriver
     except Exception:  # pragma: no cover — optional provider deps may be absent
         return None
@@ -1558,6 +1568,60 @@ def get_available_video_gen_models(
         caps = get_model_capabilities(provider, model_id)
         if caps and "video" in caps.modalities_output:
             available.add(model_str)
+
+    return sorted(available)
+
+
+def get_available_lipsync_models(
+    *,
+    env: ProviderEnvironment | None = None,
+) -> list[str]:
+    """Auto-detect available lipsync models based on configured API keys.
+
+    Lipsync models (image|video + audio → video) are sourced from the media
+    capability KB and filtered to providers whose key is configured.
+
+    Args:
+        env: Optional per-consumer environment for isolated API keys.
+
+    Returns:
+        A sorted list of ``"provider/model"`` strings.
+    """
+    from ..drivers.media_capabilities import get_models_by_modality
+
+    available: set[str] = set()
+
+    if _cfg_value(env, "muapi_api_key", "MUAPI_API_KEY"):
+        for key in get_models_by_modality("lipsync"):
+            if key.startswith("muapi/"):
+                available.add(key)
+
+    return sorted(available)
+
+
+def get_available_music_models(
+    *,
+    env: ProviderEnvironment | None = None,
+) -> list[str]:
+    """Auto-detect available music generation models based on configured API keys.
+
+    Music models are sourced from the media capability KB (entries with
+    ``op == "music"``) and filtered to providers whose key is configured.
+
+    Args:
+        env: Optional per-consumer environment for isolated API keys.
+
+    Returns:
+        A sorted list of ``"provider/model"`` strings.
+    """
+    from ..drivers.media_capabilities import get_models_by_op
+
+    available: set[str] = set()
+
+    if _cfg_value(env, "muapi_api_key", "MUAPI_API_KEY"):
+        for key in get_models_by_op("music"):
+            if key.startswith("muapi/"):
+                available.add(key)
 
     return sorted(available)
 

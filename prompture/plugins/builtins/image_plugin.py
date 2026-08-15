@@ -117,6 +117,40 @@ class ImagePlugin(ProviderPlugin):
             )
         )
 
+        # Muapi.ai (multi-modal aggregator: image + i2i edit + video + lipsync + music)
+        muapi_kw = {"api_key": "muapi_api_key", "endpoint": "muapi_endpoint"}
+        descs.append(
+            ProviderDescriptor(
+                name="muapi",
+                img_gen_sync=DriverSpec("muapi_aggregator_driver.MuapiImageGenDriver", muapi_kw, "muapi_image_model"),
+                img_gen_async=DriverSpec(
+                    "async_muapi_aggregator_driver.AsyncMuapiImageGenDriver",
+                    muapi_kw,
+                    "muapi_image_model",
+                ),
+                video_gen_sync=DriverSpec("muapi_aggregator_driver.MuapiVideoGenDriver", muapi_kw, "muapi_video_model"),
+                video_gen_async=DriverSpec(
+                    "async_muapi_aggregator_driver.AsyncMuapiVideoGenDriver",
+                    muapi_kw,
+                    "muapi_video_model",
+                ),
+                lipsync_sync=DriverSpec("muapi_aggregator_driver.MuapiLipsyncDriver", muapi_kw, "muapi_lipsync_model"),
+                lipsync_async=DriverSpec(
+                    "async_muapi_aggregator_driver.AsyncMuapiLipsyncDriver",
+                    muapi_kw,
+                    "muapi_lipsync_model",
+                ),
+                music_sync=DriverSpec("muapi_aggregator_driver.MuapiMusicGenDriver", muapi_kw, "muapi_music_model"),
+                music_async=DriverSpec(
+                    "async_muapi_aggregator_driver.AsyncMuapiMusicGenDriver",
+                    muapi_kw,
+                    "muapi_music_model",
+                ),
+                display_name="Muapi.ai",
+                is_configured_check="muapi_api_key",
+            )
+        )
+
         # Ideogram
         ideogram_kw = {"api_key": "ideogram_api_key"}
         descs.append(

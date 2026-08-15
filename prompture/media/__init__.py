@@ -1,5 +1,16 @@
 """Media handling: images, audio, and video."""
 
+from .hosting import (
+    FileHost,
+    InMemoryHost,
+    LocalDiskHost,
+    S3PresignedHost,
+    content_hash,
+    default_host,
+    host_media,
+    resolve_to_bytes,
+    save_media,
+)
 from .audio import (
     AudioContent,
     AudioInput,
@@ -29,6 +40,15 @@ from .video import (
 )
 
 __all__ = [
+    "FileHost",
+    "InMemoryHost",
+    "LocalDiskHost",
+    "S3PresignedHost",
+    "content_hash",
+    "default_host",
+    "host_media",
+    "resolve_to_bytes",
+    "save_media",
     "AudioContent",
     "AudioInput",
     "ImageContent",
