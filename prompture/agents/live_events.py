@@ -76,11 +76,20 @@ class ToolInputDelta:
 
 @dataclass(frozen=True)
 class ToolUseStop:
-    """The tool's input is complete. ``input`` is the parsed dict."""
+    """The tool's input is complete. ``input`` is the parsed dict.
+
+    ``truncated`` is set when the provider stopped early (``length`` /
+    ``max_tokens`` finish reason) and the streamed arguments failed to
+    parse — the conversation layer treats these like malformed-argument
+    calls (no execution, error fed back to the model). ``raw_stop_reason``
+    preserves the provider's original finish reason for diagnostics.
+    """
 
     id: str
     name: str
     input: dict[str, Any]
+    truncated: bool = False
+    raw_stop_reason: str | None = None
     event_type: Literal["tool_use_stop"] = field(default="tool_use_stop", init=False)
 
 
@@ -97,8 +106,10 @@ class ToolResult:
 
 @dataclass(frozen=True)
 class MessageStop:
-    """End of one assistant turn. ``stop_reason`` matches provider semantics
-    (``end_turn``, ``tool_use``, ``max_tokens``, ``stop``, ``length`` …)."""
+    """End of one assistant turn. ``stop_reason`` uses the shared vocabulary
+    (``end_turn``, ``tool_use``, ``max_tokens``, ``content_filter``,
+    ``error``); drivers preserve the provider's raw value in
+    ``usage["raw_stop_reason"]``."""
 
     stop_reason: str
     usage: dict[str, Any] = field(default_factory=dict)

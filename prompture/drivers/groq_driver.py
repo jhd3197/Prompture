@@ -12,7 +12,7 @@ except ImportError:
     groq = None  # type: ignore[assignment]
 
 from ..infra.cost_mixin import CostMixin
-from .base import Driver, _parse_tool_arguments
+from .base import Driver, _apply_openai_tool_options, _normalize_stop_reason, _tool_call_dict
 
 logger = logging.getLogger(__name__)
 
@@ -188,6 +188,8 @@ class GroqDriver(CostMixin, Driver):
         if supports_temperature and "temperature" in opts:
             kwargs["temperature"] = opts["temperature"]
 
+        _apply_openai_tool_options(kwargs, options)
+
         resp = self.client.chat.completions.create(**kwargs)
 
         from .openai_driver import _extract_openai_cached_tokens
@@ -217,19 +219,17 @@ class GroqDriver(CostMixin, Driver):
 
         choice = resp.choices[0]
         text = choice.message.content or ""
-        stop_reason = choice.finish_reason
+        raw_stop_reason = choice.finish_reason
 
         tool_calls_out: list[dict[str, Any]] = []
         if choice.message.tool_calls:
             for tc in choice.message.tool_calls:
-                args = _parse_tool_arguments(tc.function.arguments, tc.function.name, stop_reason)
                 tool_calls_out.append(
-                    {
-                        "id": tc.id,
-                        "name": tc.function.name,
-                        "arguments": args,
-                    }
+                    _tool_call_dict(getattr(tc, "id", None), tc.function.name, tc.function.arguments, raw_stop_reason)
                 )
+
+        stop_reason = _normalize_stop_reason(raw_stop_reason, tool_calls_present=bool(tool_calls_out))
+        meta["raw_stop_reason"] = raw_stop_reason
 
         result: dict[str, Any] = {
             "text": text,

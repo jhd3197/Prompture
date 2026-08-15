@@ -22,6 +22,10 @@ class AsyncImageGenDriver:
     supported_sizes: list[str] = []
     max_images: int = 10
 
+    # Whether the driver honors a native ``negative_prompt`` option (see
+    # ``prompture.imaging.compose_negative_prompt`` for the cross-provider route).
+    supports_negative_prompt: bool = False
+
     callbacks: DriverCallbacks | None = None
 
     async def generate_image(self, prompt: str, options: dict[str, Any]) -> dict[str, Any]:

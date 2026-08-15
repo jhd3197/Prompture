@@ -324,16 +324,20 @@ class TestSimulatedToolLoop:
         assert result == "The weather in London is 22 celsius."
         assert driver._call_count == 2
 
-    def test_max_rounds_exceeded(self, tools):
-        """Should raise RuntimeError when max rounds exceeded."""
+    def test_max_rounds_graceful_final_answer(self, tools):
+        """Exhausting max rounds produces a graceful final answer instead of raising."""
         from prompture.agents.conversation import Conversation
 
-        # Always returns tool calls, never a final answer
-        responses = [json.dumps({"type": "tool_call", "name": "get_weather", "arguments": {"city": "London"}})] * 5
+        # Always returns tool calls during the loop; the final graceful
+        # call (tools removed) returns a final_answer.
+        responses = [json.dumps({"type": "tool_call", "name": "get_weather", "arguments": {"city": "London"}})] * 3
+        responses.append(json.dumps({"type": "final_answer", "content": "Giving up gracefully."}))
         driver = MockDriver(responses)
         conv = Conversation(driver=driver, tools=tools, simulated_tools=True, max_tool_rounds=3)
-        with pytest.raises(RuntimeError, match="exceeded 3 rounds"):
-            conv.ask("What is the weather?")
+        result = conv.ask("What is the weather?")
+        assert result == "Giving up gracefully."
+        assert conv.max_rounds_reached is True
+        assert driver._call_count == 4
 
     def test_tool_error_becomes_message(self, tools):
         """Tool execution errors are sent back as user messages."""

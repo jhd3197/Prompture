@@ -86,9 +86,9 @@ class ApprovalRequired(Exception):
 class RunContext(Generic[DepsType]):
     """Dependency-injection context available to tools and guardrails.
 
-    Built at the start of each :meth:`Agent.run` invocation and passed
-    automatically to tools whose first parameter is annotated as
-    ``RunContext``.
+    Rebuilt for each tool invocation during a run (so tools see the live
+    iteration, message history, and usage) and passed automatically to
+    tools whose first parameter is annotated as ``RunContext``.
 
     Attributes:
         deps: User-supplied dependencies (database handles, API clients, etc.).
@@ -116,14 +116,17 @@ class AgentCallbacks:
     fires at the HTTP/driver layer.
 
     Attributes:
-        on_step: Called for each step during execution.
+        on_step: Called with each :class:`AgentStep` after the run
+            completes (steps are collected during execution and replayed
+            at the end of the run; this is not a live, mid-loop hook).
         on_tool_start: Called before a tool is invoked with (name, args).
         on_tool_end: Called after a tool completes with (name, result).
         on_iteration: Called at the start of each iteration with the index.
         on_output: Called when the agent produces final output.
-        on_thinking: Called when the agent emits thinking/reasoning content.
-            The callback receives the thinking text (e.g., content within
-            <think> tags for models that support chain-of-thought).
+        on_thinking: Called after the run completes, once per thinking
+            step, with the thinking text (e.g., content within <think>
+            tags for models that support chain-of-thought).  Like
+            ``on_step`` this fires at the end of the run, not mid-loop.
         on_approval_needed: Called when a tool raises ApprovalRequired.
             The callback receives (tool_name, action, details) and should
             return True to approve execution or False to deny.

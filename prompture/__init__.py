@@ -75,6 +75,7 @@ from .exceptions import (
 )
 from .extraction import *
 from .groups import *
+from .imaging import *
 from .infra import *
 from .infra.media_pricing import estimate_cost, get_media_rate, register_media_rate
 from .ingestion import *

@@ -14,14 +14,29 @@ except ImportError:
     anthropic = None  # type: ignore[assignment]
 
 from ..infra.cost_mixin import CostMixin
+from ._prompt_cache import (
+    apply_cache_control_to_messages as _apply_cache_control_to_messages,
+)
+from ._prompt_cache import (
+    apply_cache_control_to_system as _apply_cache_control_to_system,
+)
+from ._prompt_cache import (
+    apply_cache_control_to_tools as _apply_cache_control_to_tools,
+)
+from ._prompt_cache import (
+    breakpoint_budget as _breakpoint_budget,
+)
+from ._prompt_cache import (
+    cache_write_multiplier as _cache_write_multiplier,
+)
 from .async_base import AsyncDriver
+from .base import _normalize_stop_reason, _translate_tool_choice
 from .claude_driver import (
     ClaudeDriver,
-    _apply_cache_control_to_system,
-    _apply_cache_control_to_tools,
     _build_anthropic_json_mode_tool_def,
     _build_anthropic_meta,
     _build_anthropic_stream_done,
+    _cache_opts,
     _convert_tools_to_anthropic,
     _extract_anthropic_cache_tokens,
     _extract_anthropic_system_and_messages,
@@ -84,7 +99,6 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
 
         opts = {**{"temperature": 0.0, "max_tokens": 512}, **options}
         model = options.get("model", self.model)
-        cache_prompt = opts.get("cache_prompt", True)
 
         # Validate capabilities against models.dev metadata
         self._validate_model_capabilities(
@@ -99,6 +113,25 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
 
         system_content, api_messages = _extract_anthropic_system_and_messages(messages)
 
+        cache_kwargs = _cache_opts(opts, model)
+        wrapped_system = _apply_cache_control_to_system(system_content, **cache_kwargs)
+
+        # Native JSON mode: use tool-use for schema enforcement
+        json_mode_tools: list[dict[str, Any]] | None = None
+        if options.get("json_mode") and options.get("json_schema"):
+            json_mode_tools = _apply_cache_control_to_tools(
+                [_build_anthropic_json_mode_tool_def(options["json_schema"])],
+                **cache_kwargs,
+            )
+
+        # Messages last: the breakpoint budget is whatever system and
+        # tools didn't already spend (Anthropic hard-errors on a 5th).
+        api_messages = _apply_cache_control_to_messages(
+            api_messages,
+            max_breakpoints=_breakpoint_budget(wrapped_system, json_mode_tools),
+            **cache_kwargs,
+        )
+
         common_kwargs: dict[str, Any] = {
             "model": model,
             "messages": api_messages,
@@ -106,20 +139,13 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
         }
         if supports_temperature:
             common_kwargs["temperature"] = opts["temperature"]
-        wrapped_system = _apply_cache_control_to_system(system_content, cache_prompt=cache_prompt)
         if wrapped_system is not None:
             common_kwargs["system"] = wrapped_system
         if opts.get("timeout") is not None:
             common_kwargs["timeout"] = opts["timeout"]
 
-        # Native JSON mode: use tool-use for schema enforcement
         if options.get("json_mode"):
-            json_schema = options.get("json_schema")
-            if json_schema:
-                json_mode_tools = _apply_cache_control_to_tools(
-                    [_build_anthropic_json_mode_tool_def(json_schema)],
-                    cache_prompt=cache_prompt,
-                )
+            if json_mode_tools is not None:
                 resp = await client.messages.create(  # type: ignore[call-overload]
                     **common_kwargs,
                     tools=json_mode_tools,
@@ -149,6 +175,7 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
             resp.usage.output_tokens,
             cached_tokens=cache_read,
             cache_creation_tokens=cache_create,
+            cache_write_multiplier=_cache_write_multiplier(opts.get("cache_ttl", "5m")),
         )
         meta = _build_anthropic_meta(resp, model, total_cost)
 
@@ -199,9 +226,8 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
                 'anthropic package not installed. Install it with: pip install "prompture[anthropic]"'
             )
 
-        opts = {**{"temperature": 0.0, "max_tokens": 512}, **options}
+        opts = {**{"temperature": 0.0, "max_tokens": 4096}, **options}
         model = options.get("model", self.model)
-        cache_prompt = opts.get("cache_prompt", True)
 
         self._validate_model_capabilities("claude", model, using_tool_use=True)
 
@@ -210,7 +236,14 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
         client = self.client
 
         system_content, api_messages = _extract_anthropic_system_and_messages(messages)
-        anthropic_tools = _apply_cache_control_to_tools(_convert_tools_to_anthropic(tools), cache_prompt=cache_prompt)
+        cache_kwargs = _cache_opts(opts, model)
+        anthropic_tools = _apply_cache_control_to_tools(_convert_tools_to_anthropic(tools), **cache_kwargs)
+        wrapped_system = _apply_cache_control_to_system(system_content, **cache_kwargs)
+        api_messages = _apply_cache_control_to_messages(
+            api_messages,
+            max_breakpoints=_breakpoint_budget(wrapped_system, anthropic_tools),
+            **cache_kwargs,
+        )
 
         kwargs: dict[str, Any] = {
             "model": model,
@@ -220,11 +253,13 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
         }
         if supports_temperature:
             kwargs["temperature"] = opts["temperature"]
-        wrapped_system = _apply_cache_control_to_system(system_content, cache_prompt=cache_prompt)
         if wrapped_system is not None:
             kwargs["system"] = wrapped_system
         if opts.get("timeout") is not None:
             kwargs["timeout"] = opts["timeout"]
+        tool_choice = _translate_tool_choice(options.get("tool_choice"), "anthropic")
+        if tool_choice is not None:
+            kwargs["tool_choice"] = tool_choice
 
         resp = await client.messages.create(**kwargs)
 
@@ -236,8 +271,10 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
             resp.usage.output_tokens,
             cached_tokens=cache_read,
             cache_creation_tokens=cache_create,
+            cache_write_multiplier=_cache_write_multiplier(opts.get("cache_ttl", "5m")),
         )
         meta = _build_anthropic_meta(resp, model, total_cost)
+        meta["raw_stop_reason"] = resp.stop_reason
 
         text, tool_calls_out = _extract_anthropic_text_and_tool_calls(resp.content)
         reasoning_content = ClaudeDriver._extract_thinking(resp.content)
@@ -246,7 +283,7 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
             "text": text,
             "meta": meta,
             "tool_calls": tool_calls_out,
-            "stop_reason": resp.stop_reason,
+            "stop_reason": _normalize_stop_reason(resp.stop_reason, tool_calls_present=bool(tool_calls_out)),
         }
         if reasoning_content is not None:
             result["reasoning_content"] = reasoning_content
@@ -271,11 +308,17 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
 
         opts = {**{"temperature": 0.0, "max_tokens": 512}, **options}
         model = options.get("model", self.model)
-        cache_prompt = opts.get("cache_prompt", True)
         supports_temperature = self._get_model_config("claude", model)["supports_temperature"]
         client = self.client
 
         system_content, api_messages = _extract_anthropic_system_and_messages(messages)
+        cache_kwargs = _cache_opts(opts, model)
+        wrapped_system = _apply_cache_control_to_system(system_content, **cache_kwargs)
+        api_messages = _apply_cache_control_to_messages(
+            api_messages,
+            max_breakpoints=_breakpoint_budget(wrapped_system),
+            **cache_kwargs,
+        )
 
         kwargs: dict[str, Any] = {
             "model": model,
@@ -284,7 +327,6 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
         }
         if supports_temperature:
             kwargs["temperature"] = opts["temperature"]
-        wrapped_system = _apply_cache_control_to_system(system_content, cache_prompt=cache_prompt)
         if wrapped_system is not None:
             kwargs["system"] = wrapped_system
         if opts.get("timeout") is not None:
@@ -328,6 +370,7 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
             completion_tokens,
             cached_tokens=cache_read,
             cache_creation_tokens=cache_create,
+            cache_write_multiplier=_cache_write_multiplier(opts.get("cache_ttl", "5m")),
         )
         yield _build_anthropic_stream_done(
             model,
@@ -373,12 +416,18 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
 
         opts = {**{"temperature": 0.0, "max_tokens": 4096}, **options}
         model = options.get("model", self.model)
-        cache_prompt = opts.get("cache_prompt", True)
         supports_temperature = self._get_model_config("claude", model)["supports_temperature"]
         client = self.client
 
         system_content, api_messages = _extract_anthropic_system_and_messages(messages)
-        anthropic_tools = _apply_cache_control_to_tools(_convert_tools_to_anthropic(tools), cache_prompt=cache_prompt)
+        cache_kwargs = _cache_opts(opts, model)
+        anthropic_tools = _apply_cache_control_to_tools(_convert_tools_to_anthropic(tools), **cache_kwargs)
+        wrapped_system = _apply_cache_control_to_system(system_content, **cache_kwargs)
+        api_messages = _apply_cache_control_to_messages(
+            api_messages,
+            max_breakpoints=_breakpoint_budget(wrapped_system, anthropic_tools),
+            **cache_kwargs,
+        )
 
         kwargs: dict[str, Any] = {
             "model": model,
@@ -388,15 +437,21 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
         }
         if supports_temperature:
             kwargs["temperature"] = opts["temperature"]
-        wrapped_system = _apply_cache_control_to_system(system_content, cache_prompt=cache_prompt)
         if wrapped_system is not None:
             kwargs["system"] = wrapped_system
         if opts.get("timeout") is not None:
             kwargs["timeout"] = opts["timeout"]
+        tool_choice = _translate_tool_choice(options.get("tool_choice"), "anthropic")
+        if tool_choice is not None:
+            kwargs["tool_choice"] = tool_choice
 
         block_kinds: dict[int, str] = {}
         tool_block_info: dict[int, dict[str, Any]] = {}
         tool_input_buffers: dict[int, list[str]] = {}
+        # Tool blocks whose input JSON failed to parse are withheld until
+        # the message-level stop_reason arrives (message_delta comes AFTER
+        # content_block_stop) so truncation can be flagged accurately.
+        pending_failed_stops: list[dict[str, Any]] = []
 
         base_input = 0
         cache_read = 0
@@ -446,22 +501,28 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
                     if block_kinds.get(idx) == "tool_use":
                         info = tool_block_info.get(idx, {})
                         buf = "".join(tool_input_buffers.get(idx, []))
+                        parse_failed = False
                         try:
                             parsed = json.loads(buf) if buf else {}
                             if not isinstance(parsed, dict):
+                                parse_failed = True
                                 parsed = {}
                         except json.JSONDecodeError:
+                            parse_failed = True
+                            parsed = {}
+                        if parse_failed:
                             logger.warning(
                                 "Failed to parse streamed tool input for %s: %r",
                                 info.get("name", "?"),
                                 buf[:200],
                             )
-                            parsed = {}
-                        yield ToolUseStop(
-                            id=info.get("id", ""),
-                            name=info.get("name", ""),
-                            input=parsed,
-                        )
+                            pending_failed_stops.append({"info": info})
+                        else:
+                            yield ToolUseStop(
+                                id=info.get("id", ""),
+                                name=info.get("name", ""),
+                                input=parsed,
+                            )
                 elif ev_type == "message_delta":
                     usage = getattr(event, "usage", None)
                     if usage is not None:
@@ -469,6 +530,18 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
                     sr = getattr(getattr(event, "delta", None), "stop_reason", None)
                     if sr:
                         stop_reason = sr
+
+        # Flush tool stops whose input failed to parse, now that the final
+        # stop_reason is known (contract C3: truncated iff max_tokens).
+        for pending in pending_failed_stops:
+            info = pending["info"]
+            yield ToolUseStop(
+                id=info.get("id", ""),
+                name=info.get("name", ""),
+                input={},
+                truncated=stop_reason == "max_tokens",
+                raw_stop_reason=stop_reason,
+            )
 
         prompt_tokens = base_input + cache_read + cache_create
         total_cost = self._calculate_cost(
@@ -478,6 +551,7 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
             completion_tokens,
             cached_tokens=cache_read,
             cache_creation_tokens=cache_create,
+            cache_write_multiplier=_cache_write_multiplier(opts.get("cache_ttl", "5m")),
         )
         meta = {
             "prompt_tokens": prompt_tokens,
@@ -487,5 +561,6 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
             "cache_creation_tokens": cache_create,
             "cost": round(total_cost, 6),
             "model_name": model,
+            "raw_stop_reason": stop_reason,
         }
-        yield MessageStop(stop_reason=stop_reason, usage=meta)
+        yield MessageStop(stop_reason=_normalize_stop_reason(stop_reason), usage=meta)

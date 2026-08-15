@@ -39,6 +39,11 @@ class ImageGenDriver:
     supports_edit: bool = False
     supports_variation: bool = False
 
+    # Whether the driver honors a native ``negative_prompt`` option. Drivers
+    # that don't can still receive negative guidance folded into the prompt
+    # (see ``prompture.imaging.compose_negative_prompt``).
+    supports_negative_prompt: bool = False
+
     callbacks: DriverCallbacks | None = None
 
     def generate_image(self, prompt: str, options: dict[str, Any]) -> dict[str, Any]:

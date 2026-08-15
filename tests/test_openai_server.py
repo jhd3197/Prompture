@@ -252,6 +252,9 @@ class TestChatCompletions:
 
 class TestChatCompletionsStreaming:
     def test_stream_produces_sse_chunks(self, client):
+        # SSE streaming needs the `serve` extra; the endpoint answers 501
+        # without it, which is correct behaviour rather than a failure.
+        pytest.importorskip("sse_starlette")
         with client.stream(
             "POST",
             "/v1/chat/completions",

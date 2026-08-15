@@ -24,6 +24,7 @@ class StabilityImageGenDriver(ImageCostMixin, ImageGenDriver):
     supports_size_variants = True
     supported_sizes = ["1:1", "16:9", "21:9", "2:3", "3:2", "4:5", "5:4", "9:16", "9:21"]
     max_images = 1
+    supports_negative_prompt = True
 
     IMAGE_PRICING = {
         "stable-image-core": {"default": 0.03},
