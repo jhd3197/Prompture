@@ -750,6 +750,12 @@ class AsyncAgent(Generic[DepsType]):
 
             wrapped = _make_wrapper(original_fn, wants_ctx, tool_name, is_async)
 
+            # See Agent._wrap_tools_with_context — security_metadata reads
+            # __skill__ off the function, so it must survive the wrap.
+            skill_obj = getattr(original_fn, "__skill__", None)
+            if skill_obj is not None:
+                wrapped.__skill__ = skill_obj  # type: ignore[attr-defined]
+
             # Build schema: strip RunContext param if present
             params = dict(td.parameters)
             if wants_ctx:

@@ -667,6 +667,15 @@ class Agent(Generic[DepsType]):
 
             wrapped = _make_wrapper(original_fn, wants_ctx, tool_name)
 
+            # ToolDefinition.security_metadata reads __skill__ off the function,
+            # so a tukuy-backed tool must carry it across the wrap. Copied
+            # explicitly rather than via functools.wraps, which would also set
+            # __wrapped__ and make inspect.signature report the *inner*
+            # signature that _tool_wants_context relies on.
+            skill_obj = getattr(original_fn, "__skill__", None)
+            if skill_obj is not None:
+                wrapped.__skill__ = skill_obj  # type: ignore[attr-defined]
+
             # Build schema: strip RunContext param if present
             params = dict(td.parameters)
             if wants_ctx:
