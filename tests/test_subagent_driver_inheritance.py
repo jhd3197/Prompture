@@ -91,8 +91,19 @@ def test_spec_model_still_overrides_the_inherited_driver():
 
 
 def test_model_string_parent_still_works():
-    """A parent built from a model string keeps the original behaviour."""
-    agent = DeepAgent(model="openai/gpt-4o-mini", subagents=[_spec()])
+    """A parent built from a model string keeps the original behaviour.
+
+    enable_summarization=False is required, not incidental: DeepAgent builds
+    the summariser driver eagerly in __init__, so a model-string parent would
+    otherwise need real provider credentials. Those exist locally via the
+    gitignored .env that prompture loads on import, and never in CI — so
+    without this the test can only pass on a developer's machine.
+    """
+    agent = DeepAgent(
+        model="openai/gpt-4o-mini",
+        subagents=[_spec()],
+        enable_summarization=False,
+    )
 
     # Building the task tool must not raise; the sub-agent resolves lazily.
     assert _task_tool(agent) is not None
