@@ -123,7 +123,7 @@ def make_task_tool(
             sub_kwargs["driver"] = parent_driver
         else:
             sub_kwargs["model"] = parent_model
-        sub_agent = Agent(**sub_kwargs)
+        sub_agent: Agent[Any] = Agent(**sub_kwargs)
 
         # Propagate driver-level callbacks so token/cost tracking flows
         # to the same UsageSession the parent uses.
@@ -253,7 +253,7 @@ def make_async_task_tool(
             sub_kwargs["driver"] = parent_driver
         else:
             sub_kwargs["model"] = parent_model
-        sub_agent = AsyncAgent(**sub_kwargs)
+        sub_agent: AsyncAgent[Any] = AsyncAgent(**sub_kwargs)
 
         try:
             result = await sub_agent.run(description)
