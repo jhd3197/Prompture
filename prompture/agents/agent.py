@@ -133,6 +133,38 @@ def _get_first_param_name(fn: Callable[..., Any]) -> str:
     return ""
 
 
+def _parse_simulated_tool_call(content: str) -> tuple[str, dict[str, Any]] | None:
+    """Recognise a prompted (simulated) tool call recorded as assistant text.
+
+    Drivers without ``supports_tool_use`` go through
+    :meth:`Conversation._ask_with_simulated_tools`, which records the round as
+    a plain assistant message whose content is the protocol JSON, followed by a
+    plain user message holding the result.  Neither carries ``tool_calls`` nor
+    the ``tool`` role, so a reader that only understands the native shape
+    reports the whole run as model output and leaks this JSON as the answer.
+
+    Returns ``(name, arguments)`` or ``None`` when *content* is ordinary prose.
+    """
+    text = clean_json_text(content or "").strip()
+    if not text.startswith("{"):
+        return None
+    try:
+        obj = json.loads(text)
+    except (json.JSONDecodeError, ValueError):
+        return None
+    if not isinstance(obj, dict):
+        return None
+    # Explicit discriminator, or the inferred shape parse_simulated_response
+    # also accepts when the model omits "type".
+    if obj.get("type") != "tool_call" and not ("name" in obj and "arguments" in obj):
+        return None
+    name = obj.get("name")
+    args = obj.get("arguments", {})
+    if not isinstance(name, str) or not name or not isinstance(args, dict):
+        return None
+    return name, args
+
+
 def _invoke_cb_sync(callback: Callable[..., Any], *cb_args: Any) -> Any:
     """Invoke *callback* from sync code, driving awaitables to completion.
 
@@ -1073,8 +1105,15 @@ class Agent(Generic[DepsType]):
         for rec in tool_timings or []:
             timings_by_name.setdefault(rec.get("name", ""), []).append(rec)
 
+        # Name of a simulated tool call awaiting its result, which the prompted
+        # loop records as the next user message rather than a "tool" message.
+        pending_sim_tool: str | None = None
+
         for msg in messages:
             role = msg.get("role", "")
+            # Claim (and clear) any simulated call left by the previous message.
+            sim_tool = pending_sim_tool
+            pending_sim_tool = None
             # Extract usage from message meta if present
             msg_meta = msg.get("meta")
             step_usage = None
@@ -1128,15 +1167,44 @@ class Agent(Generic[DepsType]):
                         )
                         all_tool_calls.append({"name": name, "arguments": args, "id": tc.get("id", "")})
                 else:
-                    # Final assistant message (no tool calls)
-                    steps.append(
-                        AgentStep(
-                            step_type=StepType.output,
-                            timestamp=now,
-                            content=content,
-                            usage=step_usage,
+                    simulated = _parse_simulated_tool_call(content)
+                    if simulated is not None:
+                        # Prompted tool call: same step shape as the native path
+                        # so a host sees one run, not two dialects.
+                        sim_name, sim_args = simulated
+                        steps.append(
+                            AgentStep(
+                                step_type=StepType.tool_call,
+                                timestamp=now,
+                                content="",
+                                tool_name=sim_name,
+                                tool_args=sim_args,
+                                usage=step_usage,
+                            )
                         )
+                        all_tool_calls.append({"name": sim_name, "arguments": sim_args, "id": ""})
+                        pending_sim_tool = sim_name
+                    else:
+                        # Final assistant message (no tool calls)
+                        steps.append(
+                            AgentStep(
+                                step_type=StepType.output,
+                                timestamp=now,
+                                content=content,
+                                usage=step_usage,
+                            )
+                        )
+
+            elif role == "user" and sim_tool is not None:
+                # The prompted loop stores a tool result as a user message.
+                steps.append(
+                    AgentStep(
+                        step_type=StepType.tool_result,
+                        timestamp=now,
+                        content=msg.get("content", "") or "",
+                        tool_name=sim_tool,
                     )
+                )
 
             elif role == "tool":
                 tool_call_id = msg.get("tool_call_id")
