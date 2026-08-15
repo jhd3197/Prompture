@@ -238,3 +238,4 @@ prompts/
 .planning/*
 image*.png
 .wf-gap-analysis.js
+.python-version
