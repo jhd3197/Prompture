@@ -49,9 +49,9 @@ def prompture_estimate_cost(model: str, n: int = 1, duration_seconds: float = 0.
     Returns:
         Estimated cost in USD (0.0 if unknown).
     """
-    from ..infra.media_pricing import estimate_cost
+    from ..infra.media_pricing import estimate_media_cost
 
-    return estimate_cost(model, n=n, duration_seconds=duration_seconds, characters=characters)
+    return estimate_media_cost(model, n=n, duration_seconds=duration_seconds, characters=characters)
 
 
 def prompture_tool_definitions(

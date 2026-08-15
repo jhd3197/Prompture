@@ -241,9 +241,9 @@ class AggregatorClient:
     def _media_cost(
         self, slug: str, *, n: int = 1, duration_seconds: float = 0.0, resolution: str | None = None
     ) -> float:
-        from ..infra.media_pricing import estimate_cost
+        from ..infra.media_pricing import estimate_media_cost
 
-        return estimate_cost(
+        return estimate_media_cost(
             f"{self.PROVIDER}/{slug}",
             n=n,
             duration_seconds=duration_seconds,

@@ -77,7 +77,7 @@ from .extraction import *
 from .groups import *
 from .imaging import *
 from .infra import *
-from .infra.media_pricing import estimate_cost, get_media_rate, register_media_rate
+from .infra.media_pricing import estimate_media_cost, get_media_rate, register_media_rate
 from .ingestion import *
 from .integrations import *
 from .jobs import JobHandle, JobResult, JobStatus, MediaAsset

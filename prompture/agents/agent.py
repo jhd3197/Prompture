@@ -656,6 +656,10 @@ class Agent(Generic[DepsType]):
                 description=td.description,
                 parameters=params,
                 function=wrapped,
+                # Carry host annotations across the wrap. Without this the field
+                # is silently emptied before any tool reaches the agent loop, so
+                # a host cannot gate execution on metadata it set itself.
+                metadata=td.metadata,
             )
             new_registry.add(new_td)
 

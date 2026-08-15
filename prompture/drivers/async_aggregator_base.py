@@ -198,9 +198,9 @@ class AsyncAggregatorClient:
     def _media_cost(
         self, slug: str, *, n: int = 1, duration_seconds: float = 0.0, resolution: str | None = None
     ) -> float:
-        from ..infra.media_pricing import estimate_cost
+        from ..infra.media_pricing import estimate_media_cost
 
-        return estimate_cost(f"{self.PROVIDER}/{slug}", n=n, duration_seconds=duration_seconds, resolution=resolution)
+        return estimate_media_cost(f"{self.PROVIDER}/{slug}", n=n, duration_seconds=duration_seconds, resolution=resolution)
 
     async def _coerce_media_url(
         self, source: Any, *, explicit: str | None = None, filename: str = "input.bin"

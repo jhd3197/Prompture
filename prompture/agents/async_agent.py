@@ -771,6 +771,9 @@ class AsyncAgent(Generic[DepsType]):
                 description=td.description,
                 parameters=params,
                 function=wrapped,
+                # See Agent._wrap_tools_with_context — host annotations must
+                # survive the wrap or the field is decoration.
+                metadata=td.metadata,
             )
             new_registry.add(new_td)
 

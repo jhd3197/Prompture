@@ -6,7 +6,7 @@ differently — per image, per second of video, per character of TTS, or a flat
 per-job charge — so it has its own curated source (``rates/_media.json``) and
 its own quote function.
 
-:func:`estimate_cost` is the ``calculate_dynamic_cost`` equivalent a studio
+:func:`estimate_media_cost` is the ``calculate_dynamic_cost`` equivalent a studio
 calls *before* running a node to show a price / enforce a budget, without
 instantiating a driver or holding a key. Rates are extensible at runtime via
 :func:`register_media_rate`.
@@ -27,7 +27,7 @@ _file_cache: dict[str, dict[str, Any]] | None = None
 _runtime_rates: dict[str, dict[str, Any]] = {}
 
 __all__ = [
-    "estimate_cost",
+    "estimate_media_cost",
     "get_media_rate",
     "load_media_pricing",
     "register_media_rate",
@@ -75,7 +75,7 @@ def get_media_rate(model_str: str) -> dict[str, Any] | None:
     return None
 
 
-def estimate_cost(
+def estimate_media_cost(
     model_str: str,
     params: dict[str, Any] | None = None,
     **overrides: Any,
