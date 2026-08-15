@@ -34,7 +34,7 @@ from __future__ import annotations
 
 import logging
 import warnings
-from collections.abc import Callable
+from collections.abc import Callable, Generator
 from typing import Any
 
 from pydantic import BaseModel
@@ -42,7 +42,7 @@ from pydantic import BaseModel
 from ..drivers.base import Driver
 from ..infra.budget import BudgetPolicy
 from ..infra.callbacks import DriverCallbacks
-from .agent import Agent
+from .agent import Agent, AgentIterator, LiveAgentResult, StreamedAgentResult
 from .deep.planner import make_write_todos_tool
 from .deep.subagents import make_task_tool
 from .deep.summarizer import SummarizationMiddleware
@@ -198,6 +198,28 @@ class DeepAgent(Agent):
         """
         base = super().run(prompt, deps=deps)
         return _upgrade_result(base, self.deep_state)
+
+    def _deep_gen(self, gen: Generator[Any, Any, AgentResult]) -> Generator[Any, Any, DeepAgentResult]:
+        """Pass *gen* through, upgrading only its final value.
+
+        ``yield from`` forwards sends and throws unchanged, so the streaming
+        behaviour is identical — just the returned result carries the deep
+        state snapshot.
+        """
+        base = yield from gen
+        return _upgrade_result(base, self.deep_state)
+
+    def iter(self, prompt: str, *, deps: Any = None) -> AgentIterator:
+        """Like :meth:`Agent.iter`, but ``.result`` is a :class:`DeepAgentResult`."""
+        return AgentIterator(self._deep_gen(self._execute_iter(prompt, deps)))
+
+    def run_stream(self, prompt: str, *, deps: Any = None) -> StreamedAgentResult:
+        """Like :meth:`Agent.run_stream`, but ``.result`` is a :class:`DeepAgentResult`."""
+        return StreamedAgentResult(self._deep_gen(self._execute_stream(prompt, deps)))
+
+    def run_live(self, prompt: str, *, deps: Any = None) -> LiveAgentResult:
+        """Like :meth:`Agent.run_live`, but ``.result`` is a :class:`DeepAgentResult`."""
+        return LiveAgentResult(self._deep_gen(self._execute_live(prompt, deps)))
 
     # ------------------------------------------------------------------
     # Internals
