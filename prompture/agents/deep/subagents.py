@@ -8,6 +8,9 @@ the parent's virtual filesystem.
 
 from __future__ import annotations
 
+from typing import Any
+
+from ...drivers.base import Driver
 from ...infra.budget import BudgetPolicy
 from ...infra.callbacks import DriverCallbacks
 from ..deep_prompts import TASK_TOOL_DESC_TEMPLATE
@@ -42,6 +45,7 @@ def make_task_tool(
     parent_budget_policy: BudgetPolicy | None = None,
     parent_callbacks: DriverCallbacks | None = None,
     parent_max_tool_result_length: int | None = None,
+    parent_driver: Driver | None = None,
 ) -> ToolDefinition:
     """Build the ``task`` tool definition.
 
@@ -97,18 +101,29 @@ def make_task_tool(
 
         sub_system_prompt = _resolve_subagent_prompt(spec.system_prompt)
 
-        sub_agent = Agent(
-            model=spec.model or parent_model,
-            tools=sub_tools or None,
-            system_prompt=sub_system_prompt,
-            max_iterations=spec.max_iterations,
-            max_tool_result_length=(
+        sub_kwargs: dict[str, Any] = {
+            "tools": sub_tools or None,
+            "system_prompt": sub_system_prompt,
+            "max_iterations": spec.max_iterations,
+            "max_tool_result_length": (
                 spec.max_tool_result_length
                 if spec.max_tool_result_length is not None
                 else parent_max_tool_result_length
             ),
-            budget_policy=parent_budget_policy,
-        )
+            "budget_policy": parent_budget_policy,
+        }
+        # Inherit the parent's driver instance unless the spec names its own
+        # model. Without this a host that built the parent with driver=... —
+        # a local endpoint, a test double, any alias the registry does not
+        # own — cannot have sub-agents reach the same model, because they are
+        # rebuilt from a model string through the global registry.
+        if spec.model:
+            sub_kwargs["model"] = spec.model
+        elif parent_driver is not None:
+            sub_kwargs["driver"] = parent_driver
+        else:
+            sub_kwargs["model"] = parent_model
+        sub_agent = Agent(**sub_kwargs)
 
         # Propagate driver-level callbacks so token/cost tracking flows
         # to the same UsageSession the parent uses.
@@ -177,6 +192,7 @@ def make_async_task_tool(
     parent_budget_policy: BudgetPolicy | None = None,
     parent_callbacks: DriverCallbacks | None = None,
     parent_max_tool_result_length: int | None = None,
+    parent_driver: Any | None = None,
 ) -> ToolDefinition:
     """Async counterpart of :func:`make_task_tool`.
 
@@ -218,18 +234,26 @@ def make_async_task_tool(
 
         sub_system_prompt = _resolve_subagent_prompt(spec.system_prompt)
 
-        sub_agent = AsyncAgent(
-            model=spec.model or parent_model,
-            tools=sub_tools or None,
-            system_prompt=sub_system_prompt,
-            max_iterations=spec.max_iterations,
-            max_tool_result_length=(
+        sub_kwargs: dict[str, Any] = {
+            "tools": sub_tools or None,
+            "system_prompt": sub_system_prompt,
+            "max_iterations": spec.max_iterations,
+            "max_tool_result_length": (
                 spec.max_tool_result_length
                 if spec.max_tool_result_length is not None
                 else parent_max_tool_result_length
             ),
-            budget_policy=parent_budget_policy,
-        )
+            "budget_policy": parent_budget_policy,
+        }
+        # See make_task_tool — sub-agents inherit the parent's driver instance
+        # unless the spec names its own model.
+        if spec.model:
+            sub_kwargs["model"] = spec.model
+        elif parent_driver is not None:
+            sub_kwargs["driver"] = parent_driver
+        else:
+            sub_kwargs["model"] = parent_model
+        sub_agent = AsyncAgent(**sub_kwargs)
 
         try:
             result = await sub_agent.run(description)

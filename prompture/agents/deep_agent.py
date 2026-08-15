@@ -121,6 +121,7 @@ class DeepAgent(Agent):
             budget_policy=budget_policy,
             callbacks=callbacks,
             max_tool_result_length=max_tool_result_length,
+            driver_for_subagents=driver,
         )
         tool_registry = ToolRegistry()
         for td in all_defs:
@@ -218,6 +219,7 @@ class DeepAgent(Agent):
         budget_policy: BudgetPolicy | str | None,
         callbacks: DriverCallbacks | None,
         max_tool_result_length: int | None,
+        driver_for_subagents: Driver | None = None,
     ) -> list[ToolDefinition]:
         from ..infra.budget import resolve_budget_policy
 
@@ -237,6 +239,7 @@ class DeepAgent(Agent):
                     parent_budget_policy=resolved_budget,
                     parent_callbacks=callbacks,
                     parent_max_tool_result_length=max_tool_result_length,
+                    parent_driver=driver_for_subagents,
                 )
             )
         return tools
