@@ -11,6 +11,14 @@ changing function signatures.
 
 External tools (CachiBot, AgentSite, etc.) can query the SQLite
 database directly for aggregation, budgeting, and dashboards.
+
+Hosts with their own storage register **sinks** — callables receiving
+each :class:`UsageEvent` as it is recorded — via ``configure_tracker(sinks=…)``
+or :meth:`UsageTracker.add_sink`. Sinks fire synchronously on the recording
+thread and are individually guarded: one failing sink never breaks the call
+being measured, the SQLite write, or the other sinks. Pass ``persist=False``
+to skip the SQLite ledger entirely and fan out to sinks only (e.g. a server
+whose filesystem is ephemeral).
 """
 
 from __future__ import annotations
@@ -22,13 +30,18 @@ import logging
 import sqlite3
 import threading
 import uuid
-from collections.abc import Generator
+from collections.abc import Callable, Generator, Iterable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger("prompture.tracker")
+
+# A sink receives each UsageEvent as it is recorded. Must not raise (failures
+# are swallowed and logged), should return quickly — it runs synchronously on
+# the thread that made the LLM call.
+UsageSink = Callable[["UsageEvent"], None]
 
 # ---------------------------------------------------------------------------
 # Context variables for scope propagation
@@ -267,6 +280,11 @@ class UsageTracker:
         enabled: Whether tracking is active.  When ``False``, ``record()``
             is a no-op.
         flush_threshold: Number of events to buffer before auto-flushing.
+        sinks: Callables invoked with each recorded :class:`UsageEvent`
+            (after context injection). Individually guarded — a raising
+            sink is logged and skipped, never propagated.
+        persist: When ``False``, skip the SQLite ledger entirely and only
+            fan events out to sinks. For hosts that own their storage.
     """
 
     def __init__(
@@ -275,15 +293,34 @@ class UsageTracker:
         *,
         enabled: bool = True,
         flush_threshold: int = 10,
+        sinks: Iterable[UsageSink] | None = None,
+        persist: bool = True,
     ) -> None:
         default_dir = Path.home() / ".prompture" / "usage"
         self._db_path = Path(db_path) if db_path else default_dir / "usage.db"
         self._enabled = enabled
+        self._persist = persist
         self._flush_threshold = max(1, flush_threshold)
         self._buffer: list[UsageEvent] = []
+        self._sinks: list[UsageSink] = list(sinks or [])
         self._lock = threading.Lock()
         self._init_lock = threading.Lock()
         self._initialized = False
+
+    # ------------------------------------------------------------------ #
+    # Sinks
+    # ------------------------------------------------------------------ #
+
+    def add_sink(self, sink: UsageSink) -> None:
+        """Register a sink to receive every subsequently recorded event."""
+        with self._lock:
+            if sink not in self._sinks:
+                self._sinks.append(sink)
+
+    def remove_sink(self, sink: UsageSink) -> None:
+        """Unregister a sink. Unknown sinks are ignored."""
+        with self._lock, contextlib.suppress(ValueError):
+            self._sinks.remove(sink)
 
     # ------------------------------------------------------------------ #
     # Lazy init
@@ -348,6 +385,21 @@ class UsageTracker:
                 event.tool_name = _ctx_tool_name.get()
             if event.operation is None:
                 event.operation = _ctx_operation.get()
+
+            # Fan out to sinks first — a full context event, before the
+            # buffered SQLite write. Each sink is guarded on its own so one
+            # bad sink can't starve the others or the ledger.
+            if self._sinks:
+                with self._lock:
+                    sinks = list(self._sinks)
+                for sink in sinks:
+                    try:
+                        sink(event)
+                    except Exception:
+                        logger.debug("Usage sink %r failed", sink, exc_info=True)
+
+            if not self._persist:
+                return
 
             with self._lock:
                 self._buffer.append(event)
@@ -813,13 +865,22 @@ def configure_tracker(
     enabled: bool = True,
     db_path: str | None = None,
     flush_threshold: int = 10,
+    sinks: Iterable[UsageSink] | None = None,
+    persist: bool = True,
 ) -> UsageTracker:
-    """Configure (or reconfigure) the global tracker singleton."""
+    """Configure (or reconfigure) the global tracker singleton.
+
+    ``sinks`` lets a host receive every :class:`UsageEvent` in its own
+    storage; ``persist=False`` skips the local SQLite ledger and fans out to
+    sinks only (for hosts on ephemeral filesystems).
+    """
     global _tracker
     with _tracker_lock:
         _tracker = UsageTracker(
             db_path=db_path,
             enabled=enabled,
             flush_threshold=flush_threshold,
+            sinks=sinks,
+            persist=persist,
         )
     return _tracker

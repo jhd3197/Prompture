@@ -96,7 +96,7 @@ except ImportError:  # tukuy not installed
     create_tukuy_backend = None  # type: ignore[assignment]
 from .session import UsageSession
 from .settings import settings
-from .tracker import configure_tracker, get_tracker
+from .tracker import UsageEvent, UsageSink, UsageTracker, configure_tracker, get_tracker
 
 __all__ = [
     "CODING_AGENT_SPECS",
@@ -124,7 +124,10 @@ __all__ = [
     "ResponseCache",
     "SQLiteCacheBackend",
     "TukuyLLMBackend",
+    "UsageEvent",
     "UsageSession",
+    "UsageSink",
+    "UsageTracker",
     "VideoCostMixin",
     "arun_coding_agent",
     "astream_coding_agent",
