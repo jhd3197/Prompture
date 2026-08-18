@@ -76,9 +76,20 @@ class _FakeFastMCP:
 
 class TestServer:
     def test_requires_mcp_package(self):
-        # mcp SDK is not installed in the test env → clear error with install hint.
-        with pytest.raises(RuntimeError, match=r"prompture\[mcp\]"):
-            build_mcp_server()
+        # Simulate the mcp SDK being absent (it may well be installed in the
+        # dev env) → clear error with install hint.
+        import builtins
+
+        real_import = builtins.__import__
+
+        def no_mcp(name, *args, **kwargs):
+            if name.startswith("mcp"):
+                raise ImportError(name)
+            return real_import(name, *args, **kwargs)
+
+        with patch.object(builtins, "__import__", no_mcp):
+            with pytest.raises(RuntimeError, match=r"prompture\[mcp\]"):
+                build_mcp_server()
 
     def test_build_with_fake_fastmcp_registers_all(self):
         with patch("prompture.mcp.server._require_fastmcp", return_value=_FakeFastMCP):
