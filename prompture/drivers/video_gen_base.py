@@ -7,6 +7,7 @@ import time
 from typing import Any
 
 from ..infra.callbacks import DriverCallbacks
+from ._media_usage import record_media_usage
 
 logger = logging.getLogger("prompture.video_gen_driver")
 
@@ -60,6 +61,10 @@ class VideoGenDriver:
                 "on_error",
                 {"error": exc, "prompt_length": len(prompt), "options": options, "driver": driver_name},
             )
+            record_media_usage(
+                self, {}, (time.perf_counter() - t0) * 1000,
+                modality="video", count_key="video_count", status="error", error=exc,
+            )
             raise
         elapsed_ms = (time.perf_counter() - t0) * 1000
         meta = resp.get("meta", {})
@@ -79,6 +84,7 @@ class VideoGenDriver:
                 "elapsed_ms": elapsed_ms,
             },
         )
+        record_media_usage(self, meta, elapsed_ms, modality="video", count_key="video_count")
         return resp
 
     def _fire_callback(self, event: str, payload: dict[str, Any]) -> None:

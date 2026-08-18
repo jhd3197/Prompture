@@ -7,6 +7,7 @@ import time
 from typing import Any
 
 from ..infra.callbacks import DriverCallbacks
+from ._media_usage import record_media_usage
 
 logger = logging.getLogger("prompture.async_img_gen_driver")
 
@@ -59,6 +60,10 @@ class AsyncImageGenDriver:
                 "on_error",
                 {"error": exc, "prompt_length": len(prompt), "options": options, "driver": driver_name},
             )
+            record_media_usage(
+                self, {}, (time.perf_counter() - t0) * 1000,
+                modality="image", count_key="image_count", status="error", error=exc,
+            )
             raise
         elapsed_ms = (time.perf_counter() - t0) * 1000
         meta = resp.get("meta", {})
@@ -78,6 +83,7 @@ class AsyncImageGenDriver:
                 "elapsed_ms": elapsed_ms,
             },
         )
+        record_media_usage(self, meta, elapsed_ms, modality="image", count_key="image_count")
         return resp
 
     # ------------------------------------------------------------------

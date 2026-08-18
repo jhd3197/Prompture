@@ -7,6 +7,7 @@ import time
 from typing import Any
 
 from ..infra.callbacks import DriverCallbacks
+from ._media_usage import record_media_usage
 
 logger = logging.getLogger("prompture.lipsync_driver")
 
@@ -71,6 +72,10 @@ class LipsyncDriver:
             resp = self.generate_lipsync(audio, options, image=image, video=video)
         except Exception as exc:
             self._fire_callback("on_error", {"error": exc, "options": options, "driver": driver_name})
+            record_media_usage(
+                self, {}, (time.perf_counter() - t0) * 1000,
+                modality="lipsync", count_key="video_count", status="error", error=exc,
+            )
             raise
         elapsed_ms = (time.perf_counter() - t0) * 1000
         meta = resp.get("meta", {})
@@ -85,6 +90,7 @@ class LipsyncDriver:
             "on_response",
             {"video_count": meta.get("video_count", 0), "meta": meta, "driver": driver_name, "elapsed_ms": elapsed_ms},
         )
+        record_media_usage(self, meta, elapsed_ms, modality="lipsync", count_key="video_count")
         return resp
 
     def _fire_callback(self, event: str, payload: dict[str, Any]) -> None:
@@ -111,3 +117,41 @@ class AsyncLipsyncDriver(LipsyncDriver):
         video: Any | None = None,
     ) -> dict[str, Any]:
         raise NotImplementedError
+
+    async def generate_lipsync_with_hooks(  # type: ignore[override]
+        self,
+        audio: Any,
+        options: dict[str, Any],
+        *,
+        image: Any | None = None,
+        video: Any | None = None,
+    ) -> dict[str, Any]:
+        """Async twin of the hook wrapper — the inherited sync one can't await
+        the coroutine ``generate_lipsync`` returns here."""
+        driver_name = getattr(self, "model", self.__class__.__name__)
+        self._fire_callback("on_request", {"options": options, "driver": driver_name})
+        t0 = time.perf_counter()
+        try:
+            resp = await self.generate_lipsync(audio, options, image=image, video=video)
+        except Exception as exc:
+            self._fire_callback("on_error", {"error": exc, "options": options, "driver": driver_name})
+            record_media_usage(
+                self, {}, (time.perf_counter() - t0) * 1000,
+                modality="lipsync", count_key="video_count", status="error", error=exc,
+            )
+            raise
+        elapsed_ms = (time.perf_counter() - t0) * 1000
+        meta = resp.get("meta", {})
+        logger.debug(
+            "[lipsync] async generate driver=%s videos=%d cost=%.6f elapsed=%.0fms",
+            driver_name,
+            meta.get("video_count", 0),
+            meta.get("cost", 0.0),
+            elapsed_ms,
+        )
+        self._fire_callback(
+            "on_response",
+            {"video_count": meta.get("video_count", 0), "meta": meta, "driver": driver_name, "elapsed_ms": elapsed_ms},
+        )
+        record_media_usage(self, meta, elapsed_ms, modality="lipsync", count_key="video_count")
+        return resp

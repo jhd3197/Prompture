@@ -7,6 +7,7 @@ import time
 from typing import Any
 
 from ..infra.callbacks import DriverCallbacks
+from ._media_usage import record_media_usage
 
 logger = logging.getLogger("prompture.music_driver")
 
@@ -55,6 +56,10 @@ class MusicGenDriver:
             resp = self.generate_music(prompt, options)
         except Exception as exc:
             self._fire_callback("on_error", {"error": exc, "options": options, "driver": driver_name})
+            record_media_usage(
+                self, {}, (time.perf_counter() - t0) * 1000,
+                modality="music", count_key="audio_count", status="error", error=exc,
+            )
             raise
         elapsed_ms = (time.perf_counter() - t0) * 1000
         meta = resp.get("meta", {})
@@ -69,6 +74,7 @@ class MusicGenDriver:
             "on_response",
             {"audio_count": meta.get("audio_count", 0), "meta": meta, "driver": driver_name, "elapsed_ms": elapsed_ms},
         )
+        record_media_usage(self, meta, elapsed_ms, modality="music", count_key="audio_count")
         return resp
 
     def _fire_callback(self, event: str, payload: dict[str, Any]) -> None:
@@ -88,3 +94,38 @@ class AsyncMusicGenDriver(MusicGenDriver):
 
     async def generate_music(self, prompt: str, options: dict[str, Any]) -> dict[str, Any]:  # type: ignore[override]
         raise NotImplementedError
+
+    async def generate_music_with_hooks(  # type: ignore[override]
+        self, prompt: str, options: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Async twin of the hook wrapper — the inherited sync one can't await
+        the coroutine ``generate_music`` returns here."""
+        driver_name = getattr(self, "model", self.__class__.__name__)
+        self._fire_callback(
+            "on_request", {"prompt_length": len(prompt or ""), "options": options, "driver": driver_name}
+        )
+        t0 = time.perf_counter()
+        try:
+            resp = await self.generate_music(prompt, options)
+        except Exception as exc:
+            self._fire_callback("on_error", {"error": exc, "options": options, "driver": driver_name})
+            record_media_usage(
+                self, {}, (time.perf_counter() - t0) * 1000,
+                modality="music", count_key="audio_count", status="error", error=exc,
+            )
+            raise
+        elapsed_ms = (time.perf_counter() - t0) * 1000
+        meta = resp.get("meta", {})
+        logger.debug(
+            "[music] async generate driver=%s tracks=%d cost=%.6f elapsed=%.0fms",
+            driver_name,
+            meta.get("audio_count", 0),
+            meta.get("cost", 0.0),
+            elapsed_ms,
+        )
+        self._fire_callback(
+            "on_response",
+            {"audio_count": meta.get("audio_count", 0), "meta": meta, "driver": driver_name, "elapsed_ms": elapsed_ms},
+        )
+        record_media_usage(self, meta, elapsed_ms, modality="music", count_key="audio_count")
+        return resp

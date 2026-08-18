@@ -149,7 +149,12 @@ class AsyncAggregatorClient:
             raise RuntimeError(f"{self.PROVIDER} upload returned no URL: {dj}")
         return file_url
 
-    def _make_handle(self, slug: str, request_id: str, modality: str) -> JobHandle:
+    def _make_handle(
+        self, slug: str, request_id: str, modality: str, *, pricing: dict[str, Any] | None = None
+    ) -> JobHandle:
+        # `pricing` captures the quote inputs (n / duration / resolution) at
+        # submit time, so a resume from another process can still price the
+        # job — the provider result carries none of them.
         return JobHandle(
             task_id=request_id,
             provider=self.PROVIDER,
@@ -159,6 +164,7 @@ class AsyncAggregatorClient:
             endpoint=self.endpoint,
             polling_url=self.result_url(request_id),
             submitted_at=time.time(),
+            extra={"pricing": pricing} if pricing else {},
         )
 
     async def get_job_status(self, handle: JobHandle) -> str:
@@ -187,11 +193,23 @@ class AsyncAggregatorClient:
             MediaAsset(kind=kind, url=u, model=handle.model, provenance={"request_id": handle.task_id})
             for u in self.extract_urls(raw)
         ]
+        meta: dict[str, Any] = {"request_id": handle.task_id, "model_name": f"{self.PROVIDER}/{handle.model}"}
+        if status == JobStatus.COMPLETED.value:
+            # Price from the quote inputs captured at submit time (handle.extra)
+            # — without this, every async job reported zero cost at every
+            # stage of its lifecycle.
+            pricing = (handle.extra or {}).get("pricing") or {}
+            meta["cost"] = self._media_cost(
+                handle.model,
+                n=int(pricing.get("n") or max(len(assets), 1)),
+                duration_seconds=float(pricing.get("duration_seconds") or 0.0),
+                resolution=pricing.get("resolution"),
+            )
         return JobResult(
             handle=handle.with_status(status),
             status=status,
             assets=assets,
-            meta={"request_id": handle.task_id, "model_name": f"{self.PROVIDER}/{handle.model}"},
+            meta=meta,
             raw=raw,
         )
 
@@ -201,6 +219,32 @@ class AsyncAggregatorClient:
         from ..infra.media_pricing import estimate_media_cost
 
         return estimate_media_cost(f"{self.PROVIDER}/{slug}", n=n, duration_seconds=duration_seconds, resolution=resolution)
+
+    def _effective_duration(self, slug: str, options: dict[str, Any]) -> float:
+        """The duration the provider will actually bill for.
+
+        An explicit ``duration`` option wins; otherwise the model's declared
+        capability default — the provider runs its default clip length and
+        bills for it whether or not the caller passed the option, so pricing
+        with 0 was quoting $0 for real spend.
+        """
+        raw = options.get("duration")
+        if raw:
+            try:
+                return float(raw)
+            except (TypeError, ValueError):
+                pass
+        try:
+            from .media_capabilities import get_model_schema
+
+            info = get_model_schema(f"{self.PROVIDER}/{slug}")
+            spec = (info.inputs or {}).get("duration") if info else None
+            default = getattr(spec, "default", None)
+            if default:
+                return float(default)
+        except Exception:
+            pass
+        return 0.0
 
     async def _coerce_media_url(
         self, source: Any, *, explicit: str | None = None, filename: str = "input.bin"
@@ -268,7 +312,9 @@ class AsyncAggregatorImageDriver(AsyncAggregatorClient, AsyncImageGenDriver):
             if request_id is None:
                 return self._finalize_image(slug, None, submitted, options)
             if not options.get("poll", True):
-                handle = self._make_handle(slug, request_id, "image")
+                handle = self._make_handle(
+                    slug, request_id, "image", pricing={"n": int(options.get("n") or 1)}
+                )
                 return {
                     "images": [],
                     "meta": {
@@ -335,10 +381,14 @@ class AsyncAggregatorVideoDriver(AsyncAggregatorClient, AsyncVideoGenDriver):
         self._require_key()
         slug = options.get("model", self.model)
         payload = self.build_video_payload(prompt, options)
+        duration = self._effective_duration(slug, options)
         async with httpx.AsyncClient(timeout=120.0) as client:
             request_id, submitted = await self._submit(client, slug, payload)
             if request_id is not None and not options.get("poll", True):
-                handle = self._make_handle(slug, request_id, "video")
+                handle = self._make_handle(
+                    slug, request_id, "video",
+                    pricing={"n": 1, "duration_seconds": duration, "resolution": options.get("resolution")},
+                )
                 return {
                     "videos": [],
                     "meta": {
@@ -365,7 +415,6 @@ class AsyncAggregatorVideoDriver(AsyncAggregatorClient, AsyncVideoGenDriver):
                 )
             )
         videos = [video_from_url(u) for u in self.extract_urls(result)]
-        duration = float(options.get("duration", 0) or 0)
         cost = self._media_cost(slug, n=1, duration_seconds=duration, resolution=options.get("resolution"))
         return {
             "videos": videos,
@@ -441,10 +490,14 @@ class AsyncAggregatorLipsyncDriver(AsyncAggregatorClient, AsyncLipsyncDriver):
         category = "video" if video_url else "image"
         payload = self.build_lipsync_payload(options, audio_url=audio_url, image_url=image_url, video_url=video_url)
 
+        duration = self._effective_duration(slug, options)
         async with httpx.AsyncClient(timeout=120.0) as client:
             request_id, submitted = await self._submit(client, slug, payload)
             if request_id is not None and not options.get("poll", True):
-                handle = self._make_handle(slug, request_id, "lipsync")
+                handle = self._make_handle(
+                    slug, request_id, "lipsync",
+                    pricing={"n": 1, "duration_seconds": duration},
+                )
                 return {
                     "videos": [],
                     "meta": {
@@ -469,7 +522,6 @@ class AsyncAggregatorLipsyncDriver(AsyncAggregatorClient, AsyncLipsyncDriver):
                 )
             )
         videos = [video_from_url(u) for u in self.extract_urls(result)]
-        duration = float(options.get("duration", 0) or 0)
         cost = self._media_cost(slug, n=1, duration_seconds=duration)
         return {
             "videos": videos,
@@ -534,7 +586,7 @@ class AsyncAggregatorMusicDriver(AsyncAggregatorClient, AsyncMusicGenDriver):
         async with httpx.AsyncClient(timeout=120.0) as client:
             request_id, submitted = await self._submit(client, slug, payload)
             if request_id is not None and not options.get("poll", True):
-                handle = self._make_handle(slug, request_id, "music")
+                handle = self._make_handle(slug, request_id, "music", pricing={"n": 1})
                 return {
                     "audio": [],
                     "meta": {

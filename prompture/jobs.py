@@ -247,10 +247,17 @@ def _resolve_driver(handle: JobHandle) -> Any:
         from .drivers.img_gen_registry import get_img_gen_driver_for_model
 
         return get_img_gen_driver_for_model(model_str)
-    if modality in {"video", "lipsync"}:
+    if modality == "video":
         from .drivers.video_gen_registry import get_video_gen_driver_for_model
 
         return get_video_gen_driver_for_model(model_str)
+    if modality == "lipsync":
+        # Lipsync has its own registry — routing through the video registry
+        # happened to work (the resume path only polls) but left the lipsync
+        # registry dead and would misprice per-second models on resume.
+        from .drivers.lipsync_registry import get_lipsync_driver_for_model
+
+        return get_lipsync_driver_for_model(model_str)
     if modality in {"music", "audio"}:
         from .drivers.music_registry import get_music_driver_for_model
 
