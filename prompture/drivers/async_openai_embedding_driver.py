@@ -90,7 +90,7 @@ class AsyncOpenAIEmbeddingDriver(EmbeddingCostMixin, AsyncEmbeddingDriver):
                 "model_name": f"openai/{model}",
                 "dimensions": actual_dims,
                 "total_tokens": total_tokens,
-                "cost": round(cost, 6),
+                "cost": round(cost, 12),
                 "raw_response": {},
             },
         }

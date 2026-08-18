@@ -90,7 +90,7 @@ class AsyncJinaEmbeddingDriver(EmbeddingCostMixin, AsyncEmbeddingDriver):
                 "dimensions": actual_dims,
                 "total_tokens": total_tokens,
                 "input_tokens": total_tokens,
-                "cost": round(cost, 6),
+                "cost": round(cost, 12),
                 "raw_response": last_resp,
             },
         }

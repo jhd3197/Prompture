@@ -42,6 +42,29 @@ class VectorSearchResult:
     vector: list[float] | None = None
 
 
+# ── Embedding-driver bridge ──────────────────────────────────────────────────
+
+
+def embed_texts(driver: Any, texts: list[str]) -> list[list[float]]:
+    """Embed *texts* via *driver*, tolerating both driver contracts.
+
+    Current drivers implement ``embed(texts, options) -> {"embeddings": [...]}``
+    and expose ``embed_with_hooks`` (which also records the spend to the usage
+    tracker); legacy/toy drivers may still expose one-arg
+    ``embed(texts) -> list-of-vectors``. The stores used to hard-code the
+    legacy call, which *raises* against every current driver — so the store
+    entry points were dead and untracked at the same time.
+    """
+    fn = getattr(driver, "embed_with_hooks", None)
+    try:
+        result = fn(texts, {}) if callable(fn) else driver.embed(texts, {})
+    except TypeError:
+        result = driver.embed(texts)  # legacy one-arg contract
+    if isinstance(result, dict):
+        return result.get("embeddings") or result.get("vectors") or []
+    return result
+
+
 # ── Cosine / MMR helpers ─────────────────────────────────────────────────────
 
 
@@ -198,7 +221,7 @@ class VectorStore(ABC):
         """
         if self.embedding_driver is None:
             raise ValueError("MMR requires an embedding_driver")
-        query_vector = self.embedding_driver.embed([query])[0]
+        query_vector = embed_texts(self.embedding_driver, [query])[0]
         candidates = self.similarity_search_by_vector(query_vector, k=fetch_k, filter=filter)
         # Filter out candidates without vectors — MMR needs them
         with_vectors = [c for c in candidates if c.vector is not None]
@@ -261,7 +284,7 @@ class AsyncVectorStore(ABC):
         if self.embedding_driver is None:
             raise ValueError("MMR requires an embedding_driver")
         # embedding_driver.embed may be sync; run it in a thread.
-        query_vector = (await asyncio.to_thread(self.embedding_driver.embed, [query]))[0]
+        query_vector = (await asyncio.to_thread(embed_texts, self.embedding_driver, [query]))[0]
         candidates = await self.similarity_search_by_vector(query_vector, k=fetch_k, filter=filter)
         with_vectors = [c for c in candidates if c.vector is not None]
         if not with_vectors:

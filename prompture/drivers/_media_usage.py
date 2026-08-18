@@ -18,6 +18,58 @@ from __future__ import annotations
 from typing import Any
 
 
+def record_embedding_driver_usage(
+    driver: Any,
+    meta: dict[str, Any] | None,
+    elapsed_ms: float,
+    *,
+    text_count: int,
+    status: str = "success",
+    error: Exception | None = None,
+) -> None:
+    """Record one embedding call as a usage event. Never raises.
+
+    Embeddings are input-only, so the token count lands on both
+    ``prompt_tokens`` and ``total_tokens``.
+    """
+    try:
+        from ..infra.ledger import _resolve_api_key_hash
+        from ..infra.tracker import UsageEvent, get_tracker
+
+        tracker = get_tracker()
+        if not tracker._enabled:
+            return
+
+        meta = meta or {}
+        driver_name = str(meta.get("model_name") or getattr(driver, "model", driver.__class__.__name__))
+
+        if "/" in driver_name:
+            provider, model = driver_name.split("/", 1)
+        else:
+            cls_name = driver.__class__.__name__.removeprefix("Async")
+            provider = cls_name.removesuffix("Driver").lower()
+            model = driver_name
+
+        model_name = f"{provider}/{model}" if provider else model
+        tokens = int(meta.get("total_tokens") or 0)
+
+        event = UsageEvent(
+            model_name=model_name,
+            provider=provider,
+            api_key_hash=_resolve_api_key_hash(model_name),
+            prompt_tokens=tokens,
+            total_tokens=tokens,
+            cost=float(meta.get("cost") or 0.0),
+            elapsed_ms=elapsed_ms,
+            status=status,
+            error_type=type(error).__name__ if error else None,
+            metadata={"modality": "embedding", "count": text_count},
+        )
+        tracker.record(event)
+    except Exception:
+        pass  # fire-and-forget
+
+
 def record_media_usage(
     driver: Any,
     meta: dict[str, Any] | None,

@@ -11,7 +11,7 @@ import uuid
 from typing import Any
 
 from ..documents import Document
-from .base import VectorSearchResult, VectorStore
+from .base import VectorSearchResult, VectorStore, embed_texts
 
 _CHROMA_HINT = "ChromaVectorStore requires 'chromadb'. Install with: pip install 'prompture[rag-vs-chroma]'"
 
@@ -64,7 +64,7 @@ class ChromaVectorStore(VectorStore):
         texts = [d.content for d in documents]
         metadatas = [d.metadata for d in documents]
         ids = ids or [str(uuid.uuid4()) for _ in documents]
-        vectors = self.embedding_driver.embed(texts)
+        vectors = embed_texts(self.embedding_driver, texts)
         self._collection.add(ids=ids, embeddings=vectors, documents=texts, metadatas=metadatas)
         return ids
 
@@ -115,7 +115,7 @@ class ChromaVectorStore(VectorStore):
     def similarity_search(self, query: str, k: int = 4, filter: dict | None = None) -> list[VectorSearchResult]:
         if self.embedding_driver is None:
             raise ValueError("ChromaVectorStore.similarity_search requires an embedding_driver")
-        query_vec = self.embedding_driver.embed([query])[0]
+        query_vec = embed_texts(self.embedding_driver, [query])[0]
         return self.similarity_search_by_vector(query_vec, k=k, filter=filter)
 
     def similarity_search_by_vector(
