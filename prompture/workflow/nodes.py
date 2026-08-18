@@ -72,7 +72,16 @@ def run_llm(node: Node, config: dict[str, Any], ctx: ExecutionContext) -> NodeRe
     options = dict(config.get("options", {}))
 
     driver = get_driver_for_model(model)
-    resp = driver.generate(prompt, options)
+    # The host may bridge DriverCallbacks in via run options (progress UIs,
+    # per-node telemetry) — attach before the call so hooks see this node.
+    callbacks = ctx.options.get("driver_callbacks")
+    if callbacks is not None:
+        driver.callbacks = callbacks
+    # Through the hook wrapper, not bare generate(): the wrapper is what
+    # records the UsageEvent — a bare call runs off the books. Fall back for
+    # exotic drivers that only expose generate().
+    generate = getattr(driver, "generate_with_hooks", None) or driver.generate
+    resp = generate(prompt, options)
     text = resp.get("text", "")
     meta = resp.get("meta", {}) or {}
     usage = {
@@ -131,7 +140,12 @@ def run_media_gen(node: Node, config: dict[str, Any], ctx: ExecutionContext) -> 
     mod_name, factory_name, method_name, items_key = _MEDIA[modality]
     factory = getattr(importlib.import_module(f"..drivers.{mod_name}", __package__), factory_name)
     driver = factory(model)
-    resp = getattr(driver, method_name)(prompt, options)
+    callbacks = ctx.options.get("driver_callbacks")
+    if callbacks is not None:
+        driver.callbacks = callbacks
+    # Prefer the hook wrapper so media spend is tracker-recorded (see run_llm).
+    method = getattr(driver, f"{method_name}_with_hooks", None) or getattr(driver, method_name)
+    resp = method(prompt, options)
     items = resp.get(items_key, []) or []
     urls = [getattr(c, "url", None) for c in items if getattr(c, "url", None)]
     meta = resp.get("meta", {}) or {}
