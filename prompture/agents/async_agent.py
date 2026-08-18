@@ -56,7 +56,7 @@ _DEFAULT_MAX_AGENT_DEPTH = 5
 
 # Share the same ContextVar with the sync Agent so depth tracking crosses
 # agent boundaries (e.g. a sync Agent calling an AsyncAgent as a tool).
-from .agent import _agent_depth
+from .agent import _agent_depth, _parse_simulated_tool_call
 
 # ------------------------------------------------------------------
 # Helpers
@@ -1150,8 +1150,15 @@ class AsyncAgent(Generic[DepsType]):
         for rec in tool_timings or []:
             timings_by_name.setdefault(rec.get("name", ""), []).append(rec)
 
+        # Name of a simulated tool call awaiting its result, which the prompted
+        # loop records as the next user message rather than a "tool" message.
+        pending_sim_tool: str | None = None
+
         for msg in messages:
             role = msg.get("role", "")
+            # Claim (and clear) any simulated call left by the previous message.
+            sim_tool = pending_sim_tool
+            pending_sim_tool = None
             # Extract usage from message meta if present
             msg_meta = msg.get("meta")
             step_usage = None
@@ -1204,14 +1211,45 @@ class AsyncAgent(Generic[DepsType]):
                         )
                         all_tool_calls.append({"name": name, "arguments": args, "id": tc.get("id", "")})
                 else:
-                    steps.append(
-                        AgentStep(
-                            step_type=StepType.output,
-                            timestamp=now,
-                            content=content,
-                            usage=step_usage,
-                        )
+                    simulated = _parse_simulated_tool_call(
+                        content, known_tools=(self._tools.names if self._tools else None)
                     )
+                    if simulated is not None:
+                        # Prompted tool call: same step shape as the native path
+                        # so a host sees one run, not two dialects.
+                        sim_name, sim_args = simulated
+                        steps.append(
+                            AgentStep(
+                                step_type=StepType.tool_call,
+                                timestamp=now,
+                                content="",
+                                tool_name=sim_name,
+                                tool_args=sim_args,
+                                usage=step_usage,
+                            )
+                        )
+                        all_tool_calls.append({"name": sim_name, "arguments": sim_args, "id": ""})
+                        pending_sim_tool = sim_name
+                    else:
+                        steps.append(
+                            AgentStep(
+                                step_type=StepType.output,
+                                timestamp=now,
+                                content=content,
+                                usage=step_usage,
+                            )
+                        )
+
+            elif role == "user" and sim_tool is not None:
+                # The prompted loop stores a tool result as a user message.
+                steps.append(
+                    AgentStep(
+                        step_type=StepType.tool_result,
+                        timestamp=now,
+                        content=msg.get("content", "") or "",
+                        tool_name=sim_tool,
+                    )
+                )
 
             elif role == "tool":
                 tool_call_id = msg.get("tool_call_id")

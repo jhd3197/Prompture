@@ -133,7 +133,9 @@ def _get_first_param_name(fn: Callable[..., Any]) -> str:
     return ""
 
 
-def _parse_simulated_tool_call(content: str) -> tuple[str, dict[str, Any]] | None:
+def _parse_simulated_tool_call(
+    content: str, known_tools: Any | None = None
+) -> tuple[str, dict[str, Any]] | None:
     """Recognise a prompted (simulated) tool call recorded as assistant text.
 
     Drivers without ``supports_tool_use`` go through
@@ -154,10 +156,17 @@ def _parse_simulated_tool_call(content: str) -> tuple[str, dict[str, Any]] | Non
         return None
     if not isinstance(obj, dict):
         return None
-    # Explicit discriminator, or the inferred shape parse_simulated_response
-    # also accepts when the model omits "type".
-    if obj.get("type") != "tool_call" and not ("name" in obj and "arguments" in obj):
-        return None
+    if obj.get("type") != "tool_call":
+        # Inferred shape (no discriminator), which parse_simulated_response
+        # also accepts when the model omits "type".
+        if not ("name" in obj and "arguments" in obj):
+            return None
+        # A structured ANSWER can legitimately carry name+arguments keys (a
+        # schema echo, a function description). When the caller can tell us
+        # which tools exist, only reclassify when the name matches one —
+        # otherwise the model's final output would silently vanish.
+        if known_tools is not None and obj.get("name") not in known_tools:
+            return None
     name = obj.get("name")
     args = obj.get("arguments", {})
     if not isinstance(name, str) or not name or not isinstance(args, dict):
@@ -1176,7 +1185,9 @@ class Agent(Generic[DepsType]):
                         )
                         all_tool_calls.append({"name": name, "arguments": args, "id": tc.get("id", "")})
                 else:
-                    simulated = _parse_simulated_tool_call(content)
+                    simulated = _parse_simulated_tool_call(
+                        content, known_tools=(self._tools.names if self._tools else None)
+                    )
                     if simulated is not None:
                         # Prompted tool call: same step shape as the native path
                         # so a host sees one run, not two dialects.

@@ -12,13 +12,15 @@ model's answer.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Any
 
 import pytest
 
-from prompture.agents import Agent
+from prompture.agents import Agent, AsyncAgent
 from prompture.agents.types import StepType
+from prompture.drivers.async_base import AsyncDriver
 from prompture.drivers.base import Driver
 
 
@@ -184,3 +186,72 @@ def test_user_prompt_is_never_mistaken_for_a_tool_result():
     result = _agent(driver).run("this is my prompt")
 
     assert not any(s.step_type is StepType.tool_result for s in result.steps)
+
+
+def test_inferred_shape_requires_a_known_tool():
+    """A structured ANSWER carrying name+arguments keys is model output, not a
+    tool call — unless the name matches a registered tool. The explicit
+    ``type: tool_call`` discriminator is always honoured."""
+    from prompture.agents.agent import _parse_simulated_tool_call
+
+    inferred = json.dumps({"name": "schema_echo", "arguments": {"a": 1}})
+    assert _parse_simulated_tool_call(inferred, known_tools=["get_weather"]) is None
+    assert _parse_simulated_tool_call(inferred, known_tools=["schema_echo"]) == ("schema_echo", {"a": 1})
+    # Without tool knowledge the permissive legacy behaviour stands.
+    assert _parse_simulated_tool_call(inferred) == ("schema_echo", {"a": 1})
+
+    explicit = json.dumps({"type": "tool_call", "name": "anything", "arguments": {}})
+    assert _parse_simulated_tool_call(explicit, known_tools=["get_weather"]) == ("anything", {})
+
+
+# ── Async twin (the fix originally shipped sync-only) ─────────────────────────
+
+
+class _AsyncScriptedDriver(AsyncDriver):
+    """Async replay driver; declares no native tool support."""
+
+    supports_tool_use = False
+
+    def __init__(self, turns: list[str]) -> None:
+        super().__init__()
+        self._turns = list(turns)
+        self._i = 0
+        self.model = "scripted/prompted"
+
+    async def generate(self, prompt: str, options: dict[str, Any]) -> dict[str, Any]:
+        text = self._turns[self._i] if self._i < len(self._turns) else json.dumps(
+            {"type": "final_answer", "content": "done"}
+        )
+        self._i += 1
+        return {"text": text, "meta": _meta()}
+
+
+def _async_simulated_agent() -> AsyncAgent:
+    driver = _AsyncScriptedDriver(
+        [
+            json.dumps({"type": "tool_call", "name": "get_weather", "arguments": {"city": "Caracas"}}),
+            json.dumps({"type": "final_answer", "content": "It is sunny in Caracas."}),
+        ]
+    )
+    return AsyncAgent(driver=driver, tools=[get_weather], max_iterations=5)
+
+
+def test_async_simulated_tool_call_is_reported():
+    result = asyncio.run(_async_simulated_agent().run("What is the weather in Caracas?"))
+
+    assert result.all_tool_calls == [
+        {"name": "get_weather", "arguments": {"city": "Caracas"}, "id": ""}
+    ]
+    kinds = [s.step_type for s in result.steps]
+    assert StepType.tool_call in kinds
+    assert StepType.tool_result in kinds
+
+
+def test_async_protocol_json_is_not_leaked_as_model_output():
+    result = asyncio.run(_async_simulated_agent().run("What is the weather in Caracas?"))
+
+    assert result.output_text == "It is sunny in Caracas."
+    for step in result.steps:
+        if step.step_type is StepType.output:
+            assert '"type"' not in step.content
+            assert "tool_call" not in step.content
