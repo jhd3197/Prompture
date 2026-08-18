@@ -335,3 +335,30 @@ def test_coding_agent_auto_raises_when_none_healthy(persona):
     ):
         with pytest.raises(RuntimeError, match="no healthy coding-agent"):
             asyncio.run(a.arun("hi"))
+
+
+def test_llm_backend_populates_usage_from_agent_result_dict(persona):
+    """AgentResult.usage is a DICT — the attribute-style reads used to leave
+    cost_usd/input_tokens/output_tokens permanently None on the LLM backend,
+    so every host trusting them recorded $0.00 forever."""
+    a = Assistant(name="asst", persona=persona, model="mock/m")
+    fake_agent_result = type(
+        "R",
+        (),
+        {
+            "output": "hello",
+            "usage": {
+                "prompt_tokens": 11,
+                "completion_tokens": 7,
+                "total_tokens": 18,
+                "cost": 0.0042,
+            },
+        },
+    )()
+    fake_agent = type("A", (), {"run": AsyncMock(return_value=fake_agent_result)})()
+    with patch.object(Assistant, "_build_async_agent", return_value=fake_agent):
+        result = asyncio.run(a.arun("hi"))
+
+    assert result.cost_usd == 0.0042
+    assert result.input_tokens == 11
+    assert result.output_tokens == 7
