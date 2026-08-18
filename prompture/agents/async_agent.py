@@ -322,6 +322,44 @@ class AsyncAgent(Generic[DepsType]):
         self._agent_callbacks = value
 
     @property
+    def driver(self):
+        """The driver instance this agent will run against, or ``None``."""
+        return self._driver
+
+    @driver.setter
+    def driver(self, value) -> None:
+        """Swap the driver (e.g. per-tenant credentials).
+
+        A persistent conversation built against the old driver is detected as
+        stale on the next run and rebuilt, so the swap takes effect there too.
+        """
+        self._driver = value
+
+    @property
+    def options(self) -> dict[str, Any]:
+        """Live per-call options dict (temperature, max_tokens, ...).
+
+        Mutations (``agent.options["temperature"] = 0.2``) apply from the
+        next run onward.
+        """
+        return self._options
+
+    @options.setter
+    def options(self, value: dict[str, Any] | None) -> None:
+        self._options = dict(value) if value else {}
+
+    @property
+    def system_prompt(self):
+        """The configured system prompt (str, Persona, or callable)."""
+        return self._system_prompt
+
+    @system_prompt.setter
+    def system_prompt(self, value) -> None:
+        """Replace the system prompt; re-resolved on every run, including
+        for persistent conversations."""
+        self._system_prompt = value
+
+    @property
     def conversation(self) -> Any:
         """The current persistent conversation, or ``None``."""
         return self._conversation
@@ -921,6 +959,9 @@ class AsyncAgent(Generic[DepsType]):
                 # Respect the newly resolved system prompt for this run.
                 if system_prompt is not None:
                     conv.system_prompt = system_prompt
+                # Pick up option mutations made since the conversation was
+                # built (agent.options is a live public dict).
+                conv._options = dict(self._options)
                 # NOTE: assigning ``callbacks`` mutates the driver instance,
                 # which may be shared (e.g. passed to several agents).  A
                 # persistent-conversation agent should treat its driver as
