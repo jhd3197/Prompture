@@ -308,12 +308,17 @@ class ToolDefinition:
         description: Human-readable description shown to the LLM.
         parameters: JSON Schema describing the function parameters.
         function: The Python callable to execute.
+        metadata: Free-form host annotations (e.g. ``is_write``, RBAC hints, a
+            category). Prompture never interprets these — they let a host filter the
+            registry (``registry.filter(...)``) or gate execution around a tool without
+            subclassing ``ToolDefinition``.
     """
 
     name: str
     description: str
     parameters: dict[str, Any]
     function: Callable[..., Any]
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     # ------------------------------------------------------------------
     # Serialisation helpers
@@ -739,6 +744,7 @@ def tool_from_function(
     name: str | None = None,
     description: str | None = None,
     max_description_chars: int | None = MAX_TOOL_DESCRIPTION_CHARS,
+    metadata: dict[str, Any] | None = None,
 ) -> ToolDefinition:
     """Build a :class:`ToolDefinition` by inspecting *fn*'s signature and docstring.
 
@@ -751,6 +757,8 @@ def tool_from_function(
             parameter schema.
         max_description_chars: Truncate the description to this many characters
             (see :data:`MAX_TOOL_DESCRIPTION_CHARS`).  ``None`` disables it.
+        metadata: Free-form host annotations attached to the tool (see
+            :class:`ToolDefinition`).
     """
     tool_name = name or fn.__name__
     raw_doc = inspect.getdoc(fn) or ""
@@ -811,6 +819,7 @@ def tool_from_function(
         description=tool_desc,
         parameters=parameters,
         function=fn,
+        metadata=dict(metadata) if metadata else {},
     )
 
 
@@ -842,13 +851,20 @@ class ToolRegistry:
         name: str | None = None,
         description: str | None = None,
         max_description_chars: int | None = MAX_TOOL_DESCRIPTION_CHARS,
+        metadata: dict[str, Any] | None = None,
     ) -> ToolDefinition:
         """Register *fn* as a tool and return the :class:`ToolDefinition`.
 
         Raises:
             ValueError: If the tool name is not valid (``^[a-zA-Z0-9_-]{1,64}$``).
         """
-        td = tool_from_function(fn, name=name, description=description, max_description_chars=max_description_chars)
+        td = tool_from_function(
+            fn,
+            name=name,
+            description=description,
+            max_description_chars=max_description_chars,
+            metadata=metadata,
+        )
         _validate_tool_name(td.name)
         self._tools[td.name] = td
         return td

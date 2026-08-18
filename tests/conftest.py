@@ -26,6 +26,30 @@ def pytest_addoption(parser):
     )
 
 
+@pytest.fixture(autouse=True)
+def _isolated_usage_tracking(tmp_path, monkeypatch):
+    """Point usage tracking at a per-test temp dir.
+
+    Driver hooks auto-record every call — including the mock drivers' made-up
+    costs — into the global tracker, which defaults to the developer's REAL
+    ``~/.prompture/usage/usage.db``. Running the test suite was polluting that
+    ledger with thousands of fake-dollar events. Tests that assert on tracking
+    still work (the tracker is enabled, just redirected); tests that call
+    ``configure_tracker`` themselves simply override this.
+    """
+    from prompture.infra import ledger as ledger_mod
+    from prompture.infra.tracker import configure_tracker
+
+    configure_tracker(enabled=True, db_path=str(tmp_path / "usage.db"))
+    # The model ledger has its own module singleton + default home-dir path.
+    monkeypatch.setattr(ledger_mod, "_DEFAULT_DB_PATH", tmp_path / "model_ledger.db")
+    monkeypatch.setattr(ledger_mod, "_ledger", None)
+    yield
+    # Disabled between tests so stray atexit/teardown flushes can't reach the
+    # real ledger; the next test's fixture re-enables against its own tmp dir.
+    configure_tracker(enabled=False)
+
+
 @pytest.fixture
 def default_model() -> str:
     """Provide the default model string for integration tests."""

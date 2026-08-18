@@ -262,7 +262,7 @@ class EmbeddingCostMixin:
             total_tokens: Total number of input tokens processed.
 
         Returns:
-            Estimated cost in USD, rounded to 6 decimal places.
+            Estimated cost in USD.
         """
         from .model_rates import get_model_rates
 
@@ -274,7 +274,10 @@ class EmbeddingCostMixin:
             per_million = pricing.get("per_million_tokens", 0.0)
             cost = (total_tokens / 1_000_000) * per_million
 
-        return round(cost, 6)
+        # 12 places, not 6: a typical embedding call is a few dozen tokens,
+        # which prices in the e-7 range — round(…, 6) floored every single
+        # call to $0.00, so embedding spend never summed to anything.
+        return round(cost, 12)
 
 
 class ImageCostMixin:

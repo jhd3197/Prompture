@@ -1,0 +1,18 @@
+{
+  "_comment": "Curated media generation rates (USD), keyed by 'provider/model'. Per-image, per-second (video/lipsync), per-character (TTS), or per-job (music). Approximate list prices — verify against vendor pricing. Consumed by infra/media_pricing.estimate_cost. Kept OUT of rates/ so the token-based LLM rate/capability loaders don't glob it.",
+  "muapi/nano-banana": { "per_image": 0.039 },
+  "muapi/nano-banana-pro": { "per_image": 0.139 },
+  "muapi/flux-dev": { "per_image": 0.025 },
+  "muapi/seedream-edit": { "per_image": 0.03 },
+  "muapi/kling-video-v2-1": { "per_second": 0.10 },
+  "muapi/kling-video-v2-1-image-to-video": { "per_second": 0.10 },
+  "muapi/infinite-talk": { "per_second": 0.04 },
+  "muapi/suno-create-music": { "per_job": 0.10 },
+  "fal/flux/dev": { "per_image": 0.025 },
+  "runway/gen4_image": { "per_image": 0.05 },
+  "runway/gen4_image_turbo": { "per_image": 0.02 },
+  "runway/gen4.5": { "per_second": 0.12 },
+  "runway/veo3": { "per_second": 0.40 },
+  "openai/dall-e-3": { "per_image": 0.04 },
+  "elevenlabs/eleven_multilingual_v2": { "per_character": 0.00003 }
+}

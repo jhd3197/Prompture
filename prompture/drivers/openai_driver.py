@@ -168,8 +168,16 @@ class OpenAIDriver(CostMixin, Driver):
     # models.dev live data.  See prompture/infra/rates/openai.json.
     MODEL_PRICING: dict[str, dict[str, Any]] = {}
 
-    def __init__(self, api_key: str | None = None, model: str = "gpt-4o-mini"):
+    def __init__(
+        self,
+        api_key: str | None = None,
+        model: str = "gpt-4o-mini",
+        base_url: str | None = None,
+    ):
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
+        # Optional OpenAI-compatible endpoint override (gateways/proxies such as
+        # prompture-hub). Default (None) keeps the official OpenAI endpoint.
+        self.base_url = base_url or os.getenv("OPENAI_BASE_URL")
         self.model = model
         if OpenAI is None:
             self.client = None
@@ -182,7 +190,10 @@ class OpenAIDriver(CostMixin, Driver):
                 "OPENAI_API_KEY environment variable. "
                 "See https://github.com/jhd3197/prompture#configuration"
             )
-        self.client = OpenAI(api_key=self.api_key)
+        client_kwargs: dict[str, Any] = {"api_key": self.api_key}
+        if self.base_url:
+            client_kwargs["base_url"] = self.base_url
+        self.client = OpenAI(**client_kwargs)
 
     @classmethod
     def list_models(cls, *, api_key: str | None = None, timeout: int = 10, **kw: object) -> list[str] | None:

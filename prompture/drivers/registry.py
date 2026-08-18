@@ -61,6 +61,12 @@ _moderation_async = DriverRegistry(
     "moderation async", "prompture.async_moderation_drivers", error_prefix="async moderation "
 )
 
+_lipsync_sync = DriverRegistry("lipsync sync", "prompture.lipsync_drivers", error_prefix="lipsync ")
+_lipsync_async = DriverRegistry("lipsync async", "prompture.async_lipsync_drivers", error_prefix="async lipsync ")
+
+_music_sync = DriverRegistry("music sync", "prompture.music_drivers", error_prefix="music ")
+_music_async = DriverRegistry("music async", "prompture.async_music_drivers", error_prefix="async music ")
+
 # ── LLM sync ───────────────────────────────────────────────────────────────
 
 
@@ -443,6 +449,92 @@ def load_video_gen_entry_point_drivers() -> tuple[int, int]:
     return (_video_gen_sync.load_entry_points(), _video_gen_async.load_entry_points())
 
 
+# ── Lipsync ────────────────────────────────────────────────────────────────
+
+
+def register_lipsync_driver(name: str, factory: DriverFactory, *, overwrite: bool = False) -> None:
+    """Register a sync lipsync driver factory for a provider name."""
+    _lipsync_sync.register(name, factory, overwrite=overwrite)
+
+
+def register_async_lipsync_driver(name: str, factory: DriverFactory, *, overwrite: bool = False) -> None:
+    """Register an async lipsync driver factory for a provider name."""
+    _lipsync_async.register(name, factory, overwrite=overwrite)
+
+
+def unregister_lipsync_driver(name: str) -> bool:
+    """Unregister a sync lipsync driver by name."""
+    return _lipsync_sync.unregister(name)
+
+
+def unregister_async_lipsync_driver(name: str) -> bool:
+    """Unregister an async lipsync driver by name."""
+    return _lipsync_async.unregister(name)
+
+
+def list_registered_lipsync_drivers() -> list[str]:
+    """Return a sorted list of registered sync lipsync driver names."""
+    return _lipsync_sync.list_names()
+
+
+def is_lipsync_driver_registered(name: str) -> bool:
+    """Check if a sync lipsync driver is registered."""
+    return _lipsync_sync.is_registered(name)
+
+
+def get_lipsync_driver_factory(name: str) -> DriverFactory:
+    """Get a registered sync lipsync driver factory by name."""
+    return _lipsync_sync.get_factory(name)
+
+
+def get_async_lipsync_driver_factory(name: str) -> DriverFactory:
+    """Get a registered async lipsync driver factory by name."""
+    return _lipsync_async.get_factory(name)
+
+
+# ── Music ──────────────────────────────────────────────────────────────────
+
+
+def register_music_driver(name: str, factory: DriverFactory, *, overwrite: bool = False) -> None:
+    """Register a sync music driver factory for a provider name."""
+    _music_sync.register(name, factory, overwrite=overwrite)
+
+
+def register_async_music_driver(name: str, factory: DriverFactory, *, overwrite: bool = False) -> None:
+    """Register an async music driver factory for a provider name."""
+    _music_async.register(name, factory, overwrite=overwrite)
+
+
+def unregister_music_driver(name: str) -> bool:
+    """Unregister a sync music driver by name."""
+    return _music_sync.unregister(name)
+
+
+def unregister_async_music_driver(name: str) -> bool:
+    """Unregister an async music driver by name."""
+    return _music_async.unregister(name)
+
+
+def list_registered_music_drivers() -> list[str]:
+    """Return a sorted list of registered sync music driver names."""
+    return _music_sync.list_names()
+
+
+def is_music_driver_registered(name: str) -> bool:
+    """Check if a sync music driver is registered."""
+    return _music_sync.is_registered(name)
+
+
+def get_music_driver_factory(name: str) -> DriverFactory:
+    """Get a registered sync music driver factory by name."""
+    return _music_sync.get_factory(name)
+
+
+def get_async_music_driver_factory(name: str) -> DriverFactory:
+    """Get a registered async music driver factory by name."""
+    return _music_async.get_factory(name)
+
+
 # ── Embedding ──────────────────────────────────────────────────────────────
 
 
@@ -732,6 +824,10 @@ _IMG_GEN_REGISTRY = _img_gen_sync._registry
 _ASYNC_IMG_GEN_REGISTRY = _img_gen_async._registry
 _VIDEO_GEN_REGISTRY = _video_gen_sync._registry
 _ASYNC_VIDEO_GEN_REGISTRY = _video_gen_async._registry
+_LIPSYNC_REGISTRY = _lipsync_sync._registry
+_ASYNC_LIPSYNC_REGISTRY = _lipsync_async._registry
+_MUSIC_REGISTRY = _music_sync._registry
+_ASYNC_MUSIC_REGISTRY = _music_async._registry
 _EMBEDDING_REGISTRY = _embedding_sync._registry
 _ASYNC_EMBEDDING_REGISTRY = _embedding_async._registry
 _RERANK_REGISTRY = _rerank_sync._registry

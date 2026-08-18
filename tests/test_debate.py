@@ -411,3 +411,31 @@ class TestAsyncDebateGroup:
 
         assert result.transcript[0].position == "FOR"
         assert result.transcript[1].position == "AGAINST"
+
+
+class TestDebateDeps:
+    """deps= must reach every debater and the judge as run(prompt, deps=...)."""
+
+    def test_async_deps_forwarded_to_agents_and_judge(self):
+        a = _make_async_mock_agent("a", "argument")
+        judge = _make_async_mock_agent("judge", "verdict")
+        deps = {"workspace": "/tmp/site"}
+
+        group = AsyncDebateGroup([a], DebateConfig(rounds=1, judge=judge), deps=deps)
+        asyncio.run(group.run("Topic"))
+
+        assert a.run.call_args.kwargs.get("deps") is deps
+        assert judge.run.call_args.kwargs.get("deps") is deps
+
+    def test_async_no_deps_keeps_positional_call(self):
+        a = _make_async_mock_agent("a", "argument")
+        group = AsyncDebateGroup([a], DebateConfig(rounds=1))
+        asyncio.run(group.run("Topic"))
+        assert "deps" not in a.run.call_args.kwargs
+
+    def test_sync_deps_forwarded(self):
+        a = _make_mock_agent("a", "argument")
+        deps = {"k": 1}
+        group = DebateGroup([a], DebateConfig(rounds=1), deps=deps)
+        group.run("Topic")
+        assert a.run.call_args.kwargs.get("deps") is deps

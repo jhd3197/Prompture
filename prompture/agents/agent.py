@@ -133,6 +133,47 @@ def _get_first_param_name(fn: Callable[..., Any]) -> str:
     return ""
 
 
+def _parse_simulated_tool_call(
+    content: str, known_tools: Any | None = None
+) -> tuple[str, dict[str, Any]] | None:
+    """Recognise a prompted (simulated) tool call recorded as assistant text.
+
+    Drivers without ``supports_tool_use`` go through
+    :meth:`Conversation._ask_with_simulated_tools`, which records the round as
+    a plain assistant message whose content is the protocol JSON, followed by a
+    plain user message holding the result.  Neither carries ``tool_calls`` nor
+    the ``tool`` role, so a reader that only understands the native shape
+    reports the whole run as model output and leaks this JSON as the answer.
+
+    Returns ``(name, arguments)`` or ``None`` when *content* is ordinary prose.
+    """
+    text = clean_json_text(content or "").strip()
+    if not text.startswith("{"):
+        return None
+    try:
+        obj = json.loads(text)
+    except (json.JSONDecodeError, ValueError):
+        return None
+    if not isinstance(obj, dict):
+        return None
+    if obj.get("type") != "tool_call":
+        # Inferred shape (no discriminator), which parse_simulated_response
+        # also accepts when the model omits "type".
+        if not ("name" in obj and "arguments" in obj):
+            return None
+        # A structured ANSWER can legitimately carry name+arguments keys (a
+        # schema echo, a function description). When the caller can tell us
+        # which tools exist, only reclassify when the name matches one —
+        # otherwise the model's final output would silently vanish.
+        if known_tools is not None and obj.get("name") not in known_tools:
+            return None
+    name = obj.get("name")
+    args = obj.get("arguments", {})
+    if not isinstance(name, str) or not name or not isinstance(args, dict):
+        return None
+    return name, args
+
+
 def _invoke_cb_sync(callback: Callable[..., Any], *cb_args: Any) -> Any:
     """Invoke *callback* from sync code, driving awaitables to completion.
 
@@ -345,6 +386,44 @@ class Agent(Generic[DepsType]):
     def callbacks(self, value: AgentCallbacks) -> None:
         """Set agent-level callbacks."""
         self._agent_callbacks = value
+
+    @property
+    def driver(self):
+        """The driver instance this agent will run against, or ``None``."""
+        return self._driver
+
+    @driver.setter
+    def driver(self, value) -> None:
+        """Swap the driver (e.g. per-tenant credentials).
+
+        A persistent conversation built against the old driver is detected as
+        stale on the next run and rebuilt, so the swap takes effect there too.
+        """
+        self._driver = value
+
+    @property
+    def options(self) -> dict[str, Any]:
+        """Live per-call options dict (temperature, max_tokens, ...).
+
+        Mutations (``agent.options["temperature"] = 0.2``) apply from the
+        next run onward.
+        """
+        return self._options
+
+    @options.setter
+    def options(self, value: dict[str, Any] | None) -> None:
+        self._options = dict(value) if value else {}
+
+    @property
+    def system_prompt(self):
+        """The configured system prompt (str, Persona, or callable)."""
+        return self._system_prompt
+
+    @system_prompt.setter
+    def system_prompt(self, value) -> None:
+        """Replace the system prompt; re-resolved on every run, including
+        for persistent conversations."""
+        self._system_prompt = value
 
     @property
     def conversation(self) -> Conversation | None:
@@ -635,6 +714,15 @@ class Agent(Generic[DepsType]):
 
             wrapped = _make_wrapper(original_fn, wants_ctx, tool_name)
 
+            # ToolDefinition.security_metadata reads __skill__ off the function,
+            # so a tukuy-backed tool must carry it across the wrap. Copied
+            # explicitly rather than via functools.wraps, which would also set
+            # __wrapped__ and make inspect.signature report the *inner*
+            # signature that _tool_wants_context relies on.
+            skill_obj = getattr(original_fn, "__skill__", None)
+            if skill_obj is not None:
+                wrapped.__skill__ = skill_obj  # type: ignore[attr-defined]
+
             # Build schema: strip RunContext param if present
             params = dict(td.parameters)
             if wants_ctx:
@@ -656,6 +744,10 @@ class Agent(Generic[DepsType]):
                 description=td.description,
                 parameters=params,
                 function=wrapped,
+                # Carry host annotations across the wrap. Without this the field
+                # is silently emptied before any tool reaches the agent loop, so
+                # a host cannot gate execution on metadata it set itself.
+                metadata=td.metadata,
             )
             new_registry.add(new_td)
 
@@ -836,6 +928,9 @@ class Agent(Generic[DepsType]):
                 # Respect the newly resolved system prompt for this run.
                 if system_prompt is not None:
                     conv.system_prompt = system_prompt
+                # Pick up option mutations made since the conversation was
+                # built (agent.options is a live public dict).
+                conv._options = dict(self._options)
                 # Update tools and callbacks for this run.
                 # NOTE: assigning ``callbacks`` mutates the driver instance,
                 # which may be shared (e.g. passed to several agents).  A
@@ -1069,8 +1164,15 @@ class Agent(Generic[DepsType]):
         for rec in tool_timings or []:
             timings_by_name.setdefault(rec.get("name", ""), []).append(rec)
 
+        # Name of a simulated tool call awaiting its result, which the prompted
+        # loop records as the next user message rather than a "tool" message.
+        pending_sim_tool: str | None = None
+
         for msg in messages:
             role = msg.get("role", "")
+            # Claim (and clear) any simulated call left by the previous message.
+            sim_tool = pending_sim_tool
+            pending_sim_tool = None
             # Extract usage from message meta if present
             msg_meta = msg.get("meta")
             step_usage = None
@@ -1124,15 +1226,46 @@ class Agent(Generic[DepsType]):
                         )
                         all_tool_calls.append({"name": name, "arguments": args, "id": tc.get("id", "")})
                 else:
-                    # Final assistant message (no tool calls)
-                    steps.append(
-                        AgentStep(
-                            step_type=StepType.output,
-                            timestamp=now,
-                            content=content,
-                            usage=step_usage,
-                        )
+                    simulated = _parse_simulated_tool_call(
+                        content, known_tools=(self._tools.names if self._tools else None)
                     )
+                    if simulated is not None:
+                        # Prompted tool call: same step shape as the native path
+                        # so a host sees one run, not two dialects.
+                        sim_name, sim_args = simulated
+                        steps.append(
+                            AgentStep(
+                                step_type=StepType.tool_call,
+                                timestamp=now,
+                                content="",
+                                tool_name=sim_name,
+                                tool_args=sim_args,
+                                usage=step_usage,
+                            )
+                        )
+                        all_tool_calls.append({"name": sim_name, "arguments": sim_args, "id": ""})
+                        pending_sim_tool = sim_name
+                    else:
+                        # Final assistant message (no tool calls)
+                        steps.append(
+                            AgentStep(
+                                step_type=StepType.output,
+                                timestamp=now,
+                                content=content,
+                                usage=step_usage,
+                            )
+                        )
+
+            elif role == "user" and sim_tool is not None:
+                # The prompted loop stores a tool result as a user message.
+                steps.append(
+                    AgentStep(
+                        step_type=StepType.tool_result,
+                        timestamp=now,
+                        content=msg.get("content", "") or "",
+                        tool_name=sim_tool,
+                    )
+                )
 
             elif role == "tool":
                 tool_call_id = msg.get("tool_call_id")

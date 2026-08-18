@@ -7,6 +7,7 @@ import time
 from typing import Any
 
 from ..infra.callbacks import DriverCallbacks
+from ._media_usage import record_embedding_driver_usage
 
 logger = logging.getLogger("prompture.embedding_driver")
 
@@ -84,6 +85,10 @@ class EmbeddingDriver:
                 "on_error",
                 {"error": exc, "text_count": len(texts), "options": options, "driver": driver_name},
             )
+            record_embedding_driver_usage(
+                self, {}, (time.perf_counter() - t0) * 1000,
+                text_count=len(texts), status="error", error=exc,
+            )
             raise
         elapsed_ms = (time.perf_counter() - t0) * 1000
         meta = resp.get("meta", {})
@@ -105,6 +110,7 @@ class EmbeddingDriver:
                 "elapsed_ms": elapsed_ms,
             },
         )
+        record_embedding_driver_usage(self, meta, elapsed_ms, text_count=len(texts))
         return resp
 
     # ------------------------------------------------------------------

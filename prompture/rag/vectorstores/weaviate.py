@@ -7,7 +7,7 @@ import uuid
 from typing import Any
 
 from ..documents import Document
-from .base import VectorSearchResult, VectorStore
+from .base import VectorSearchResult, VectorStore, embed_texts
 
 _WEAVIATE_HINT = (
     "WeaviateVectorStore requires 'weaviate-client>=4'. Install with: pip install 'prompture[rag-vs-weaviate]'"
@@ -76,7 +76,7 @@ class WeaviateVectorStore(VectorStore):
         if self.embedding_driver is None:
             raise ValueError("WeaviateVectorStore.add_documents requires an embedding_driver")
         ids = ids or [str(uuid.uuid4()) for _ in documents]
-        vectors = self.embedding_driver.embed([d.content for d in documents])
+        vectors = embed_texts(self.embedding_driver, [d.content for d in documents])
         return self.add_vectors(vectors, documents, ids=ids)
 
     def add_vectors(
@@ -97,7 +97,7 @@ class WeaviateVectorStore(VectorStore):
     def similarity_search(self, query: str, k: int = 4, filter: dict | None = None) -> list[VectorSearchResult]:
         if self.embedding_driver is None:
             raise ValueError("WeaviateVectorStore.similarity_search requires an embedding_driver")
-        vec = self.embedding_driver.embed([query])[0]
+        vec = embed_texts(self.embedding_driver, [query])[0]
         return self.similarity_search_by_vector(vec, k=k, filter=filter)
 
     def similarity_search_by_vector(

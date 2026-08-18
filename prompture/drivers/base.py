@@ -707,7 +707,11 @@ class Driver(ABC):
             if "/" in driver_name:
                 provider, model = driver_name.split("/", 1)
             else:
-                provider = self.__class__.__name__.replace("Driver", "").lower()
+                # Class-name fallback. Strip the Async prefix first: the async
+                # twin of a driver is the same provider, and "asyncclaude" vs
+                # "claude" would split one provider's spend into two rows.
+                cls_name = self.__class__.__name__.removeprefix("Async")
+                provider = cls_name.removesuffix("Driver").lower()
                 model = driver_name
 
             model_name = f"{provider}/{model}" if provider else model

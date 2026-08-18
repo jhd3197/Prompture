@@ -18,6 +18,7 @@ import re
 from typing import Any
 
 from ..documents import Document
+from ..vectorstores.base import embed_texts
 from .base import TextChunker
 
 # Best-effort numpy import; the chunker also has pure-python fallbacks.
@@ -92,7 +93,7 @@ class SemanticChunker(TextChunker):
             return sentences
 
         combined = self._combine(sentences)
-        embeddings = self.embedding_driver.embed(combined)
+        embeddings = embed_texts(self.embedding_driver, combined)
         if len(embeddings) != len(combined):
             raise RuntimeError(
                 f"Embedding driver returned {len(embeddings)} vectors for "

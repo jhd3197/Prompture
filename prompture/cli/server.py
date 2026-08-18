@@ -12,6 +12,15 @@ OpenAI SDK, …) need:
 * ``POST /v1/coding-agents/run`` — run a local coding-agent CLI; SSE-streams
   normalised events when ``stream=true``.
 * ``POST /v1/embeddings`` — routes to ``get_embedding_driver_for_model``.
+* ``POST /v1/images/generations`` — image generation.
+* ``POST /v1/audio/speech`` / ``/v1/audio/transcriptions`` — TTS / STT.
+
+Media generation (with async-job support):
+
+* ``POST /v1/videos/generations`` — text/image-to-video.
+* ``POST /v1/lipsync`` — image|video + audio → video.
+* ``POST /v1/music`` — music generation (create / remix / extend / mashup).
+* ``GET  /v1/jobs/{id}`` — poll an async media job (submit with ``poll=false`` → 202).
 
 Plus Prompture-native endpoints:
 
@@ -229,6 +238,34 @@ def create_app(
         response_format: str | None = None  # mp3, opus, wav, ...
         speed: float | None = None
 
+    class OAIVideoGenRequest(BaseModel):
+        model: str | None = None
+        prompt: str = ""
+        image_url: str | None = None  # start frame → image-to-video
+        duration: int | None = None
+        aspect_ratio: str | None = None
+        resolution: str | None = None
+        poll: bool = True  # poll=false → async job (HTTP 202)
+
+    class OAILipsyncRequest(BaseModel):
+        model: str | None = None
+        audio_url: str
+        image_url: str | None = None  # portrait → image-based lipsync
+        video_url: str | None = None  # source clip → video-based lipsync
+        prompt: str | None = None
+        resolution: str | None = None
+        poll: bool = True
+
+    class OAIMusicRequest(BaseModel):
+        model: str | None = None
+        prompt: str = ""
+        instrumental: bool | None = None
+        operation: str | None = None  # create | remix | extend | mashup
+        audio_url: str | None = None  # source for remix/extend
+        duration: int | None = None
+        style: str | None = None
+        poll: bool = True
+
     # ---- App ----
 
     app = FastAPI(
@@ -249,6 +286,10 @@ def create_app(
     # In-memory conversation store
     _conversations: OrderedDict[str, AsyncConversation] = OrderedDict()
 
+    # In-memory async media job store (job_id -> serialized JobHandle record)
+    _media_jobs: OrderedDict[str, dict[str, Any]] = OrderedDict()
+    _MEDIA_JOBS_MAX = 1000
+
     tool_registry: ToolRegistry | None = tools
 
     # ---- Helpers ----
@@ -259,6 +300,42 @@ def create_app(
                 status_code=403,
                 detail=f"Model '{model}' is not in the allowed models list",
             )
+
+    def _store_media_job(handle: Any) -> str:
+        """Persist an in-flight media JobHandle and return its server job id."""
+        job_id = "job_" + uuid.uuid4().hex[:16]
+        _media_jobs[job_id] = {
+            "handle": handle.to_dict(),
+            "created": int(time.time()),
+            "model": f"{handle.provider}/{handle.model}",
+            "modality": handle.modality,
+        }
+        while len(_media_jobs) > _MEDIA_JOBS_MAX:
+            _media_jobs.popitem(last=False)
+        return job_id
+
+    def _media_result_or_job(result: dict[str, Any], key: str, model: str) -> Any:
+        """Return a 200 result (assets) or a 202 job envelope for a pending submit."""
+        meta = result.get("meta", {})
+        jh = meta.get("job_handle")
+        if jh:
+            from ..jobs import JobHandle
+
+            job_id = _store_media_job(JobHandle.from_dict(jh))
+            return JSONResponse(
+                {"id": job_id, "object": "media.job", "status": "pending", "model": meta.get("model_name", model)},
+                status_code=202,
+            )
+        items = result.get(key, []) or []
+        data = [{"url": getattr(c, "url", None)} for c in items if getattr(c, "url", None)]
+        return JSONResponse(
+            {
+                "created": int(time.time()),
+                "data": data,
+                "model": meta.get("model_name", model),
+                "cost": meta.get("cost", 0.0),
+            }
+        )
 
     def _get_or_create_conversation(conv_id: str | None) -> tuple[str, AsyncConversation]:
         if conv_id and conv_id in _conversations:
@@ -808,6 +885,124 @@ def create_app(
                 "text": result.get("text", ""),
                 "language": result.get("language"),
                 "segments": result.get("segments", []),
+            }
+        )
+
+    # ---- Media generation: video / lipsync (+ async jobs) ----
+
+    @app.post("/v1/videos/generations")
+    async def media_videos_generations(req: OAIVideoGenRequest) -> Any:
+        """Video generation (text/image-to-video).
+
+        With ``poll=true`` (default) blocks until the clip is ready and returns
+        ``{data: [{url}], cost}``. With ``poll=false`` submits the job and returns
+        HTTP 202 ``{id, status: "pending"}`` — poll ``GET /v1/jobs/{id}``.
+        """
+        resolved_model = req.model or model_name
+        _check_model_allowed(resolved_model)
+
+        from ..drivers.video_gen_registry import get_async_video_gen_driver_for_model
+
+        try:
+            driver = get_async_video_gen_driver_for_model(resolved_model)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"Unknown video model: {exc}") from exc
+
+        opts: dict[str, Any] = {"poll": req.poll}
+        if req.image_url:
+            opts["image_url"] = req.image_url
+        if req.duration is not None:
+            opts["duration"] = req.duration
+        if req.aspect_ratio:
+            opts["aspect_ratio"] = req.aspect_ratio
+        if req.resolution:
+            opts["resolution"] = req.resolution
+
+        result = await driver.generate_video(req.prompt, opts)
+        return _media_result_or_job(result, "videos", resolved_model)
+
+    @app.post("/v1/lipsync")
+    async def media_lipsync(req: OAILipsyncRequest) -> Any:
+        """Lipsync (image|video + audio → video). ``poll=false`` returns a 202 job."""
+        resolved_model = req.model or model_name
+        _check_model_allowed(resolved_model)
+
+        from ..drivers.lipsync_registry import get_async_lipsync_driver_for_model
+
+        try:
+            driver = get_async_lipsync_driver_for_model(resolved_model)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"Unknown lipsync model: {exc}") from exc
+
+        opts: dict[str, Any] = {"poll": req.poll, "audio_url": req.audio_url}
+        if req.image_url:
+            opts["image_url"] = req.image_url
+        if req.video_url:
+            opts["video_url"] = req.video_url
+        if req.prompt:
+            opts["prompt"] = req.prompt
+        if req.resolution:
+            opts["resolution"] = req.resolution
+
+        result = await driver.generate_lipsync(None, opts)
+        return _media_result_or_job(result, "videos", resolved_model)
+
+    @app.post("/v1/music")
+    async def media_music(req: OAIMusicRequest) -> Any:
+        """Music generation (create / remix / extend / mashup). ``poll=false`` → 202 job."""
+        resolved_model = req.model or model_name
+        _check_model_allowed(resolved_model)
+
+        from ..drivers.music_registry import get_async_music_driver_for_model
+
+        try:
+            driver = get_async_music_driver_for_model(resolved_model)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"Unknown music model: {exc}") from exc
+
+        opts: dict[str, Any] = {"poll": req.poll}
+        if req.instrumental is not None:
+            opts["instrumental"] = req.instrumental
+        if req.operation:
+            opts["operation"] = req.operation
+        if req.audio_url:
+            opts["audio_url"] = req.audio_url
+        if req.duration is not None:
+            opts["duration"] = req.duration
+        if req.style:
+            opts["style"] = req.style
+
+        result = await driver.generate_music(req.prompt, opts)
+        return _media_result_or_job(result, "audio", resolved_model)
+
+    @app.get("/v1/jobs/{job_id}")
+    async def media_job_status(job_id: str) -> Any:
+        """Fetch the current state of an async media job submitted with ``poll=false``."""
+        rec = _media_jobs.get(job_id)
+        if rec is None:
+            raise HTTPException(status_code=404, detail=f"Unknown job: {job_id}")
+
+        from starlette.concurrency import run_in_threadpool
+
+        from ..jobs import JobHandle, resume
+
+        handle = JobHandle.from_dict(rec["handle"])
+        try:
+            # resume() is sync (blocking httpx) — run off the event loop.
+            result = await run_in_threadpool(resume, handle, poll=False)
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"Job fetch failed: {exc}") from exc
+
+        rec["status"] = result.status
+        return JSONResponse(
+            {
+                "id": job_id,
+                "object": "media.job",
+                "status": result.status,
+                "done": result.done,
+                "model": rec["model"],
+                "created": rec["created"],
+                "data": [{"url": a.url} for a in result.assets if a.url],
             }
         )
 

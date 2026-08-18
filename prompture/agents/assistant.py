@@ -384,13 +384,25 @@ class Assistant:
     ) -> AssistantResult:
         agent = self._build_async_agent(call_vars=call_vars)
         result: AgentResult = await agent.run(prompt, deps=deps)
+        # AgentResult.usage is a DICT (prompt_tokens/completion_tokens/cost) —
+        # getattr on a dict returns the default, so the attribute-style reads
+        # left cost_usd/input_tokens/output_tokens permanently None on the LLM
+        # backend and every host that trusted them recorded $0.00 forever.
         usage = getattr(result, "usage", None)
+        if isinstance(usage, dict):
+            cost_usd = usage.get("cost")
+            input_tokens = usage.get("prompt_tokens")
+            output_tokens = usage.get("completion_tokens")
+        else:
+            cost_usd = getattr(usage, "total_cost_usd", None) if usage else None
+            input_tokens = getattr(usage, "input_tokens", None) if usage else None
+            output_tokens = getattr(usage, "output_tokens", None) if usage else None
         return AssistantResult(
             output=getattr(result, "output", "") or "",
             backend="llm",
-            cost_usd=getattr(usage, "total_cost_usd", None) if usage else None,
-            input_tokens=getattr(usage, "input_tokens", None) if usage else None,
-            output_tokens=getattr(usage, "output_tokens", None) if usage else None,
+            cost_usd=cost_usd,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
             session_id=None,
             raw=result,
         )

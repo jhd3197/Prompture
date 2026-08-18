@@ -119,6 +119,14 @@ class Settings(BaseSettings):
     fal_image_model: str = "fal-ai/flux/dev"
     fal_video_model: str = "fal-ai/kling-video/v2.6/pro/image-to-video"
 
+    # Muapi.ai (multi-modal generation aggregator: image / video / edit / lipsync / audio)
+    muapi_api_key: str | None = None  # nosec B105
+    muapi_endpoint: str = "https://api.muapi.ai"
+    muapi_image_model: str = "nano-banana"
+    muapi_video_model: str = "kling-video-v2-1"
+    muapi_lipsync_model: str = "infinite-talk"
+    muapi_music_model: str = "suno-create-music"
+
     # Luma AI (Dream Machine — video generation)
     luma_api_key: str | None = None  # nosec B105
     luma_video_model: str = "ray-2"

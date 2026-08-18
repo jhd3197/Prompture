@@ -57,6 +57,7 @@ from .review_loop import (
     ReviewLoopIteration,
     ReviewLoopResult,
 )
+from .skill_miner import SkillMiner, SkillProposal, default_signature
 from .skills import (
     SKILLS,
     SkillInfo,
@@ -126,7 +127,9 @@ __all__ = [
     "ReviewLoopResult",
     "RunContext",
     "SkillInfo",
+    "SkillMiner",
     "SkillParseError",
+    "SkillProposal",
     "SkillSource",
     "StepType",
     "StreamEvent",
@@ -150,6 +153,7 @@ __all__ = [
     "clear_skill_registry",
     "create_async_deep_agent",
     "create_deep_agent",
+    "default_signature",
     "discover_skills",
     "discover_skills_async",
     "get_assistant",

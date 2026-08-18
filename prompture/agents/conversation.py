@@ -189,6 +189,19 @@ class Conversation:
         """The reasoning/thinking content from the last LLM response, if any."""
         return self._last_reasoning
 
+    def _assistant_message(self, content: str) -> dict[str, Any]:
+        """Assistant history entry for the response just consumed.
+
+        Attaches ``reasoning_content`` when the response carried it, so the
+        trace survives in history on every path (plain ask, tool loop,
+        streaming, JSON asks) -- not only the with-tool-calls branch -- and
+        providers that require reasoning to be echoed back keep working.
+        """
+        msg: dict[str, Any] = {"role": "assistant", "content": content}
+        if self._last_reasoning:
+            msg["reasoning_content"] = self._last_reasoning
+        return msg
+
     @property
     def messages(self) -> list[dict[str, Any]]:
         """Read-only view of the conversation history."""
@@ -550,7 +563,7 @@ class Conversation:
         text: str = resp.get("text", "")
         self._last_reasoning = resp.get("reasoning_content")
         self._accumulate_usage(resp.get("meta", {}))
-        self._messages.append({"role": "assistant", "content": text})
+        self._messages.append(self._assistant_message(text))
         return text
 
     def _final_answer_simulated(self, augmented_system: str, merged: dict[str, Any]) -> str:
@@ -656,7 +669,7 @@ class Conversation:
         # Record in history — store content with images for context
         user_content = self._build_content_with_images(content, images)
         self._messages.append({"role": "user", "content": user_content})
-        self._messages.append({"role": "assistant", "content": text})
+        self._messages.append(self._assistant_message(text))
         self._accumulate_usage(meta)
 
         return text
@@ -696,7 +709,7 @@ class Conversation:
             if not tool_calls:
                 # No tool calls -> final response
                 self._last_reasoning = resp.get("reasoning_content")
-                self._messages.append({"role": "assistant", "content": text})
+                self._messages.append(self._assistant_message(text))
                 return text
 
             # Ensure every tool call has a usable id so parallel calls
@@ -808,7 +821,7 @@ class Conversation:
             if not tool_calls:
                 # Final response — stream it if possible
                 self._last_reasoning = resp.get("reasoning_content")
-                self._messages.append({"role": "assistant", "content": text})
+                self._messages.append(self._assistant_message(text))
                 # Yield final text as deltas (single chunk since we already have the full text)
                 yield {"type": "text_delta", "text": text}
                 return
@@ -1296,7 +1309,7 @@ class Conversation:
             )
             raise
 
-        self._messages.append({"role": "assistant", "content": full_text})
+        self._messages.append(self._assistant_message(full_text))
 
     def ask_stream(
         self,
@@ -1517,7 +1530,7 @@ class Conversation:
                 raise
 
         # Store assistant response in history
-        self._messages.append({"role": "assistant", "content": cleaned})
+        self._messages.append(self._assistant_message(cleaned))
         self._accumulate_usage(meta)
 
         model_name = self._model_name

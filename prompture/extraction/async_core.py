@@ -576,6 +576,7 @@ async def extract_with_model(
     source: Any = None,
     chunking: Any = None,
     strategy: str | StructuredOutputStrategy | None = None,
+    max_retries: int = 1,
 ) -> dict[str, Any]:
     """Extract structured information into a Pydantic model instance (async version).
 
@@ -652,42 +653,64 @@ async def extract_with_model(
 
     schema = model_cls.model_json_schema()
 
-    result = await extract_and_jsonify(
-        text=text,
-        json_schema=schema,
-        model_name=model_name or "",
-        instruction_template=instruction_template,
-        ai_cleanup=ai_cleanup,
-        output_format=output_format,
-        options=options,
-        json_mode=json_mode,
-        system_prompt=system_prompt,
-        reasoning_strategy=reasoning_strategy,
-        strategy=strategy,
-    )
+    async def _attempt() -> tuple[dict[str, Any], BaseModel]:
+        result = await extract_and_jsonify(
+            text=text,
+            json_schema=schema,
+            model_name=model_name or "",
+            instruction_template=instruction_template,
+            ai_cleanup=ai_cleanup,
+            output_format=output_format,
+            options=options,
+            json_mode=json_mode,
+            system_prompt=system_prompt,
+            reasoning_strategy=reasoning_strategy,
+            strategy=strategy,
+        )
 
-    json_object = result["json_object"]
-    schema_properties = schema.get("properties", {})
+        json_object = result["json_object"]
+        schema_properties = schema.get("properties", {})
 
-    for field_name, field_info in model_cls.model_fields.items():
-        if field_name in json_object and field_name in schema_properties:
-            field_def = {
-                "nullable": not schema_properties[field_name].get("type")
-                or "null"
-                in (
-                    schema_properties[field_name].get("anyOf", [])
-                    if isinstance(schema_properties[field_name].get("anyOf"), list)
-                    else []
-                ),
-                "default": field_info.default
-                if hasattr(field_info, "default") and field_info.default is not ...
-                else None,
-            }
-            json_object[field_name] = normalize_field_value(
-                json_object[field_name], field_info.annotation or type(json_object[field_name]), field_def
-            )
+        for field_name, field_info in model_cls.model_fields.items():
+            if field_name in json_object and field_name in schema_properties:
+                field_def = {
+                    "nullable": not schema_properties[field_name].get("type")
+                    or "null"
+                    in (
+                        schema_properties[field_name].get("anyOf", [])
+                        if isinstance(schema_properties[field_name].get("anyOf"), list)
+                        else []
+                    ),
+                    "default": field_info.default
+                    if hasattr(field_info, "default") and field_info.default is not ...
+                    else None,
+                }
+                json_object[field_name] = normalize_field_value(
+                    json_object[field_name], field_info.annotation or type(json_object[field_name]), field_def
+                )
 
-    model_instance = model_cls(**json_object)
+        return result, model_cls(**json_object)
+
+    # Sync-parity (core.extract_with_model has max_retries): plain
+    # re-attempts on extraction/validation failure.
+    attempts = max(1, int(max_retries))
+    last_exc: Exception | None = None
+    result = None
+    model_instance = None
+    for attempt in range(1, attempts + 1):
+        try:
+            result, model_instance = await _attempt()
+            break
+        except Exception as exc:
+            last_exc = exc
+            if attempt < attempts:
+                logger.warning(
+                    "[async-extract] attempt %d/%d failed (%s) - retrying",
+                    attempt, attempts, exc,
+                )
+    if model_instance is None or result is None:
+        assert last_exc is not None
+        raise last_exc
 
     result_dict = {"json_string": result["json_string"], "json_object": result["json_object"], "usage": result["usage"]}
 

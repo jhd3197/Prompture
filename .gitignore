@@ -236,3 +236,6 @@ prompts/
 /examples/runway_audio_outputs
 /examples/runway_video_outputs
 .planning/*
+image*.png
+.wf-gap-analysis.js
+.python-version
