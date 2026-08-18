@@ -98,11 +98,15 @@ class DebateGroup:
         *,
         state: dict[str, Any] | None = None,
         callbacks: GroupCallbacks | None = None,
+        deps: Any | None = None,
     ) -> None:
         self._agents = [(a, _agent_name(a, i)) for i, a in enumerate(agents)]
         self._config = config or DebateConfig()
         self._state: dict[str, Any] = dict(state) if state else {}
         self._callbacks = callbacks or GroupCallbacks()
+        # Forwarded to every debater and the judge as run(prompt, deps=...),
+        # so their tools receive a RunContext.deps like in plain agent runs.
+        self._deps = deps
         self._stop_requested = False
 
     def stop(self) -> None:
@@ -177,7 +181,7 @@ class DebateGroup:
 
                 step_t0 = time.perf_counter()
                 try:
-                    result = agent.run(effective)
+                    result = agent.run(effective, deps=self._deps) if self._deps is not None else agent.run(effective)
                     duration_ms = (time.perf_counter() - step_t0) * 1000
 
                     result_key = f"{name}_round{round_num}"
@@ -247,7 +251,7 @@ class DebateGroup:
 
             step_t0 = time.perf_counter()
             try:
-                judge_result = judge.run(judge_prompt)
+                judge_result = judge.run(judge_prompt, deps=self._deps) if self._deps is not None else judge.run(judge_prompt)
                 duration_ms = (time.perf_counter() - step_t0) * 1000
                 judge_verdict = judge_result.output_text
                 agent_results[judge_name] = judge_result
@@ -310,11 +314,15 @@ class AsyncDebateGroup:
         *,
         state: dict[str, Any] | None = None,
         callbacks: GroupCallbacks | None = None,
+        deps: Any | None = None,
     ) -> None:
         self._agents = [(a, _agent_name(a, i)) for i, a in enumerate(agents)]
         self._config = config or DebateConfig()
         self._state: dict[str, Any] = dict(state) if state else {}
         self._callbacks = callbacks or GroupCallbacks()
+        # Forwarded to every debater and the judge as run(prompt, deps=...),
+        # so their tools receive a RunContext.deps like in plain agent runs.
+        self._deps = deps
         self._stop_requested = False
 
     def stop(self) -> None:
@@ -384,7 +392,7 @@ class AsyncDebateGroup:
 
                 step_t0 = time.perf_counter()
                 try:
-                    result = await agent.run(effective)
+                    result = await (agent.run(effective, deps=self._deps) if self._deps is not None else agent.run(effective))
                     duration_ms = (time.perf_counter() - step_t0) * 1000
 
                     result_key = f"{name}_round{round_num}"
@@ -451,7 +459,7 @@ class AsyncDebateGroup:
 
             step_t0 = time.perf_counter()
             try:
-                judge_result = await judge.run(judge_prompt)
+                judge_result = await (judge.run(judge_prompt, deps=self._deps) if self._deps is not None else judge.run(judge_prompt))
                 duration_ms = (time.perf_counter() - step_t0) * 1000
                 judge_verdict = judge_result.output_text
                 agent_results[judge_name] = judge_result
