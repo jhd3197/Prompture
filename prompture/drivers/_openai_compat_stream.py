@@ -486,6 +486,7 @@ def stream_raw_http_compat_tool_call(
     default_max_tokens: int = 4096,
     default_temperature: float = 1.0,
     timeout: int = 120,
+    payload: dict[str, Any] | None = None,
 ) -> Iterator[Any]:
     """Generic sync streaming-tool implementation for raw-HTTP OpenAI-compat
     drivers (those that call ``requests.post(/chat/completions)`` instead
@@ -496,18 +497,23 @@ def stream_raw_http_compat_tool_call(
     - ``self.api_key`` — used as ``Authorization: Bearer <key>``
 
     Override *url* or *headers* if the driver uses a different shape.
+    Pass a complete *payload* (including streaming options) to preserve a
+    driver's custom request shaping; otherwise use the shared defaults.
     """
     import requests
 
-    model, payload = _build_raw_http_payload(
-        driver,
-        messages,
-        tools,
-        options,
-        provider=provider,
-        default_max_tokens=default_max_tokens,
-        default_temperature=default_temperature,
-    )
+    if payload is None:
+        model, payload = _build_raw_http_payload(
+            driver,
+            messages,
+            tools,
+            options,
+            provider=provider,
+            default_max_tokens=default_max_tokens,
+            default_temperature=default_temperature,
+        )
+    else:
+        model = payload["model"]
     resolved_url = url or f"{driver.api_base}/chat/completions"
     resolved_headers = headers or _bearer_headers(driver.api_key)
 
@@ -559,20 +565,24 @@ async def astream_raw_http_compat_tool_call(
     default_max_tokens: int = 4096,
     default_temperature: float = 1.0,
     timeout: float = 120.0,
+    payload: dict[str, Any] | None = None,
 ) -> AsyncIterator[Any]:
     """Async sibling of :func:`stream_raw_http_compat_tool_call` using
-    ``httpx.AsyncClient.stream``."""
+    ``httpx.AsyncClient.stream``. Accepts the same complete *payload* override."""
     import httpx
 
-    model, payload = _build_raw_http_payload(
-        driver,
-        messages,
-        tools,
-        options,
-        provider=provider,
-        default_max_tokens=default_max_tokens,
-        default_temperature=default_temperature,
-    )
+    if payload is None:
+        model, payload = _build_raw_http_payload(
+            driver,
+            messages,
+            tools,
+            options,
+            provider=provider,
+            default_max_tokens=default_max_tokens,
+            default_temperature=default_temperature,
+        )
+    else:
+        model = payload["model"]
     resolved_url = url or f"{driver.api_base}/chat/completions"
     resolved_headers = headers or _bearer_headers(driver.api_key)
 

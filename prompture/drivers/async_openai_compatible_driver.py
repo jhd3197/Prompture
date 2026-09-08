@@ -4,14 +4,16 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import AsyncIterator
 from typing import Any
 
 import httpx
 
-from ..infra.cost_mixin import CostMixin, prepare_strict_schema
+from ..infra.cost_mixin import CostMixin
 from .async_base import AsyncDriver
 from .openai_compatible_driver import (
     OPENAI_COMPATIBLE_PROFILES,
+    OpenAICompatibleDriver,
     _parse_profile_and_model,
 )
 
@@ -21,8 +23,9 @@ logger = logging.getLogger(__name__)
 class AsyncOpenAICompatibleDriver(CostMixin, AsyncDriver):
     supports_json_mode = True
     supports_json_schema = True
-    supports_tool_use = False
-    supports_streaming = False
+    supports_tool_use = True
+    supports_streaming_tool_use = True
+    supports_streaming = True
     supports_messages = True
 
     MODEL_PRICING: dict[str, dict[str, Any]] = {}
@@ -79,50 +82,29 @@ class AsyncOpenAICompatibleDriver(CostMixin, AsyncDriver):
         messages = [{"role": "user", "content": prompt}]
         return await self._do_generate(messages, options)
 
-    async def generate_messages(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
+    async def generate_messages(self, messages: list[dict[str, Any]], options: dict[str, Any]) -> dict[str, Any]:
         return await self._do_generate(messages, options)
 
-    async def _do_generate(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
-        endpoint = (options.get("endpoint") or self.endpoint).rstrip("/")
-        api_key = options.get("api_key") or self.api_key
-        model = options.get("model", self.model)
+    # Keep request shaping, tool parsing and metadata identical across transports.
+    _build_request = OpenAICompatibleDriver._build_request
+    _parse_response = OpenAICompatibleDriver._parse_response
+    _stream_usage = OpenAICompatibleDriver._stream_usage
 
-        cap_provider = self.profile or "openai_compatible"
-        model_config = self._get_model_config(cap_provider, model)
-        tokens_param = model_config["tokens_param"]
-        supports_temperature = model_config["supports_temperature"]
+    async def generate_messages_with_tools(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        options: dict[str, Any],
+    ) -> dict[str, Any]:
+        return await self._do_generate(messages, options, tools=tools)
 
-        opts = {"temperature": 0.7, "max_tokens": 512, **options}
-        data: dict[str, Any] = {"model": model, "messages": messages}
-        data[tokens_param] = opts.get("max_tokens", 512)
-        if supports_temperature and "temperature" in opts:
-            data["temperature"] = opts["temperature"]
-
-        from ._openai_compat import apply_guided_decoding, merge_extra_body
-
-        if options.get("json_mode"):
-            json_schema = options.get("json_schema")
-            if json_schema:
-                schema_copy = prepare_strict_schema(json_schema)
-                data["response_format"] = {
-                    "type": "json_schema",
-                    "json_schema": {
-                        "name": "extraction",
-                        "strict": True,
-                        "schema": schema_copy,
-                    },
-                }
-            else:
-                data["response_format"] = {"type": "json_object"}
-
-        # vLLM-style FSM-constrained decoding pass-through (8A-lite).
-        apply_guided_decoding(
-            data,
-            json_schema=options.get("json_schema"),
-            guided_decoding=options.get("guided_decoding"),
-        )
-        merge_extra_body(data, options)
-
+    async def _do_generate(
+        self,
+        messages: list[dict[str, Any]],
+        options: dict[str, Any],
+        tools: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        endpoint, api_key, model, data = self._build_request(messages, options, tools)
         async with httpx.AsyncClient() as client:
             try:
                 response = await client.post(
@@ -138,27 +120,56 @@ class AsyncOpenAICompatibleDriver(CostMixin, AsyncDriver):
             except Exception as e:
                 raise RuntimeError(f"OpenAI-compatible API request failed: {e!s}") from e
 
-        usage = resp.get("usage", {})
-        prompt_tokens = usage.get("prompt_tokens", 0)
-        completion_tokens = usage.get("completion_tokens", 0)
-        total_tokens = usage.get("total_tokens", 0)
+        return self._parse_response(resp, model, endpoint, tools=tools)
 
-        total_cost = self._calculate_cost(cap_provider, model, prompt_tokens, completion_tokens)
-        pricing_unknown = total_cost == 0.0
+    async def _stream_events(
+        self,
+        messages: list[dict[str, Any]],
+        options: dict[str, Any],
+        tools: list[dict[str, Any]] | None = None,
+    ) -> AsyncIterator[Any]:
+        from ._openai_compat_stream import astream_raw_http_compat_tool_call
 
-        meta: dict[str, Any] = {
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
-            "total_tokens": total_tokens,
-            "cost": round(total_cost, 6),
-            "raw_response": resp,
-            "model_name": model,
-            "endpoint": endpoint,
-            "profile": self.profile,
-        }
-        if pricing_unknown:
-            meta["pricing_unknown"] = True
+        endpoint, api_key, _model, payload = self._build_request(messages, options, tools, stream=True)
+        try:
+            async for event in astream_raw_http_compat_tool_call(
+                self,
+                messages,
+                tools or [],
+                options,
+                provider=self.profile or "openai_compatible",
+                url=f"{endpoint}/chat/completions",
+                headers=self._headers(api_key),
+                payload=payload,
+            ):
+                if event.event_type == "message_stop":
+                    event.usage.update(self._stream_usage(event.usage, endpoint))
+                yield event
+        except httpx.HTTPError as e:
+            raise RuntimeError(f"OpenAI-compatible API request failed: {e!s}") from e
 
-        message = resp["choices"][0]["message"]
-        text = message.get("content") or ""
-        return {"text": text, "meta": meta}
+    async def generate_messages_with_tools_stream(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        options: dict[str, Any],
+    ) -> AsyncIterator[Any]:
+        """Stream text and native tool calls as LiveEvents."""
+        async for event in self._stream_events(messages, options, tools):
+            yield event
+
+    async def generate_messages_stream(
+        self,
+        messages: list[dict[str, Any]],
+        options: dict[str, Any],
+    ) -> AsyncIterator[dict[str, Any]]:
+        """Stream text deltas followed by complete text and usage metadata."""
+        full_text = ""
+        async for event in self._stream_events(messages, options):
+            if event.event_type == "text_delta":
+                full_text += event.text
+                yield {"type": "delta", "text": event.text}
+            elif event.event_type == "thinking_delta":
+                yield {"type": "thinking_delta", "text": event.text}
+            elif event.event_type == "message_stop":
+                yield {"type": "done", "text": full_text, "meta": event.usage}
