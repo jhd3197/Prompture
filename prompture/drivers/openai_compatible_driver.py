@@ -29,12 +29,13 @@ from __future__ import annotations
 import contextlib
 import logging
 import os
+from collections.abc import Iterator
 from typing import Any
 
 import requests
 
 from ..infra.cost_mixin import CostMixin, prepare_strict_schema
-from .base import Driver
+from .base import Driver, _apply_openai_tool_options, _tool_call_dict
 
 logger = logging.getLogger(__name__)
 
@@ -100,8 +101,9 @@ class OpenAICompatibleDriver(CostMixin, Driver):
 
     supports_json_mode = True
     supports_json_schema = True
-    supports_tool_use = False
-    supports_streaming = False
+    supports_tool_use = True
+    supports_streaming_tool_use = True
+    supports_streaming = True
     supports_messages = True
 
     MODEL_PRICING: dict[str, dict[str, Any]] = {}
@@ -162,10 +164,18 @@ class OpenAICompatibleDriver(CostMixin, Driver):
         messages = [{"role": "user", "content": prompt}]
         return self._do_generate(messages, options)
 
-    def generate_messages(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
+    def generate_messages(self, messages: list[dict[str, Any]], options: dict[str, Any]) -> dict[str, Any]:
         return self._do_generate(messages, options)
 
-    def _do_generate(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
+    def _build_request(
+        self,
+        messages: list[dict[str, Any]],
+        options: dict[str, Any],
+        tools: list[dict[str, Any]] | None = None,
+        *,
+        stream: bool = False,
+    ) -> tuple[str, str | None, str, dict[str, Any]]:
+        """Build one payload for text, tools and streaming without changing inputs."""
         # Per-call overrides take precedence over instance values.
         endpoint = (options.get("endpoint") or self.endpoint).rstrip("/")
         api_key = options.get("api_key") or self.api_key
@@ -179,9 +189,9 @@ class OpenAICompatibleDriver(CostMixin, Driver):
         tokens_param = model_config["tokens_param"]
         supports_temperature = model_config["supports_temperature"]
 
-        opts = {"temperature": 0.7, "max_tokens": 512, **options}
+        opts = {"temperature": 0.7, "max_tokens": 4096 if tools is not None else 512, **options}
         data: dict[str, Any] = {"model": model, "messages": messages}
-        data[tokens_param] = opts.get("max_tokens", 512)
+        data[tokens_param] = opts["max_tokens"]
         if supports_temperature and "temperature" in opts:
             data["temperature"] = opts["temperature"]
 
@@ -202,6 +212,10 @@ class OpenAICompatibleDriver(CostMixin, Driver):
             else:
                 data["response_format"] = {"type": "json_object"}
 
+        if tools is not None:
+            data["tools"] = tools
+            _apply_openai_tool_options(data, options)
+
         # vLLM-style FSM-constrained decoding pass-through (8A-lite).
         # Safe on every OpenAI-compatible server — unrecognised keys are ignored.
         apply_guided_decoding(
@@ -212,6 +226,26 @@ class OpenAICompatibleDriver(CostMixin, Driver):
         # Generic vendor escape hatch (mirrors openai SDK's extra_body).
         merge_extra_body(data, options)
 
+        if stream:
+            data["stream"] = True
+            data["stream_options"] = {**data.get("stream_options", {}), "include_usage": True}
+        return endpoint, api_key, model, data
+
+    def generate_messages_with_tools(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        options: dict[str, Any],
+    ) -> dict[str, Any]:
+        return self._do_generate(messages, options, tools=tools)
+
+    def _do_generate(
+        self,
+        messages: list[dict[str, Any]],
+        options: dict[str, Any],
+        tools: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        endpoint, api_key, model, data = self._build_request(messages, options, tools)
         try:
             response = requests.post(
                 f"{endpoint}/chat/completions",
@@ -233,6 +267,16 @@ class OpenAICompatibleDriver(CostMixin, Driver):
         except requests.exceptions.RequestException as e:
             raise RuntimeError(f"OpenAI-compatible API request failed: {e!s}") from e
 
+        return self._parse_response(resp, model, endpoint, tools=tools)
+
+    def _parse_response(
+        self,
+        resp: dict[str, Any],
+        model: str,
+        endpoint: str,
+        tools: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        cap_provider = self.profile or "openai_compatible"
         usage = resp.get("usage", {})
         prompt_tokens = usage.get("prompt_tokens", 0)
         completion_tokens = usage.get("completion_tokens", 0)
@@ -256,4 +300,69 @@ class OpenAICompatibleDriver(CostMixin, Driver):
 
         message = resp["choices"][0]["message"]
         text = message.get("content") or ""
-        return {"text": text, "meta": meta}
+        result = {"text": text, "meta": meta}
+        if tools is not None:
+            stop_reason = resp["choices"][0].get("finish_reason")
+            result["stop_reason"] = stop_reason
+            result["tool_calls"] = [
+                _tool_call_dict(tc.get("id"), tc["function"]["name"], tc["function"].get("arguments"), stop_reason)
+                for tc in message.get("tool_calls") or []
+            ]
+        return result
+
+    def _stream_usage(self, usage: dict[str, Any], endpoint: str) -> dict[str, Any]:
+        meta = {**usage, "raw_response": {}, "endpoint": endpoint, "profile": self.profile}
+        if meta["cost"] == 0.0:
+            meta["pricing_unknown"] = True
+        return meta
+
+    def _stream_events(
+        self,
+        messages: list[dict[str, Any]],
+        options: dict[str, Any],
+        tools: list[dict[str, Any]] | None = None,
+    ) -> Iterator[Any]:
+        from ._openai_compat_stream import stream_raw_http_compat_tool_call
+
+        endpoint, api_key, _model, payload = self._build_request(messages, options, tools, stream=True)
+        try:
+            for event in stream_raw_http_compat_tool_call(
+                self,
+                messages,
+                tools or [],
+                options,
+                provider=self.profile or "openai_compatible",
+                url=f"{endpoint}/chat/completions",
+                headers=self._headers(api_key),
+                payload=payload,
+            ):
+                if event.event_type == "message_stop":
+                    event.usage.update(self._stream_usage(event.usage, endpoint))
+                yield event
+        except requests.exceptions.RequestException as e:
+            raise RuntimeError(f"OpenAI-compatible API request failed: {e!s}") from e
+
+    def generate_messages_with_tools_stream(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        options: dict[str, Any],
+    ) -> Iterator[Any]:
+        """Stream text and native tool calls as LiveEvents."""
+        yield from self._stream_events(messages, options, tools)
+
+    def generate_messages_stream(
+        self,
+        messages: list[dict[str, Any]],
+        options: dict[str, Any],
+    ) -> Iterator[dict[str, Any]]:
+        """Stream text deltas followed by complete text and usage metadata."""
+        full_text = ""
+        for event in self._stream_events(messages, options):
+            if event.event_type == "text_delta":
+                full_text += event.text
+                yield {"type": "delta", "text": event.text}
+            elif event.event_type == "thinking_delta":
+                yield {"type": "thinking_delta", "text": event.text}
+            elif event.event_type == "message_stop":
+                yield {"type": "done", "text": full_text, "meta": event.usage}

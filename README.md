@@ -240,6 +240,34 @@ Model strings use `"provider/model"` format. The provider prefix routes to the c
 
 Aliases (`anthropic`, `gemini`, `chatgpt`, `xai`, `lm_studio`, `zhipu`, `hf`, `dalle`, `runwayml`, `hailuo`, `mistralai`, `flux`, `mxbai`) route to their canonical providers.
 
+### Streaming and tools through compatible gateways
+
+`OpenAICompatibleDriver` and `AsyncOpenAICompatibleDriver` support text streaming,
+native tool calls, and streaming tool calls on gateways that implement those Chat
+Completions features. Use a curated profile or configure your gateway directly:
+
+```python
+from prompture.drivers.openai_compatible_driver import OpenAICompatibleDriver
+
+driver = OpenAICompatibleDriver(
+    endpoint="http://localhost:8000/v1",
+    model="my-model",  # Gateway model IDs, including slashes, pass through unchanged.
+    # api_key="...",  # Optional for gateways that do not require authentication.
+)
+messages = [{"role": "user", "content": "Say hello"}]
+for chunk in driver.generate_messages_stream(messages, options={}):
+    if chunk["type"] == "delta":
+        print(chunk["text"], end="", flush=True)
+```
+
+Pass OpenAI-format tool definitions to `generate_messages_with_tools(messages,
+tools, options)` for a response containing normalized `tool_calls`, or use
+`generate_messages_with_tools_stream(...)` for text and tool-input `LiveEvent`s.
+The async driver exposes the same methods with `await` and `async for`.
+Tool options include `tool_choice` and `parallel_tool_calls`; JSON-schema,
+guided-decoding, and `extra_body` options also work in streaming requests.
+Final stream metadata includes token usage when the gateway supplies it.
+
 ## Multi-Modal
 
 Beyond text LLMs, Prompture exposes drivers for adjacent modalities under the same `provider/model` routing:
