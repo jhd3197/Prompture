@@ -94,6 +94,22 @@ class TestBasicRecordAndQuery:
         assert len(results) == 1
         assert results[0]["error_type"] == "APIError"
 
+    def test_error_message_is_stored(self, tracker):
+        """The class name says a TypeError happened; the message says which one."""
+        tracker.record(UsageEvent(
+            model_name="claude/claude-haiku-4-5", provider="claude", status="error",
+            error_type="TypeError",
+            error_message=(
+                "AsyncMessages.create() got an unexpected keyword argument 'temperature'"
+            ),
+        ))
+        row = tracker.query(status="error")[0]
+        assert "temperature" in row["error_message"]
+
+    def test_a_successful_call_carries_no_message(self, tracker):
+        tracker.record(UsageEvent(model_name="openai/gpt-4", provider="openai"))
+        assert tracker.query(status="success")[0]["error_message"] is None
+
 
 # ------------------------------------------------------------------ #
 # UsageEvent auto-fields

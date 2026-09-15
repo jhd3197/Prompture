@@ -226,6 +226,28 @@ def _extract_anthropic_text_and_tool_calls(content_blocks: list[Any]) -> tuple[s
     return text, tool_calls_out
 
 
+def _apply_temperature(kwargs: dict[str, Any], temperature: float) -> None:
+    """Put ``temperature`` in the request body without passing it as a kwarg.
+
+    ``anthropic`` 1.0.0 (2026-08-20) removed ``temperature`` / ``top_p`` /
+    ``top_k`` from ``messages.create()``, so passing one raises
+    ``TypeError: AsyncMessages.create() got an unexpected keyword argument
+    'temperature'`` *before* the HTTP call — on every model, including the ones
+    that still accept a temperature. ``extra_body`` merges straight into the
+    JSON the SDK sends and has been part of the client on both 0.x and 1.x, so
+    the request that reaches the API is byte-for-byte what it was while staying
+    inside the SDK's signature.
+
+    Callers still gate on the model's ``supports_temperature``, so nothing is
+    sent to a model that would reject it.
+    """
+    extra_body = kwargs.get("extra_body")
+    if not isinstance(extra_body, dict):
+        extra_body = {}
+        kwargs["extra_body"] = extra_body
+    extra_body["temperature"] = temperature
+
+
 def _build_anthropic_json_mode_tool_def(json_schema: dict[str, Any]) -> dict[str, Any]:
     return {
         "name": "extract_json",
@@ -425,7 +447,7 @@ class ClaudeDriver(CostMixin, Driver):
             "max_tokens": self._effective_max_tokens(model, opts),
         }
         if supports_temperature:
-            common_kwargs["temperature"] = opts["temperature"]
+            _apply_temperature(common_kwargs, opts["temperature"])
         if wrapped_system is not None:
             common_kwargs["system"] = wrapped_system
         if opts.get("timeout") is not None:
@@ -550,7 +572,7 @@ class ClaudeDriver(CostMixin, Driver):
             "tools": anthropic_tools,
         }
         if supports_temperature:
-            kwargs["temperature"] = opts["temperature"]
+            _apply_temperature(kwargs, opts["temperature"])
         if wrapped_system is not None:
             kwargs["system"] = wrapped_system
         if opts.get("timeout") is not None:
@@ -624,7 +646,7 @@ class ClaudeDriver(CostMixin, Driver):
             "max_tokens": self._effective_max_tokens(model, opts),
         }
         if supports_temperature:
-            kwargs["temperature"] = opts["temperature"]
+            _apply_temperature(kwargs, opts["temperature"])
         if wrapped_system is not None:
             kwargs["system"] = wrapped_system
         if opts.get("timeout") is not None:
@@ -743,7 +765,7 @@ class ClaudeDriver(CostMixin, Driver):
             "tools": anthropic_tools,
         }
         if supports_temperature:
-            kwargs["temperature"] = opts["temperature"]
+            _apply_temperature(kwargs, opts["temperature"])
         if wrapped_system is not None:
             kwargs["system"] = wrapped_system
         if opts.get("timeout") is not None:

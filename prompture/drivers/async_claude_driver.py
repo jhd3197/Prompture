@@ -33,6 +33,7 @@ from .async_base import AsyncDriver
 from .base import _normalize_stop_reason, _translate_tool_choice
 from .claude_driver import (
     ClaudeDriver,
+    _apply_temperature,
     _build_anthropic_json_mode_tool_def,
     _build_anthropic_meta,
     _build_anthropic_stream_done,
@@ -138,7 +139,7 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
             "max_tokens": self._effective_max_tokens(model, opts),
         }
         if supports_temperature:
-            common_kwargs["temperature"] = opts["temperature"]
+            _apply_temperature(common_kwargs, opts["temperature"])
         if wrapped_system is not None:
             common_kwargs["system"] = wrapped_system
         if opts.get("timeout") is not None:
@@ -252,7 +253,7 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
             "tools": anthropic_tools,
         }
         if supports_temperature:
-            kwargs["temperature"] = opts["temperature"]
+            _apply_temperature(kwargs, opts["temperature"])
         if wrapped_system is not None:
             kwargs["system"] = wrapped_system
         if opts.get("timeout") is not None:
@@ -326,7 +327,7 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
             "max_tokens": self._effective_max_tokens(model, opts),
         }
         if supports_temperature:
-            kwargs["temperature"] = opts["temperature"]
+            _apply_temperature(kwargs, opts["temperature"])
         if wrapped_system is not None:
             kwargs["system"] = wrapped_system
         if opts.get("timeout") is not None:
@@ -436,7 +437,7 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
             "tools": anthropic_tools,
         }
         if supports_temperature:
-            kwargs["temperature"] = opts["temperature"]
+            _apply_temperature(kwargs, opts["temperature"])
         if wrapped_system is not None:
             kwargs["system"] = wrapped_system
         if opts.get("timeout") is not None:
