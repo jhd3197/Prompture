@@ -18,6 +18,7 @@ from pydantic import BaseModel
 
 from ..drivers.async_base import AsyncDriver
 from ..drivers.async_registry import get_async_driver_for_model
+from ._usage import extraction_attempt, tracked_extraction
 from .core import (
     ExtractResult,
     _build_usage,
@@ -561,6 +562,7 @@ async def _async_chunked_extract(
     return ExtractResult(result_dict)
 
 
+@tracked_extraction
 async def extract_with_model(
     model_cls: type[BaseModel],
     text: str | None = None,
@@ -698,6 +700,7 @@ async def extract_with_model(
     result = None
     model_instance = None
     for attempt in range(1, attempts + 1):
+        extraction_attempt(retry_attempt=attempt - 1)
         try:
             result, model_instance = await _attempt()
             break
@@ -706,7 +709,9 @@ async def extract_with_model(
             if attempt < attempts:
                 logger.warning(
                     "[async-extract] attempt %d/%d failed (%s) - retrying",
-                    attempt, attempts, exc,
+                    attempt,
+                    attempts,
+                    exc,
                 )
     if model_instance is None or result is None:
         assert last_exc is not None
@@ -728,6 +733,7 @@ async def extract_with_model(
     return ExtractResult(result_dict)
 
 
+@tracked_extraction
 async def stepwise_extract_with_model(
     model_cls: type[BaseModel],
     text: str,
@@ -903,6 +909,7 @@ async def stepwise_extract_with_model(
         return ExtractResult(error_result)
 
 
+@tracked_extraction
 async def extract_with_models(
     model_cls: type[BaseModel],
     text: str,
@@ -939,7 +946,8 @@ async def extract_with_models(
     total_cost = 0.0
     total_tokens = 0
 
-    for model_name in models:
+    for model_attempt, model_name in enumerate(models):
+        extraction_attempt(model_attempt=model_attempt)
         # --- Resolve driver and detect capabilities ---
         try:
             driver = get_async_driver_for_model(model_name)

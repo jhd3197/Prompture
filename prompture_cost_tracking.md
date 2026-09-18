@@ -2,7 +2,9 @@
 
 Prompture includes a built-in usage tracker that automatically records every LLM call as an individual event in a local SQLite database. No setup required -- it works out of the box.
 
-**Privacy first:** The tracker stores zero message content. Only metadata -- model name, token counts, cost, timing, and opaque IDs for grouping.
+The built-in reporting hooks omit raw responses and message bodies. They retain model names, token counts, estimated costs, timing, provider request IDs, pricing provenance, and usage diagnostics. Custom metadata and sinks are caller-controlled; avoid placing message content or secrets in them.
+
+Per-call costs are **estimates**, not invoice amounts. OpenAI and Claude report whether an estimate is complete, partial, or unavailable. Optional organization billing reports provide a separate provider-reported view.
 
 Database location: `~/.prompture/usage/usage.db`
 
@@ -15,6 +17,10 @@ Database location: `~/.prompture/usage/usage.db`
 - [Querying Usage](#querying-usage)
 - [Budget Management](#budget-management)
 - [Cost Calculation API](#cost-calculation-api)
+- [OpenAI and Claude Reporting](#openai-and-claude-reporting)
+- [Provider Token Counting](#provider-token-counting)
+- [OpenAI Responses API](#openai-responses-api)
+- [Organization Billing Reports](#organization-billing-reports)
 - [Direct SQLite Access](#direct-sqlite-access)
 - [DriverCallbacks Integration](#drivercallbacks-integration)
 - [Configuration](#configuration)
@@ -205,7 +211,7 @@ if status.exceeded:
 
 ## Cost Calculation API
 
-Calculate costs without making API calls. Uses live rates from models.dev.
+Calculate costs without making inference API calls. Rates resolve from the local model registry and then models.dev fallback data. Use the detailed estimate below when missing prices or billing modifiers matter; the legacy numeric helpers return zero when rates are unavailable.
 
 ```python
 from prompture.infra.tracker import UsageTracker
@@ -229,6 +235,115 @@ cost = calculate_cost("openai/gpt-4", input_tokens=1000, output_tokens=500)
 This is the **public** replacement for the previously private `CostMixin._calculate_cost()`.
 
 ---
+
+## OpenAI and Claude Reporting
+
+Driver responses keep the existing `meta.cost`, `prompt_tokens`, `completion_tokens`, and `total_tokens` fields. The OpenAI and Claude drivers add:
+
+| Field | Meaning |
+| --- | --- |
+| `cost_status` | `estimated`: all observed dimensions priced; `partial`: some dimensions or usage missing; `unknown`: no model rates |
+| `rates_available` | Whether base model rates were found; explicit zero rates can represent a free model |
+| `usage_complete` | Whether the provider supplied the required terminal usage counts |
+| `cost_breakdown` | USD amounts for uncached input, cache reads, 5-minute and 1-hour cache writes, output, tools, and total |
+| `pricing` | Rate source, base/effective rates per million tokens, applied rules, and unpriced dimensions |
+| `usage_details` | Available cache, reasoning, audio, image, text, and prediction token details |
+| `cache_savings` | Estimated net savings against uncached input, including cache write premiums |
+| `requested_model`, `returned_model` | Requested model and the effective model reported by the provider |
+| `request_id`, `response_id`, `service_tier` | Provider attribution where available |
+
+Reasoning and prediction tokens are subsets of output usage; they are not added to the bill twice. Claude input totals include uncached input, cache reads, and cache writes. Actual mixed 5-minute/1-hour cache-write counts override a requested TTL. Missing terminal stream usage remains explicitly incomplete.
+
+Pricing rules cover verified model-specific long-context thresholds, supported service-tier discounts, and supported inference geography premiums. Unknown modifiers are recorded in `pricing.unpriced` and make the estimate partial. Pricing snapshots are estimates of public rates; negotiated contracts, unsupported modalities, storage, and unobserved charges need provider billing reconciliation.
+
+Cost budgets still operate on the numeric estimate. A partial or unknown estimate cannot establish a hard upper bound on the provider's eventual charge; inspect reporting status when enforcing a billing policy.
+
+Known server tool counts can contribute separately priced charges: Claude web search and OpenAI file search / identifiable web search variants. Search-content token allocations, unknown tool variants, and unsupported tool fees remain partial rather than silently free. Cache savings are only aggregated for fully priced estimates and can be negative when write premiums outweigh reads.
+
+```python
+from prompture import estimate_call_cost
+from prompture.infra.tracker import get_tracker
+
+estimate = estimate_call_cost(
+    "openai/gpt-5.5", 300_000,
+    expected_completion_tokens=1_000,
+    cached_tokens=200_000,
+    service_tier="flex",
+)
+print(estimate.total_cost, estimate.cost_status, estimate.pricing)
+
+tracker = get_tracker()
+print(tracker.summary(provider="openai"))
+print(tracker.efficiency_report(provider="openai"))
+```
+
+`summary()` aggregates **all matching events**, independently of `query()`'s default 1,000-row display limit. `efficiency_report()` includes component costs, pricing-status counts, incomplete usage, provider cache ratio, local cache hits, retry/fallback spend, cache savings, and cost per successful extraction. Missing evidence is `None`, not an invented zero.
+
+Validated `extract_with_model`, `extract_with_models`, and stepwise extraction calls (sync and async) automatically tag actual retry and model-fallback attempts. A separate zero-cost `extraction_outcome` event records the final validation result. All attempts share an `extraction_id`; `total_calls` excludes outcome events, while `total_events` includes them. Cost per successful extraction includes failed-attempt spend for the observed extraction outcomes. A caller-supplied default after failure is not a validated success. Raw JSON parsing alone does not establish a validated extraction outcome. SDK-internal transport retries are not individually visible to these hooks.
+
+Conversation and session usage retain per-call `usage_records`, including rich metadata, plus additive breakdowns. Their memory use grows with the number of retained calls. A normally completed conversation stream records usage once; early closure remains incomplete if final usage never arrived. Existing historical events without these fields are reported as unclassified; new metadata is not reconstructed retroactively.
+
+## Provider Token Counting
+
+Count the actual structured request before generation, including messages, tools, images, and supported schema instructions:
+
+```python
+from prompture import count_request_tokens, estimate_request_cost
+
+messages = [{"role": "user", "content": "Extract the delivery date: October 12."}]
+count = count_request_tokens("claude/claude-sonnet-4-6", messages)
+forecast = estimate_request_cost(
+    "openai/gpt-5.5", messages, expected_completion_tokens=100,
+)
+print(count.input_tokens, forecast.total_cost, forecast.cost_status)
+```
+
+These helpers make explicit network requests using ordinary inference credentials. They do not generate output or create generation usage events. Async equivalents are `acount_request_tokens()` and `aestimate_request_cost()`. Output length and future cache hits still require a forecast. Use a provider SDK version exposing the counting endpoint.
+
+OpenAI counts the **Responses representation**, even when the selected driver's generation transport is Chat Completions. This is not an exact Chat Completions billing guarantee. Claude uses `messages.count_tokens`; provider counts are preflight estimates and may differ from final generation usage.
+
+## OpenAI Responses API
+
+Chat Completions remains the default. Select Responses explicitly on the driver or through `options={"api": "responses"}`:
+
+```python
+from prompture.drivers.openai_driver import OpenAIDriver
+
+driver = OpenAIDriver(model="gpt-5.5", api="responses")
+response = driver.generate("Summarize this delivery note.", options={"max_tokens": 100})
+print(response["text"], response["meta"]["cost_breakdown"])
+```
+
+The transport supports sync/async generation, streaming, function calls, structured output, reasoning options, and terminal usage metadata. Storage defaults to `False`; enable `store` explicitly if using server-managed conversation state. Prompt-cache diagnostics, when returned by a supported model, are preserved as `meta.prompt_cache_diagnostics`. Pass provider-supported `prompt_cache_options` through options, including `comparison_response_id` when comparing cache behavior. Diagnostics availability is model-dependent; selecting Responses alone does not guarantee diagnostics or change pricing.
+
+## Organization Billing Reports
+
+`BillingClient` reads organization reports only when explicitly called. It uses **admin credentials**, never a fallback inference API key:
+
+Keys may be supplied through `admin_key=`, the environment, or Prompture's `.env` settings. Explicit arguments take precedence; an explicitly empty environment value prevents fallback to `.env`. Settings represent these credentials as `SecretStr`.
+
+- OpenAI: `OPENAI_ADMIN_KEY`, `/v1/organization/usage/completions`, and `/v1/organization/costs`.
+- Anthropic: `ANTHROPIC_ADMIN_KEY`, `/v1/organizations/usage_report/messages`, and `/v1/organizations/cost_report`.
+
+```python
+from datetime import datetime, timezone
+from prompture import BillingClient
+
+start = datetime(2026, 9, 1, tzinfo=timezone.utc)
+end = datetime(2026, 9, 2, tzinfo=timezone.utc)
+with BillingClient("openai", organization_id="your-organization-id") as billing:
+    usage = billing.get_usage(start, end, group_by=["model", "project_id"])
+    costs = billing.get_costs(start, end, group_by=["project_id", "line_item"])
+    print(costs.totals, costs.complete, costs.warnings)
+```
+
+Use timezone-aware, bucket-aligned bounds. Reports cover `[start, end)` in UTC. Usage supports minute/hour/day buckets; costs use daily buckets. All pages are fetched. `complete=True` means pagination completed, not that delayed billing records have arrived or an invoice is final. Errors raise `BillingAPIError` with the partial report attached; `allow_partial=True` returns it with errors instead. Async `aget_usage`, `aget_costs`, and `areport` offload the HTTP client to a worker thread.
+
+Amounts use `Decimal` USD; Anthropic's decimal cents are converted to dollars. Anthropic costs support workspace/description grouping but no API filters and exclude Priority Tier costs. OpenAI usage and cost grouping capabilities differ. Unsupported groups and filters are rejected instead of ignored. Provider usage rows preserve their original dimensions and usage fields.
+
+Reports are **separate from the local usage ledger**. They are never added to local estimates or divided into fictitious per-call charges. `reconcile_costs(LocalCostSummary(...), costs)` compares only matching provider, known organization identity, filters/exclusions, currency, and exact time range. `LocalCostSummary` is a caller-attested aggregate: include all activity in that scope, count unknown or partial-price events in `unknown_cost_events`, and mark missing coverage incomplete. Do not copy a provider scope unless local data was actually filtered to match. The local tracker's inclusive end filter differs from the billing API's exclusive end; enforce `[start, end)` when constructing a reconciliation aggregate. Differences can reflect reporting delays, negotiated rates, or calls made outside Prompture.
+
+See [the runnable example](examples/cost_reporting_example.py). Reference contracts: [OpenAI pricing](https://developers.openai.com/api/docs/pricing), [OpenAI organization usage](https://developers.openai.com/api/reference/resources/admin/subresources/organization/subresources/usage), [OpenAI token counting](https://developers.openai.com/api/docs/guides/token-counting), [OpenAI cache diagnostics](https://developers.openai.com/api/docs/guides/prompt-caching/diagnostics), [Claude pricing](https://platform.claude.com/docs/en/about-claude/pricing), [Claude usage and cost API](https://platform.claude.com/docs/en/manage-claude/usage-cost-api), and [Claude token counting](https://platform.claude.com/docs/en/build-with-claude/token-counting).
 
 ## Direct SQLite Access
 
@@ -300,7 +415,7 @@ callbacks = tracker.as_callbacks(
 driver.callbacks = callbacks
 ```
 
-This is useful when you have a standalone driver outside of the normal extraction/conversation flow and want it tracked.
+Use this adapter for integrations that do not invoke Prompture's automatic driver hooks. Attaching a tracker callback to a driver already using those hooks records each call twice. `UsageSession` callbacks can collect a separate in-memory report without adding another event to the SQLite ledger.
 
 ---
 
@@ -309,7 +424,7 @@ This is useful when you have a standalone driver outside of the normal extractio
 ### Environment Variables
 
 ```env
-USAGE_TRACKING_ENABLED=true          # Enable/disable tracking (default: true)
+USAGE_TRACKING_ENABLED=true          # Apply tracker settings at package import
 USAGE_DB_PATH=/custom/path/usage.db  # Custom database path
 USAGE_FLUSH_THRESHOLD=10             # Events buffered before auto-flush (default: 10)
 ```
@@ -329,14 +444,10 @@ tracker = configure_tracker(
 ### Disabling Tracking
 
 ```python
-# Via environment
-# USAGE_TRACKING_ENABLED=false
-
-# Or programmatically
 configure_tracker(enabled=False)
 ```
 
-When disabled, `record()` is a no-op with zero overhead.
+When disabled, `record()` is a no-op. Use the programmatic switch to disable recording: the current initialization path does not apply `USAGE_TRACKING_ENABLED=false` to a lazily created tracker.
 
 ---
 

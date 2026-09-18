@@ -69,6 +69,47 @@ _lock = threading.Lock()
 _initialized = False
 
 
+class ResolvedRates(dict[str, float]):
+    """A normal rate mapping with non-key source provenance attached."""
+
+    def __init__(self, rates: dict[str, float], source: str) -> None:
+        super().__init__(rates)
+        self.source = source
+
+
+# Explicit model rules, verified against the linked provider documentation.
+# Do not infer price modifiers from model-family prefixes.
+MODEL_PRICING_RULES: dict[tuple[str, str], dict[str, Any]] = {
+    ("openai", "gpt-5.5"): {
+        "url": "https://developers.openai.com/api/docs/models/gpt-5.5",
+        "verified_at": "2026-09-18",
+        "long_context": {"threshold": 272_000, "input_multiplier": 2.0, "output_multiplier": 1.5},
+        "service_tiers": {"batch": 0.5, "flex": 0.5},
+        "regional_multiplier": 1.1,
+    },
+}
+for _model in ("claude-opus-4-6", "claude-sonnet-4-6", "claude-opus-4-7"):
+    MODEL_PRICING_RULES[("anthropic", _model)] = {
+        "url": "https://platform.claude.com/docs/en/about-claude/pricing",
+        "verified_at": "2026-09-18",
+        "service_tiers": {"batch": 0.5},
+        "geographies": {"us": 1.1},
+    }
+
+
+def get_model_pricing_rules(provider: str, model_id: str) -> dict[str, Any]:
+    """Return verified modifiers for an exact model or dated snapshot."""
+    import copy
+
+    from .model_rates import PROVIDER_MAP, _strip_to_base_model
+
+    provider = PROVIDER_MAP.get(provider, provider)
+    rules = MODEL_PRICING_RULES.get((provider, model_id))
+    if rules is None:
+        rules = MODEL_PRICING_RULES.get((provider, _strip_to_base_model(model_id)))
+    return copy.deepcopy(rules or {})
+
+
 def register_pricing_source(source: PricingSource, *, replace: bool = False) -> None:
     """Add *source* to the registry, ordered by ``source.priority``.
 
@@ -128,7 +169,7 @@ def resolve_rates(provider: str, model_id: str) -> dict[str, float] | None:
             logger.debug("Pricing source %r raised; falling through", source.name, exc_info=True)
             continue
         if rates and rates.get("input") is not None and rates.get("output") is not None:
-            return rates
+            return ResolvedRates(rates, source.name)
     return None
 
 

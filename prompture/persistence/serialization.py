@@ -125,7 +125,10 @@ def export_usage_session(session: UsageSession) -> dict[str, Any]:
         "total_cost": session.cost,  # Deprecated alias for backwards compatibility
         "call_count": session.call_count,
         "errors": session.errors,
-        "per_model": dict(session._per_model),
+        "per_model": copy.deepcopy(session._per_model),
+        "usage_records": copy.deepcopy(session.usage_records),
+        "total_elapsed_ms": session.total_elapsed_ms,
+        "elapsed_samples": list(session._elapsed_samples),
     }
 
 
@@ -142,10 +145,15 @@ def import_usage_session(data: dict[str, Any]) -> UsageSession:
         cost=cost_value,
         call_count=data.get("call_count", 0),
         errors=data.get("errors", 0),
+        usage_records=copy.deepcopy(data.get("usage_records", [])),
+        total_elapsed_ms=data.get("total_elapsed_ms", 0.0),
+        _elapsed_samples=list(data.get("elapsed_samples", [])),
     )
     per_model = data.get("per_model", {})
     for model, stats in per_model.items():
-        session._per_model[model] = dict(stats)
+        session._per_model[model] = copy.deepcopy(stats)
+        session._per_model[model].setdefault("elapsed_ms", 0.0)
+        session._per_model[model].setdefault("elapsed_samples", [])
     return session
 
 

@@ -1,3 +1,4 @@
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -10,6 +11,10 @@ class Settings(BaseSettings):
     # OpenAI
     openai_api_key: str | None = None
     openai_model: str = "gpt-3.5-turbo"
+
+    # Administrative billing access is opt-in and separate from inference keys.
+    openai_admin_key: SecretStr | None = None
+    anthropic_admin_key: SecretStr | None = None
 
     # Claude
     claude_api_key: str | None = None

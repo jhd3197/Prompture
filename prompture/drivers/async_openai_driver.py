@@ -13,15 +13,14 @@ except ImportError:
     AsyncOpenAI = None  # type: ignore[misc, assignment]
 
 from ..infra.cost_mixin import CostMixin
+from ._usage_reporting import usage_meta
 from .async_base import AsyncDriver
 from .base import _apply_openai_tool_options, _normalize_stop_reason
 from .openai_driver import (
     OpenAIDriver,
+    _apply_openai_reporting_options,
     _build_openai_base_kwargs,
     _build_openai_json_mode_response_format,
-    _build_openai_stream_done,
-    _extract_openai_cached_tokens,
-    _extract_openai_meta,
     _extract_openai_tool_calls,
     _openai_prompt_cache_key,
 )
@@ -39,7 +38,17 @@ class AsyncOpenAIDriver(CostMixin, AsyncDriver):
 
     MODEL_PRICING = OpenAIDriver.MODEL_PRICING
 
-    def __init__(self, api_key: str | None = None, model: str = "gpt-4o-mini"):
+    def __init__(
+        self,
+        api_key: str | None = None,
+        model: str = "gpt-4o-mini",
+        base_url: str | None = None,
+        *,
+        api: str = "chat_completions",
+    ):
+        if api not in ("chat_completions", "responses"):
+            raise ValueError("api must be chat_completions or responses")
+        self.api = api
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
         self.model = model
         if AsyncOpenAI is None:
@@ -53,7 +62,10 @@ class AsyncOpenAIDriver(CostMixin, AsyncDriver):
                 "OPENAI_API_KEY environment variable. "
                 "See https://github.com/jhd3197/prompture#configuration"
             )
-        self.client = AsyncOpenAI(api_key=self.api_key)
+        client_kwargs: dict[str, Any] = {"api_key": self.api_key}
+        if base_url or os.getenv("OPENAI_BASE_URL"):
+            client_kwargs["base_url"] = base_url or os.getenv("OPENAI_BASE_URL")
+        self.client = AsyncOpenAI(**client_kwargs)
 
     supports_messages = True
 
@@ -70,6 +82,15 @@ class AsyncOpenAIDriver(CostMixin, AsyncDriver):
         return await self._do_generate(self._prepare_messages(messages), options)
 
     async def _do_generate(self, messages: list[dict[str, str]], options: dict[str, Any]) -> dict[str, Any]:
+        if options.get("api", getattr(self, "api", "chat_completions")) == "responses":
+            if self.client is None or not hasattr(self.client, "responses"):
+                from ..exceptions import ConfigurationError
+
+                raise ConfigurationError("Responses API requires a recent openai SDK and a configured client")
+            from ._openai_responses import agenerate
+
+            return await agenerate(self, self._prepare_messages(messages), options)
+
         if self.client is None:
             from ..exceptions import ConfigurationError
 
@@ -112,16 +133,11 @@ class AsyncOpenAIDriver(CostMixin, AsyncDriver):
                     messages = self._inject_schema_into_messages(messages, json_schema)
                     kwargs["messages"] = messages
 
+        _apply_openai_reporting_options(kwargs, options)
         resp = await self.client.chat.completions.create(**kwargs)
 
-        usage = getattr(resp, "usage", None)
-        prompt_tokens = getattr(usage, "prompt_tokens", 0)
-        completion_tokens = getattr(usage, "completion_tokens", 0)
-        cached_prompt_tokens = _extract_openai_cached_tokens(usage)
-        total_cost = self._calculate_cost(
-            "openai", model, prompt_tokens, completion_tokens, cached_tokens=cached_prompt_tokens
-        )
-        meta = _extract_openai_meta(resp, model, total_cost)
+        meta = usage_meta(self, "openai", model, getattr(resp, "usage", None), response=resp, options=options)
+        meta["raw_response"] = resp.model_dump()
 
         text = resp.choices[0].message.content
         return {"text": text, "meta": meta}
@@ -137,6 +153,15 @@ class AsyncOpenAIDriver(CostMixin, AsyncDriver):
         options: dict[str, Any],
     ) -> dict[str, Any]:
         """Generate a response that may include tool calls."""
+        if options.get("api", getattr(self, "api", "chat_completions")) == "responses":
+            if self.client is None or not hasattr(self.client, "responses"):
+                from ..exceptions import ConfigurationError
+
+                raise ConfigurationError("Responses API requires a recent openai SDK and a configured client")
+            from ._openai_responses import agenerate
+
+            return await agenerate(self, self._prepare_messages(messages), options, tools)
+
         if self.client is None:
             from ..exceptions import ConfigurationError
 
@@ -164,16 +189,11 @@ class AsyncOpenAIDriver(CostMixin, AsyncDriver):
         )
         _apply_openai_tool_options(kwargs, options)
 
+        _apply_openai_reporting_options(kwargs, options)
         resp = await self.client.chat.completions.create(**kwargs)
 
-        usage = getattr(resp, "usage", None)
-        prompt_tokens = getattr(usage, "prompt_tokens", 0)
-        completion_tokens = getattr(usage, "completion_tokens", 0)
-        cached_prompt_tokens = _extract_openai_cached_tokens(usage)
-        total_cost = self._calculate_cost(
-            "openai", model, prompt_tokens, completion_tokens, cached_tokens=cached_prompt_tokens
-        )
-        meta = _extract_openai_meta(resp, model, total_cost)
+        meta = usage_meta(self, "openai", model, getattr(resp, "usage", None), response=resp, options=options)
+        meta["raw_response"] = resp.model_dump()
 
         choice = resp.choices[0]
         text = choice.message.content or ""
@@ -199,6 +219,17 @@ class AsyncOpenAIDriver(CostMixin, AsyncDriver):
         options: dict[str, Any],
     ) -> AsyncIterator[dict[str, Any]]:
         """Yield response chunks via OpenAI streaming API."""
+        if options.get("api", getattr(self, "api", "chat_completions")) == "responses":
+            if self.client is None or not hasattr(self.client, "responses"):
+                from ..exceptions import ConfigurationError
+
+                raise ConfigurationError("Responses API requires a recent openai SDK and a configured client")
+            from ._openai_responses import astream
+
+            async for response_event in astream(self, self._prepare_messages(messages), options):
+                yield response_event
+            return
+
         if self.client is None:
             from ..exceptions import ConfigurationError
 
@@ -223,19 +254,20 @@ class AsyncOpenAIDriver(CostMixin, AsyncDriver):
             prompt_cache_key=_openai_prompt_cache_key(messages, opts),
         )
 
+        _apply_openai_reporting_options(kwargs, options)
         stream = await self.client.chat.completions.create(**kwargs)
 
         full_text = ""
-        prompt_tokens = 0
-        completion_tokens = 0
-        cached_prompt_tokens = 0
+        final_usage = None
+        response_info = {}
 
         async for chunk in stream:
+            for key in ("id", "model", "service_tier"):
+                if isinstance(getattr(chunk, key, None), str):
+                    response_info[key] = getattr(chunk, key)
             # Usage comes in the final chunk
             if getattr(chunk, "usage", None):
-                prompt_tokens = chunk.usage.prompt_tokens or 0
-                completion_tokens = chunk.usage.completion_tokens or 0
-                cached_prompt_tokens = _extract_openai_cached_tokens(chunk.usage)
+                final_usage = chunk.usage
 
             if chunk.choices:
                 delta = chunk.choices[0].delta
@@ -244,12 +276,9 @@ class AsyncOpenAIDriver(CostMixin, AsyncDriver):
                     full_text += content
                     yield {"type": "delta", "text": content}
 
-        total_cost = self._calculate_cost(
-            "openai", model, prompt_tokens, completion_tokens, cached_tokens=cached_prompt_tokens
-        )
-        yield _build_openai_stream_done(
-            model, full_text, prompt_tokens, completion_tokens, total_cost, cached_prompt_tokens
-        )
+        meta = usage_meta(self, "openai", model, final_usage, response=response_info, options=options)
+        meta["raw_response"] = {}
+        yield {"type": "done", "text": full_text, "meta": meta}
 
     # ------------------------------------------------------------------
     # Live streaming with interleaved tool calls
@@ -262,6 +291,17 @@ class AsyncOpenAIDriver(CostMixin, AsyncDriver):
         options: dict[str, Any],
     ) -> AsyncIterator[Any]:
         """Async streaming-tool via the shared OpenAI-compat helper."""
+        if options.get("api", getattr(self, "api", "chat_completions")) == "responses":
+            if self.client is None or not hasattr(self.client, "responses"):
+                from ..exceptions import ConfigurationError
+
+                raise ConfigurationError("Responses API requires a recent openai SDK and a configured client")
+            from ._openai_responses import astream
+
+            async for response_event in astream(self, self._prepare_messages(messages), options, tools):
+                yield response_event
+            return
+
         if self.client is None:
             from ..exceptions import ConfigurationError
 

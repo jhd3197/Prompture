@@ -85,7 +85,11 @@ def _process_chunk(
     """
     from ..agents.live_events import TextDelta, ThinkingDelta, ToolInputDelta, ToolUseStart
 
+    for key in ("id", "model", "service_tier"):
+        if isinstance(getattr(chunk, key, None), str):
+            state.setdefault("response_info", {})[key] = getattr(chunk, key)
     if getattr(chunk, "usage", None):
+        state["reported_usage"] = chunk.usage
         state["prompt_tokens"] = chunk.usage.prompt_tokens or 0
         state["completion_tokens"] = chunk.usage.completion_tokens or 0
         state["cached_prompt_tokens"] = _extract_cached_tokens(chunk.usage)
@@ -235,6 +239,7 @@ def iter_openai_compat_live_events(
     *,
     model: str,
     cost_fn: CostFn,
+    meta_fn: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
 ) -> Iterator[Any]:
     """Consume a sync OpenAI-compat ``chat.completions`` stream with tools
     and yield :class:`~prompture.agents.live_events.LiveEvent`.
@@ -259,7 +264,10 @@ def iter_openai_compat_live_events(
         state["completion_tokens"],
         state["cached_prompt_tokens"],
     )
-    yield _build_message_stop(state, model, cost)
+    stop = _build_message_stop(state, model, cost)
+    if meta_fn is not None:
+        stop.usage.update(meta_fn(state))
+    yield stop
 
 
 async def aiter_openai_compat_live_events(
@@ -267,6 +275,7 @@ async def aiter_openai_compat_live_events(
     *,
     model: str,
     cost_fn: AsyncCostFn,
+    meta_fn: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
 ) -> AsyncIterator[Any]:
     """Async sibling of :func:`iter_openai_compat_live_events`.
 
@@ -286,7 +295,10 @@ async def aiter_openai_compat_live_events(
         state["cached_prompt_tokens"],
     )
     cost = await raw_cost if inspect.isawaitable(raw_cost) else raw_cost
-    yield _build_message_stop(state, model, cost)
+    stop = _build_message_stop(state, model, cost)
+    if meta_fn is not None:
+        stop.usage.update(meta_fn(state))
+    yield stop
 
 
 # ----------------------------------------------------------------------
@@ -348,12 +360,28 @@ def stream_openai_compat_tool_call(
     )
     _apply_openai_tool_options(kwargs, options)
 
+    if provider == "openai":
+        from .openai_driver import _apply_openai_reporting_options
+
+        _apply_openai_reporting_options(kwargs, options)
     stream = driver.client.chat.completions.create(**kwargs)
 
     def cost_fn(prompt_tokens: int, completion_tokens: int, cached_tokens: int) -> float:
         return driver._calculate_cost(provider, model, prompt_tokens, completion_tokens, cached_tokens=cached_tokens)
 
-    yield from iter_openai_compat_live_events(stream, model=model, cost_fn=cost_fn)
+    def meta_fn(state: dict[str, Any]) -> dict[str, Any]:
+        from ._usage_reporting import usage_meta
+
+        return usage_meta(
+            driver, provider, model, state.get("reported_usage"), response=state.get("response_info"), options=options
+        )
+
+    yield from iter_openai_compat_live_events(
+        stream,
+        model=model,
+        cost_fn=cost_fn,
+        meta_fn=meta_fn if provider == "openai" else None,
+    )
 
 
 async def astream_openai_compat_tool_call(
@@ -399,12 +427,28 @@ async def astream_openai_compat_tool_call(
     )
     _apply_openai_tool_options(kwargs, options)
 
+    if provider == "openai":
+        from .openai_driver import _apply_openai_reporting_options
+
+        _apply_openai_reporting_options(kwargs, options)
     stream = await driver.client.chat.completions.create(**kwargs)
 
     def cost_fn(prompt_tokens: int, completion_tokens: int, cached_tokens: int) -> float:
         return driver._calculate_cost(provider, model, prompt_tokens, completion_tokens, cached_tokens=cached_tokens)
 
-    async for ev in aiter_openai_compat_live_events(stream, model=model, cost_fn=cost_fn):
+    def meta_fn(state: dict[str, Any]) -> dict[str, Any]:
+        from ._usage_reporting import usage_meta
+
+        return usage_meta(
+            driver, provider, model, state.get("reported_usage"), response=state.get("response_info"), options=options
+        )
+
+    async for ev in aiter_openai_compat_live_events(
+        stream,
+        model=model,
+        cost_fn=cost_fn,
+        meta_fn=meta_fn if provider == "openai" else None,
+    ):
         yield ev
 
 

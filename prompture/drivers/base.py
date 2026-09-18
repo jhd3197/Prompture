@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import time
@@ -694,14 +695,19 @@ class Driver(ABC):
         """Record a usage event to the global tracker.  Fire-and-forget."""
         try:
             from ..infra.ledger import _resolve_api_key_hash
-            from ..infra.tracker import UsageEvent, get_tracker
+            from ..infra.tracker import UsageEvent, get_tracker, usage_metadata
 
             tracker = get_tracker()
             if not tracker._enabled:
                 return
 
-            meta = resp.get("meta", {}) if resp else {}
-            driver_name = getattr(self, "model", self.__class__.__name__)
+            meta = usage_metadata(resp.get("meta", {}) or {}) if resp else {}
+            if status != "success":
+                meta.setdefault("usage_complete", False)
+                meta.setdefault("cost_status", "unknown")
+            driver_name = (
+                meta.get("model_name") or meta.get("returned_model") or getattr(self, "model", self.__class__.__name__)
+            )
 
             # Parse provider/model
             if "/" in driver_name:
@@ -716,10 +722,17 @@ class Driver(ABC):
 
             model_name = f"{provider}/{model}" if provider else model
 
+            api_key = getattr(self, "api_key", None)
+            api_key_hash = (
+                hashlib.sha256(api_key.encode()).hexdigest()[:8]
+                if isinstance(api_key, str) and api_key
+                else _resolve_api_key_hash(model_name)
+            )
+
             event = UsageEvent(
                 model_name=model_name,
                 provider=provider,
-                api_key_hash=_resolve_api_key_hash(model_name),
+                api_key_hash=api_key_hash,
                 prompt_tokens=meta.get("prompt_tokens", 0),
                 completion_tokens=meta.get("completion_tokens", 0),
                 total_tokens=meta.get("total_tokens", 0),
@@ -729,6 +742,8 @@ class Driver(ABC):
                 elapsed_ms=elapsed_ms,
                 status=status,
                 error_type=type(error).__name__ if error else None,
+                cache_hit=bool(meta.get("cache_hit", False)),
+                metadata=meta,
             )
             tracker.record(event)
         except Exception:
