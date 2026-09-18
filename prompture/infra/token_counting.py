@@ -181,7 +181,8 @@ def _estimate(
 ) -> CostEstimate:
     context = {key: options[key] for key in ("service_tier", "inference_geo") if options and key in options}
     context.update(pricing_context)
-    return replace(
+    # token_counter labels the counting source; it never contains a credential.
+    return replace(  # nosec B106
         estimate_call_cost(
             count.model, count.input_tokens, expected_completion_tokens=expected_completion_tokens, **context
         ),

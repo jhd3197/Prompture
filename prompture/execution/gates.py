@@ -42,7 +42,8 @@ __all__ = [
 class GateVerdict(str, Enum):
     """Outcome of one gate criterion."""
 
-    PASS = "pass"
+    # Evaluation verdict, not a credential.
+    PASS = "pass"  # nosec B105
     FAIL = "fail"
     UNKNOWN = "unknown"
 

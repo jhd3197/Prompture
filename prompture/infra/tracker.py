@@ -761,8 +761,10 @@ class UsageTracker:
             conn = self._connect()
             try:
                 # One grouped SQL query provides a consistent snapshot of all totals.
+                # _query_filters emits fixed column predicates; all filter values
+                # are bound separately in params, never interpolated into SQL.
                 rows = conn.execute(
-                    f"SELECT model_name, provider, COUNT(*) AS events, "
+                    f"SELECT model_name, provider, COUNT(*) AS events, "  # nosec B608
                     "SUM(prompt_tokens) AS prompt, SUM(completion_tokens) AS completion, "
                     "SUM(total_tokens) AS tokens, SUM(cost) AS cost, SUM(elapsed_ms) AS elapsed "
                     f"FROM usage_events WHERE {where} GROUP BY model_name, provider",
@@ -795,7 +797,9 @@ class UsageTracker:
         self.flush()
         conn = self._connect()
         try:
-            rows = conn.execute(f"SELECT * FROM usage_events WHERE {where}", params)
+            # Only static predicates from _query_filters enter the SQL string;
+            # caller-supplied filter values remain bound parameters.
+            rows = conn.execute(f"SELECT * FROM usage_events WHERE {where}", params)  # nosec B608
 
             def events_with_outcomes():
                 extraction_ids: set[str] = set()
@@ -815,8 +819,10 @@ class UsageTracker:
                 for offset in range(0, len(missing), 500):
                     batch = missing[offset : offset + 500]
                     placeholders = ",".join("?" for _ in batch)
+                    # Interpolation adds only generated '?' placeholders. The
+                    # extraction IDs are bound as batch, including untrusted IDs.
                     outcome_rows = conn.execute(
-                        "SELECT * FROM usage_events WHERE operation = 'extraction_outcome' "
+                        "SELECT * FROM usage_events WHERE operation = 'extraction_outcome' "  # nosec B608
                         f"AND json_extract(metadata, '$.extraction_id') IN ({placeholders})",
                         batch,
                     )
