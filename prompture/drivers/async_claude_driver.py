@@ -26,20 +26,16 @@ from ._prompt_cache import (
 from ._prompt_cache import (
     breakpoint_budget as _breakpoint_budget,
 )
-from ._prompt_cache import (
-    cache_write_multiplier as _cache_write_multiplier,
-)
+from ._usage_reporting import as_dict, usage_meta
 from .async_base import AsyncDriver
 from .base import _normalize_stop_reason, _translate_tool_choice
 from .claude_driver import (
     ClaudeDriver,
+    _apply_anthropic_reporting_options,
     _apply_temperature,
     _build_anthropic_json_mode_tool_def,
-    _build_anthropic_meta,
-    _build_anthropic_stream_done,
     _cache_opts,
     _convert_tools_to_anthropic,
-    _extract_anthropic_cache_tokens,
     _extract_anthropic_system_and_messages,
     _extract_anthropic_text_and_tool_calls,
 )
@@ -145,6 +141,7 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
         if opts.get("timeout") is not None:
             common_kwargs["timeout"] = opts["timeout"]
 
+        _apply_anthropic_reporting_options(common_kwargs, opts)
         if options.get("json_mode"):
             if json_mode_tools is not None:
                 resp = await client.messages.create(  # type: ignore[call-overload]
@@ -168,17 +165,8 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
         if not text and reasoning_content:
             text = reasoning_content
 
-        cache_read, cache_create = _extract_anthropic_cache_tokens(resp.usage)
-        total_cost = self._calculate_cost(
-            "claude",
-            model,
-            resp.usage.input_tokens + cache_read + cache_create,
-            resp.usage.output_tokens,
-            cached_tokens=cache_read,
-            cache_creation_tokens=cache_create,
-            cache_write_multiplier=_cache_write_multiplier(opts.get("cache_ttl", "5m")),
-        )
-        meta = _build_anthropic_meta(resp, model, total_cost)
+        meta = usage_meta(self, "claude", model, resp.usage, response=resp, options=opts)
+        meta["raw_response"] = as_dict(resp)
 
         result: dict[str, Any] = {"text": text, "meta": meta}
         if reasoning_content is not None:
@@ -262,19 +250,11 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
         if tool_choice is not None:
             kwargs["tool_choice"] = tool_choice
 
+        _apply_anthropic_reporting_options(kwargs, opts)
         resp = await client.messages.create(**kwargs)
 
-        cache_read, cache_create = _extract_anthropic_cache_tokens(resp.usage)
-        total_cost = self._calculate_cost(
-            "claude",
-            model,
-            resp.usage.input_tokens + cache_read + cache_create,
-            resp.usage.output_tokens,
-            cached_tokens=cache_read,
-            cache_creation_tokens=cache_create,
-            cache_write_multiplier=_cache_write_multiplier(opts.get("cache_ttl", "5m")),
-        )
-        meta = _build_anthropic_meta(resp, model, total_cost)
+        meta = usage_meta(self, "claude", model, resp.usage, response=resp, options=opts)
+        meta["raw_response"] = as_dict(resp)
         meta["raw_stop_reason"] = resp.stop_reason
 
         text, tool_calls_out = _extract_anthropic_text_and_tool_calls(resp.content)
@@ -335,11 +315,11 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
 
         full_text = ""
         full_reasoning = ""
-        base_input = 0
-        completion_tokens = 0
-        cache_read = 0
-        cache_create = 0
+        reported_usage = {}
+        response_info = {}
+        usage_finished = False
 
+        _apply_anthropic_reporting_options(kwargs, opts)
         async with client.messages.stream(**kwargs) as stream:
             async for event in stream:
                 if hasattr(event, "type"):
@@ -356,33 +336,22 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
                                 full_text += delta_text
                                 yield {"type": "delta", "text": delta_text}
                     elif event.type == "message_delta" and hasattr(event, "usage"):
-                        completion_tokens = getattr(event.usage, "output_tokens", 0)
+                        usage_finished = True
+                        reported_usage.update({k: v for k, v in as_dict(event.usage).items() if v is not None})
                     elif event.type == "message_start" and hasattr(event, "message"):
                         usage = getattr(event.message, "usage", None)
                         if usage:
-                            base_input = getattr(usage, "input_tokens", 0)
-                            cache_read, cache_create = _extract_anthropic_cache_tokens(usage)
+                            reported_usage.update(as_dict(usage))
+                            response_info.update(as_dict(event.message))
 
-        prompt_tokens = base_input + cache_read + cache_create
-        total_cost = self._calculate_cost(
-            "claude",
-            model,
-            prompt_tokens,
-            completion_tokens,
-            cached_tokens=cache_read,
-            cache_creation_tokens=cache_create,
-            cache_write_multiplier=_cache_write_multiplier(opts.get("cache_ttl", "5m")),
+        meta = usage_meta(
+            self, "claude", model, reported_usage or None, response=response_info, options=opts, complete=usage_finished
         )
-        yield _build_anthropic_stream_done(
-            model,
-            full_text,
-            full_reasoning,
-            prompt_tokens,
-            completion_tokens,
-            total_cost,
-            cached_prompt_tokens=cache_read,
-            cache_creation_tokens=cache_create,
-        )
+        meta["raw_response"] = {}
+        done = {"type": "done", "text": full_text, "meta": meta}
+        if full_reasoning:
+            done["reasoning_content"] = full_reasoning
+        yield done
 
     # ------------------------------------------------------------------
     # Live streaming with interleaved tool calls
@@ -454,20 +423,20 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
         # content_block_stop) so truncation can be flagged accurately.
         pending_failed_stops: list[dict[str, Any]] = []
 
-        base_input = 0
-        cache_read = 0
-        cache_create = 0
-        completion_tokens = 0
+        reported_usage = {}
+        response_info = {}
+        usage_finished = False
         stop_reason = "end_turn"
 
+        _apply_anthropic_reporting_options(kwargs, opts)
         async with client.messages.stream(**kwargs) as stream:
             async for event in stream:
                 ev_type = getattr(event, "type", "")
                 if ev_type == "message_start":
                     usage = getattr(getattr(event, "message", None), "usage", None)
                     if usage is not None:
-                        base_input = getattr(usage, "input_tokens", 0) or 0
-                        cache_read, cache_create = _extract_anthropic_cache_tokens(usage)
+                        reported_usage.update(as_dict(usage))
+                        response_info.update(as_dict(event.message))
                 elif ev_type == "content_block_start":
                     idx = getattr(event, "index", 0)
                     block = getattr(event, "content_block", None)
@@ -527,7 +496,8 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
                 elif ev_type == "message_delta":
                     usage = getattr(event, "usage", None)
                     if usage is not None:
-                        completion_tokens = getattr(usage, "output_tokens", 0) or completion_tokens
+                        usage_finished = True
+                        reported_usage.update({k: v for k, v in as_dict(usage).items() if v is not None})
                     sr = getattr(getattr(event, "delta", None), "stop_reason", None)
                     if sr:
                         stop_reason = sr
@@ -544,24 +514,8 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
                 raw_stop_reason=stop_reason,
             )
 
-        prompt_tokens = base_input + cache_read + cache_create
-        total_cost = self._calculate_cost(
-            "claude",
-            model,
-            prompt_tokens,
-            completion_tokens,
-            cached_tokens=cache_read,
-            cache_creation_tokens=cache_create,
-            cache_write_multiplier=_cache_write_multiplier(opts.get("cache_ttl", "5m")),
+        meta = usage_meta(
+            self, "claude", model, reported_usage or None, response=response_info, options=opts, complete=usage_finished
         )
-        meta = {
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
-            "total_tokens": prompt_tokens + completion_tokens,
-            "cached_prompt_tokens": cache_read,
-            "cache_creation_tokens": cache_create,
-            "cost": round(total_cost, 6),
-            "model_name": model,
-            "raw_stop_reason": stop_reason,
-        }
+        meta["raw_stop_reason"] = stop_reason
         yield MessageStop(stop_reason=_normalize_stop_reason(stop_reason), usage=meta)

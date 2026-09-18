@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
+import pytest
+
 from prompture import CostEstimate, estimate_call_cost, estimate_cost, estimate_tokens
 
 # ---------------------------------------------------------------------------
@@ -41,7 +43,7 @@ class TestEstimateCallCost:
         assert e.input_tokens > 0
         assert e.output_tokens == 200
         assert e.total_tokens == e.input_tokens + e.output_tokens
-        assert e.total_cost == round(e.input_cost + e.output_cost, 6)
+        assert e.total_cost == pytest.approx(e.input_cost + e.output_cost)
 
     def test_accepts_int_tokens_directly(self):
         e = estimate_call_cost(
@@ -105,13 +107,14 @@ class TestPricingResolution:
         # Tokens still counted.
         assert e.total_tokens == 1500
 
-    def test_zero_rates_treated_as_unavailable(self):
+    def test_zero_rates_treated_as_known_free(self):
         with patch(
             "prompture.infra.model_rates.get_model_rates",
             lambda p, m: {"input": 0.0, "output": 0.0},
         ):
             e = estimate_call_cost("free/local", prompt=1000, completion=500)
-        assert e.rates_available is False
+        assert e.rates_available is True
+        assert e.cost_status == "estimated"
         assert e.total_cost == 0.0
 
     def test_model_without_provider_prefix(self):
@@ -146,3 +149,35 @@ class TestLegacyEstimateCost:
         cost = estimate_cost("openai/gpt-4o-mini", 1000, 500)
         assert isinstance(cost, float)
         assert cost >= 0.0
+
+
+class TestDetailedEstimates:
+    def test_long_context_and_tier_match_driver(self):
+        with patch("prompture.infra.model_rates.get_model_rates", return_value={"input": 5, "output": 30}):
+            e = estimate_call_cost("openai/gpt-5.5", 300000, 1000, service_tier="flex")
+            legacy = estimate_cost("openai/gpt-5.5", 300000, 1000, service_tier="flex")
+        assert e.total_cost == pytest.approx(3.045 / 2)
+        assert e.total_cost == legacy
+        assert e.cost_breakdown["total"] == e.total_cost
+        assert "long_context" in e.pricing["applied_rules"]
+
+    def test_mixed_cache_forecast_preserves_small_cost(self):
+        with patch(
+            "prompture.infra.model_rates.get_model_rates",
+            return_value={"input": 0.1, "output": 0.2, "cache_read": 0.01},
+        ):
+            e = estimate_call_cost(
+                "claude/test", 3, 0, cached_tokens=1, cache_creation_5m_tokens=1, cache_creation_1h_tokens=1
+            )
+        assert e.total_cost == pytest.approx(0.000000335)
+        assert e.cache_savings == pytest.approx(-0.000000035)
+
+    def test_tools_in_total_but_not_token_subtotals(self):
+        with patch("prompture.infra.model_rates.get_model_rates", return_value={"input": 3, "output": 15}):
+            e = estimate_call_cost("claude/test", 1000, 1000, tool_usage={"web_search_requests": 2})
+        assert e.total_cost == pytest.approx(e.input_cost + e.output_cost + 0.02)
+
+    def test_unsupported_tier_marked_partial(self):
+        with patch("prompture.infra.model_rates.get_model_rates", return_value={"input": 3, "output": 15}):
+            e = estimate_call_cost("claude/test", 1000, 1000, service_tier="priority")
+        assert e.cost_status == "partial"

@@ -464,6 +464,61 @@ class Assistant:
             raw=result,
         )
 
+    # ----- execution strategies -----------------------------------------
+
+    def execution_request(self, prompt: str, **kwargs: Any) -> Any:
+        """Build an :class:`~prompture.execution.types.ExecutionRequest` from this bundle.
+
+        Use it when you want to inspect or adjust the request before running a
+        strategy.  See :func:`prompture.execution.integration.request_from_assistant`
+        for the accepted keyword arguments (``category``, ``output_model``,
+        ``passages``, ``retriever``, ``limits``, ``allowed_tools``, ``variables``).
+        """
+        from ..execution.integration import request_from_assistant
+
+        return request_from_assistant(self, prompt, **kwargs)
+
+    def run_strategy(self, prompt: str, strategy: Any = "direct", **kwargs: Any) -> Any:
+        """Run this assistant's persona/skills/tools through an execution strategy.
+
+        This is an opt-in alternative to :meth:`arun`, not a replacement:
+        :meth:`arun` keeps returning an :class:`AssistantResult` from the agent
+        loop, while this returns an
+        :class:`~prompture.execution.types.ExecutionResult` with validation,
+        evidence, step records and full usage accounting.
+
+        Args:
+            prompt: The task.
+            strategy: A registered strategy name (``"direct"``,
+                ``"retrieve_verify"``, ``"draft_critique"``) or a pre-built
+                :class:`~prompture.execution.strategies.base.ExecutionStrategy`.
+            **kwargs: Forwarded to
+                :func:`~prompture.execution.integration.request_from_assistant`.
+
+        Example::
+
+            result = assistant.run_strategy("Summarise the policy", strategy="direct")
+            print(result.termination.value, result.usage.cost_complete)
+        """
+        from ..execution.integration import resolve_strategy_instance
+
+        request = self.execution_request(prompt, **kwargs)
+        instance = resolve_strategy_instance(strategy)
+        if instance.model is None and not request.model:
+            raise ValueError(
+                f"Assistant {self.name!r} has no model and the strategy has no default; "
+                "set `model=` on one of them."
+            )
+        return instance.run(request)
+
+    async def arun_strategy(self, prompt: str, strategy: Any = "direct", **kwargs: Any) -> Any:
+        """Async counterpart to :meth:`run_strategy`."""
+        from ..execution.integration import resolve_strategy_instance
+
+        request = self.execution_request(prompt, **kwargs)
+        instance = resolve_strategy_instance(strategy)
+        return await instance.arun(request)
+
     # ----- sync convenience --------------------------------------------
 
     def run(self, prompt: str, **kwargs: Any) -> AssistantResult:

@@ -22,6 +22,7 @@ Usage::
 
 from __future__ import annotations
 
+import copy
 import logging
 import threading
 import warnings
@@ -44,6 +45,7 @@ class UsageSession:
     call_count: int = 0
     errors: int = 0
     total_elapsed_ms: float = 0.0
+    usage_records: list[dict[str, Any]] = field(default_factory=list, repr=False)
     _elapsed_samples: list[float] = field(default_factory=list, repr=False)
     _per_model: dict[str, dict[str, Any]] = field(default_factory=dict, repr=False)
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
@@ -82,7 +84,9 @@ class UsageSession:
             response_info: Payload dict with at least ``meta`` and
                 optionally ``driver`` keys.
         """
-        meta = response_info.get("meta", {})
+        from .tracker import usage_metadata
+
+        meta = usage_metadata(response_info.get("meta", {}) or {})
         pt = meta.get("prompt_tokens", 0)
         ct = meta.get("completion_tokens", 0)
         tt = meta.get("total_tokens", 0)
@@ -99,7 +103,19 @@ class UsageSession:
             self.cost += cost
             self.call_count += 1
 
-            model = response_info.get("driver", "unknown")
+            model = meta.get("model_name") or meta.get("returned_model") or response_info.get("driver", "unknown")
+            self.usage_records.append(
+                {
+                    "model_name": model,
+                    "cost": cost,
+                    "prompt_tokens": pt,
+                    "cached_prompt_tokens": cached,
+                    "status": response_info.get("status", "success"),
+                    "metadata": meta,
+                    "operation": response_info.get("operation"),
+                    "cache_hit": bool(meta.get("cache_hit", False)),
+                }
+            )
             logger.debug(
                 "[session] record driver=%s delta_tokens=%d delta_cost=%.6f | session total_tokens=%d cost=%.6f calls=%d",
                 model,
@@ -151,6 +167,12 @@ class UsageSession:
         """
         with self._lock:
             self.errors += 1
+            from .tracker import usage_metadata
+
+            meta = usage_metadata(error_info.get("meta", {}) or {})
+            meta.setdefault("cost_status", "unknown")
+            meta.setdefault("usage_complete", False)
+            self.usage_records.append({"status": "error", "metadata": meta, "cost": 0.0})
 
     # ------------------------------------------------------------------ #
     # Computed timing properties
@@ -184,6 +206,9 @@ class UsageSession:
 
     def summary(self) -> dict[str, Any]:
         """Return a machine-readable summary with a ``formatted`` string."""
+        from .tracker import efficiency_report
+
+        report = efficiency_report(self.usage_records)
         stats = self.latency_stats
         tps = self.tokens_per_second
 
@@ -206,7 +231,11 @@ class UsageSession:
             "total_elapsed_ms": self.total_elapsed_ms,
             "tokens_per_second": tps,
             "latency_stats": stats,
-            "per_model": dict(self._per_model),
+            "per_model": copy.deepcopy(self._per_model),
+            "cost_breakdown": report["cost_breakdown"],
+            "cost_status_counts": report["cost_status_counts"],
+            "usage_details": report["usage_details"],
+            "efficiency": report,
             "formatted": formatted,
         }
 
@@ -224,3 +253,4 @@ class UsageSession:
             self.total_elapsed_ms = 0.0
             self._elapsed_samples.clear()
             self._per_model.clear()
+            self.usage_records.clear()

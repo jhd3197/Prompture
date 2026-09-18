@@ -601,6 +601,9 @@ class Conversation:
         return msgs
 
     def _accumulate_usage(self, meta: dict[str, Any]) -> None:
+        from ..infra.tracker import accumulate_usage_details
+
+        accumulate_usage_details(self._usage, meta)
         delta_tokens = meta.get("total_tokens", 0)
         delta_cost = meta.get("cost", 0.0)
         prompt_tokens = meta.get("prompt_tokens", 0)
@@ -984,33 +987,74 @@ class Conversation:
             stop_reason: str = "end_turn"
 
             stream = self._driver.generate_messages_with_tools_stream(msgs, tool_defs, merged)
-            for event in stream:
-                yield event
-                et = getattr(event, "event_type", None)
-                if et == "text_delta":
-                    assistant_text_parts.append(event.text)
-                elif et == "thinking_delta":
-                    assistant_thinking_parts.append(event.text)
-                elif et == "tool_use_stop":
-                    tool_use_id = event.id or f"call_{uuid.uuid4().hex}"
-                    pending_tools.append(
-                        {
-                            "id": tool_use_id,
-                            "name": event.name,
-                            "arguments": event.input,
-                            "truncated": getattr(event, "truncated", False),
-                        }
+            stream_started = time.perf_counter()
+            recorded = False
+            stream_error = None
+            try:
+                for event in stream:
+                    et = getattr(event, "event_type", None)
+                    if et == "text_delta":
+                        assistant_text_parts.append(event.text)
+                    elif et == "thinking_delta":
+                        assistant_thinking_parts.append(event.text)
+                    elif et == "tool_use_stop":
+                        tool_use_id = event.id or f"call_{uuid.uuid4().hex}"
+                        pending_tools.append(
+                            {
+                                "id": tool_use_id,
+                                "name": event.name,
+                                "arguments": event.input,
+                                "truncated": getattr(event, "truncated", False),
+                            }
+                        )
+                        tool_calls_in_turn.append(
+                            {
+                                "id": tool_use_id,
+                                "type": "function",
+                                "function": {"name": event.name, "arguments": json.dumps(event.input)},
+                            }
+                        )
+                    elif et == "message_stop":
+                        turn_usage = dict(event.usage or {})
+                        self._driver._auto_record_usage(
+                            {"meta": turn_usage}, (time.perf_counter() - stream_started) * 1000
+                        )
+                        self._driver._fire_callback(
+                            "on_response",
+                            {
+                                "meta": turn_usage,
+                                "driver": self._model_name,
+                                "elapsed_ms": (time.perf_counter() - stream_started) * 1000,
+                            },
+                        )
+                        self._accumulate_usage(turn_usage)
+                        recorded = True
+                        stop_reason = event.stop_reason
+                    yield event
+            except Exception as exc:
+                stream_error = exc
+                self._driver._fire_callback("on_error", {"error": exc, "driver": self._model_name})
+                raise
+            finally:
+                if not recorded:
+                    incomplete = {"usage_complete": False, "cost_status": "unknown"}
+                    self._driver._auto_record_usage(
+                        {"meta": incomplete},
+                        (time.perf_counter() - stream_started) * 1000,
+                        status="error" if stream_error is not None else "incomplete",
+                        error=stream_error,
                     )
-                    tool_calls_in_turn.append(
-                        {
-                            "id": tool_use_id,
-                            "type": "function",
-                            "function": {"name": event.name, "arguments": json.dumps(event.input)},
-                        }
-                    )
-                elif et == "message_stop":
-                    turn_usage = dict(event.usage or {})
-                    stop_reason = event.stop_reason
+                    if stream_error is None:
+                        self._driver._fire_callback(
+                            "on_response",
+                            {
+                                "meta": incomplete,
+                                "driver": self._model_name,
+                                "status": "incomplete",
+                                "elapsed_ms": (time.perf_counter() - stream_started) * 1000,
+                            },
+                        )
+                    self._accumulate_usage(incomplete)
 
             full_text = "".join(assistant_text_parts)
             full_thinking = "".join(assistant_thinking_parts) or None
@@ -1024,8 +1068,6 @@ class Conversation:
 
             self._messages.append(assistant_msg)
             msgs.append(assistant_msg)
-            if turn_usage:
-                self._accumulate_usage(turn_usage)
 
             if not pending_tools:
                 yield TurnComplete(usage=dict(self._usage))
@@ -1274,6 +1316,8 @@ class Conversation:
 
         t0 = time.perf_counter()
         full_text = ""
+        recorded = False
+        stream_error = None
         try:
             for chunk in self._driver.generate_messages_stream(messages, merged):
                 chunk_type = chunk["type"]
@@ -1298,16 +1342,45 @@ class Conversation:
                             "elapsed_ms": elapsed_ms,
                         },
                     )
+                    self._driver._auto_record_usage({"meta": meta}, elapsed_ms)
+                    recorded = True
                     self._accumulate_usage(meta)
                     if chunk.get("reasoning_content"):
                         self._last_reasoning = chunk["reasoning_content"]
         except Exception as exc:
+            stream_error = exc
             elapsed_ms = (time.perf_counter() - t0) * 1000
             self._driver._fire_callback(
                 "on_error",
                 {"error": exc, "prompt": None, "messages": messages, "options": merged, "driver": driver_name},
             )
             raise
+
+        finally:
+            if not recorded:
+                elapsed_ms = (time.perf_counter() - t0) * 1000
+                incomplete = {
+                    "usage_complete": False,
+                    "cost_status": "unknown",
+                    "requested_model": merged.get("model", driver_name),
+                }
+                self._driver._auto_record_usage(
+                    {"meta": incomplete},
+                    elapsed_ms,
+                    status="error" if stream_error is not None else "incomplete",
+                    error=stream_error,
+                )
+                if stream_error is None:
+                    self._driver._fire_callback(
+                        "on_response",
+                        {
+                            "meta": incomplete,
+                            "driver": driver_name,
+                            "status": "incomplete",
+                            "elapsed_ms": elapsed_ms,
+                        },
+                    )
+                self._accumulate_usage(incomplete)
 
         self._messages.append(self._assistant_message(full_text))
 

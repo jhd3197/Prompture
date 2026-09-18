@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import contextlib
 import contextvars
+import copy
 import json
 import logging
 import sqlite3
@@ -37,6 +38,123 @@ from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger("prompture.tracker")
+
+
+def usage_metadata(meta: dict[str, Any]) -> dict[str, Any]:
+    """Snapshot reporting metadata without retaining raw response content."""
+    return copy.deepcopy({key: value for key, value in meta.items() if key != "raw_response"})
+
+
+def accumulate_usage_details(target: dict[str, Any], meta: dict[str, Any]) -> None:
+    """Preserve per-call metadata and aggregate additive reporting fields."""
+    target.setdefault("usage_records", []).append(usage_metadata(meta))
+    for key in ("cached_prompt_tokens", "cache_creation_tokens"):
+        target[key] = target.get(key, 0) + (meta.get(key, 0) or 0)
+    status = meta.get("cost_status", "unclassified")
+    counts = target.setdefault("cost_status_counts", {})
+    counts[status] = counts.get(status, 0) + 1
+    for metric in ("cost_breakdown", "usage_details"):
+        bucket = target.setdefault(metric, {})
+        for key, value in (meta.get(metric) or {}).items():
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                bucket[key] = bucket.get(key, 0) + value
+    target["usage_complete"] = target.get("usage_complete", True) and meta.get("usage_complete", True)
+
+
+def efficiency_report(events: Iterable[dict[str, Any]]) -> dict[str, Any]:
+    """Aggregate explicit billing and outcome evidence, without inferring outcomes.
+
+    Retry/fallback spend requires ``is_retry``/``is_fallback`` metadata.
+    Extraction outcomes require ``extraction_success`` metadata. Cache savings
+    require a provider-calculated ``cache_savings`` in USD (including write costs).
+    Missing evidence is reported as ``None``, rather than a misleading zero.
+    """
+    report: dict[str, Any] = {
+        "total_events": 0,
+        "total_calls": 0,
+        "cost": 0.0,
+        "cost_breakdown": {},
+        "cost_status_counts": {},
+        "usage_details": {},
+        "incomplete_usage_events": 0,
+        "errors": 0,
+        "local_cache_hits": 0,
+        "cached_prompt_tokens": 0,
+        "prompt_tokens": 0,
+        "operations": {},
+        "statuses": {},
+        "retry_cost": None,
+        "fallback_cost": None,
+        "cache_savings": None,
+        "cache_savings_events": 0,
+        "successful_extractions": 0,
+        "extraction_outcome_events": 0,
+    }
+    extraction_cost = 0.0
+    extraction_groups: dict[str, dict[str, Any]] = {}
+    for event in events:
+        meta = event.get("metadata", {}) or {}
+        if isinstance(meta, str):
+            meta = json.loads(meta)
+        cost = event.get("cost", 0.0) or 0.0
+        report["total_events"] += 1
+        extraction_id = meta.get("extraction_id")
+        if extraction_id:
+            group = extraction_groups.setdefault(extraction_id, {"cost": 0.0, "success": None})
+            group["cost"] += cost
+            if isinstance(meta.get("extraction_success"), bool):
+                group["success"] = meta["extraction_success"]
+        if meta.get("event_kind") == "extraction_outcome":
+            continue
+        report["total_calls"] += 1
+        report["cost"] += cost
+        status = event.get("status", "success")
+        cost_status = meta.get("cost_status", "unclassified")
+        report["cost_status_counts"][cost_status] = report["cost_status_counts"].get(cost_status, 0) + 1
+        report["incomplete_usage_events"] += meta.get("usage_complete") is False
+        report["errors"] += status == "error"
+        report["local_cache_hits"] += bool(event.get("cache_hit", False))
+        report["cached_prompt_tokens"] += event.get("cached_prompt_tokens", 0) or 0
+        report["prompt_tokens"] += event.get("prompt_tokens", 0) or 0
+        for metric in ("cost_breakdown", "usage_details"):
+            for key, value in (meta.get(metric) or {}).items():
+                if isinstance(value, (int, float)) and not isinstance(value, bool):
+                    report[metric][key] = report[metric].get(key, 0) + value
+        for group, key in (("operations", event.get("operation") or "unspecified"), ("statuses", status)):
+            bucket = report[group].setdefault(key, {"events": 0, "cost": 0.0})
+            bucket["events"] += 1
+            bucket["cost"] += cost
+        for flag, metric in (("is_retry", "retry_cost"), ("is_fallback", "fallback_cost")):
+            observed = meta.get(flag) is True
+            if flag == "is_retry":
+                attempt = meta.get("retry_attempt")
+                observed = observed or (isinstance(attempt, int) and attempt > 0)
+            elif flag == "is_fallback":
+                observed = observed or meta.get("fallback") is True
+            if observed:
+                report[metric] = (report[metric] or 0.0) + cost
+        savings = meta.get("cache_savings")
+        if cost_status == "estimated" and isinstance(savings, (int, float)) and not isinstance(savings, bool):
+            report["cache_savings"] = (report["cache_savings"] or 0.0) + savings
+            report["cache_savings_events"] += 1
+        if not extraction_id and isinstance(meta.get("extraction_success"), bool):
+            report["extraction_outcome_events"] += 1
+            report["successful_extractions"] += meta["extraction_success"]
+            extraction_cost += cost
+    for group in extraction_groups.values():
+        if group["success"] is not None:
+            report["extraction_outcome_events"] += 1
+            report["successful_extractions"] += group["success"]
+            extraction_cost += group["cost"]
+    report["cost_is_complete"] = all(status == "estimated" for status in report["cost_status_counts"])
+    report["provider_cache_token_ratio"] = (
+        report["cached_prompt_tokens"] / report["prompt_tokens"] if report["prompt_tokens"] else None
+    )
+    report["cost_per_successful_extraction"] = (
+        extraction_cost / report["successful_extractions"] if report["successful_extractions"] else None
+    )
+    return report
+
 
 # A sink receives each UsageEvent as it is recorded. Must not raise (failures
 # are swallowed and logged), should return quickly — it runs synchronously on
@@ -51,6 +169,9 @@ _ctx_session_id: contextvars.ContextVar[str | None] = contextvars.ContextVar("us
 _ctx_conversation_id: contextvars.ContextVar[str | None] = contextvars.ContextVar("usage_conversation_id", default=None)
 _ctx_agent_id: contextvars.ContextVar[str | None] = contextvars.ContextVar("usage_agent_id", default=None)
 _ctx_tool_name: contextvars.ContextVar[str | None] = contextvars.ContextVar("usage_tool_name", default=None)
+_ctx_extraction: contextvars.ContextVar[dict[str, Any] | None] = contextvars.ContextVar(
+    "usage_extraction", default=None
+)
 _ctx_operation: contextvars.ContextVar[str | None] = contextvars.ContextVar("usage_operation", default=None)
 
 # ---------------------------------------------------------------------------
@@ -390,6 +511,9 @@ class UsageTracker:
         if not self._enabled:
             return
         try:
+            extraction_context = _ctx_extraction.get()
+            if extraction_context is not None:
+                event.metadata = {**extraction_context, **event.metadata}
             # Inject context vars if not already set on the event
             if event.session_id is None:
                 event.session_id = _ctx_session_id.get()
@@ -529,8 +653,8 @@ class UsageTracker:
     # Queries
     # ------------------------------------------------------------------ #
 
-    def query(
-        self,
+    @staticmethod
+    def _query_filters(
         *,
         start: str | None = None,
         end: str | None = None,
@@ -540,10 +664,10 @@ class UsageTracker:
         conversation_id: str | None = None,
         agent_id: str | None = None,
         status: str | None = None,
-        limit: int = 1000,
-    ) -> list[dict[str, Any]]:
-        """Query usage events with filters."""
-        self.flush()
+        operation: str | None = None,
+        tool_name: str | None = None,
+        api_key_hash: str | None = None,
+    ) -> tuple[str, list[Any]]:
         conditions: list[str] = []
         params: list[Any] = []
 
@@ -572,7 +696,43 @@ class UsageTracker:
             conditions.append("status = ?")
             params.append(status)
 
-        where = " AND ".join(conditions) if conditions else "1=1"
+        for column, value in (("operation", operation), ("tool_name", tool_name), ("api_key_hash", api_key_hash)):
+            if value is not None:
+                conditions.append(f"{column} = ?")
+                params.append(value)
+        return " AND ".join(conditions) if conditions else "1=1", params
+
+    def query(
+        self,
+        *,
+        start: str | None = None,
+        end: str | None = None,
+        model: str | None = None,
+        provider: str | None = None,
+        session_id: str | None = None,
+        conversation_id: str | None = None,
+        agent_id: str | None = None,
+        status: str | None = None,
+        operation: str | None = None,
+        tool_name: str | None = None,
+        api_key_hash: str | None = None,
+        limit: int = 1000,
+    ) -> list[dict[str, Any]]:
+        """Query usage events with filters."""
+        self.flush()
+        where, params = self._query_filters(
+            start=start,
+            end=end,
+            model=model,
+            provider=provider,
+            session_id=session_id,
+            conversation_id=conversation_id,
+            agent_id=agent_id,
+            status=status,
+            operation=operation,
+            tool_name=tool_name,
+            api_key_hash=api_key_hash,
+        )
         sql = f"SELECT * FROM usage_events WHERE {where} ORDER BY timestamp DESC LIMIT ?"  # nosec B608
         params.append(limit)
 
@@ -588,24 +748,90 @@ class UsageTracker:
             return []
 
     def summary(self, **filters: Any) -> UsageSummary:
-        """Get aggregated usage summary with optional filters."""
-        events = self.query(**filters)
-        s = UsageSummary()
-        s.total_events = len(events)
-        for e in events:
-            s.total_prompt_tokens += e.get("prompt_tokens", 0)
-            s.total_completion_tokens += e.get("completion_tokens", 0)
-            s.total_tokens += e.get("total_tokens", 0)
-            s.total_cost += e.get("cost", 0.0)
-            s.total_elapsed_ms += e.get("elapsed_ms", 0.0)
+        """Aggregate all matching events, independent of query's pagination limit.
 
-            model = e.get("model_name", "")
-            s.models[model] = s.models.get(model, 0.0) + e.get("cost", 0.0)
+        Accepts the same filters as :meth:`query`. A legacy ``limit`` argument
+        is ignored: summaries always cover the entire matching period.
+        """
+        filters.pop("limit", None)
+        where, params = self._query_filters(**filters)
+        self.flush()
+        result = UsageSummary()
+        try:
+            conn = self._connect()
+            try:
+                # One grouped SQL query provides a consistent snapshot of all totals.
+                # _query_filters emits fixed column predicates; all filter values
+                # are bound separately in params, never interpolated into SQL.
+                rows = conn.execute(
+                    f"SELECT model_name, provider, COUNT(*) AS events, "  # nosec B608
+                    "SUM(prompt_tokens) AS prompt, SUM(completion_tokens) AS completion, "
+                    "SUM(total_tokens) AS tokens, SUM(cost) AS cost, SUM(elapsed_ms) AS elapsed "
+                    f"FROM usage_events WHERE {where} GROUP BY model_name, provider",
+                    params,
+                )
+                for row in rows:
+                    result.total_events += row["events"]
+                    result.total_prompt_tokens += row["prompt"] or 0
+                    result.total_completion_tokens += row["completion"] or 0
+                    result.total_tokens += row["tokens"] or 0
+                    result.total_cost += row["cost"] or 0.0
+                    result.total_elapsed_ms += row["elapsed"] or 0.0
+                    for field, key in ((result.models, row["model_name"]), (result.providers, row["provider"])):
+                        field[key] = field.get(key, 0.0) + (row["cost"] or 0.0)
+            finally:
+                conn.close()
+        except Exception:
+            logger.debug("Failed to summarize usage events", exc_info=True)
+        return result
 
-            prov = e.get("provider", "")
-            s.providers[prov] = s.providers.get(prov, 0.0) + e.get("cost", 0.0)
+    def efficiency_report(self, **filters: Any) -> dict[str, Any]:
+        """Report cost detail and explicitly observed efficiency for all matches.
 
-        return s
+        Uses :meth:`query` filters, ignoring ``limit``. Missing savings, retry,
+        fallback and extraction evidence produces ``None`` metrics. Provider
+        cached tokens and local response-cache hits are separate measurements.
+        """
+        filters.pop("limit", None)
+        where, params = self._query_filters(**filters)
+        self.flush()
+        conn = self._connect()
+        try:
+            # Only static predicates from _query_filters enter the SQL string;
+            # caller-supplied filter values remain bound parameters.
+            rows = conn.execute(f"SELECT * FROM usage_events WHERE {where}", params)  # nosec B608
+
+            def events_with_outcomes():
+                extraction_ids: set[str] = set()
+                observed_outcomes: set[str] = set()
+                for row in rows:
+                    event = dict(row)
+                    meta = json.loads(event.get("metadata") or "{}")
+                    extraction_id = meta.get("extraction_id")
+                    if extraction_id:
+                        extraction_ids.add(extraction_id)
+                        if meta.get("event_kind") == "extraction_outcome":
+                            observed_outcomes.add(extraction_id)
+                    yield event
+                # Outcomes have no provider/model: resolve them by extraction id
+                # when a call filter otherwise excludes the outcome event.
+                missing = list(extraction_ids - observed_outcomes)
+                for offset in range(0, len(missing), 500):
+                    batch = missing[offset : offset + 500]
+                    placeholders = ",".join("?" for _ in batch)
+                    # Interpolation adds only generated '?' placeholders. The
+                    # extraction IDs are bound as batch, including untrusted IDs.
+                    outcome_rows = conn.execute(
+                        "SELECT * FROM usage_events WHERE operation = 'extraction_outcome' "  # nosec B608
+                        f"AND json_extract(metadata, '$.extraction_id') IN ({placeholders})",
+                        batch,
+                    )
+                    for outcome_row in outcome_rows:
+                        yield dict(outcome_row)
+
+            return efficiency_report(events_with_outcomes())
+        finally:
+            conn.close()
 
     def cost_today(self) -> float:
         """Total cost for today (UTC)."""
@@ -812,7 +1038,7 @@ class UsageTracker:
 
         def _on_response(info: dict[str, Any]) -> None:
             meta = info.get("meta", {})
-            driver = info.get("driver", "")
+            driver = meta.get("model_name") or meta.get("returned_model") or info.get("driver", "")
             # Parse provider/model from driver string
             if "/" in driver:
                 provider, model = driver.split("/", 1)
@@ -830,9 +1056,13 @@ class UsageTracker:
                 cache_creation_tokens=meta.get("cache_creation_tokens", 0),
                 cost=meta.get("cost", 0.0),
                 elapsed_ms=info.get("elapsed_ms", 0.0),
+                metadata=usage_metadata(meta),
+                cache_hit=bool(meta.get("cache_hit", False)),
                 session_id=ctx.get("session_id"),
                 conversation_id=ctx.get("conversation_id"),
                 agent_id=ctx.get("agent_id"),
+                operation=ctx.get("operation"),
+                tool_name=ctx.get("tool_name"),
             )
             tracker.record(event)
 
@@ -850,10 +1080,13 @@ class UsageTracker:
                 provider=provider,
                 status="error",
                 error_type=type(error).__name__ if error else None,
+                metadata={"cost_status": "unknown", "usage_complete": False},
                 error_message=_error_message(error),
                 session_id=ctx.get("session_id"),
                 conversation_id=ctx.get("conversation_id"),
                 agent_id=ctx.get("agent_id"),
+                operation=ctx.get("operation"),
+                tool_name=ctx.get("tool_name"),
             )
             tracker.record(event)
 

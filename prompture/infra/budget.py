@@ -9,7 +9,7 @@ from __future__ import annotations
 import enum
 import logging
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from ..exceptions import BudgetExceededError
@@ -106,25 +106,20 @@ def estimate_cost(
     model: str,
     input_tokens: int,
     output_tokens: int,
+    **pricing_context: Any,
 ) -> float:
     """Estimate USD cost for a call using cached model rates.
 
     Returns ``0.0`` when rates are unavailable.
     """
-    from .model_rates import get_model_rates
+    from .cost_mixin import CostMixin
 
     provider, _, model_id = model.partition("/")
     if not model_id:
         return 0.0
-
-    rates = get_model_rates(provider, model_id)
-    if rates is None:
-        return 0.0
-
-    input_rate = rates.get("input", 0.0)  # per 1M tokens
-    output_rate = rates.get("output", 0.0)  # per 1M tokens
-
-    return (input_tokens * input_rate + output_tokens * output_rate) / 1_000_000
+    return CostMixin()._calculate_cost_details(provider, model_id, input_tokens, output_tokens, **pricing_context)[
+        "cost"
+    ]
 
 
 # -- pre-flight estimate from text ---------------------------------------
@@ -141,7 +136,11 @@ class CostEstimate:
         total_tokens: Sum of input + output.
         input_cost: USD cost of the input portion.
         output_cost: USD cost of the output portion.
-        total_cost: USD sum.
+        total_cost: USD sum, including any estimated server tool charges.
+        cost_status: Estimated, partial (unpriced billing dimensions), or unknown.
+        pricing: Rate source, snapshot, applied rules, and unpriced dimensions.
+        cost_breakdown: Unrounded USD line items, including the total.
+        cache_savings: Net estimated savings after cache write premiums.
         rates_available: ``False`` when no pricing data was found for
             *model* — costs in that case are ``0.0`` and should not
             be treated as authoritative.
@@ -160,6 +159,10 @@ class CostEstimate:
     rates_available: bool
     currency: str = "USD"
     token_counter: str = "heuristic"
+    cost_status: str = "estimated"
+    pricing: dict[str, Any] = field(default_factory=dict)
+    cost_breakdown: dict[str, float] = field(default_factory=dict)
+    cache_savings: float | None = None
 
 
 def _tokens_for(text_or_count: str | int) -> tuple[int, str]:
@@ -184,12 +187,23 @@ def estimate_call_cost(
     completion: str | int | None = None,
     *,
     expected_completion_tokens: int = 500,
+    cached_tokens: int = 0,
+    cache_creation_tokens: int = 0,
+    cache_creation_5m_tokens: int | None = None,
+    cache_creation_1h_tokens: int | None = None,
+    cache_write_multiplier: float = 1.0,
+    service_tier: str | None = None,
+    inference_geo: str | None = None,
+    tool_usage: dict[str, Any] | None = None,
 ) -> CostEstimate:
     """Forecast cost and token usage for a single LLM call.
 
     Accepts text or pre-counted tokens for both prompt and completion.
     When *completion* is omitted, ``expected_completion_tokens`` is
-    used as a rough estimate of the response length.
+    used as a rough estimate of the response length. Cache counts are assumed
+    parts of the total prompt count; these are forecasts, not promised cache
+    hits. Optional service tier, inference geography, and server tool usage
+    apply the same verified pricing rules as driver reporting.
 
     Args:
         model: Model string in ``"provider/model"`` form.
@@ -216,7 +230,7 @@ def estimate_call_cost(
     """
     in_tokens, in_counter = _tokens_for(prompt)
     if completion is None:
-        out_tokens, out_counter = expected_completion_tokens, "exact"
+        out_tokens, out_counter = max(0, expected_completion_tokens), "exact"
     else:
         out_tokens, out_counter = _tokens_for(completion)
 
@@ -230,31 +244,52 @@ def estimate_call_cost(
     else:
         counter_label = "exact"
 
-    from .model_rates import get_model_rates
+    from .cost_mixin import CostMixin
 
     provider, _, model_id = model.partition("/")
-    rates = get_model_rates(provider, model_id) if model_id else None
-    rates_available = bool(rates and (rates.get("input") or rates.get("output")))
-
-    if rates_available:
-        input_rate = rates.get("input", 0.0)
-        output_rate = rates.get("output", 0.0)
-        input_cost = (in_tokens * input_rate) / 1_000_000
-        output_cost = (out_tokens * output_rate) / 1_000_000
-    else:
-        input_cost = 0.0
-        output_cost = 0.0
-
+    if not model_id:
+        return CostEstimate(
+            model,
+            in_tokens,
+            out_tokens,
+            in_tokens + out_tokens,
+            0.0,
+            0.0,
+            0.0,
+            False,
+            token_counter=counter_label,
+            cost_status="unknown",
+        )
+    details = CostMixin()._calculate_cost_details(
+        provider,
+        model_id,
+        in_tokens,
+        out_tokens,
+        cached_tokens=cached_tokens,
+        cache_creation_tokens=cache_creation_tokens,
+        cache_creation_5m_tokens=cache_creation_5m_tokens,
+        cache_creation_1h_tokens=cache_creation_1h_tokens,
+        cache_write_multiplier=cache_write_multiplier,
+        service_tier=service_tier,
+        inference_geo=inference_geo,
+        tool_usage=tool_usage,
+    )
+    breakdown = details["cost_breakdown"]
+    input_cost = sum(breakdown[key] for key in ("uncached_input", "cache_read", "cache_write_5m", "cache_write_1h"))
     return CostEstimate(
         model=model,
         input_tokens=in_tokens,
         output_tokens=out_tokens,
         total_tokens=in_tokens + out_tokens,
-        input_cost=round(input_cost, 6),
-        output_cost=round(output_cost, 6),
-        total_cost=round(input_cost + output_cost, 6),
-        rates_available=rates_available,
+        input_cost=input_cost,
+        output_cost=breakdown["output"],
+        total_cost=details["cost"],
+        rates_available=details["rates_available"],
         token_counter=counter_label,
+        cost_status=details["cost_status"],
+        pricing=details["pricing"],
+        cost_breakdown=breakdown,
+        cache_savings=details["cache_savings"],
     )
 
 

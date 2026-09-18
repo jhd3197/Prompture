@@ -14,9 +14,16 @@ except ImportError:
 
 from ..infra.cost_mixin import CostMixin, prepare_strict_schema
 from ._prompt_cache import derive_prompt_cache_key
+from ._usage_reporting import usage_meta
 from .base import Driver, _apply_openai_tool_options, _normalize_stop_reason, _tool_call_dict
 
 logger = logging.getLogger(__name__)
+
+
+def _apply_openai_reporting_options(kwargs: dict[str, Any], options: dict[str, Any]) -> None:
+    for key in ("service_tier", "prompt_cache_retention", "reasoning_effort"):
+        if key in options:
+            kwargs[key] = options[key]
 
 
 # ----------------------------------------------------------------------
@@ -173,7 +180,12 @@ class OpenAIDriver(CostMixin, Driver):
         api_key: str | None = None,
         model: str = "gpt-4o-mini",
         base_url: str | None = None,
+        *,
+        api: str = "chat_completions",
     ):
+        if api not in ("chat_completions", "responses"):
+            raise ValueError("api must be chat_completions or responses")
+        self.api = api
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
         # Optional OpenAI-compatible endpoint override (gateways/proxies such as
         # prompture-hub). Default (None) keeps the official OpenAI endpoint.
@@ -220,6 +232,15 @@ class OpenAIDriver(CostMixin, Driver):
         return self._do_generate(self._prepare_messages(messages), options)
 
     def _do_generate(self, messages: list[dict[str, Any]], options: dict[str, Any]) -> dict[str, Any]:
+        if options.get("api", getattr(self, "api", "chat_completions")) == "responses":
+            if self.client is None or not hasattr(self.client, "responses"):
+                from ..exceptions import ConfigurationError
+
+                raise ConfigurationError("Responses API requires a recent openai SDK and a configured client")
+            from ._openai_responses import generate
+
+            return generate(self, self._prepare_messages(messages), options)
+
         if self.client is None:
             from ..exceptions import ConfigurationError
 
@@ -263,16 +284,11 @@ class OpenAIDriver(CostMixin, Driver):
                     messages = self._inject_schema_into_messages(messages, json_schema)
                     kwargs["messages"] = messages
 
+        _apply_openai_reporting_options(kwargs, options)
         resp = self.client.chat.completions.create(**kwargs)
 
-        usage = getattr(resp, "usage", None)
-        prompt_tokens = getattr(usage, "prompt_tokens", 0)
-        completion_tokens = getattr(usage, "completion_tokens", 0)
-        cached_prompt_tokens = _extract_openai_cached_tokens(usage)
-        total_cost = self._calculate_cost(
-            "openai", model, prompt_tokens, completion_tokens, cached_tokens=cached_prompt_tokens
-        )
-        meta = _extract_openai_meta(resp, model, total_cost)
+        meta = usage_meta(self, "openai", model, getattr(resp, "usage", None), response=resp, options=options)
+        meta["raw_response"] = resp.model_dump()
 
         text = resp.choices[0].message.content
         return {"text": text, "meta": meta}
@@ -288,6 +304,15 @@ class OpenAIDriver(CostMixin, Driver):
         options: dict[str, Any],
     ) -> dict[str, Any]:
         """Generate a response that may include tool calls."""
+        if options.get("api", getattr(self, "api", "chat_completions")) == "responses":
+            if self.client is None or not hasattr(self.client, "responses"):
+                from ..exceptions import ConfigurationError
+
+                raise ConfigurationError("Responses API requires a recent openai SDK and a configured client")
+            from ._openai_responses import generate
+
+            return generate(self, self._prepare_messages(messages), options, tools)
+
         if self.client is None:
             from ..exceptions import ConfigurationError
 
@@ -315,16 +340,11 @@ class OpenAIDriver(CostMixin, Driver):
         )
         _apply_openai_tool_options(kwargs, options)
 
+        _apply_openai_reporting_options(kwargs, options)
         resp = self.client.chat.completions.create(**kwargs)
 
-        usage = getattr(resp, "usage", None)
-        prompt_tokens = getattr(usage, "prompt_tokens", 0)
-        completion_tokens = getattr(usage, "completion_tokens", 0)
-        cached_prompt_tokens = _extract_openai_cached_tokens(usage)
-        total_cost = self._calculate_cost(
-            "openai", model, prompt_tokens, completion_tokens, cached_tokens=cached_prompt_tokens
-        )
-        meta = _extract_openai_meta(resp, model, total_cost)
+        meta = usage_meta(self, "openai", model, getattr(resp, "usage", None), response=resp, options=options)
+        meta["raw_response"] = resp.model_dump()
 
         choice = resp.choices[0]
         text = choice.message.content or ""
@@ -350,6 +370,16 @@ class OpenAIDriver(CostMixin, Driver):
         options: dict[str, Any],
     ) -> Iterator[dict[str, Any]]:
         """Yield response chunks via OpenAI streaming API."""
+        if options.get("api", getattr(self, "api", "chat_completions")) == "responses":
+            if self.client is None or not hasattr(self.client, "responses"):
+                from ..exceptions import ConfigurationError
+
+                raise ConfigurationError("Responses API requires a recent openai SDK and a configured client")
+            from ._openai_responses import stream
+
+            yield from stream(self, self._prepare_messages(messages), options)
+            return
+
         if self.client is None:
             from ..exceptions import ConfigurationError
 
@@ -374,19 +404,20 @@ class OpenAIDriver(CostMixin, Driver):
             prompt_cache_key=_openai_prompt_cache_key(messages, opts),
         )
 
+        _apply_openai_reporting_options(kwargs, options)
         stream = self.client.chat.completions.create(**kwargs)
 
         full_text = ""
-        prompt_tokens = 0
-        completion_tokens = 0
-        cached_prompt_tokens = 0
+        final_usage = None
+        response_info = {}
 
         for chunk in stream:
+            for key in ("id", "model", "service_tier"):
+                if isinstance(getattr(chunk, key, None), str):
+                    response_info[key] = getattr(chunk, key)
             # Usage comes in the final chunk
             if getattr(chunk, "usage", None):
-                prompt_tokens = chunk.usage.prompt_tokens or 0
-                completion_tokens = chunk.usage.completion_tokens or 0
-                cached_prompt_tokens = _extract_openai_cached_tokens(chunk.usage)
+                final_usage = chunk.usage
 
             if chunk.choices:
                 delta = chunk.choices[0].delta
@@ -395,12 +426,9 @@ class OpenAIDriver(CostMixin, Driver):
                     full_text += content
                     yield {"type": "delta", "text": content}
 
-        total_cost = self._calculate_cost(
-            "openai", model, prompt_tokens, completion_tokens, cached_tokens=cached_prompt_tokens
-        )
-        yield _build_openai_stream_done(
-            model, full_text, prompt_tokens, completion_tokens, total_cost, cached_prompt_tokens
-        )
+        meta = usage_meta(self, "openai", model, final_usage, response=response_info, options=options)
+        meta["raw_response"] = {}
+        yield {"type": "done", "text": full_text, "meta": meta}
 
     # ------------------------------------------------------------------
     # Live streaming with interleaved tool calls
@@ -415,6 +443,16 @@ class OpenAIDriver(CostMixin, Driver):
         """Stream one OpenAI turn as :class:`LiveEvent` via the shared
         OpenAI-compat helper. See
         :mod:`prompture.drivers._openai_compat_stream` for the protocol."""
+        if options.get("api", getattr(self, "api", "chat_completions")) == "responses":
+            if self.client is None or not hasattr(self.client, "responses"):
+                from ..exceptions import ConfigurationError
+
+                raise ConfigurationError("Responses API requires a recent openai SDK and a configured client")
+            from ._openai_responses import stream
+
+            yield from stream(self, self._prepare_messages(messages), options, tools)
+            return
+
         if self.client is None:
             from ..exceptions import ConfigurationError
 

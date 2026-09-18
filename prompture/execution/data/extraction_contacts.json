@@ -1,0 +1,314 @@
+{
+  "name": "extraction_contacts",
+  "version": "1.0.0",
+  "category": "extraction",
+  "description": "Typed extraction of a business contact from a short free-text blurb. Field values are exact-match scored after case-folding and whitespace collapse; a null expectation means the field must be absent or null.",
+  "source": "synthetic",
+  "license": "",
+  "cases": [
+    {
+      "id": "contact-dev-01",
+      "category": "extraction",
+      "split": "dev",
+      "inputs": {
+        "text": "Maria Gomez is Head of Operations at Northwind Labs. Reach her at maria.gomez@northwind.example or on +1-555-0142."
+      },
+      "expected": {
+        "fields": {
+          "name": "Maria Gomez",
+          "email": "maria.gomez@northwind.example",
+          "company": "Northwind Labs",
+          "role": "Head of Operations",
+          "phone": "+1-555-0142"
+        }
+      },
+      "tags": ["complete"],
+      "notes": "All five fields present and unambiguous."
+    },
+    {
+      "id": "contact-dev-02",
+      "category": "extraction",
+      "split": "dev",
+      "inputs": {
+        "text": "Please copy Dev Patel (dev.patel@brightwater.example) on the renewal thread. He runs finance for Brightwater Utilities."
+      },
+      "expected": {
+        "fields": {
+          "name": "Dev Patel",
+          "email": "dev.patel@brightwater.example",
+          "company": "Brightwater Utilities",
+          "role": "Finance Lead",
+          "phone": null
+        }
+      },
+      "tags": ["missing-phone", "inferred-role"],
+      "notes": "Role is paraphrased in the source ('runs finance'); scoring accepts the normalised label."
+    },
+    {
+      "id": "contact-dev-03",
+      "category": "extraction",
+      "split": "dev",
+      "inputs": {
+        "text": "Contact for the Aurora pilot: Sofia Lindqvist, CTO. Mobile +46 70 555 0198. She prefers Signal over email."
+      },
+      "expected": {
+        "fields": {
+          "name": "Sofia Lindqvist",
+          "email": null,
+          "company": null,
+          "role": "CTO",
+          "phone": "+46 70 555 0198"
+        }
+      },
+      "tags": ["missing-email", "missing-company"],
+      "notes": "'Aurora' is a project, not the employer — a model that fills company='Aurora' is wrong."
+    },
+    {
+      "id": "contact-dev-04",
+      "category": "extraction",
+      "split": "dev",
+      "inputs": {
+        "text": "Tomas Ruiz joined Vellum Freight last March as VP Logistics; his desk line is 555-0177 and mail goes to t.ruiz@vellumfreight.example."
+      },
+      "expected": {
+        "fields": {
+          "name": "Tomas Ruiz",
+          "email": "t.ruiz@vellumfreight.example",
+          "company": "Vellum Freight",
+          "role": "VP Logistics",
+          "phone": "555-0177"
+        }
+      },
+      "tags": ["complete"],
+      "notes": "Distractor date ('last March') must not appear in any field."
+    },
+    {
+      "id": "contact-dev-05",
+      "category": "extraction",
+      "split": "dev",
+      "inputs": {
+        "text": "Escalation path: first Amy Chen, Support Manager, amy.chen@quillon.example; if unreachable, her director Rafael Ortiz."
+      },
+      "expected": {
+        "fields": {
+          "name": "Amy Chen",
+          "email": "amy.chen@quillon.example",
+          "company": null,
+          "role": "Support Manager",
+          "phone": null
+        }
+      },
+      "tags": ["two-people"],
+      "notes": "Two people are named; the primary contact is the first. Tests that extraction does not merge people."
+    },
+    {
+      "id": "contact-dev-06",
+      "category": "extraction",
+      "split": "dev",
+      "inputs": {
+        "text": "Our new account manager at Halden Group is Priya Nair. Email priya.nair@halden.example. Office: +44 20 7946 0321."
+      },
+      "expected": {
+        "fields": {
+          "name": "Priya Nair",
+          "email": "priya.nair@halden.example",
+          "company": "Halden Group",
+          "role": "Account Manager",
+          "phone": "+44 20 7946 0321"
+        }
+      },
+      "tags": ["complete"],
+      "notes": ""
+    },
+    {
+      "id": "contact-dev-07",
+      "category": "extraction",
+      "split": "dev",
+      "inputs": {
+        "text": "No named contact yet — the Ridgeline Analytics deal is still going through their procurement portal."
+      },
+      "expected": {
+        "fields": {
+          "name": null,
+          "email": null,
+          "company": "Ridgeline Analytics",
+          "role": null,
+          "phone": null
+        }
+      },
+      "tags": ["mostly-absent"],
+      "notes": "Tests abstention on absent fields rather than invention."
+    },
+    {
+      "id": "contact-dev-08",
+      "category": "extraction",
+      "split": "dev",
+      "inputs": {
+        "text": "Jonas Weber (jonas@kestrel-marine.example) is Kestrel Marine's Chief Engineer. Do not use the old address jweber@kestrel.example."
+      },
+      "expected": {
+        "fields": {
+          "name": "Jonas Weber",
+          "email": "jonas@kestrel-marine.example",
+          "company": "Kestrel Marine",
+          "role": "Chief Engineer",
+          "phone": null
+        }
+      },
+      "tags": ["distractor-email"],
+      "notes": "A stale address is present and explicitly negated."
+    },
+    {
+      "id": "contact-dev-09",
+      "category": "extraction",
+      "split": "dev",
+      "inputs": {
+        "text": "Reception at Coldbrook Foods: +1-555-0110. Ask for the shift supervisor on duty."
+      },
+      "expected": {
+        "fields": {
+          "name": null,
+          "email": null,
+          "company": "Coldbrook Foods",
+          "role": "Shift Supervisor",
+          "phone": "+1-555-0110"
+        }
+      },
+      "tags": ["role-without-name"],
+      "notes": "A role exists with no person attached."
+    },
+    {
+      "id": "contact-dev-10",
+      "category": "extraction",
+      "split": "dev",
+      "inputs": {
+        "text": "Forwarded from Lena Novak, Director of Partnerships, Talos Robotics. lena.novak@talosrobotics.example. Direct: +1 (555) 018-2244."
+      },
+      "expected": {
+        "fields": {
+          "name": "Lena Novak",
+          "email": "lena.novak@talosrobotics.example",
+          "company": "Talos Robotics",
+          "role": "Director of Partnerships",
+          "phone": "+1 (555) 018-2244"
+        }
+      },
+      "tags": ["complete", "formatted-phone"],
+      "notes": "Phone formatting is normalised by the scorer before comparison."
+    },
+    {
+      "id": "contact-held-01",
+      "category": "extraction",
+      "split": "heldout",
+      "inputs": {
+        "text": "Hiroshi Tanaka, Plant Manager at Sable Ceramics, can be reached at h.tanaka@sableceramics.example. Plant switchboard +81 3 5555 0123."
+      },
+      "expected": {
+        "fields": {
+          "name": "Hiroshi Tanaka",
+          "email": "h.tanaka@sableceramics.example",
+          "company": "Sable Ceramics",
+          "role": "Plant Manager",
+          "phone": "+81 3 5555 0123"
+        }
+      },
+      "tags": ["complete"],
+      "notes": ""
+    },
+    {
+      "id": "contact-held-02",
+      "category": "extraction",
+      "split": "heldout",
+      "inputs": {
+        "text": "The RFP response should go to whoever owns vendor onboarding at Merrick Health — we don't have a name on file."
+      },
+      "expected": {
+        "fields": {
+          "name": null,
+          "email": null,
+          "company": "Merrick Health",
+          "role": null,
+          "phone": null
+        }
+      },
+      "tags": ["mostly-absent"],
+      "notes": "'vendor onboarding' is a process, not a job title."
+    },
+    {
+      "id": "contact-held-03",
+      "category": "extraction",
+      "split": "heldout",
+      "inputs": {
+        "text": "Cc Anna Kowalski on this. She's the QA Lead at Pinehurst Software; anna.kowalski@pinehurst.example, ext. 4417."
+      },
+      "expected": {
+        "fields": {
+          "name": "Anna Kowalski",
+          "email": "anna.kowalski@pinehurst.example",
+          "company": "Pinehurst Software",
+          "role": "QA Lead",
+          "phone": "4417"
+        }
+      },
+      "tags": ["extension-only"],
+      "notes": "Only an extension is given; it still counts as the phone value."
+    },
+    {
+      "id": "contact-held-04",
+      "category": "extraction",
+      "split": "heldout",
+      "inputs": {
+        "text": "Marcus Bell and Yara Haddad both signed the NDA. Marcus is General Counsel at Orinoco Media; Yara is his paralegal."
+      },
+      "expected": {
+        "fields": {
+          "name": "Marcus Bell",
+          "email": null,
+          "company": "Orinoco Media",
+          "role": "General Counsel",
+          "phone": null
+        }
+      },
+      "tags": ["two-people"],
+      "notes": "Primary contact is the first-named principal, not the paralegal."
+    },
+    {
+      "id": "contact-held-05",
+      "category": "extraction",
+      "split": "heldout",
+      "inputs": {
+        "text": "Ines Duarte moved from Cardan Systems to Ferro Analytics in June and is now their Head of Data. ines.duarte@ferroanalytics.example."
+      },
+      "expected": {
+        "fields": {
+          "name": "Ines Duarte",
+          "email": "ines.duarte@ferroanalytics.example",
+          "company": "Ferro Analytics",
+          "role": "Head of Data",
+          "phone": null
+        }
+      },
+      "tags": ["distractor-company"],
+      "notes": "The former employer is a distractor; the current one is correct."
+    },
+    {
+      "id": "contact-held-06",
+      "category": "extraction",
+      "split": "heldout",
+      "inputs": {
+        "text": "Support hotline for Larkspur Energy is +1-555-0166, staffed 24/7. Individual engineers are not reachable directly."
+      },
+      "expected": {
+        "fields": {
+          "name": null,
+          "email": null,
+          "company": "Larkspur Energy",
+          "role": null,
+          "phone": "+1-555-0166"
+        }
+      },
+      "tags": ["mostly-absent"],
+      "notes": ""
+    }
+  ]
+}

@@ -27,6 +27,7 @@ from pydantic import BaseModel
 from ..drivers import get_driver_for_model
 from ..drivers.base import Driver as Driver
 from ..media.image import ImageInput, make_image
+from ._usage import extraction_attempt, tracked_extraction
 from .fields import get_registry_snapshot
 from .reasoning import (
     ReasoningStrategyProtocol,
@@ -921,6 +922,7 @@ def _chunked_extract(
     return ExtractResult(result_dict)
 
 
+@tracked_extraction
 def extract_with_model(
     model_cls: type[BaseModel] | str,  # Can be model class or model name string for legacy support
     text: str | dict[str, Any] | None = None,  # Can be text or schema for legacy support
@@ -1154,6 +1156,7 @@ def extract_with_model(
     tightened_schema: dict[str, Any] | None = None
 
     for attempt in range(max(1, max_retries)):
+        extraction_attempt(retry_attempt=attempt)
         try:
             # Build instruction template with validation feedback from prior attempt
             effective_instruction = augmented_instruction
@@ -1293,6 +1296,7 @@ def extract_with_model(
     raise last_error  # type: ignore[misc]
 
 
+@tracked_extraction
 def stepwise_extract_with_model(
     model_cls: type[BaseModel],
     text: str,
@@ -1595,6 +1599,7 @@ def stepwise_extract_with_model(
         return ExtractResult(error_result)
 
 
+@tracked_extraction
 def extract_with_models(
     model_cls: type[BaseModel],
     text: str,
@@ -1680,7 +1685,8 @@ def extract_with_models(
     total_cost = 0.0
     total_tokens = 0
 
-    for model_name in models:
+    for model_attempt, model_name in enumerate(models):
+        extraction_attempt(model_attempt=model_attempt)
         # --- Resolve driver and detect capabilities ---
         try:
             driver = get_driver_for_model(model_name)

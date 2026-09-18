@@ -1,5 +1,15 @@
 """Infrastructure: settings, logging, callbacks, caching, costs, discovery."""
 
+from .billing import (
+    BillingAPIError,
+    BillingClient,
+    BillingReport,
+    BillingRow,
+    BillingScope,
+    CostReconciliation,
+    LocalCostSummary,
+    reconcile_costs,
+)
 from .budget import (
     BudgetPolicy,
     BudgetState,
@@ -96,12 +106,24 @@ except ImportError:  # tukuy not installed
     create_tukuy_backend = None  # type: ignore[assignment]
 from .session import UsageSession
 from .settings import settings
+from .token_counting import (
+    TokenCount,
+    acount_request_tokens,
+    aestimate_request_cost,
+    count_request_tokens,
+    estimate_request_cost,
+)
 from .tracker import UsageEvent, UsageSink, UsageTracker, configure_tracker, get_tracker
 
 __all__ = [
     "CODING_AGENT_SPECS",
     "ApprovalMode",
     "AudioCostMixin",
+    "BillingAPIError",
+    "BillingClient",
+    "BillingReport",
+    "BillingRow",
+    "BillingScope",
     "BudgetPolicy",
     "BudgetState",
     "CacheBackend",
@@ -112,9 +134,11 @@ __all__ = [
     "CodingAgentRunResult",
     "CodingAgentSpec",
     "CostEstimate",
+    "CostReconciliation",
     "DriverCallbacks",
     "EmbeddingCostMixin",
     "JSONFormatter",
+    "LocalCostSummary",
     "MemoryCacheBackend",
     "ModelCapabilities",
     "ModelUsageLedger",
@@ -123,12 +147,15 @@ __all__ = [
     "RedisCacheBackend",
     "ResponseCache",
     "SQLiteCacheBackend",
+    "TokenCount",
     "TukuyLLMBackend",
     "UsageEvent",
     "UsageSession",
     "UsageSink",
     "UsageTracker",
     "VideoCostMixin",
+    "acount_request_tokens",
+    "aestimate_request_cost",
     "arun_coding_agent",
     "astream_coding_agent",
     "build_coding_agent_command",
@@ -137,12 +164,14 @@ __all__ = [
     "configure_cache",
     "configure_logging",
     "configure_tracker",
+    "count_request_tokens",
     "create_tukuy_backend",
     "detect_question",
     "display_available_models",
     "enforce_budget",
     "estimate_call_cost",
     "estimate_cost",
+    "estimate_request_cost",
     "estimate_tokens",
     "get_available_audio_models",
     "get_available_coding_agents",
@@ -169,6 +198,7 @@ __all__ = [
     "parse_claude_stream_json_lines",
     "parse_codex_json_lines",
     "pick_best_coding_agent",
+    "reconcile_costs",
     "refresh_rates_cache",
     "register_model",
     "register_provider",
