@@ -11,6 +11,7 @@ except ImportError:  # tukuy not installed
     create_tukuy_backend = None  # type: ignore[assignment]
 from . import eval as eval
 from . import (
+    execution,
     jobs,
     mcp,
     plugins,

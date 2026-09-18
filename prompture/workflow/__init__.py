@@ -4,6 +4,10 @@ Build a typed graph of nodes (LLM, media generation, tool, transform), wire them
 with explicit edges and/or late-bound ``{{node.outputs[0].value}}`` references,
 and run it — full graph, a single node, or compiled to a callable.
 
+For a run that must survive the process, :class:`ResumableGraphRunner` persists
+every completed node result, pause and cancellation, and resumes from that state
+without re-running finished work — see :mod:`prompture.workflow.recovery`.
+
 Example::
 
     from prompture.workflow import Graph, Node, Handle, HandleType, compile_graph
@@ -47,6 +51,23 @@ from .errors import (
     WorkflowError,
 )
 from .model import Edge, Graph, Handle, HandleType, Node, build_graph
+from .recovery import (
+    FileWorkflowStateStore,
+    HumanInputRequired,
+    InMemoryWorkflowStateStore,
+    OperationLedger,
+    OperationRecord,
+    OperationStatus,
+    ReconciliationRequired,
+    ResumableGraphRunner,
+    RunLifecycle,
+    SQLiteWorkflowStateStore,
+    WorkflowRunState,
+    WorkflowStateStore,
+    WorkflowVersionMismatch,
+    graph_version,
+    operation_id,
+)
 from .references import (
     Reference,
     extract_dependencies,
@@ -77,6 +98,7 @@ __all__ = [
     "CycleError",
     "Edge",
     "EdgeSpec",
+    "FileWorkflowStateStore",
     # model
     "Graph",
     # engine
@@ -85,6 +107,8 @@ __all__ = [
     "Handle",
     "HandleType",
     "HandleTypeError",
+    "HumanInputRequired",
+    "InMemoryWorkflowStateStore",
     "Node",
     "NodeExecutionError",
     # state
@@ -94,15 +118,26 @@ __all__ = [
     "NodeStatus",
     # registry
     "NodeType",
+    # durable recovery
+    "OperationLedger",
+    "OperationRecord",
+    "OperationStatus",
+    "ReconciliationRequired",
     # references
     "Reference",
     "ReferenceResolutionError",
+    "ResumableGraphRunner",
+    "RunLifecycle",
     "RunResult",
     "RunStatus",
+    "SQLiteWorkflowStateStore",
     "WorkflowCallbacks",
     # errors
     "WorkflowError",
     "WorkflowGraphSpec",
+    "WorkflowRunState",
+    "WorkflowStateStore",
+    "WorkflowVersionMismatch",
     "aarchitect",
     "architect",
     "build_graph",
@@ -110,9 +145,11 @@ __all__ = [
     "extract_dependencies",
     "extract_refs",
     "get_node_type",
+    "graph_version",
     "is_node_type_registered",
     "list_node_types",
     "node_type_catalog",
+    "operation_id",
     "register_builtin_node_types",
     "register_node_type",
     "resolve_template",

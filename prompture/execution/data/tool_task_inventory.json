@@ -1,0 +1,277 @@
+{
+  "name": "tool_task_inventory",
+  "version": "1.0.0",
+  "category": "tool_task",
+  "description": "Bounded tool-using tasks against a deterministic in-memory inventory world (see prompture.execution.sandbox.InventoryWorld). Success is graded by comparing the world's final state to the expected state — never by reading the model's prose. Every tool is local and side-effect-free outside the sandbox, so failure injection and shadow comparison are safe.",
+  "source": "synthetic",
+  "license": "",
+  "cases": [
+    {
+      "id": "inv-dev-01",
+      "category": "tool_task",
+      "split": "dev",
+      "inputs": {
+        "instruction": "Move 3 units of SKU-100 from warehouse A to warehouse B.",
+        "initial_state": {
+          "stock": {"SKU-100": {"A": 10, "B": 2}},
+          "reservations": {},
+          "prices": {"SKU-100": 19.99}
+        }
+      },
+      "expected": {
+        "final_state": {
+          "stock": {"SKU-100": {"A": 7, "B": 5}},
+          "reservations": {},
+          "prices": {"SKU-100": 19.99}
+        }
+      },
+      "tags": ["single-step"],
+      "notes": ""
+    },
+    {
+      "id": "inv-dev-02",
+      "category": "tool_task",
+      "split": "dev",
+      "inputs": {
+        "instruction": "Reserve 2 units of SKU-200 in warehouse A for order ORD-7.",
+        "initial_state": {
+          "stock": {"SKU-200": {"A": 5}},
+          "reservations": {},
+          "prices": {"SKU-200": 4.5}
+        }
+      },
+      "expected": {
+        "final_state": {
+          "stock": {"SKU-200": {"A": 3}},
+          "reservations": {"ORD-7": {"SKU-200": 2}},
+          "prices": {"SKU-200": 4.5}
+        }
+      },
+      "tags": ["single-step"],
+      "notes": "Reserving decrements available stock."
+    },
+    {
+      "id": "inv-dev-03",
+      "category": "tool_task",
+      "split": "dev",
+      "inputs": {
+        "instruction": "Set the price of SKU-100 to 17.50.",
+        "initial_state": {
+          "stock": {"SKU-100": {"A": 4}},
+          "reservations": {},
+          "prices": {"SKU-100": 19.99}
+        }
+      },
+      "expected": {
+        "final_state": {
+          "stock": {"SKU-100": {"A": 4}},
+          "reservations": {},
+          "prices": {"SKU-100": 17.5}
+        }
+      },
+      "tags": ["single-step"],
+      "notes": ""
+    },
+    {
+      "id": "inv-dev-04",
+      "category": "tool_task",
+      "split": "dev",
+      "inputs": {
+        "instruction": "Move 4 units of SKU-300 from warehouse C to warehouse D, then reserve 1 of them in D for order ORD-9.",
+        "initial_state": {
+          "stock": {"SKU-300": {"C": 6, "D": 0}},
+          "reservations": {},
+          "prices": {"SKU-300": 12.0}
+        }
+      },
+      "expected": {
+        "final_state": {
+          "stock": {"SKU-300": {"C": 2, "D": 3}},
+          "reservations": {"ORD-9": {"SKU-300": 1}},
+          "prices": {"SKU-300": 12.0}
+        }
+      },
+      "tags": ["multi-step", "ordered"],
+      "notes": "The two steps must happen in order; reserving first would fail for lack of stock in D."
+    },
+    {
+      "id": "inv-dev-05",
+      "category": "tool_task",
+      "split": "dev",
+      "inputs": {
+        "instruction": "Move 20 units of SKU-100 from warehouse A to warehouse B.",
+        "initial_state": {
+          "stock": {"SKU-100": {"A": 5, "B": 1}},
+          "reservations": {},
+          "prices": {"SKU-100": 19.99}
+        }
+      },
+      "expected": {
+        "final_state": {
+          "stock": {"SKU-100": {"A": 5, "B": 1}},
+          "reservations": {},
+          "prices": {"SKU-100": 19.99}
+        },
+        "should_abstain": true
+      },
+      "tags": ["impossible", "abstain"],
+      "notes": "Insufficient stock. The world rejects the move; the correct outcome leaves state untouched and reports the failure rather than inventing a partial move."
+    },
+    {
+      "id": "inv-dev-06",
+      "category": "tool_task",
+      "split": "dev",
+      "inputs": {
+        "instruction": "Cancel order ORD-3, returning its reserved SKU-200 units to warehouse A.",
+        "initial_state": {
+          "stock": {"SKU-200": {"A": 1}},
+          "reservations": {"ORD-3": {"SKU-200": 3}},
+          "prices": {"SKU-200": 4.5}
+        }
+      },
+      "expected": {
+        "final_state": {
+          "stock": {"SKU-200": {"A": 4}},
+          "reservations": {},
+          "prices": {"SKU-200": 4.5}
+        }
+      },
+      "tags": ["single-step"],
+      "notes": ""
+    },
+    {
+      "id": "inv-dev-07",
+      "category": "tool_task",
+      "split": "dev",
+      "inputs": {
+        "instruction": "Restock SKU-400 in warehouse A by 12 units and price it at 8.25.",
+        "initial_state": {
+          "stock": {},
+          "reservations": {},
+          "prices": {}
+        }
+      },
+      "expected": {
+        "final_state": {
+          "stock": {"SKU-400": {"A": 12}},
+          "reservations": {},
+          "prices": {"SKU-400": 8.25}
+        }
+      },
+      "tags": ["multi-step", "new-sku"],
+      "notes": "Two independent steps on a SKU that does not exist yet."
+    },
+    {
+      "id": "inv-dev-08",
+      "category": "tool_task",
+      "split": "dev",
+      "inputs": {
+        "instruction": "Report how many units of SKU-100 are in warehouse A. Do not change anything.",
+        "initial_state": {
+          "stock": {"SKU-100": {"A": 9, "B": 3}},
+          "reservations": {},
+          "prices": {"SKU-100": 19.99}
+        }
+      },
+      "expected": {
+        "final_state": {
+          "stock": {"SKU-100": {"A": 9, "B": 3}},
+          "reservations": {},
+          "prices": {"SKU-100": 19.99}
+        },
+        "answer_contains": ["9"]
+      },
+      "tags": ["read-only"],
+      "notes": "Tests that a read-only instruction produces no writes."
+    },
+    {
+      "id": "inv-held-01",
+      "category": "tool_task",
+      "split": "heldout",
+      "inputs": {
+        "instruction": "Move 5 units of SKU-500 from warehouse B to warehouse A.",
+        "initial_state": {
+          "stock": {"SKU-500": {"A": 0, "B": 8}},
+          "reservations": {},
+          "prices": {"SKU-500": 2.0}
+        }
+      },
+      "expected": {
+        "final_state": {
+          "stock": {"SKU-500": {"A": 5, "B": 3}},
+          "reservations": {},
+          "prices": {"SKU-500": 2.0}
+        }
+      },
+      "tags": ["single-step"],
+      "notes": ""
+    },
+    {
+      "id": "inv-held-02",
+      "category": "tool_task",
+      "split": "heldout",
+      "inputs": {
+        "instruction": "Reserve 6 units of SKU-500 in warehouse B for order ORD-12.",
+        "initial_state": {
+          "stock": {"SKU-500": {"B": 4}},
+          "reservations": {},
+          "prices": {"SKU-500": 2.0}
+        }
+      },
+      "expected": {
+        "final_state": {
+          "stock": {"SKU-500": {"B": 4}},
+          "reservations": {},
+          "prices": {"SKU-500": 2.0}
+        },
+        "should_abstain": true
+      },
+      "tags": ["impossible", "abstain"],
+      "notes": ""
+    },
+    {
+      "id": "inv-held-03",
+      "category": "tool_task",
+      "split": "heldout",
+      "inputs": {
+        "instruction": "Restock SKU-600 in warehouse C by 7 units, then move 3 of them to warehouse A.",
+        "initial_state": {
+          "stock": {"SKU-600": {"C": 0, "A": 1}},
+          "reservations": {},
+          "prices": {"SKU-600": 30.0}
+        }
+      },
+      "expected": {
+        "final_state": {
+          "stock": {"SKU-600": {"C": 4, "A": 4}},
+          "reservations": {},
+          "prices": {"SKU-600": 30.0}
+        }
+      },
+      "tags": ["multi-step", "ordered"],
+      "notes": ""
+    },
+    {
+      "id": "inv-held-04",
+      "category": "tool_task",
+      "split": "heldout",
+      "inputs": {
+        "instruction": "Set the price of SKU-500 to 2.25 and reserve 1 unit in warehouse B for order ORD-15.",
+        "initial_state": {
+          "stock": {"SKU-500": {"B": 2}},
+          "reservations": {},
+          "prices": {"SKU-500": 2.0}
+        }
+      },
+      "expected": {
+        "final_state": {
+          "stock": {"SKU-500": {"B": 1}},
+          "reservations": {"ORD-15": {"SKU-500": 1}},
+          "prices": {"SKU-500": 2.25}
+        }
+      },
+      "tags": ["multi-step"],
+      "notes": "The two steps are independent; either order is acceptable."
+    }
+  ]
+}

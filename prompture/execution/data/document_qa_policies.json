@@ -1,0 +1,320 @@
+{
+  "name": "document_qa_policies",
+  "version": "1.0.0",
+  "category": "document_qa",
+  "description": "Evidence-grounded questions over a small synthetic employee-handbook corpus. Each case supplies the candidate passages inline so retrieval can be exercised without a vector store. Unanswerable cases MUST produce an insufficient-evidence outcome, not a plausible-sounding answer.",
+  "source": "synthetic",
+  "license": "",
+  "cases": [
+    {
+      "id": "policy-dev-01",
+      "category": "document_qa",
+      "split": "dev",
+      "inputs": {
+        "question": "How many days of notice must an employee give before taking planned leave?",
+        "passages": [
+          {"id": "hb-leave-1", "text": "Planned leave must be requested at least 14 calendar days in advance through the leave portal. Requests inside 14 days are approved only at the manager's discretion."},
+          {"id": "hb-leave-2", "text": "Unplanned sick leave should be reported to your manager before the start of your shift; no advance notice is required."},
+          {"id": "hb-expenses-1", "text": "Expense claims must be filed within 30 days of the expenditure."}
+        ]
+      },
+      "expected": {
+        "answerable": true,
+        "answer_contains": ["14"],
+        "supporting_source_ids": ["hb-leave-1"]
+      },
+      "tags": ["single-passage"],
+      "notes": "A near-miss distractor ('30 days') sits in an unrelated passage."
+    },
+    {
+      "id": "policy-dev-02",
+      "category": "document_qa",
+      "split": "dev",
+      "inputs": {
+        "question": "What is the deadline for submitting an expense claim?",
+        "passages": [
+          {"id": "hb-expenses-1", "text": "Expense claims must be filed within 30 days of the expenditure."},
+          {"id": "hb-expenses-2", "text": "Claims over 500 USD require a receipt and a second approver."},
+          {"id": "hb-leave-1", "text": "Planned leave must be requested at least 14 calendar days in advance through the leave portal."}
+        ]
+      },
+      "expected": {
+        "answerable": true,
+        "answer_contains": ["30"],
+        "supporting_source_ids": ["hb-expenses-1"]
+      },
+      "tags": ["single-passage"],
+      "notes": ""
+    },
+    {
+      "id": "policy-dev-03",
+      "category": "document_qa",
+      "split": "dev",
+      "inputs": {
+        "question": "What is the company's policy on paid sabbaticals?",
+        "passages": [
+          {"id": "hb-leave-1", "text": "Planned leave must be requested at least 14 calendar days in advance through the leave portal."},
+          {"id": "hb-leave-2", "text": "Unplanned sick leave should be reported to your manager before the start of your shift."},
+          {"id": "hb-benefits-1", "text": "Employees receive 25 days of paid annual leave, rising to 28 after five years of service."}
+        ]
+      },
+      "expected": {
+        "answerable": false,
+        "answer_contains": [],
+        "supporting_source_ids": []
+      },
+      "tags": ["unanswerable"],
+      "notes": "Adjacent leave policies exist but say nothing about sabbaticals. The correct behaviour is an insufficient-evidence outcome."
+    },
+    {
+      "id": "policy-dev-04",
+      "category": "document_qa",
+      "split": "dev",
+      "inputs": {
+        "question": "How much annual leave does an employee get after six years of service?",
+        "passages": [
+          {"id": "hb-benefits-1", "text": "Employees receive 25 days of paid annual leave, rising to 28 after five years of service."},
+          {"id": "hb-benefits-2", "text": "Public holidays are additional to the annual leave allowance."},
+          {"id": "hb-leave-1", "text": "Planned leave must be requested at least 14 calendar days in advance."}
+        ]
+      },
+      "expected": {
+        "answerable": true,
+        "answer_contains": ["28"],
+        "supporting_source_ids": ["hb-benefits-1"]
+      },
+      "tags": ["single-passage", "requires-inference"],
+      "notes": "Six years is past the five-year threshold; the answer requires one inferential step."
+    },
+    {
+      "id": "policy-dev-05",
+      "category": "document_qa",
+      "split": "dev",
+      "inputs": {
+        "question": "Who must approve an expense claim of 800 USD?",
+        "passages": [
+          {"id": "hb-expenses-2", "text": "Claims over 500 USD require a receipt and a second approver."},
+          {"id": "hb-expenses-3", "text": "The second approver must be a director or above in the claimant's reporting line."},
+          {"id": "hb-expenses-1", "text": "Expense claims must be filed within 30 days of the expenditure."}
+        ]
+      },
+      "expected": {
+        "answerable": true,
+        "answer_contains": ["director"],
+        "supporting_source_ids": ["hb-expenses-2", "hb-expenses-3"]
+      },
+      "tags": ["multi-passage"],
+      "notes": "Requires joining two passages; a report citing only one is partially supported."
+    },
+    {
+      "id": "policy-dev-06",
+      "category": "document_qa",
+      "split": "dev",
+      "inputs": {
+        "question": "Are public holidays counted against the annual leave allowance?",
+        "passages": [
+          {"id": "hb-benefits-2", "text": "Public holidays are additional to the annual leave allowance."},
+          {"id": "hb-benefits-1", "text": "Employees receive 25 days of paid annual leave, rising to 28 after five years of service."}
+        ]
+      },
+      "expected": {
+        "answerable": true,
+        "answer_contains": ["additional"],
+        "supporting_source_ids": ["hb-benefits-2"]
+      },
+      "tags": ["single-passage", "yes-no"],
+      "notes": ""
+    },
+    {
+      "id": "policy-dev-07",
+      "category": "document_qa",
+      "split": "dev",
+      "inputs": {
+        "question": "What laptop model does the company issue to new engineers?",
+        "passages": [
+          {"id": "hb-it-1", "text": "IT equipment is issued on your first day and must be returned when you leave."},
+          {"id": "hb-it-2", "text": "Personal devices may not be used to access production systems."}
+        ]
+      },
+      "expected": {
+        "answerable": false,
+        "answer_contains": [],
+        "supporting_source_ids": []
+      },
+      "tags": ["unanswerable"],
+      "notes": "The corpus mentions equipment but never a model."
+    },
+    {
+      "id": "policy-dev-08",
+      "category": "document_qa",
+      "split": "dev",
+      "inputs": {
+        "question": "May an employee access production systems from a personal laptop?",
+        "passages": [
+          {"id": "hb-it-2", "text": "Personal devices may not be used to access production systems."},
+          {"id": "hb-it-1", "text": "IT equipment is issued on your first day and must be returned when you leave."},
+          {"id": "hb-it-3", "text": "Remote access requires the company VPN and hardware two-factor authentication."}
+        ]
+      },
+      "expected": {
+        "answerable": true,
+        "answer_contains": ["not"],
+        "supporting_source_ids": ["hb-it-2"]
+      },
+      "tags": ["single-passage", "yes-no"],
+      "notes": "Negation case — an answer that drops the negation is wrong while remaining fluent."
+    },
+    {
+      "id": "policy-dev-09",
+      "category": "document_qa",
+      "split": "dev",
+      "inputs": {
+        "question": "What is required for remote access to internal systems?",
+        "passages": [
+          {"id": "hb-it-3", "text": "Remote access requires the company VPN and hardware two-factor authentication."},
+          {"id": "hb-it-2", "text": "Personal devices may not be used to access production systems."}
+        ]
+      },
+      "expected": {
+        "answerable": true,
+        "answer_contains": ["VPN"],
+        "supporting_source_ids": ["hb-it-3"]
+      },
+      "tags": ["single-passage"],
+      "notes": ""
+    },
+    {
+      "id": "policy-dev-10",
+      "category": "document_qa",
+      "split": "dev",
+      "inputs": {
+        "question": "How long does the company retain interview notes for unsuccessful candidates?",
+        "passages": [
+          {"id": "hb-hiring-1", "text": "Interview panels must record structured notes in the hiring system on the day of the interview."},
+          {"id": "hb-hiring-2", "text": "Offer decisions are communicated within five working days of the final interview."}
+        ]
+      },
+      "expected": {
+        "answerable": false,
+        "answer_contains": [],
+        "supporting_source_ids": []
+      },
+      "tags": ["unanswerable"],
+      "notes": "A retention period is a plausible-sounding fact the corpus does not contain."
+    },
+    {
+      "id": "policy-held-01",
+      "category": "document_qa",
+      "split": "heldout",
+      "inputs": {
+        "question": "Within how many working days is an offer decision communicated?",
+        "passages": [
+          {"id": "hb-hiring-2", "text": "Offer decisions are communicated within five working days of the final interview."},
+          {"id": "hb-hiring-1", "text": "Interview panels must record structured notes in the hiring system on the day of the interview."}
+        ]
+      },
+      "expected": {
+        "answerable": true,
+        "answer_contains": ["five"],
+        "supporting_source_ids": ["hb-hiring-2"]
+      },
+      "tags": ["single-passage"],
+      "notes": ""
+    },
+    {
+      "id": "policy-held-02",
+      "category": "document_qa",
+      "split": "heldout",
+      "inputs": {
+        "question": "What happens to issued IT equipment when an employee leaves?",
+        "passages": [
+          {"id": "hb-it-1", "text": "IT equipment is issued on your first day and must be returned when you leave."},
+          {"id": "hb-it-3", "text": "Remote access requires the company VPN and hardware two-factor authentication."}
+        ]
+      },
+      "expected": {
+        "answerable": true,
+        "answer_contains": ["return"],
+        "supporting_source_ids": ["hb-it-1"]
+      },
+      "tags": ["single-passage"],
+      "notes": ""
+    },
+    {
+      "id": "policy-held-03",
+      "category": "document_qa",
+      "split": "heldout",
+      "inputs": {
+        "question": "What is the company's parental leave entitlement?",
+        "passages": [
+          {"id": "hb-benefits-1", "text": "Employees receive 25 days of paid annual leave, rising to 28 after five years of service."},
+          {"id": "hb-leave-2", "text": "Unplanned sick leave should be reported to your manager before the start of your shift."}
+        ]
+      },
+      "expected": {
+        "answerable": false,
+        "answer_contains": [],
+        "supporting_source_ids": []
+      },
+      "tags": ["unanswerable"],
+      "notes": ""
+    },
+    {
+      "id": "policy-held-04",
+      "category": "document_qa",
+      "split": "heldout",
+      "inputs": {
+        "question": "Does an expense claim of 400 USD need a second approver?",
+        "passages": [
+          {"id": "hb-expenses-2", "text": "Claims over 500 USD require a receipt and a second approver."},
+          {"id": "hb-expenses-1", "text": "Expense claims must be filed within 30 days of the expenditure."}
+        ]
+      },
+      "expected": {
+        "answerable": true,
+        "answer_contains": ["no"],
+        "supporting_source_ids": ["hb-expenses-2"]
+      },
+      "tags": ["requires-inference", "yes-no"],
+      "notes": "400 is below the 500 threshold; the answer is a negation derived from the rule."
+    },
+    {
+      "id": "policy-held-05",
+      "category": "document_qa",
+      "split": "heldout",
+      "inputs": {
+        "question": "When must interview notes be recorded?",
+        "passages": [
+          {"id": "hb-hiring-1", "text": "Interview panels must record structured notes in the hiring system on the day of the interview."},
+          {"id": "hb-hiring-2", "text": "Offer decisions are communicated within five working days of the final interview."}
+        ]
+      },
+      "expected": {
+        "answerable": true,
+        "answer_contains": ["day of the interview"],
+        "supporting_source_ids": ["hb-hiring-1"]
+      },
+      "tags": ["single-passage"],
+      "notes": ""
+    },
+    {
+      "id": "policy-held-06",
+      "category": "document_qa",
+      "split": "heldout",
+      "inputs": {
+        "question": "How much notice is needed for leave requested 10 days ahead, and who decides?",
+        "passages": [
+          {"id": "hb-leave-1", "text": "Planned leave must be requested at least 14 calendar days in advance through the leave portal. Requests inside 14 days are approved only at the manager's discretion."},
+          {"id": "hb-benefits-2", "text": "Public holidays are additional to the annual leave allowance."}
+        ]
+      },
+      "expected": {
+        "answerable": true,
+        "answer_contains": ["manager"],
+        "supporting_source_ids": ["hb-leave-1"]
+      },
+      "tags": ["requires-inference"],
+      "notes": "Ten days is inside the 14-day window, so the manager decides."
+    }
+  ]
+}
