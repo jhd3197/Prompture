@@ -1,6 +1,7 @@
 name: documentation
 
 on:
+  workflow_dispatch:
   workflow_run:
     workflows: ["Publish to PyPI and GitHub Release"]
     types: [completed]
@@ -11,7 +12,7 @@ permissions:
 jobs:
   docs:
     runs-on: ubuntu-latest
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -26,8 +27,9 @@ jobs:
         run: |
           cacaodocs build ./prompture -o ./docs-cacao -c ./cacao.yaml
       - name: Export static site
+        working-directory: docs-cacao
         run: |
-          cacao build ./docs-cacao/app.py -o ./_build
+          cacao build app.py -o ../_build
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:
