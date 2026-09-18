@@ -96,13 +96,15 @@ class TestBasicRecordAndQuery:
 
     def test_error_message_is_stored(self, tracker):
         """The class name says a TypeError happened; the message says which one."""
-        tracker.record(UsageEvent(
-            model_name="claude/claude-haiku-4-5", provider="claude", status="error",
-            error_type="TypeError",
-            error_message=(
-                "AsyncMessages.create() got an unexpected keyword argument 'temperature'"
-            ),
-        ))
+        tracker.record(
+            UsageEvent(
+                model_name="claude/claude-haiku-4-5",
+                provider="claude",
+                status="error",
+                error_type="TypeError",
+                error_message=("AsyncMessages.create() got an unexpected keyword argument 'temperature'"),
+            )
+        )
         row = tracker.query(status="error")[0]
         assert "temperature" in row["error_message"]
 
@@ -587,3 +589,47 @@ class TestAsCallbacks:
         assert len(results) == 1
         assert results[0]["status"] == "error"
         assert results[0]["error_type"] == "ValueError"
+
+
+@pytest.mark.parametrize(
+    "filter_name",
+    [
+        "model",
+        "provider",
+        "session_id",
+        "conversation_id",
+        "agent_id",
+        "status",
+        "operation",
+        "tool_name",
+        "api_key_hash",
+    ],
+)
+def test_reporting_filter_values_are_bound_parameters(tracker, filter_name):
+    tracker.record(UsageEvent(model_name="safe", provider="safe", cost=1))
+    filters = {filter_name: "' OR 1=1; DROP TABLE usage_events; --"}
+    assert tracker.query(**filters) == []
+    assert tracker.summary(**filters).total_events == 0
+    assert tracker.efficiency_report(**filters)["total_events"] == 0
+    assert tracker.summary().total_events == 1
+
+
+def test_outcome_ids_are_bound_parameters(tracker):
+    hostile_id = "x') OR 1=1; DROP TABLE usage_events; --"
+    tracker.record(UsageEvent(model_name="safe", provider="safe", cost=2, metadata={"extraction_id": hostile_id}))
+    for extraction_id in (hostile_id, "unrelated"):
+        tracker.record(
+            UsageEvent(
+                operation="extraction_outcome",
+                metadata={
+                    "event_kind": "extraction_outcome",
+                    "extraction_id": extraction_id,
+                    "extraction_success": True,
+                },
+            )
+        )
+    report = tracker.efficiency_report(provider="safe")
+    assert report["total_calls"] == 1
+    assert report["extraction_outcome_events"] == 1
+    assert report["cost_per_successful_extraction"] == 2
+    assert tracker.summary().total_events == 3
