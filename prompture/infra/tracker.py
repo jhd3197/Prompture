@@ -203,6 +203,10 @@ class UsageEvent:
     cache_hit: bool = False
     status: str = "success"
     error_type: str | None = None
+    # The exception's own text, truncated. `error_type` alone says a TypeError
+    # happened; the message says *which* one, which is the difference between
+    # "the model calls are failing" and "anthropic 1.x dropped `temperature`".
+    error_message: str | None = None
     tags: list[str] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -211,6 +215,13 @@ class UsageEvent:
             self.id = str(uuid.uuid4())
         if not self.timestamp:
             self.timestamp = datetime.now(timezone.utc).isoformat()
+
+
+def _error_message(error: BaseException | None) -> str | None:
+    """The exception's text, bounded. ``None`` when there was no error."""
+    if error is None:
+        return None
+    return str(error)[:500] or None
 
 
 @dataclass
@@ -280,6 +291,7 @@ CREATE TABLE IF NOT EXISTS usage_events (
     cache_hit         INTEGER DEFAULT 0,
     status            TEXT DEFAULT 'success',
     error_type        TEXT,
+    error_message     TEXT,
     tags              TEXT,
     metadata          TEXT
 );
@@ -365,8 +377,8 @@ INSERT INTO usage_events (
     prompt_tokens, completion_tokens, total_tokens, cached_prompt_tokens,
     cache_creation_tokens, cost, elapsed_ms,
     session_id, conversation_id, agent_id, tool_name, operation,
-    cache_hit, status, error_type, tags, metadata
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    cache_hit, status, error_type, error_message, tags, metadata
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 """
 
 # Column additions applied to existing databases via ALTER TABLE.
@@ -380,6 +392,10 @@ _SCHEMA_MIGRATIONS: list[tuple[str, str]] = [
     (
         "cache_creation_tokens",
         "ALTER TABLE usage_events ADD COLUMN cache_creation_tokens INTEGER DEFAULT 0",
+    ),
+    (
+        "error_message",
+        "ALTER TABLE usage_events ADD COLUMN error_message TEXT",
     ),
 ]
 
@@ -570,6 +586,7 @@ class UsageTracker:
                             1 if e.cache_hit else 0,
                             e.status,
                             e.error_type,
+                            e.error_message,
                             json.dumps(e.tags) if e.tags else None,
                             json.dumps(e.metadata) if e.metadata else None,
                         )
@@ -1058,6 +1075,7 @@ class UsageTracker:
                 status="error",
                 error_type=type(error).__name__ if error else None,
                 metadata={"cost_status": "unknown", "usage_complete": False},
+                error_message=_error_message(error),
                 session_id=ctx.get("session_id"),
                 conversation_id=ctx.get("conversation_id"),
                 agent_id=ctx.get("agent_id"),

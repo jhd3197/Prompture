@@ -695,7 +695,7 @@ class Driver(ABC):
         """Record a usage event to the global tracker.  Fire-and-forget."""
         try:
             from ..infra.ledger import _resolve_api_key_hash
-            from ..infra.tracker import UsageEvent, get_tracker, usage_metadata
+            from ..infra.tracker import UsageEvent, _error_message, get_tracker, usage_metadata
 
             tracker = get_tracker()
             if not tracker._enabled:
@@ -744,6 +744,7 @@ class Driver(ABC):
                 error_type=type(error).__name__ if error else None,
                 cache_hit=bool(meta.get("cache_hit", False)),
                 metadata=meta,
+                error_message=_error_message(error),
             )
             tracker.record(event)
         except Exception:

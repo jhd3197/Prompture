@@ -34,7 +34,7 @@ def record_embedding_driver_usage(
     """
     try:
         from ..infra.ledger import _resolve_api_key_hash
-        from ..infra.tracker import UsageEvent, get_tracker
+        from ..infra.tracker import UsageEvent, _error_message, get_tracker
 
         tracker = get_tracker()
         if not tracker._enabled:
@@ -63,6 +63,7 @@ def record_embedding_driver_usage(
             elapsed_ms=elapsed_ms,
             status=status,
             error_type=type(error).__name__ if error else None,
+            error_message=_error_message(error),
             metadata={"modality": "embedding", "count": text_count},
         )
         tracker.record(event)
@@ -83,7 +84,7 @@ def record_media_usage(
     """Record one media generation as a usage event. Never raises."""
     try:
         from ..infra.ledger import _resolve_api_key_hash
-        from ..infra.tracker import UsageEvent, get_tracker
+        from ..infra.tracker import UsageEvent, _error_message, get_tracker
 
         tracker = get_tracker()
         if not tracker._enabled:
@@ -111,6 +112,7 @@ def record_media_usage(
             elapsed_ms=elapsed_ms,
             status=status,
             error_type=type(error).__name__ if error else None,
+            error_message=_error_message(error),
             metadata={"modality": modality, "count": int(meta.get(count_key) or 0)},
         )
         tracker.record(event)
