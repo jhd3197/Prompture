@@ -1,0 +1,53 @@
+{
+  "kev-latest": {
+    "modality": "decision",
+    "api_type": "kev",
+    "self_hosted": true,
+    "modalities_input": ["text"],
+    "modalities_output": ["decision"],
+    "question_types": ["noul", "choice", "score"],
+    "cost": {
+      "input": 0.0,
+      "output": 0.0
+    }
+  },
+  "kev-0.8b": {
+    "modality": "decision",
+    "api_type": "kev",
+    "self_hosted": true,
+    "parameters": "0.8B",
+    "modalities_input": ["text"],
+    "modalities_output": ["decision"],
+    "question_types": ["noul", "choice", "score"],
+    "cost": {
+      "input": 0.0,
+      "output": 0.0
+    }
+  },
+  "kev-4b": {
+    "modality": "decision",
+    "api_type": "kev",
+    "self_hosted": true,
+    "parameters": "4B",
+    "modalities_input": ["text"],
+    "modalities_output": ["decision"],
+    "question_types": ["noul", "choice", "score"],
+    "cost": {
+      "input": 0.0,
+      "output": 0.0
+    }
+  },
+  "kev-9b": {
+    "modality": "decision",
+    "api_type": "kev",
+    "self_hosted": true,
+    "parameters": "9B",
+    "modalities_input": ["text"],
+    "modalities_output": ["decision"],
+    "question_types": ["noul", "choice", "score"],
+    "cost": {
+      "input": 0.0,
+      "output": 0.0
+    }
+  }
+}

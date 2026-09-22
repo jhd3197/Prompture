@@ -61,6 +61,9 @@ _moderation_async = DriverRegistry(
     "moderation async", "prompture.async_moderation_drivers", error_prefix="async moderation "
 )
 
+_decision_sync = DriverRegistry("decision sync", "prompture.decision_drivers", error_prefix="decision ")
+_decision_async = DriverRegistry("decision async", "prompture.async_decision_drivers", error_prefix="async decision ")
+
 _lipsync_sync = DriverRegistry("lipsync sync", "prompture.lipsync_drivers", error_prefix="lipsync ")
 _lipsync_async = DriverRegistry("lipsync async", "prompture.async_lipsync_drivers", error_prefix="async lipsync ")
 
@@ -659,6 +662,68 @@ def load_rerank_entry_point_drivers() -> tuple[int, int]:
     return (_rerank_sync.load_entry_points(), _rerank_async.load_entry_points())
 
 
+# ── Decision ───────────────────────────────────────────────────────────────
+
+
+def register_decision_driver(name: str, factory: DriverFactory, *, overwrite: bool = False) -> None:
+    """Register a sync decision driver factory for a provider name."""
+    _decision_sync.register(name, factory, overwrite=overwrite)
+
+
+def register_async_decision_driver(name: str, factory: DriverFactory, *, overwrite: bool = False) -> None:
+    """Register an async decision driver factory for a provider name."""
+    _decision_async.register(name, factory, overwrite=overwrite)
+
+
+def unregister_decision_driver(name: str) -> bool:
+    """Unregister a sync decision driver by name."""
+    return _decision_sync.unregister(name)
+
+
+def unregister_async_decision_driver(name: str) -> bool:
+    """Unregister an async decision driver by name."""
+    return _decision_async.unregister(name)
+
+
+def list_registered_decision_drivers() -> list[str]:
+    """Return a sorted list of registered sync decision driver names."""
+    return _decision_sync.list_names()
+
+
+def list_registered_async_decision_drivers() -> list[str]:
+    """Return a sorted list of registered async decision driver names."""
+    return _decision_async.list_names()
+
+
+def is_decision_driver_registered(name: str) -> bool:
+    """Check if a sync decision driver is registered."""
+    return _decision_sync.is_registered(name)
+
+
+def is_async_decision_driver_registered(name: str) -> bool:
+    """Check if an async decision driver is registered."""
+    return _decision_async.is_registered(name)
+
+
+def get_decision_driver_factory(name: str) -> DriverFactory:
+    """Get a registered sync decision driver factory by name."""
+    return _decision_sync.get_factory(name)
+
+
+def get_async_decision_driver_factory(name: str) -> DriverFactory:
+    """Get a registered async decision driver factory by name."""
+    return _decision_async.get_factory(name)
+
+
+def load_decision_entry_point_drivers() -> tuple[int, int]:
+    """Load decision drivers from installed packages via entry points.
+
+    Returns:
+        A tuple of (sync_count, async_count) counts.
+    """
+    return (_decision_sync.load_entry_points(), _decision_async.load_entry_points())
+
+
 # ── Moderation ─────────────────────────────────────────────────────────────
 
 
@@ -782,6 +847,14 @@ def _get_async_rerank_registry() -> dict[str, DriverFactory]:
     return _rerank_async.dict
 
 
+def _get_decision_registry() -> dict[str, DriverFactory]:
+    return _decision_sync.dict
+
+
+def _get_async_decision_registry() -> dict[str, DriverFactory]:
+    return _decision_async.dict
+
+
 def _get_moderation_registry() -> dict[str, DriverFactory]:
     return _moderation_sync.dict
 
@@ -808,6 +881,8 @@ def _reset_registries() -> None:
     _rerank_async.reset()
     _moderation_sync.reset()
     _moderation_async.reset()
+    _decision_sync.reset()
+    _decision_async.reset()
 
 
 # ── Backwards-compat aliases for internal dicts (used by tests) ────────────
@@ -834,3 +909,5 @@ _RERANK_REGISTRY = _rerank_sync._registry
 _ASYNC_RERANK_REGISTRY = _rerank_async._registry
 _MODERATION_REGISTRY = _moderation_sync._registry
 _ASYNC_MODERATION_REGISTRY = _moderation_async._registry
+_DECISION_REGISTRY = _decision_sync._registry
+_ASYNC_DECISION_REGISTRY = _decision_async._registry

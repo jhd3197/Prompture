@@ -54,6 +54,7 @@ print(person.name)  # Maria
 **Providers & modalities**
 - 36+ providers under a unified `provider/model` string — see [Providers](#providers)
 - Multi-modal drivers for embeddings, rerank, moderation, image, video, TTS, STT, and audio transforms — see [Multi-Modal](#multi-modal)
+- **Decision models** ("System One") — typed `noul`/`choice`/`score` answers with calibrated probabilities instead of generated text. Hosted (TypeSafe Jev), self-hosted (Kev), or in-process (Laya) behind one interface — see [Decision](#decision)
 - TOON input conversion for 45–60% token savings on structured input ([python-toon](https://github.com/jhd3197/python-toon))
 
 **Agents, tools, RAG**
@@ -234,6 +235,9 @@ Model strings use `"provider/model"` format. The provider prefix routes to the c
 | `jina` | `jina/jina-embeddings-v3` (embedding), `jina/jina-reranker-v2-base-multilingual` (rerank) | Automatic |
 | `nomic` | `nomic/nomic-embed-text-v1.5` (embedding) | Automatic |
 | `mixedbread` | `mixedbread/mxbai-embed-large-v1` (embedding), `mixedbread/mxbai-rerank-large-v1` (rerank) | Automatic |
+| `typesafe` | `typesafe/jev-latest` (decision) | Automatic |
+| `kev` | `kev/kev-4b` (decision, self-hosted) | Free |
+| `laya` | `laya/router` (decision, in-process) | Free (local) |
 | `openai_compatible` | `openai_compatible/<profile>/<model>` — 9 curated profiles: `fireworks`, `together`, `cerebras`, `sambanova`, `perplexity`, `nvidia`, `deepinfra`, `siliconflow`, `github_models` (or pass an explicit `endpoint=` for anything else) | Automatic where pricing is known |
 
 </details>
@@ -275,6 +279,7 @@ Beyond text LLMs, Prompture exposes drivers for adjacent modalities under the sa
 - **Embeddings** — OpenAI (`text-embedding-3-*`), Cohere (`embed-v4.0`), Voyage AI (`voyage-3.5`, `voyage-3-large`), Jina AI (`jina-embeddings-v3`), Nomic (`nomic-embed-text-v1.5`), Mixedbread (`mxbai-embed-large-v1`, `mxbai-embed-2d-large-v1`), and Ollama (`nomic-embed-text`)
 - **Rerank** — Cohere (`rerank-v3.5`), Voyage AI (`rerank-2.5`), Jina AI (`jina-reranker-v2-base-multilingual`), Mixedbread (`mxbai-rerank-large-v1`, `mxbai-rerank-base-v1`, `mxbai-rerank-xsmall-v1`)
 - **Moderation** — OpenAI (`omni-moderation-latest` — free multimodal), Mistral (`mistral-moderation-latest`)
+- **Decision** ("System One" typed decisions) — TypeSafe (`jev-latest` — hosted), Kev (`kev-0.8b`/`kev-4b`/`kev-9b` — self-hosted, same endpoint), Laya (`router`, `english`, `multilingual`, `typed-decisions` — in-process)
 - **Image generation** — OpenAI DALL-E + GPT image, Google Imagen, Grok, Stability AI, Runway (`gen4_image`, `gen4_image_turbo`, `gpt_image_2`, `gemini_image3_pro`, `gemini_2.5_flash`), Kling AI, Fal.ai, Ideogram (v3 — strong typography), Black Forest Labs / Flux (`flux-pro-1.1`, `flux-pro-1.1-ultra`, `flux-dev`, `flux-schnell`, `flux-kontext-pro`/`max` for editing)
 - **Video generation** — Grok Imagine Video; Runway text/image/video → video (`gen4.5`, `gen4_turbo`, `gen3a_turbo`, `gen4_aleph`, `veo3`, `veo3.1`, `veo3.1_fast`); MiniMax / Hailuo; Kling AI; Luma AI Dream Machine (`ray-2`, `ray-flash-2`, `ray-1-6`); Pika Labs (`pika-2.2`, `pika-2.1`, `pika-1.5`); Fal.ai
 - **Text-to-speech** — OpenAI (`tts-1`), ElevenLabs, Cartesia (`sonic-2`), Deepgram (`aura-2-thalia-en`), Runway (`eleven_multilingual_v2`)
@@ -357,6 +362,59 @@ for r in results:
 ```
 
 OpenAI moderation is free of charge (`cost == 0`, `pricing_unknown == False`). Mistral moderation is billed at ~$0.10 per million input tokens. Discover configured moderation models with `get_available_moderation_models()`. The async factory is `get_async_moderation_driver_for_model()`.
+
+### Decision
+
+Decision models ("System One") answer typed questions about a state instead of generating text. You send a `state` plus a map of questions; you get back one typed answer per question with calibrated probabilities — nothing to parse, nothing to hallucinate.
+
+Three primitives: `Noul` (yes/no → probability), `Choice` (pick one → winner + distribution + confidence), and `Score` (ordinal rubric → weighted value + confidence).
+
+```python
+from prompture.drivers.decision_base import Choice, Noul, Score
+from prompture.drivers.decision_registry import get_decision_driver_for_model
+
+driver = get_decision_driver_for_model("typesafe/jev-latest")
+result = driver.decide(
+    state={"subject": "Duplicate charge", "body": "We were billed twice. Refund today or we cancel."},
+    questions={
+        "department": Choice(
+            "Which team should handle this?",
+            criteria={"billing": "invoices, refunds", "technical": "bugs, outages", "sales": None},
+        ),
+        "urgency": Score("How urgent is this?", criteria=["not urgent", "this week", "blocking"]),
+        "churn_risk": Noul("Does the sender threaten to cancel?"),
+    },
+)
+
+print(result["department"].choice, result["department"].confidence)  # billing 0.81
+print(result["urgency"].score, result["urgency"].nearest_level)      # 1.05 this week
+print(result["churn_risk"].noul)                                     # 0.95
+print(driver.last_usage["cost"])
+```
+
+All questions in one call share a single reading of the state, so batching beats looping. Because the probabilities are calibrated, the common use is a confidence gate in front of an expensive model:
+
+```python
+answer = result["department"]
+if answer.confidence >= 0.85:
+    route_automatically(answer.choice)   # no LLM call at all
+else:
+    escalate_to_llm(state)
+```
+
+The same question map works across every provider — only the model string changes:
+
+| Model string | Where it runs | Cost | Setup |
+| --- | --- | --- | --- |
+| `typesafe/jev-latest` | hosted | $0.042 / 1M input tokens, output free | `TYPESAFE_API_KEY` |
+| `kev/kev-4b` | your own server, same `/v1/systemone` contract | free | `KEV_BASE_URL` (no key) |
+| `laya/router` | in-process weights | free | `pip install prompture[laya]` |
+
+The open checkpoints trade accuracy for cost and both degrade on high-cardinality choices (50+ options), so benchmark on your own labels before switching a workload off the hosted model.
+
+Discover configured decision models with `get_available_decision_models()` — TypeSafe appears when its key is set, Kev when `KEV_BASE_URL` points at a server, Laya when the package is installed. The async factory is `get_async_decision_driver_for_model()`.
+
+Runnable example: `python examples/decision_model_example.py`.
 
 ### Runway
 

@@ -594,10 +594,10 @@ class TestCapabilitiesKB:
 
     def test_all_kb_entries_are_valid(self):
         """Every entry in the KB has required fields populated."""
-        # Non-LLM modalities (embedding / rerank) don't carry chat-specific
-        # fields like context_window or max_output_tokens — they're loaded
-        # into the same KB so capability lookups work, but the validation
-        # below only applies to LLM chat models.
+        # Non-LLM modalities (embedding / rerank / moderation / decision) don't
+        # carry chat-specific fields like context_window or max_output_tokens —
+        # they're loaded into the same KB so capability lookups work, but the
+        # validation below only applies to LLM chat models.
         for (provider, model_id), caps in mr._CAPABILITIES_KB.items():
             assert isinstance(caps, mr.ModelCapabilities), f"({provider}, {model_id})"
             assert caps.api_type is not None, f"({provider}, {model_id}) missing api_type"
@@ -613,6 +613,9 @@ class TestCapabilitiesKB:
                 "nomic",
                 "mixedbread",
                 "moderation",
+                "typesafe",
+                "kev",
+                "laya",
             ), f"({provider}, {model_id}) invalid api_type: {caps.api_type}"
             assert len(caps.modalities_input) > 0, f"({provider}, {model_id}) missing modalities_input"
             assert len(caps.modalities_output) > 0, f"({provider}, {model_id}) missing modalities_output"
@@ -621,6 +624,7 @@ class TestCapabilitiesKB:
                 "embedding" in caps.modalities_output
                 or "rerank" in caps.modalities_output
                 or "moderation" in caps.modalities_output
+                or "decision" in caps.modalities_output
             ):
                 continue
             assert caps.context_window is not None, f"({provider}, {model_id}) missing context_window"

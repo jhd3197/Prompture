@@ -1,0 +1,60 @@
+{
+  "router": {
+    "modality": "decision",
+    "api_type": "laya",
+    "self_hosted": true,
+    "in_process": true,
+    "modalities_input": ["text"],
+    "modalities_output": ["decision"],
+    "question_types": ["noul", "choice", "score"],
+    "cost": {
+      "input": 0.0,
+      "output": 0.0
+    }
+  },
+  "english": {
+    "modality": "decision",
+    "api_type": "laya",
+    "self_hosted": true,
+    "in_process": true,
+    "parameters": "421M",
+    "context_window": 512,
+    "modalities_input": ["text"],
+    "modalities_output": ["decision"],
+    "question_types": ["noul", "choice", "score"],
+    "cost": {
+      "input": 0.0,
+      "output": 0.0
+    }
+  },
+  "multilingual": {
+    "modality": "decision",
+    "api_type": "laya",
+    "self_hosted": true,
+    "in_process": true,
+    "parameters": "322M",
+    "context_window": 1024,
+    "modalities_input": ["text"],
+    "modalities_output": ["decision"],
+    "question_types": ["noul", "choice", "score"],
+    "cost": {
+      "input": 0.0,
+      "output": 0.0
+    }
+  },
+  "typed-decisions": {
+    "modality": "decision",
+    "api_type": "laya",
+    "self_hosted": true,
+    "in_process": true,
+    "parameters": "421M",
+    "context_window": 1024,
+    "modalities_input": ["text"],
+    "modalities_output": ["decision"],
+    "question_types": ["noul", "choice", "score"],
+    "cost": {
+      "input": 0.0,
+      "output": 0.0
+    }
+  }
+}
