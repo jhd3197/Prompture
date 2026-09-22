@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import os
 
+import pytest
+
 import prompture
 from prompture import _load_dotenv_skipping_blanks
 
@@ -56,14 +58,22 @@ class TestDotenvBlankHandling:
     def test_missing_env_file_is_not_an_error(self, tmp_path):
         _load_dotenv_skipping_blanks(str(tmp_path / "nope.env"))  # must not raise
 
-    def test_importing_prompture_leaves_hf_endpoint_usable(self):
-        """The end-to-end invariant: a blank HF_ENDPOINT must not poison the Hub."""
-        from huggingface_hub import constants
+    def test_importing_prompture_leaves_no_blank_hf_endpoint(self):
+        """The end-to-end invariant, using only the standard library.
 
-        pytest_endpoint = os.environ.get("HF_ENDPOINT")
-        assert pytest_endpoint is None or pytest_endpoint.strip(), (
-            "importing prompture must not leave HF_ENDPOINT set-but-empty"
-        )
+        ``prompture`` has already been imported by the time this runs, so the
+        check is on what that import left behind.
+        """
+        endpoint = os.environ.get("HF_ENDPOINT")
+        assert endpoint is None or endpoint.strip(), "importing prompture must not leave HF_ENDPOINT set-but-empty"
+
+    def test_hub_endpoint_keeps_its_scheme(self):
+        """The same invariant seen from the library that the bug actually broke.
+
+        ``huggingface_hub`` is not a Prompture dependency — it arrives with the
+        ``laya`` extra — so this only runs where it is installed.
+        """
+        constants = pytest.importorskip("huggingface_hub.constants")
         assert constants.ENDPOINT.startswith(("http://", "https://"))
 
     def test_env_copy_template_still_has_blank_placeholders(self):
