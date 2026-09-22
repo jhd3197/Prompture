@@ -158,13 +158,20 @@ class LayaDecisionDriver(DecisionDriver):
         if self._router is not None and routing:
             answered_model = str(routing.get("model") or answered_model)
 
+        # Laya runs locally and bills nothing, but it still reports how much
+        # text it read — worth carrying through for budgeting and for
+        # comparing a local run against the hosted model it might replace.
+        usage = resp.get("usage") or {}
+        input_tokens = int(usage.get("input_tokens", 0) or 0)
+        output_tokens = int(usage.get("output_tokens", 0) or 0)
+
         cost, pricing_unknown = calculate_decision_cost(self.PROVIDER, model)
         self.last_usage = {
             "model_name": f"{self.PROVIDER}/{model}",
             "questions": len(payload_questions),
-            "input_tokens": 0,
-            "output_tokens": 0,
-            "total_tokens": 0,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "total_tokens": input_tokens + output_tokens,
             "cost": cost,
             "pricing_unknown": pricing_unknown,
             "routing": dict(routing) if routing else None,

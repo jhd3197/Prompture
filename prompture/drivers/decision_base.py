@@ -281,6 +281,9 @@ class NoulAnswer(Answer):
     """
 
     noul: float
+    #: Populated only when the provider sends its own ``confidence`` for a
+    #: noul.  TypeSafe and Kev do not; Laya does.
+    reported_confidence: float | None = None
 
     def __post_init__(self) -> None:
         self.type = "noul"
@@ -291,12 +294,16 @@ class NoulAnswer(Answer):
 
     @property
     def confidence(self) -> float:
-        """Distance from the coin flip, rescaled to 0..1.
+        """How certain the model is, on 0..1.
 
-        Derived locally — the wire format carries no ``confidence`` field for
-        nouls, because the probability *is* the answer.  Provided so that
-        confidence-gating code can treat all three primitives uniformly.
+        Prefers the provider's own ``confidence`` when it sends one.  Otherwise
+        derived locally as distance from the coin flip, because most of this
+        family omits the field for nouls — there the probability *is* the
+        answer.  Either way confidence-gating code can treat all three
+        primitives uniformly.
         """
+        if self.reported_confidence is not None:
+            return self.reported_confidence
         return abs(self.noul - 0.5) * 2.0
 
 
@@ -367,7 +374,11 @@ def parse_answer(qid: str, raw: Mapping[str, Any]) -> Answer:
     """
     atype = raw.get("type")
     if atype == "noul":
-        return NoulAnswer(noul=float(raw.get("noul", 0.0)))
+        reported = raw.get("confidence")
+        return NoulAnswer(
+            noul=float(raw.get("noul", 0.0)),
+            reported_confidence=float(reported) if reported is not None else None,
+        )
     if atype == "choice":
         probs = {str(k): float(v) for k, v in (raw.get("probabilities") or {}).items()}
         choice = raw.get("choice")

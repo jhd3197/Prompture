@@ -154,6 +154,13 @@ class TestAnswers:
         assert parse_answer("q", {"type": "noul", "noul": 1.0}).confidence == 1.0
         assert parse_answer("q", {"type": "noul", "noul": 0.0}).confidence == 1.0
 
+    def test_provider_noul_confidence_wins_over_derived(self):
+        """Laya sends its own confidence for nouls; TypeSafe and Kev do not."""
+        a = parse_answer("q", {"type": "noul", "noul": 0.0672, "confidence": 0.9328})
+        assert a.reported_confidence == 0.9328
+        assert a.confidence == 0.9328  # not the derived 0.8656
+        assert parse_answer("q", {"type": "noul", "noul": 0.0672}).confidence == pytest.approx(0.8656)
+
     def test_choice_answer(self):
         a = parse_answer("q", _payload()["answers"]["department"])
         assert isinstance(a, ChoiceAnswer)
@@ -382,7 +389,8 @@ class _FakeRouter:
             "repo": "convaiinnovations/laya/multilingual",
             "reason": "non-Latin script",
         }
-        body.pop("usage")
+        # Real Laya reports how much text it read even though it bills nothing.
+        body["usage"] = {"input_tokens": 252, "output_tokens": 0}
         return body
 
     def unload(self):
@@ -423,12 +431,30 @@ class TestLayaDecisionDriver:
         assert result["department"].choice == "billing"
         assert result["frustration"].nearest_level == "Frustrated"
 
-    def test_usage_is_free_with_no_tokens(self, fake_laya):
+    def test_usage_is_free_but_token_counts_are_carried(self, fake_laya):
         d = LayaDecisionDriver()
         d.decide(STATE, QUESTIONS)
         assert d.last_usage["model_name"] == "laya/router"
         assert d.last_usage["cost"] == 0.0
         assert d.last_usage["pricing_unknown"] is False
+        # Free, but the token counts still come through for budgeting and for
+        # comparing a local run against the hosted model it might replace.
+        assert d.last_usage["input_tokens"] == 252
+        assert d.last_usage["total_tokens"] == 252
+
+    def test_missing_usage_block_degrades_to_zero(self, fake_laya, monkeypatch):
+        agent = _FakeRouter()
+        original = agent.predict
+
+        def _no_usage(state, questions, **opts):
+            body = original(state, questions, **opts)
+            body.pop("usage", None)
+            return body
+
+        agent.predict = _no_usage
+        d = LayaDecisionDriver(model="multilingual")
+        d._agent = agent
+        d.decide(STATE, QUESTIONS)
         assert d.last_usage["total_tokens"] == 0
 
     def test_named_checkpoint_uses_subfolder(self, fake_laya, monkeypatch):
