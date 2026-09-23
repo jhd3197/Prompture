@@ -5,6 +5,7 @@ from __future__ import annotations
 import dataclasses
 import functools
 import hashlib
+import importlib.util
 import json
 import logging
 import os
@@ -1710,6 +1711,43 @@ def get_available_moderation_models(
             "mistral-moderation-2411",
         ):
             available.add(f"mistral/{model_id}")
+
+    return sorted(available)
+
+
+def get_available_decision_models(
+    *,
+    env: ProviderEnvironment | None = None,
+) -> list[str]:
+    """Auto-detect available decision ("System One") models.
+
+    TypeSafe needs an API key.  Kev and Laya are self-hosted, so they are
+    listed only when you have actually pointed Prompture at them: Kev via
+    ``KEV_BASE_URL``, Laya via the installed ``laya`` package.
+
+    Args:
+        env: Optional per-consumer environment for isolated API keys.
+            When ``None``, uses the global settings singleton.
+
+    Returns:
+        A sorted list of unique model strings (e.g. ``"typesafe/jev-latest"``).
+    """
+    available: set[str] = set()
+
+    # TypeSafe (hosted Jev)
+    if _cfg_value(env, "typesafe_api_key", "TYPESAFE_API_KEY"):
+        for model_id in ("jev-latest", "jev-preview", "jev-1.13.0"):
+            available.add(f"typesafe/{model_id}")
+
+    # Kev — only when a server endpoint has been configured.
+    if _cfg_value(env, "kev_base_url", "KEV_BASE_URL"):
+        for model_id in ("kev-latest", "kev-0.8b", "kev-4b", "kev-9b"):
+            available.add(f"kev/{model_id}")
+
+    # Laya — in-process, so availability is "is the package importable".
+    if importlib.util.find_spec("laya") is not None:
+        for model_id in ("router", "english", "multilingual", "typed-decisions"):
+            available.add(f"laya/{model_id}")
 
     return sorted(available)
 

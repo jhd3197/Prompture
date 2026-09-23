@@ -4,7 +4,7 @@ Each :class:`ProviderDescriptor` describes one canonical provider (or an alias
 for one) and carries enough metadata to:
 
 * register sync + async driver factories for every modality (LLM, STT, TTS,
-  image-gen, video-gen, embedding, rerank, moderation),
+  image-gen, video-gen, embedding, rerank, moderation, decision),
 * populate ``PROVIDER_DRIVER_MAP`` / ``ASYNC_PROVIDER_DRIVER_MAP``,
 * drive the discovery module's ``is_configured`` / ``list_models_kwargs`` logic,
 * generate the ``PROVIDER_MAP`` in ``model_rates.py``.
@@ -77,6 +77,9 @@ class ProviderDescriptor:
 
     moderation_sync: DriverSpec | None = None
     moderation_async: DriverSpec | None = None
+
+    decision_sync: DriverSpec | None = None
+    decision_async: DriverSpec | None = None
 
     lipsync_sync: DriverSpec | None = None
     lipsync_async: DriverSpec | None = None
@@ -185,6 +188,7 @@ def register_all_builtin_drivers() -> None:
     assert _PROVIDER_DESCRIPTORS_CACHE is not None  # nosec B101 — set by _ensure_loaded
 
     from .registry import (
+        register_async_decision_driver,
         register_async_driver,
         register_async_embedding_driver,
         register_async_img_gen_driver,
@@ -195,6 +199,7 @@ def register_all_builtin_drivers() -> None:
         register_async_stt_driver,
         register_async_tts_driver,
         register_async_video_gen_driver,
+        register_decision_driver,
         register_driver,
         register_embedding_driver,
         register_img_gen_driver,
@@ -224,6 +229,8 @@ def register_all_builtin_drivers() -> None:
         "rerank_async": register_async_rerank_driver,
         "moderation_sync": register_moderation_driver,
         "moderation_async": register_async_moderation_driver,
+        "decision_sync": register_decision_driver,
+        "decision_async": register_async_decision_driver,
         "lipsync_sync": register_lipsync_driver,
         "lipsync_async": register_async_lipsync_driver,
         "music_sync": register_music_driver,

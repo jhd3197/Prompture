@@ -1,6 +1,8 @@
 """prompture - API package to convert LLM outputs into JSON + test harness."""
 
-from dotenv import load_dotenv
+import os as _os
+
+from dotenv import dotenv_values, find_dotenv
 
 from .agents import *
 
@@ -231,8 +233,35 @@ try:
 except ImportError:
     pass
 
+
+def _load_dotenv_skipping_blanks(path: str | None = None) -> None:
+    """Load ``.env`` into ``os.environ``, ignoring keys with a blank value.
+
+    A placeholder line like ``HF_ENDPOINT=`` means "not configured", but
+    exporting it makes the variable *set-but-empty*, which is not the same
+    thing to the rest of the process. Libraries that resolve their default
+    with ``os.getenv(KEY, default)`` — huggingface_hub's endpoint is one —
+    take the empty string over their default and break, even though the
+    caller never configured anything. Since ``.env`` values never override
+    real environment variables here, a blank placeholder can only ever
+    create such a variable, so there is nothing to lose by skipping it.
+
+    Args:
+        path: Explicit ``.env`` to read. When omitted, the file is located
+            the same way :func:`dotenv.load_dotenv` would — by walking up
+            from this module.
+    """
+    path = path or find_dotenv()
+    if not path:
+        return
+    for key, value in dotenv_values(path).items():
+        if value is None or not value.strip():
+            continue
+        _os.environ.setdefault(key, value)
+
+
 # Load environment variables from .env file
-load_dotenv()
+_load_dotenv_skipping_blanks()
 
 # Auto-configure cache from settings if enabled
 from .infra.settings import settings as _settings

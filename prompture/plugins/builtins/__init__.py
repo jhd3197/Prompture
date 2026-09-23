@@ -6,6 +6,7 @@ from ..base import ProviderPlugin
 from .anthropic_plugin import AnthropicPlugin
 from .audio_plugin import AudioPlugin
 from .cloud_plugin import CloudPlugin
+from .decision_plugin import DecisionPlugin
 from .embedding_rerank_plugin import EmbeddingRerankPlugin
 from .extras_plugin import ExtrasPlugin
 from .google_plugin import GooglePlugin
@@ -26,6 +27,7 @@ BUILTIN_PLUGINS: list[ProviderPlugin] = [
     ImagePlugin(),
     VideoPlugin(),
     EmbeddingRerankPlugin(),
+    DecisionPlugin(),
     ExtrasPlugin(),
 ]
 
@@ -34,6 +36,7 @@ __all__ = [
     "AnthropicPlugin",
     "AudioPlugin",
     "CloudPlugin",
+    "DecisionPlugin",
     "EmbeddingRerankPlugin",
     "ExtrasPlugin",
     "GooglePlugin",

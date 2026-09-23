@@ -179,6 +179,20 @@ class Settings(BaseSettings):
     voyage_embedding_model: str = "voyage-3.5"
     jina_embedding_model: str = "jina-embeddings-v3"
 
+    # Decision ("System One") providers — typed decisions, not text.
+    typesafe_api_key: str | None = None
+    typesafe_base_url: str | None = None
+    typesafe_decision_model: str = "jev-latest"
+
+    # Kev serves the same /v1/systemone contract from a local process.
+    kev_api_key: str | None = None
+    kev_base_url: str | None = None
+    kev_decision_model: str = "kev-latest"
+
+    # Laya runs in-process; no endpoint, no key.
+    laya_decision_model: str = "router"
+    laya_device: str | None = None
+
     # Phase 4: AWS Bedrock
     aws_access_key_id: str | None = None  # nosec B105
     aws_secret_access_key: str | None = None  # nosec B105
