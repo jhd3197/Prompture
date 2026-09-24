@@ -98,6 +98,7 @@ from .model_rates import (
     get_model_rates,
     refresh_rates_cache,
 )
+from .otel import instrument_driver, otel_callbacks
 from .provider_env import ProviderEnvironment
 
 try:
@@ -196,6 +197,8 @@ __all__ = [
     "get_model_rates",
     "get_recently_used_models",
     "get_tracker",
+    "instrument_driver",
+    "otel_callbacks",
     "override_capabilities",
     "parse_claude_stream_json_lines",
     "parse_codex_json_lines",

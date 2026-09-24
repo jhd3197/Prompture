@@ -114,6 +114,7 @@ from .resilience import (
     RetryPolicy,
     async_resilient,
     classify_error,
+    explain_route,
     load_combos,
     register_combo,
     register_key_pool,

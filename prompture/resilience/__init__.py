@@ -30,6 +30,7 @@ from .errors import (
     register_error_rule,
     reset_error_rules,
 )
+from .explain import explain_attempt, explain_route
 from .keys import KeyPool, clear_key_pools, get_key_pool, key_id, register_key_pool
 from .router import Target
 from .strategies import STRATEGIES, RouteStats, get_route_stats
@@ -73,6 +74,8 @@ __all__ = [
     "classify_error",
     "clear_key_pools",
     "clear_virtual_models",
+    "explain_attempt",
+    "explain_route",
     "get_breaker_registry",
     "get_combo",
     "get_key_pool",
