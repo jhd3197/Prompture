@@ -337,6 +337,11 @@ def run_chat(
         if not getattr(driver, "supports_tool_use", False):
             raise NotImplementedError(f"{type(driver).__name__} does not support tool use")
         return _outcome(driver.generate_messages_with_tools(messages, tools, opts))
+    if not hasattr(driver, "generate_messages"):
+        # Duck-typed prompt-only driver (not a Driver subclass).
+        from ..drivers.base import Driver
+
+        return _outcome(driver.generate(Driver._flatten_messages(messages), opts))
     return _outcome(driver.generate_messages(messages, opts))
 
 
