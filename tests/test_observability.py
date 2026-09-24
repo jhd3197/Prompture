@@ -131,9 +131,11 @@ class TestOtel:
     def test_nested_calls_pair_start_times(self):
         tracer = FakeTracer()
         cbs = otel_callbacks(tracer)
-        cbs.on_request({"driver": "a/outer"})
-        cbs.on_request({"driver": "a/inner"})
+        cbs.on_request({"driver": "a/outer", "options": {"temperature": 0.9}})
+        cbs.on_request({"driver": "a/inner", "options": {"temperature": 0.1}})
         cbs.on_response({"driver": "a/inner", "meta": {}, "text": ""})
         cbs.on_response({"driver": "a/outer", "meta": {}, "text": ""})
         inner, outer = tracer.spans
         assert inner.start_time >= outer.start_time
+        assert outer.attributes["gen_ai.request.temperature"] == 0.9
+        assert inner.attributes["gen_ai.request.temperature"] == 0.1

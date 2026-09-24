@@ -26,7 +26,10 @@ from typing import Any
 
 from .callbacks import DriverCallbacks
 
-_starts: contextvars.ContextVar[tuple[int, ...]] = contextvars.ContextVar("prompture_otel_starts", default=())
+# Per-context stack of (start_ns, request_info) so nested calls pair correctly.
+_stack: contextvars.ContextVar[tuple[tuple[int, dict[str, Any]], ...]] = contextvars.ContextVar(
+    "prompture_otel_stack", default=()
+)
 
 _CONTENT_LIMIT = 4000
 
@@ -41,15 +44,15 @@ def _default_tracer() -> Any:
     return trace.get_tracer("prompture")
 
 
-def _push() -> None:
-    _starts.set((*_starts.get(), time.time_ns()))
+def _push(info: dict[str, Any]) -> None:
+    _stack.set((*_stack.get(), (time.time_ns(), info)))
 
 
-def _pop() -> int:
-    stack = _starts.get()
+def _pop() -> tuple[int, dict[str, Any]]:
+    stack = _stack.get()
     if not stack:
-        return time.time_ns()
-    _starts.set(stack[:-1])
+        return time.time_ns(), {}
+    _stack.set(stack[:-1])
     return stack[-1]
 
 
@@ -92,11 +95,9 @@ def otel_callbacks(
         operation: ``gen_ai.operation.name`` value.
     """
     tracer = tracer if tracer is not None else _default_tracer()
-    pending: contextvars.ContextVar[dict[str, Any]] = contextvars.ContextVar("prompture_otel_req", default={})
 
     def on_request(info: dict[str, Any]) -> None:
-        _push()
-        pending.set(info)
+        _push(info)
         if base and base.on_request:
             base.on_request(info)
 
@@ -106,7 +107,7 @@ def otel_callbacks(
         attrs: dict[str, Any] = {"gen_ai.operation.name": operation, "gen_ai.request.model": request_model}
         if provider:
             attrs["gen_ai.system"] = provider
-        opts = info.get("options") or pending.get().get("options") or {}
+        opts = info.get("options") or {}
         for key, attr in (
             ("temperature", "gen_ai.request.temperature"),
             ("max_tokens", "gen_ai.request.max_tokens"),
@@ -117,8 +118,7 @@ def otel_callbacks(
         return tracer.start_span(f"{operation} {request_model}".strip(), start_time=start_ns, attributes=attrs)
 
     def on_response(info: dict[str, Any]) -> None:
-        start_ns = _pop()
-        req = pending.get()
+        start_ns, req = _pop()
         meta = info.get("meta") or {}
         response_model = meta.get("model_name") or (meta.get("route") or {}).get("served_by")
         span = _start(
@@ -149,8 +149,8 @@ def otel_callbacks(
             base.on_response(info)
 
     def on_error(info: dict[str, Any]) -> None:
-        start_ns = _pop()
-        span = _start({**pending.get(), **info}, start_ns)
+        start_ns, req = _pop()
+        span = _start({**req, **info}, start_ns)
         err = info.get("error")
         span.set_attribute("error.type", type(err).__name__ if err is not None else "unknown")
         if isinstance(err, BaseException):
