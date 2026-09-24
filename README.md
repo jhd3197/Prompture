@@ -70,6 +70,8 @@ print(person.name)  # Maria
 - `generate_qa_dataset()` — synthetic JSONL datasets ready for Unsloth, Axolotl, TRL
 
 **Ops**
+- Resilient routing — `resilient()` retries transient errors, honors `Retry-After`, rotates API keys, trips circuit breakers and fails over across models; every response records who served it — see [Resilient Routing](#resilient-routing)
+- [prompture-hub](#prompture-hub-gateway--dashboard) — optional companion app: web dashboard, scoped per-app keys, spend caps and per-call metering (`pip install prompture[hub]`)
 - `prompture serve` — OpenAI-compatible server (`/v1/chat/completions`, `/v1/embeddings`, `/v1/coding-agents`, …) routes any client to any provider
 - Usage tracking — tokens + cost on every call
 - Response cache — memory, SQLite, Redis backends
@@ -103,6 +105,7 @@ use.
 |---|---|---|
 | `redis` | Redis cache backend | `pip install prompture[redis]` |
 | `serve` | FastAPI server mode (`prompture serve`) | `pip install prompture[serve]` |
+| `hub` | [prompture-hub](#prompture-hub-gateway--dashboard) — gateway + dashboard with scoped keys and spend caps | `pip install prompture[hub]` |
 | `airllm` | AirLLM local inference | `pip install prompture[airllm]` |
 | `bedrock` | AWS Bedrock driver (`boto3`) | `pip install prompture[bedrock]` |
 | `sandbox` | Sandboxed Python execution tool (`tukuy`) | `pip install prompture[sandbox]` |
@@ -999,6 +1002,52 @@ for attempt in result["attempts"]:
 
 If every model fails and no `fallback` is provided, an `ExtractionError` is raised with the full `attempts` list, `total_cost`, and `total_tokens` attached as attributes.
 
+### Resilient Routing
+
+`resilient()` wraps several models (and several API keys) into **one driver**. It retries transient failures, waits out short rate limits, parks broken or throttled targets, and fails over to the next model — while exposing the normal driver interface, so it drops into `Conversation`, `Agent`, `ask_for_json`, `extract_with_model` and `prompture serve` unchanged.
+
+```python
+from prompture import Conversation, resilient
+
+driver = resilient(
+    "openai/gpt-4o",                   # preferred
+    "claude/claude-sonnet-4-5",        # if OpenAI is down / rate limited
+    "ollama/llama3.1:8b",              # local last resort
+)
+
+conv = Conversation(driver=driver)
+print(conv.ask("Summarize this ticket: ..."))
+
+resp = driver.generate_messages([{"role": "user", "content": "hi"}], {})
+resp["meta"]["route"]
+# {"served_by": "claude/claude-sonnet-4-5", "fallback": True, "key_id": None,
+#  "attempts": [{"model": "openai/gpt-4o", "outcome": "error",
+#                "error": {"category": "rate_limit", "status_code": 429, "retry_after": 20.0, ...}},
+#               {"model": "claude/claude-sonnet-4-5", "outcome": "ok", "elapsed_ms": 812.4}]}
+```
+
+What happens on each failure is decided by a small, extensible table (`prompture.resilience.classify_error`), which understands `DriverHTTPError`, `requests`/`httpx` errors, OpenAI/Anthropic SDK errors and wrapped exceptions:
+
+| Error | Action |
+|---|---|
+| Timeout, connection reset, 500/502/504 | Retry the same model with exponential backoff |
+| 429, 503/529 overloaded | Park that model/key for `Retry-After` and move on (wait inline if it's the last option) |
+| 401/402, `insufficient_quota` | Disable that key for an hour and move on |
+| 404, context length exceeded, content filter, unsupported feature | Skip to the next model without penalizing its health |
+| Other 400/422 | Raise immediately — no model will fix a bad request |
+
+**Key rotation** — set several keys and each model expands to one target per key, rotated round-robin; a key that returns 401 or runs out of quota is parked while the others keep serving:
+
+```bash
+OPENAI_API_KEYS=sk-one,sk-two,sk-three
+```
+
+Or in code: `register_key_pool("openai", ["sk-one", "sk-two"])`.
+
+**Circuit breakers** are shared process-wide per provider, model and key, and recover lazily (no background threads): after repeated failures a target is skipped until its recovery window passes, then a single probe request decides whether it comes back. Inspect them with `prompture.resilience.get_breaker_registry().snapshot()`.
+
+Tune timings with `RetryPolicy(max_attempts=3, max_wait=10, ...)`, add provider-specific rules with `register_error_rule(ErrorRule(...))`, and use `async_resilient()` for async drivers. Streams fail over transparently until the first chunk is sent.
+
 ### TOON Input — Token Savings
 
 Analyze structured data with automatic TOON conversion for 45-60% fewer tokens:
@@ -1872,6 +1921,38 @@ Selected flags:
 | `--cors-origins` | CORS allowed origins. |
 
 Full example walkthrough: [`examples/openai_server_example.md`](examples/openai_server_example.md).
+
+## prompture-hub: Gateway + Dashboard
+
+Want a UI, or want to let other apps use your provider keys without handing them out? **[prompture-hub](https://github.com/jhd3197/prompture-hub)** is the companion app: a self-hosted gateway and web dashboard built on Prompture.
+
+```
+ your apps / Cursor / Claude Code / scripts
+        │  hub-issued keys (ph_…)
+        ▼
+ ┌─────────────────────────────┐
+ │  prompture-hub              │  dashboard · scoped keys · spend caps
+ │  (FastAPI + React, SQLite)  │  rate limits · usage + cost per call
+ └──────────────┬──────────────┘
+                │  Prompture drivers, resilience, gateway format
+                ▼
+   OpenAI · Anthropic · Google · Groq · Ollama · … (real keys stay here)
+```
+
+```bash
+pip install "prompture[hub]"
+prompture hub            # dashboard at http://localhost:1984/
+```
+
+|  | `prompture serve` | prompture-hub |
+|---|---|---|
+| Use it for | One app / local dev, one shared bearer token | Many apps or people sharing your provider keys |
+| Keys | Single optional `--api-key` | Per-app hub keys, revocable, hashed at rest |
+| Limits | Model allowlist, per-IP rate limit | Per-key model allowlist, spend caps (day/week/month), rate limits |
+| Visibility | Logs | Dashboard: usage, cost, latency, conversations |
+| Extras | Server-side tools (`--sandbox`, `--web-search`), media endpoints | OAuth login, coding-agent console, resumable conversations |
+
+Both speak the same OpenAI wire format — it lives in `prompture.gateway`, so responses, streaming chunks and usage blocks are identical.
 
 ## Integrating & Extending
 

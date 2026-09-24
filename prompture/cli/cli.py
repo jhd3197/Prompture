@@ -201,6 +201,41 @@ def test_suite(specfile: str, providers: str | None, models: str | None, fmt: st
 
 
 @cli.command()
+@click.option("--host", default=None, help="Bind host (default 127.0.0.1, or HUB_HOST).")
+@click.option("--port", default=None, type=int, help="Bind port (default 1984, or HUB_PORT).")
+def hub(host: str | None, port: int | None) -> None:
+    """Launch prompture-hub: gateway + dashboard with scoped keys and spend caps.
+
+    Needs the companion package: pip install "prompture[hub]".
+    Unlike `prompture serve`, the hub keeps provider keys server-side, issues
+    per-app keys with model allowlists, spend caps and rate limits, and
+    records every call in a dashboard.
+    """
+    import os
+
+    try:
+        from prompture_hub.main import cli as hub_cli
+    except ImportError:
+        raise click.ClickException(
+            "prompture-hub is not installed. Install it with:\n\n"
+            '    pip install "prompture[hub]"\n\n'
+            "or run the lightweight single-key server instead: prompture serve"
+        ) from None
+
+    if host:
+        os.environ["HUB_HOST"] = host
+    if port:
+        os.environ["HUB_PORT"] = str(port)
+    try:
+        from prompture_hub.settings import get_settings
+
+        get_settings.cache_clear()
+    except (ImportError, AttributeError):
+        pass
+    hub_cli()
+
+
+@cli.command()
 @click.option("--model", default="openai/gpt-4o-mini", help="Default model string (provider/model).")
 @click.option("--system-prompt", default=None, help="System prompt injected when the client doesn't supply one.")
 @click.option("--host", default="0.0.0.0", help="Bind host.")

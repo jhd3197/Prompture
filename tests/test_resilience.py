@@ -573,3 +573,17 @@ class TestAsyncResilientDriver:
         drv, _ = self._make([AsyncFake("a/one", [_http_error(401, "nope")])])
         with pytest.raises(AllTargetsFailedError):
             asyncio.run(drv.generate("hi", {}))
+
+
+def test_conversation_runs_over_resilient_driver():
+    from prompture import Conversation
+
+    primary = FakeDriver("a/one", [_http_error(503, "down")])
+    backup = FakeDriver("b/two", ["ok"])
+    drv = ResilientDriver(
+        [primary, backup], policy=RetryPolicy(max_attempts=1), breakers=BreakerRegistry(), sleep=lambda s: None
+    )
+    conv = Conversation(driver=drv)
+    assert conv.ask("hello") == "b/two:ok"
+    assert conv.ask("again") == "b/two:ok"
+    assert drv.last_route["served_by"] == "b/two"
