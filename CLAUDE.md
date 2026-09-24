@@ -70,6 +70,7 @@ Configuration is in `pyproject.toml` under `[tool.ruff]`.
 - **`prompture/field_definitions.py`** — Thread-safe global field registry with 50+ predefined fields, template variable substitution (`{{current_year}}`, `{{current_date}}`), and Pydantic Field generation via `field_from_registry()`.
 - **`prompture/infra/settings.py`** — Pydantic-settings `Settings` class loading provider API keys/endpoints from `.env`.
 - **`prompture/infra/discovery.py`** — `get_available_models()` plus per-modality helpers (`get_available_image_gen_models`, `get_available_video_gen_models`, `get_available_audio_models`). Auto-detects models from configured providers via static `*_PRICING` / `KNOWN_MODELS` tables, dynamic provider listing endpoints (Ollama, ElevenLabs), and models.dev capability fallback.
+- **`prompture/resilience/`** — `resilient()` / `ResilientDriver` (+ async): a composite Driver that retries, parks, rotates keys and fails over across targets. `errors.py` is the error→action decision table (`classify_error`, extensible via `register_error_rule`); `breaker.py` holds lazy-recovery circuit breakers scoped by provider/model/key; `keys.py` builds key pools from `{PROVIDER}_API_KEYS`. Every result carries `meta["route"]` (served_by, fallback, attempts).
 - **`prompture/runner.py`** — Spec-driven test suite runner for cross-model comparison.
 - **`prompture/validator.py`** — JSON schema validation via jsonschema with fallback.
 
