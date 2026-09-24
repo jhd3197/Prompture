@@ -1,3 +1,4 @@
+import contextlib
 import json
 import shlex
 
@@ -198,6 +199,33 @@ def test_suite(specfile: str, providers: str | None, models: str | None, fmt: st
         click.echo(format_table(report))
     elif fmt == "json" and not outfile:
         click.echo(json.dumps(report, indent=2, ensure_ascii=False))
+
+
+@cli.command()
+@click.option("--port", default=0, type=int, help="Port on 127.0.0.1 (default: a free one the OS picks).")
+@click.option(
+    "--db", "db_path", default=None, type=click.Path(), help="Usage ledger (default ~/.prompture/usage/usage.db)."
+)
+def companion(port: int, db_path: str | None) -> None:
+    """Serve this machine's Prompture usage to desktop companions (no hub needed).
+
+    Reads the usage ledger every Prompture call writes to, plus rate-limit
+    headroom and provider account balances, and serves them on localhost with
+    the same companion API as prompture-hub. The address and a bearer token are
+    written to ~/.prompture/companion.json. If a companion is already running,
+    this prints its address and exits.
+    """
+    from ..companion import CompanionServer, LedgerSource, running_instance
+
+    existing = running_instance()
+    if existing:
+        click.echo(f"Prompture companion already running at {existing['url']} (pid {existing.get('pid')}).")
+        return
+    server = CompanionServer(LedgerSource(db_path), port=port)
+    click.echo(f"Prompture companion on {server.url} · ledger {server.ledger.db_path}")
+    click.echo("Address and token in ~/.prompture/companion.json. Ctrl+C to stop.")
+    with contextlib.suppress(KeyboardInterrupt):
+        server.run()
 
 
 @cli.command()
