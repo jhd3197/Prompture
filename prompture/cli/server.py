@@ -1020,6 +1020,7 @@ def create_app(
                         model=req.model,
                         extra_args=req.extra_args,
                         session_id=req.session_id,
+                        timeout=req.timeout,
                     ):
                         yield {"data": json.dumps(asdict(event), cls=PromptureJSONEncoder)}
                 except ValueError as exc:
