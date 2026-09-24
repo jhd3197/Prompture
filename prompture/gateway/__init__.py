@@ -1,6 +1,6 @@
 """Building blocks for serving Prompture over HTTP.
 
-Speaks the OpenAI chat-completions and Anthropic messages dialects.
+Speaks the OpenAI chat-completions, OpenAI Responses and Anthropic messages dialects.
 Framework-agnostic: nothing here imports FastAPI, so any server (the
 built-in ``prompture serve``, a standalone gateway, your own app) can
 reuse the same wire-format code.
@@ -40,6 +40,14 @@ from .openai_format import (
     tool_calls_to_openai,
     usage_from_meta,
 )
+from .responses_format import (
+    new_response_id,
+    response_object,
+    responses_sse,
+    responses_to_driver,
+    responses_tools_to_openai,
+    stream_responses_events,
+)
 
 __all__ = [
     "OPTION_FIELDS",
@@ -65,10 +73,16 @@ __all__ = [
     "models_list",
     "new_completion_id",
     "new_message_id",
+    "new_response_id",
+    "response_object",
+    "responses_sse",
+    "responses_to_driver",
+    "responses_tools_to_openai",
     "run_chat",
     "sse",
     "stream_anthropic_events",
     "stream_chat_chunks",
+    "stream_responses_events",
     "to_driver_messages",
     "tool_calls_to_openai",
     "usage_from_meta",
