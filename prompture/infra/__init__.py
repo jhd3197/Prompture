@@ -1,5 +1,14 @@
 """Infrastructure: settings, logging, callbacks, caching, costs, discovery."""
 
+from .accounts import (
+    AccountSnapshot,
+    AccountSource,
+    aget_account_snapshots,
+    get_account_snapshot,
+    get_account_snapshots,
+    register_account_source,
+    unregister_account_source,
+)
 from .billing import (
     BillingAPIError,
     BillingClient,
@@ -128,6 +137,8 @@ from .tracker import UsageEvent, UsageSink, UsageTracker, configure_tracker, get
 
 __all__ = [
     "CODING_AGENT_SPECS",
+    "AccountSnapshot",
+    "AccountSource",
     "ApprovalMode",
     "AudioCostMixin",
     "BillingAPIError",
@@ -171,6 +182,7 @@ __all__ = [
     "acount_request_tokens",
     "add_rate_limits",
     "aestimate_request_cost",
+    "aget_account_snapshots",
     "arun_coding_agent",
     "astream_coding_agent",
     "build_coding_agent_command",
@@ -190,6 +202,8 @@ __all__ = [
     "estimate_cost",
     "estimate_request_cost",
     "estimate_tokens",
+    "get_account_snapshot",
+    "get_account_snapshots",
     "get_available_audio_models",
     "get_available_coding_agents",
     "get_available_decision_models",
@@ -222,6 +236,7 @@ __all__ = [
     "pick_best_coding_agent",
     "reconcile_costs",
     "refresh_rates_cache",
+    "register_account_source",
     "register_model",
     "register_provider",
     "resolve_budget_policy",
@@ -230,6 +245,7 @@ __all__ = [
     "run_coding_agent",
     "settings",
     "supported_coding_agent_ids",
+    "unregister_account_source",
     "verify_coding_agent_binary",
     "verify_coding_agent_executable",
 ]
