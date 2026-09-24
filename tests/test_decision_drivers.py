@@ -511,6 +511,12 @@ class TestDecisionRegistry:
         assert isinstance(k, KevDecisionDriver)
         assert k.model == "kev-9b"
 
+    def test_factory_passes_constructor_options(self):
+        d = get_decision_driver_for_model("laya/router", preload=False, device="cpu")
+        assert d.preload is False and d.device == "cpu" and d.model == "router"
+        a = get_async_decision_driver_for_model("laya/multilingual", preload=False)
+        assert a._sync_driver.preload is False
+
     def test_async_factory(self, monkeypatch):
         monkeypatch.setenv("TYPESAFE_API_KEY", "k")
         d = get_async_decision_driver_for_model("typesafe/jev-latest")
