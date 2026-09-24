@@ -1074,6 +1074,54 @@ Conversation(model_name="auto/cheap").ask("hi")     # cheapest configured chat m
 }
 ```
 
+**Why did it route there?** `explain_route(resp["meta"]["route"])` turns the trace into plain text:
+
+```
+Served by claude/claude-sonnet-4-5 after 2 attempts — strategy: latency
+  1. openai/gpt-4o — rate_limit (429), retry after 20s, parked, 312 ms
+  2. claude/claude-sonnet-4-5 — ok, 812 ms
+```
+
+### Fusion (panel + judge)
+
+Ask several models in parallel and have a judge write one answer from their (anonymized, shuffled) responses. Failed or slow panelists are skipped; with one surviving answer the judge is bypassed. It's a driver too, so it works as a model name:
+
+```python
+from prompture import Conversation
+from prompture.groups import register_fusion
+
+register_fusion(
+    "council",
+    panel=["openai/gpt-4o", "claude/claude-sonnet-4-5", "google/gemini-2.5-pro"],
+    judge="claude/claude-opus-4-6",
+    timeout=60,
+)
+Conversation(model_name="fusion/council").ask("Design a rate limiter for a multi-tenant API.")
+```
+
+`resp["meta"]["fusion"]` lists each panelist's outcome, latency and cost; token and cost totals include the judge.
+
+### Prompt Compression
+
+`compress_messages()` makes conservative, meaning-preserving cuts that matter most in agent loops, where tool output dominates the bill. It trims older oversized tool results to a head+tail window, collapses whitespace in system/tool text and drops repeated system prompts. User and assistant prose, and the latest tool result, are left alone.
+
+```python
+from prompture.infra import compress_messages
+
+messages, stats = compress_messages(messages, max_tool_chars=6000)
+stats.saved_chars, stats.tool_results_trimmed
+```
+
+### Observability — OpenTelemetry
+
+`instrument_driver()` emits one span per driver call following the GenAI semantic conventions (`gen_ai.request.model`, `gen_ai.usage.input_tokens`, …) plus `prompture.cost_usd` and, for resilient drivers, who served the call and whether it fell back. Prompt/completion text is only recorded with `capture_content=True`.
+
+```python
+from prompture import instrument_driver, resilient   # pip install "prompture[otel]"
+
+driver = instrument_driver(resilient("openai/gpt-4o", "claude/claude-sonnet-4-5"))
+```
+
 ### TOON Input — Token Savings
 
 Analyze structured data with automatic TOON conversion for 45-60% fewer tokens:
@@ -1976,9 +2024,10 @@ prompture hub            # dashboard at http://localhost:1984/
 | Keys | Single optional `--api-key` | Per-app hub keys, revocable, hashed at rest |
 | Limits | Model allowlist, per-IP rate limit | Per-key model allowlist, spend caps (day/week/month), rate limits |
 | Visibility | Logs | Dashboard: usage, cost, latency, conversations |
-| Extras | Server-side tools (`--sandbox`, `--web-search`), media endpoints | OAuth login, coding-agent console, resumable conversations |
+| Protocols | OpenAI chat completions, embeddings, media | OpenAI chat completions + Responses API, Anthropic Messages API (Claude Code), embeddings |
+| Extras | Server-side tools (`--sandbox`, `--web-search`), media endpoints | Analytics dashboard, `prompture-hub setup <tool>` for Claude Code / Codex / Cursor / Aider, key expiry + IP allowlists, OAuth login |
 
-Both speak the same OpenAI wire format — it lives in `prompture.gateway`, so responses, streaming chunks and usage blocks are identical.
+Both build on the same wire-format code in `prompture.gateway` (OpenAI chat completions, OpenAI Responses, Anthropic Messages), so responses, streaming events and usage blocks are identical — and both accept `combo/`, `auto/`, `fusion/` and alias model names.
 
 ## Integrating & Extending
 
