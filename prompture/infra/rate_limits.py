@@ -92,6 +92,28 @@ class LimitSnapshot:
         known = {name: f for name, w in self.windows.items() if (f := w.fraction_remaining) is not None}
         return min(known, key=known.__getitem__) if known else None
 
+    def current_headroom(self, now: float | None = None, *, max_age: float = 120.0) -> tuple[float | None, str | None]:
+        """``(headroom, window)`` counting only windows that still apply at *now*.
+
+        A window whose ``resets_at`` has passed has refilled, so it no longer
+        constrains anything. A window without a reset time is trusted for
+        *max_age* seconds after the snapshot was taken.
+        """
+        now = time.time() if now is None else now
+        best: tuple[float | None, str | None] = (None, None)
+        for name, window in self.windows.items():
+            fraction = window.fraction_remaining
+            if fraction is None:
+                continue
+            if window.resets_at is not None:
+                if window.resets_at <= now:
+                    continue
+            elif now - self.observed_at > max_age:
+                continue
+            if best[0] is None or fraction < best[0]:
+                best = (fraction, name)
+        return best
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "source": self.source,

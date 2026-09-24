@@ -16,6 +16,7 @@ from typing import Any
 from .backoff import RetryPolicy
 from .breaker import BreakerRegistry, get_breaker_registry, key_scope, model_scope, provider_scope
 from .errors import ErrorAction, ErrorInfo
+from .headroom import HeadroomTracker, get_headroom_tracker, limits_in, partition_by_headroom
 from .keys import get_key_pool, key_id
 from .strategies import Orderer, RouteStats, get_route_stats
 
@@ -101,12 +102,14 @@ class RoutePlan:
         strategy: str = "priority",
         weights: Sequence[float] | None = None,
         stats: RouteStats | None = None,
+        headroom: HeadroomTracker | None = None,
     ) -> None:
         if not targets:
             raise ValueError("A resilient route needs at least one target")
         self.policy = policy or RetryPolicy()
         self.breakers = breakers or get_breaker_registry()
         self.stats = stats or get_route_stats()
+        self.headroom = headroom or get_headroom_tracker()
         self.orderer = Orderer(strategy, weights=weights, stats=self.stats)
         self._factory = factory
         self._lock = threading.Lock()
@@ -161,8 +164,18 @@ class RoutePlan:
         return self.orderer.strategy
 
     def candidates(self, sticky: int | None = None) -> list[Target]:
+        return self.ordered_candidates(sticky)[0]
+
+    def ordered_candidates(self, sticky: int | None = None) -> tuple[list[Target], list[dict[str, Any]]]:
+        """Candidates in strategy order, low-headroom targets moved last, plus notes on what moved."""
         groups = self.orderer.order(self.groups, key=lambda g: g.model)
-        return [t for g in groups for t in g.ordered(sticky)]
+        targets = [t for g in groups for t in g.ordered(sticky)]
+        return partition_by_headroom(
+            targets,
+            label=lambda t: t.label,
+            tracker=self.headroom,
+            min_headroom=self.policy.min_headroom,
+        )
 
     def gate(self, target: Target) -> tuple[bool, float]:
         """``(allowed, seconds_until_available)`` for *target*."""
@@ -173,6 +186,14 @@ class RoutePlan:
         return all(b.allow() for b in breakers), 0.0
 
     # -- outcomes ----------------------------------------------------------------
+
+    def observe(self, target: Target, obj: Any) -> None:
+        """Record rate limits carried by a result, stream event or exception."""
+        try:
+            snapshot = limits_in(obj)
+        except Exception:  # observability must never break a call
+            return
+        self.headroom.record(target.label, snapshot)
 
     def succeed(self, target: Target, elapsed_ms: float | None = None) -> None:
         for s in target.scopes():
@@ -252,14 +273,22 @@ def sticky_hash(messages: Any) -> int:
     return int.from_bytes(hashlib.sha256(raw).digest()[:8], "big")
 
 
-def route_summary(target: Target, attempts: list[dict[str, Any]], strategy: str = "priority") -> dict[str, Any]:
-    return {
+def route_summary(
+    target: Target,
+    attempts: list[dict[str, Any]],
+    strategy: str = "priority",
+    deprioritized: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    summary = {
         "strategy": strategy,
         "served_by": target.model,
         "key_id": target.key_id,
         "fallback": any(a["outcome"] != "ok" for a in attempts),
         "attempts": attempts,
     }
+    if deprioritized:
+        summary["deprioritized"] = deprioritized
+    return summary
 
 
 def should_retry_same(policy: RetryPolicy, info: ErrorInfo, attempt: int, is_last: bool) -> float | None:
