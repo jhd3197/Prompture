@@ -273,6 +273,9 @@ def stream_responses_events(
     try:
         for e in events:
             kind = e.get("type") if isinstance(e, dict) else getattr(e, "event_type", None)
+            if kind == "thinking_delta":
+                outcome.reasoning = (outcome.reasoning or "") + e.text
+                continue
             if kind in ("delta", "text_delta"):
                 delta = (e.get("text") if isinstance(e, dict) else e.text) or ""
                 if not delta:

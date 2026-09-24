@@ -64,6 +64,7 @@ from .coding_agents import (
     build_coding_agent_command,
     run_coding_agent,
 )
+from .compression import CompressionStats, compress_messages
 from .cost_mixin import AudioCostMixin, EmbeddingCostMixin, VideoCostMixin
 from .discovery import (
     CodingAgentExecutable,
@@ -135,6 +136,7 @@ __all__ = [
     "CodingAgentInfo",
     "CodingAgentRunResult",
     "CodingAgentSpec",
+    "CompressionStats",
     "CostEstimate",
     "CostReconciliation",
     "DriverCallbacks",
@@ -163,6 +165,7 @@ __all__ = [
     "build_coding_agent_command",
     "clear_discovery_cache",
     "clear_overrides",
+    "compress_messages",
     "configure_cache",
     "configure_logging",
     "configure_tracker",

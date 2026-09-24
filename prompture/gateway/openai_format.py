@@ -295,6 +295,7 @@ class ChatOutcome:
     tool_calls: list[dict[str, Any]] = field(default_factory=list)
     stop_reason: str | None = None
     error: BaseException | None = None
+    reasoning: str | None = None
 
     @property
     def usage(self) -> dict[str, Any]:
@@ -321,6 +322,7 @@ def _outcome(resp: dict[str, Any]) -> ChatOutcome:
         meta=resp.get("meta") or resp.get("usage") or {},
         tool_calls=list(resp.get("tool_calls") or []),
         stop_reason=resp.get("stop_reason"),
+        reasoning=resp.get("reasoning_content") or None,
     )
 
 

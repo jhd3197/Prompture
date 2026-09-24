@@ -39,6 +39,7 @@ from .router import Target
 from .strategies import STRATEGIES
 
 COMBO_PREFIX = "combo/"
+FUSION_PREFIX = "fusion/"
 AUTO_PREFIX = "auto/"
 
 AUTO_MODES: dict[str, tuple[tuple[str, ...], str]] = {
@@ -363,12 +364,24 @@ def resolve_virtual_model(model: str, *, async_: bool = False) -> tuple[str, Any
         return resolved, combo.driver(async_=async_)
     if resolved.startswith(AUTO_PREFIX):
         return resolved, _auto_driver(resolved[len(AUTO_PREFIX) :], async_=async_)
+    if resolved.startswith(FUSION_PREFIX):
+        from ..groups.fusion import AsyncFusionDriver, get_fusion, list_fusions
+
+        spec = get_fusion(resolved)
+        if spec is None:
+            known = ", ".join(f"fusion/{f.name}" for f in list_fusions()) or "none registered"
+            raise ValueError(f"Unknown fusion '{resolved}' ({known})")
+        drv = spec.driver()
+        return resolved, AsyncFusionDriver(drv) if async_ else drv
     return resolved, None
 
 
 def list_virtual_models() -> list[str]:
     """Model names that only exist as combos, aliases or auto modes (for ``/v1/models``)."""
+    from ..groups.fusion import list_fusions
+
     names = [c.model_name for c in list_combos()]
+    names += [f"{FUSION_PREFIX}{f.name}" for f in list_fusions()]
     names += sorted(list_model_aliases())
     names += [f"{AUTO_PREFIX}{m}" for m in AUTO_MODES]
     return names

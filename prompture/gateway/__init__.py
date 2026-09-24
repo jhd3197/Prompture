@@ -40,6 +40,7 @@ from .openai_format import (
     tool_calls_to_openai,
     usage_from_meta,
 )
+from .reasoning_cache import ReasoningCache, get_reasoning_cache
 from .responses_format import (
     new_response_id,
     response_object,
@@ -54,6 +55,7 @@ __all__ = [
     "SSE_DONE",
     "SSE_HEADERS",
     "ChatOutcome",
+    "ReasoningCache",
     "anthropic_error",
     "anthropic_message",
     "anthropic_sse",
@@ -69,6 +71,7 @@ __all__ = [
     "extract_images",
     "finish_reason",
     "flatten_content",
+    "get_reasoning_cache",
     "live_events_for",
     "models_list",
     "new_completion_id",

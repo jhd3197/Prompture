@@ -347,7 +347,9 @@ def stream_anthropic_events(
                     outcome.stop_reason = ev.get("stop_reason") or outcome.meta.get("stop_reason")
                 continue
             kind = getattr(ev, "event_type", None)
-            if kind == "text_delta":
+            if kind == "thinking_delta":
+                outcome.reasoning = (outcome.reasoning or "") + ev.text
+            elif kind == "text_delta":
                 yield from text(ev.text)
             elif kind == "tool_use_start":
                 yield from open_block("tool_use", {"type": "tool_use", "id": ev.id, "name": ev.name, "input": {}})

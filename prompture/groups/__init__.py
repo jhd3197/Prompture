@@ -20,6 +20,7 @@ from .debate import (
     DebateGroup,
     DebateResult,
 )
+from .fusion import AsyncFusionDriver, FusionDriver, FusionSpec, get_fusion, list_fusions, register_fusion
 from .groups import (
     GroupAsAgent,
     LoopGroup,
@@ -38,6 +39,7 @@ from .types import (
 __all__ = [
     "AgentError",
     "AsyncDebateGroup",
+    "AsyncFusionDriver",
     "AsyncLoopGroup",
     "AsyncRouterAgent",
     "AsyncSequentialGroup",
@@ -48,6 +50,8 @@ __all__ = [
     "DebateGroup",
     "DebateResult",
     "ErrorPolicy",
+    "FusionDriver",
+    "FusionSpec",
     "GroupAsAgent",
     "GroupCallbacks",
     "GroupResult",
@@ -60,4 +64,7 @@ __all__ = [
     "SequentialGroup",
     "extract_with_consensus",
     "extract_with_consensus_async",
+    "get_fusion",
+    "list_fusions",
+    "register_fusion",
 ]
