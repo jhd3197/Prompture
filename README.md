@@ -1048,6 +1048,32 @@ Or in code: `register_key_pool("openai", ["sk-one", "sk-two"])`.
 
 Tune timings with `RetryPolicy(max_attempts=3, max_wait=10, ...)`, add provider-specific rules with `register_error_rule(ErrorRule(...))`, and use `async_resilient()` for async drivers. Streams fail over transparently until the first chunk is sent.
 
+**Combos, aliases and `auto/` models** — give a routing policy a name and use it anywhere a model string goes (`get_driver_for_model`, `Conversation(model_name=...)`, `prompture serve`, prompture-hub):
+
+```python
+from prompture import Conversation, register_combo, register_model_alias
+
+register_combo(
+    "chat",
+    ["openai/gpt-4o", "claude/claude-sonnet-4-5", "groq/llama-3.3-70b-versatile"],
+    strategy="latency",   # priority | round_robin | weighted | latency | p2c | last_good | cheapest
+    sticky=True,          # keep a conversation on one API key so prompt caches stay warm
+)
+register_model_alias("default", "combo/chat")
+
+Conversation(model_name="default").ask("hi")        # routed through the combo
+Conversation(model_name="auto/cheap").ask("hi")     # cheapest configured chat models, across providers
+```
+
+`auto/<mode>` builds a fallback chain from whichever providers you have keys for — `auto/cheap`, `auto/fast`, `auto/best`, `auto/balanced`, or a pricing tier `auto/budget` / `auto/standard` / `auto/premium`. Combos and aliases can also live in JSON, loaded with `load_combos(path)` or automatically from `PROMPTURE_COMBOS_FILE`:
+
+```json
+{
+  "combos": {"chat": {"targets": ["openai/gpt-4o", "claude/claude-sonnet-4-5"], "strategy": "latency"}},
+  "aliases": {"default": "combo/chat", "fast": "groq/llama-3.3-70b-versatile"}
+}
+```
+
 ### TOON Input — Token Savings
 
 Analyze structured data with automatic TOON conversion for 45-60% fewer tokens:
