@@ -37,6 +37,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from .rate_limits import LimitSnapshot
+
 logger = logging.getLogger("prompture.tracker")
 
 
@@ -215,6 +217,25 @@ class UsageEvent:
             self.id = str(uuid.uuid4())
         if not self.timestamp:
             self.timestamp = datetime.now(timezone.utc).isoformat()
+
+    @property
+    def cost_status(self) -> str | None:
+        """How ``cost`` was determined: ``"estimated"``, ``"partial"`` or ``"unknown"``."""
+        status = self.metadata.get("cost_status")
+        return status if isinstance(status, str) else None
+
+    @property
+    def cost_source(self) -> str | None:
+        """Which pricing source priced this call (e.g. ``"local_kb"``, ``"models.dev"``)."""
+        pricing = self.metadata.get("pricing")
+        source = pricing.get("source") if isinstance(pricing, dict) else None
+        return source if isinstance(source, str) else None
+
+    @property
+    def rate_limits(self) -> LimitSnapshot | None:
+        """Rate-limit headroom the provider reported on this call, if any."""
+        data = self.metadata.get("rate_limits")
+        return LimitSnapshot.from_dict(data) if isinstance(data, dict) else None
 
 
 def _error_message(error: BaseException | None) -> str | None:
