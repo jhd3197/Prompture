@@ -38,6 +38,7 @@ from .claude_driver import (
     _convert_tools_to_anthropic,
     _extract_anthropic_system_and_messages,
     _extract_anthropic_text_and_tool_calls,
+    _json_mode_input,
 )
 
 logger = logging.getLogger(__name__)
@@ -152,7 +153,7 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
                 text = ""
                 for block in resp.content:
                     if block.type == "tool_use":
-                        text = json.dumps(block.input)
+                        text = json.dumps(_json_mode_input(block.input, options["json_schema"]))
                         break
             else:
                 resp = await client.messages.create(**common_kwargs)
