@@ -73,6 +73,13 @@ class AsyncOpenAICompatibleDriver(CostMixin, AsyncDriver):
         self.profile = profile
         self.model = model
 
+    def _usage_model_name(self, model: str) -> str | None:
+        """Record usage as ``openai_compatible/<profile>/<model>``, the same
+        string the model is requested with, so ledgers and gateways agree."""
+        if model.startswith("openai_compatible/"):
+            return model
+        return f"openai_compatible/{self.profile}/{model}" if self.profile else f"openai_compatible/{model}"
+
     def _headers(self, api_key: str | None) -> dict[str, str]:
         h = {"Content-Type": "application/json"}
         if api_key:

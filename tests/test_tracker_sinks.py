@@ -211,3 +211,23 @@ def test_flush_interval_zero_keeps_batching(tmp_path):
     assert _rows_on_disk(db) == 0
     tracker.flush()
     assert _rows_on_disk(db) == 1
+
+
+def test_openai_compatible_usage_is_recorded_under_its_profile(tmp_path, monkeypatch):
+    from prompture.drivers.async_openai_compatible_driver import AsyncOpenAICompatibleDriver
+    from prompture.drivers.openai_compatible_driver import OpenAICompatibleDriver
+    from prompture.infra import tracker as tracker_module
+
+    seen: list[UsageEvent] = []
+    monkeypatch.setattr(tracker_module, "_tracker", UsageTracker(db_path=tmp_path / "u.db", sinks=[seen.append]))
+    monkeypatch.setenv("FIREWORKS_API_KEY", "k")
+
+    fireworks = OpenAICompatibleDriver(model="fireworks/accounts/fw/models/llama")
+    fireworks._auto_record_usage({"meta": {"model_name": "accounts/fw/models/llama", "cost": 0.1}}, 5.0)
+    custom = AsyncOpenAICompatibleDriver(api_key="k", model="echo", endpoint="http://127.0.0.1:1/v1")
+    custom._auto_record_usage({"meta": {"model_name": "echo"}}, 5.0)
+
+    assert [(e.provider, e.model_name) for e in seen] == [
+        ("openai_compatible", "openai_compatible/fireworks/accounts/fw/models/llama"),
+        ("openai_compatible", "openai_compatible/echo"),
+    ]

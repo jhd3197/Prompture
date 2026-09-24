@@ -264,6 +264,12 @@ class AsyncDriver(ABC):
     # Auto-recording to usage tracker
     # ------------------------------------------------------------------
 
+    def _usage_model_name(self, model: str) -> str | None:
+        """The ``provider/model`` string usage is recorded under, when the
+        driver knows better than the class-name fallback. ``None`` keeps the
+        default."""
+        return None
+
     def _auto_record_usage(
         self,
         resp: dict[str, Any],
@@ -288,6 +294,10 @@ class AsyncDriver(ABC):
             driver_name = (
                 meta.get("model_name") or meta.get("returned_model") or getattr(self, "model", self.__class__.__name__)
             )
+
+            # Drivers that know their own provider prefix qualify the name
+            # themselves (e.g. OpenAI-compatible profiles).
+            driver_name = self._usage_model_name(driver_name) or driver_name
 
             if "/" in driver_name:
                 provider, model = driver_name.split("/", 1)

@@ -228,7 +228,7 @@ def companion(port: int, db_path: str | None, exit_with_pid: int | None) -> None
         click.echo(f"Prompture companion already running at {existing['url']} (pid {existing.get('pid')}).")
         return
     server = CompanionServer(LedgerSource(db_path), port=port)
-    click.echo(f"Prompture companion on {server.url} · ledger {server.ledger.db_path}")
+    click.echo(f"Prompture companion on {server.url} - ledger {server.ledger.db_path}")
     click.echo("Address and token in ~/.prompture/companion.json. Ctrl+C to stop.")
     if exit_with_pid:
         from ..companion.server import stop_when_process_exits
