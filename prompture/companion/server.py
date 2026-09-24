@@ -269,3 +269,43 @@ def running_instance(path: Path = STATE_FILE, timeout: float = 2.0) -> dict[str,
     except OSError:
         return None
     return None
+
+
+def process_alive(pid: int) -> bool:
+    """Whether *pid* is a running process (best effort, no extra dependencies)."""
+    if pid <= 0:
+        return False
+    if os.name == "nt":
+        import ctypes
+
+        synchronize, wait_timeout = 0x00100000, 0x00000102
+        kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
+        handle = kernel32.OpenProcess(synchronize, False, pid)
+        if not handle:
+            return False
+        try:
+            return kernel32.WaitForSingleObject(handle, 0) == wait_timeout
+        finally:
+            kernel32.CloseHandle(handle)
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def stop_when_process_exits(server: CompanionServer, pid: int, interval: float = 3.0) -> threading.Thread:
+    """Shut *server* down once process *pid* is gone."""
+
+    def watch() -> None:
+        while not server.stopping.wait(interval):
+            if not process_alive(pid):
+                logger.info("Owner process %s exited; stopping the companion.", pid)
+                server.shutdown()
+                return
+
+    thread = threading.Thread(target=watch, daemon=True)
+    thread.start()
+    return thread

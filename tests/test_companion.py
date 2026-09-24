@@ -202,3 +202,35 @@ def test_state_file_round_trip(tmp_path):
     srv.shutdown()
     thread.join(5)
     assert read_state(state_path) is None
+
+
+def test_stops_when_owner_process_exits(tmp_path):
+    import os
+    import subprocess
+    import sys
+    import threading
+
+    from prompture.companion.server import process_alive, stop_when_process_exits
+
+    assert process_alive(os.getpid())
+    owner = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(0.5)"])
+    _, source = _ledger(tmp_path)
+    srv = CompanionServer(source, bus=LiveBus(), state_path=tmp_path / "c.json")
+    thread = threading.Thread(target=srv.run, daemon=True)
+    thread.start()
+    stop_when_process_exits(srv, owner.pid, interval=0.2)
+    owner.wait()
+    thread.join(5)
+    assert not thread.is_alive()
+    assert not process_alive(owner.pid)
+
+
+def test_module_entry_point_runs_the_cli():
+    import subprocess
+    import sys
+
+    out = subprocess.run(
+        [sys.executable, "-m", "prompture", "companion", "--help"], capture_output=True, text=True, timeout=120
+    )
+    assert out.returncode == 0
+    assert "--exit-with-pid" in out.stdout

@@ -206,7 +206,13 @@ def test_suite(specfile: str, providers: str | None, models: str | None, fmt: st
 @click.option(
     "--db", "db_path", default=None, type=click.Path(), help="Usage ledger (default ~/.prompture/usage/usage.db)."
 )
-def companion(port: int, db_path: str | None) -> None:
+@click.option(
+    "--exit-with-pid",
+    default=None,
+    type=int,
+    help="Stop when this process exits (used by apps that start the companion for themselves).",
+)
+def companion(port: int, db_path: str | None, exit_with_pid: int | None) -> None:
     """Serve this machine's Prompture usage to desktop companions (no hub needed).
 
     Reads the usage ledger every Prompture call writes to, plus rate-limit
@@ -224,6 +230,10 @@ def companion(port: int, db_path: str | None) -> None:
     server = CompanionServer(LedgerSource(db_path), port=port)
     click.echo(f"Prompture companion on {server.url} · ledger {server.ledger.db_path}")
     click.echo("Address and token in ~/.prompture/companion.json. Ctrl+C to stop.")
+    if exit_with_pid:
+        from ..companion.server import stop_when_process_exits
+
+        stop_when_process_exits(server, exit_with_pid)
     with contextlib.suppress(KeyboardInterrupt):
         server.run()
 
