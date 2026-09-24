@@ -49,6 +49,8 @@ import logging
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from typing import Any
 
+from ..infra.rate_limits import add_rate_limits, limits_from_response
+
 logger = logging.getLogger(__name__)
 
 CostFn = Callable[[int, int, int], float]
@@ -267,6 +269,7 @@ def iter_openai_compat_live_events(
     stop = _build_message_stop(state, model, cost)
     if meta_fn is not None:
         stop.usage.update(meta_fn(state))
+    add_rate_limits(stop.usage, limits_from_response(getattr(stream, "response", None)))
     yield stop
 
 
@@ -298,6 +301,7 @@ async def aiter_openai_compat_live_events(
     stop = _build_message_stop(state, model, cost)
     if meta_fn is not None:
         stop.usage.update(meta_fn(state))
+    add_rate_limits(stop.usage, limits_from_response(getattr(stream, "response", None)))
     yield stop
 
 

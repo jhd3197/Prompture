@@ -12,6 +12,7 @@ except ImportError:
     groq = None  # type: ignore[assignment]
 
 from ..infra.cost_mixin import CostMixin
+from ..infra.rate_limits import add_rate_limits, attach_rate_limit_hook, capture_rate_limits
 from .async_base import AsyncDriver
 from .base import _parse_tool_arguments
 from .groq_driver import GroqDriver
@@ -42,6 +43,7 @@ class AsyncGroqDriver(CostMixin, AsyncDriver):
                 "See https://github.com/jhd3197/prompture#configuration"
             )
         self.client: Any = groq.AsyncClient(api_key=self.api_key)
+        attach_rate_limit_hook(self.client)
 
     supports_messages = True
 
@@ -84,7 +86,8 @@ class AsyncGroqDriver(CostMixin, AsyncDriver):
         if options.get("json_mode"):
             kwargs["response_format"] = {"type": "json_object"}
 
-        resp = await self.client.chat.completions.create(**kwargs)
+        with capture_rate_limits() as limits:
+            resp = await self.client.chat.completions.create(**kwargs)
 
         from .openai_driver import _extract_openai_cached_tokens
 
@@ -118,6 +121,7 @@ class AsyncGroqDriver(CostMixin, AsyncDriver):
         if not text and reasoning_content:
             text = reasoning_content
 
+        add_rate_limits(meta, limits.snapshot)
         result: dict[str, Any] = {"text": text, "meta": meta}
         if reasoning_content is not None:
             result["reasoning_content"] = reasoning_content
@@ -158,7 +162,8 @@ class AsyncGroqDriver(CostMixin, AsyncDriver):
         if supports_temperature and "temperature" in opts:
             kwargs["temperature"] = opts["temperature"]
 
-        resp = await self.client.chat.completions.create(**kwargs)
+        with capture_rate_limits() as limits:
+            resp = await self.client.chat.completions.create(**kwargs)
 
         from .openai_driver import _extract_openai_cached_tokens
 
@@ -201,6 +206,7 @@ class AsyncGroqDriver(CostMixin, AsyncDriver):
                     }
                 )
 
+        add_rate_limits(meta, limits.snapshot)
         result: dict[str, Any] = {
             "text": text,
             "meta": meta,

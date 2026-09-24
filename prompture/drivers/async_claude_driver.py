@@ -14,6 +14,7 @@ except ImportError:
     anthropic = None  # type: ignore[assignment]
 
 from ..infra.cost_mixin import CostMixin
+from ..infra.rate_limits import add_rate_limits, attach_rate_limit_hook, capture_rate_limits, limits_from_response
 from ._prompt_cache import (
     apply_cache_control_to_messages as _apply_cache_control_to_messages,
 )
@@ -72,6 +73,7 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
         # we reuse its HTTP/2 connection pool instead of building a fresh TLS
         # session per request.
         self.client = anthropic.AsyncAnthropic(api_key=self.api_key)
+        attach_rate_limit_hook(self.client)
 
     supports_messages = True
 
@@ -143,24 +145,25 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
             common_kwargs["timeout"] = opts["timeout"]
 
         _apply_anthropic_reporting_options(common_kwargs, opts)
-        if options.get("json_mode"):
-            if json_mode_tools is not None:
-                resp = await client.messages.create(  # type: ignore[call-overload]
-                    **common_kwargs,
-                    tools=json_mode_tools,
-                    tool_choice={"type": "tool", "name": "extract_json"},
-                )
-                text = ""
-                for block in resp.content:
-                    if block.type == "tool_use":
-                        text = json.dumps(_json_mode_input(block.input, options["json_schema"]))
-                        break
+        with capture_rate_limits() as limits:
+            if options.get("json_mode"):
+                if json_mode_tools is not None:
+                    resp = await client.messages.create(  # type: ignore[call-overload]
+                        **common_kwargs,
+                        tools=json_mode_tools,
+                        tool_choice={"type": "tool", "name": "extract_json"},
+                    )
+                    text = ""
+                    for block in resp.content:
+                        if block.type == "tool_use":
+                            text = json.dumps(_json_mode_input(block.input, options["json_schema"]))
+                            break
+                else:
+                    resp = await client.messages.create(**common_kwargs)
+                    text = resp.content[0].text
             else:
                 resp = await client.messages.create(**common_kwargs)
                 text = resp.content[0].text
-        else:
-            resp = await client.messages.create(**common_kwargs)
-            text = resp.content[0].text
 
         reasoning_content = ClaudeDriver._extract_thinking(resp.content)
         if not text and reasoning_content:
@@ -168,6 +171,7 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
 
         meta = usage_meta(self, "claude", model, resp.usage, response=resp, options=opts)
         meta["raw_response"] = as_dict(resp)
+        add_rate_limits(meta, limits.snapshot)
 
         result: dict[str, Any] = {"text": text, "meta": meta}
         if reasoning_content is not None:
@@ -252,10 +256,12 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
             kwargs["tool_choice"] = tool_choice
 
         _apply_anthropic_reporting_options(kwargs, opts)
-        resp = await client.messages.create(**kwargs)
+        with capture_rate_limits() as limits:
+            resp = await client.messages.create(**kwargs)
 
         meta = usage_meta(self, "claude", model, resp.usage, response=resp, options=opts)
         meta["raw_response"] = as_dict(resp)
+        add_rate_limits(meta, limits.snapshot)
         meta["raw_stop_reason"] = resp.stop_reason
 
         text, tool_calls_out = _extract_anthropic_text_and_tool_calls(resp.content)
@@ -322,6 +328,7 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
 
         _apply_anthropic_reporting_options(kwargs, opts)
         async with client.messages.stream(**kwargs) as stream:
+            limits = limits_from_response(getattr(stream, "response", None))
             async for event in stream:
                 if hasattr(event, "type"):
                     if event.type == "content_block_delta" and hasattr(event, "delta"):
@@ -349,6 +356,7 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
             self, "claude", model, reported_usage or None, response=response_info, options=opts, complete=usage_finished
         )
         meta["raw_response"] = {}
+        add_rate_limits(meta, limits)
         done = {"type": "done", "text": full_text, "meta": meta}
         if full_reasoning:
             done["reasoning_content"] = full_reasoning
@@ -431,6 +439,7 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
 
         _apply_anthropic_reporting_options(kwargs, opts)
         async with client.messages.stream(**kwargs) as stream:
+            limits = limits_from_response(getattr(stream, "response", None))
             async for event in stream:
                 ev_type = getattr(event, "type", "")
                 if ev_type == "message_start":
@@ -519,4 +528,5 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
             self, "claude", model, reported_usage or None, response=response_info, options=opts, complete=usage_finished
         )
         meta["raw_stop_reason"] = stop_reason
+        add_rate_limits(meta, limits)
         yield MessageStop(stop_reason=_normalize_stop_reason(stop_reason), usage=meta)

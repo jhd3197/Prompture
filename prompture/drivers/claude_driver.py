@@ -16,6 +16,7 @@ except ImportError:
     anthropic = None  # type: ignore[assignment]
 
 from ..infra.cost_mixin import CostMixin
+from ..infra.rate_limits import add_rate_limits, attach_rate_limit_hook, capture_rate_limits, limits_from_response
 from ._prompt_cache import (
     CACHE_PROMPT_MIN_CHARS,
     MAX_CACHE_BREAKPOINTS,
@@ -449,6 +450,7 @@ class ClaudeDriver(CostMixin, Driver):
         supports_temperature = self._get_model_config("claude", model)["supports_temperature"]
 
         client = anthropic.Anthropic(api_key=self.api_key)
+        attach_rate_limit_hook(client)
 
         # _do_generate uses the simple system/non-system split (no tool-message
         # translation) — pre-existing behaviour, intentionally distinct from the
@@ -493,24 +495,25 @@ class ClaudeDriver(CostMixin, Driver):
             common_kwargs["timeout"] = opts["timeout"]
 
         _apply_anthropic_reporting_options(common_kwargs, opts)
-        if options.get("json_mode"):
-            if json_mode_tools is not None:
-                resp = client.messages.create(  # type: ignore[call-overload]
-                    **common_kwargs,
-                    tools=json_mode_tools,
-                    tool_choice={"type": "tool", "name": "extract_json"},
-                )
-                text = ""
-                for block in resp.content:
-                    if block.type == "tool_use":
-                        text = json.dumps(_json_mode_input(block.input, options["json_schema"]))
-                        break
+        with capture_rate_limits() as limits:
+            if options.get("json_mode"):
+                if json_mode_tools is not None:
+                    resp = client.messages.create(  # type: ignore[call-overload]
+                        **common_kwargs,
+                        tools=json_mode_tools,
+                        tool_choice={"type": "tool", "name": "extract_json"},
+                    )
+                    text = ""
+                    for block in resp.content:
+                        if block.type == "tool_use":
+                            text = json.dumps(_json_mode_input(block.input, options["json_schema"]))
+                            break
+                else:
+                    resp = client.messages.create(**common_kwargs)
+                    text = resp.content[0].text
             else:
                 resp = client.messages.create(**common_kwargs)
                 text = resp.content[0].text
-        else:
-            resp = client.messages.create(**common_kwargs)
-            text = resp.content[0].text
 
         reasoning_content = self._extract_thinking(resp.content)
         if not text and reasoning_content:
@@ -518,6 +521,7 @@ class ClaudeDriver(CostMixin, Driver):
 
         meta = usage_meta(self, "claude", model, resp.usage, response=resp, options=opts)
         meta["raw_response"] = as_dict(resp)
+        add_rate_limits(meta, limits.snapshot)
 
         result: dict[str, Any] = {"text": text, "meta": meta}
         if reasoning_content is not None:
@@ -585,6 +589,7 @@ class ClaudeDriver(CostMixin, Driver):
         supports_temperature = self._get_model_config("claude", model)["supports_temperature"]
 
         client = anthropic.Anthropic(api_key=self.api_key)
+        attach_rate_limit_hook(client)
 
         system_content, api_messages = _extract_anthropic_system_and_messages(messages)
         cache_kwargs = _cache_opts(opts, model)
@@ -613,10 +618,12 @@ class ClaudeDriver(CostMixin, Driver):
             kwargs["tool_choice"] = tool_choice
 
         _apply_anthropic_reporting_options(kwargs, opts)
-        resp = client.messages.create(**kwargs)
+        with capture_rate_limits() as limits:
+            resp = client.messages.create(**kwargs)
 
         meta = usage_meta(self, "claude", model, resp.usage, response=resp, options=opts)
         meta["raw_response"] = as_dict(resp)
+        add_rate_limits(meta, limits.snapshot)
         meta["raw_stop_reason"] = resp.stop_reason
 
         text, tool_calls_out = _extract_anthropic_text_and_tool_calls(resp.content)
@@ -653,6 +660,7 @@ class ClaudeDriver(CostMixin, Driver):
         model = options.get("model", self.model)
         supports_temperature = self._get_model_config("claude", model)["supports_temperature"]
         client = anthropic.Anthropic(api_key=self.api_key)
+        attach_rate_limit_hook(client)
 
         system_content, api_messages = _extract_anthropic_system_and_messages(messages)
         cache_kwargs = _cache_opts(opts, model)
@@ -683,6 +691,7 @@ class ClaudeDriver(CostMixin, Driver):
 
         _apply_anthropic_reporting_options(kwargs, opts)
         with client.messages.stream(**kwargs) as stream:
+            limits = limits_from_response(getattr(stream, "response", None))
             for event in stream:
                 if hasattr(event, "type"):
                     if event.type == "content_block_delta" and hasattr(event, "delta"):
@@ -710,6 +719,7 @@ class ClaudeDriver(CostMixin, Driver):
             self, "claude", model, reported_usage or None, response=response_info, options=opts, complete=usage_finished
         )
         meta["raw_response"] = {}
+        add_rate_limits(meta, limits)
         done = {"type": "done", "text": full_text, "meta": meta}
         if full_reasoning:
             done["reasoning_content"] = full_reasoning
@@ -759,6 +769,7 @@ class ClaudeDriver(CostMixin, Driver):
         model = options.get("model", self.model)
         supports_temperature = self._get_model_config("claude", model)["supports_temperature"]
         client = anthropic.Anthropic(api_key=self.api_key)
+        attach_rate_limit_hook(client)
 
         system_content, api_messages = _extract_anthropic_system_and_messages(messages)
         cache_kwargs = _cache_opts(opts, model)
@@ -801,6 +812,7 @@ class ClaudeDriver(CostMixin, Driver):
 
         _apply_anthropic_reporting_options(kwargs, opts)
         with client.messages.stream(**kwargs) as stream:
+            limits = limits_from_response(getattr(stream, "response", None))
             for event in stream:
                 ev_type = getattr(event, "type", "")
                 if ev_type == "message_start":
@@ -889,4 +901,5 @@ class ClaudeDriver(CostMixin, Driver):
             self, "claude", model, reported_usage or None, response=response_info, options=opts, complete=usage_finished
         )
         meta["raw_stop_reason"] = stop_reason
+        add_rate_limits(meta, limits)
         yield MessageStop(stop_reason=_normalize_stop_reason(stop_reason), usage=meta)

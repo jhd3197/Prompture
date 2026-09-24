@@ -101,6 +101,14 @@ from .model_rates import (
 )
 from .otel import instrument_driver, otel_callbacks
 from .provider_env import ProviderEnvironment
+from .rate_limits import (
+    LimitSnapshot,
+    LimitWindow,
+    add_rate_limits,
+    capture_rate_limits,
+    limits_from_response,
+    parse_rate_limit_headers,
+)
 
 try:
     from .tukuy_backend import TukuyLLMBackend, create_tukuy_backend
@@ -142,6 +150,8 @@ __all__ = [
     "DriverCallbacks",
     "EmbeddingCostMixin",
     "JSONFormatter",
+    "LimitSnapshot",
+    "LimitWindow",
     "LocalCostSummary",
     "MemoryCacheBackend",
     "ModelCapabilities",
@@ -159,10 +169,12 @@ __all__ = [
     "UsageTracker",
     "VideoCostMixin",
     "acount_request_tokens",
+    "add_rate_limits",
     "aestimate_request_cost",
     "arun_coding_agent",
     "astream_coding_agent",
     "build_coding_agent_command",
+    "capture_rate_limits",
     "clear_discovery_cache",
     "clear_overrides",
     "compress_messages",
@@ -201,10 +213,12 @@ __all__ = [
     "get_recently_used_models",
     "get_tracker",
     "instrument_driver",
+    "limits_from_response",
     "otel_callbacks",
     "override_capabilities",
     "parse_claude_stream_json_lines",
     "parse_codex_json_lines",
+    "parse_rate_limit_headers",
     "pick_best_coding_agent",
     "reconcile_costs",
     "refresh_rates_cache",
