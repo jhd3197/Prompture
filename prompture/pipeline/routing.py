@@ -422,6 +422,14 @@ class ModelRouter:
 
         return available
 
+    def available_models(self) -> list[str]:
+        """Models this router may pick from (configured providers, preferences, exclusions)."""
+        return self._get_available_models()
+
+    def model_tier(self, model: str) -> str:
+        """Pricing tier of *model*: ``"budget"``, ``"standard"`` or ``"premium"``."""
+        return self._get_model_tier(model)
+
     def _get_model_tier(self, model: str) -> str:
         """Determine which tier a model belongs to.
 

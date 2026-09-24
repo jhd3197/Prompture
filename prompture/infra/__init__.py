@@ -64,6 +64,7 @@ from .coding_agents import (
     build_coding_agent_command,
     run_coding_agent,
 )
+from .compression import CompressionStats, compress_messages
 from .cost_mixin import AudioCostMixin, EmbeddingCostMixin, VideoCostMixin
 from .discovery import (
     CodingAgentExecutable,
@@ -98,6 +99,7 @@ from .model_rates import (
     get_model_rates,
     refresh_rates_cache,
 )
+from .otel import instrument_driver, otel_callbacks
 from .provider_env import ProviderEnvironment
 
 try:
@@ -134,6 +136,7 @@ __all__ = [
     "CodingAgentInfo",
     "CodingAgentRunResult",
     "CodingAgentSpec",
+    "CompressionStats",
     "CostEstimate",
     "CostReconciliation",
     "DriverCallbacks",
@@ -162,6 +165,7 @@ __all__ = [
     "build_coding_agent_command",
     "clear_discovery_cache",
     "clear_overrides",
+    "compress_messages",
     "configure_cache",
     "configure_logging",
     "configure_tracker",
@@ -196,6 +200,8 @@ __all__ = [
     "get_model_rates",
     "get_recently_used_models",
     "get_tracker",
+    "instrument_driver",
+    "otel_callbacks",
     "override_capabilities",
     "parse_claude_stream_json_lines",
     "parse_codex_json_lines",

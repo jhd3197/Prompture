@@ -131,7 +131,7 @@ def _resolve_cls(cls_path: str) -> type[Any]:
 def _make_factory(spec: DriverSpec) -> Callable[[str | None], object]:
     """Build a closure that constructs a driver from *spec*, reading settings at call time."""
 
-    def factory(model: str | None = None) -> object:
+    def factory(model: str | None = None, **overrides: Any) -> object:
         from ..infra.settings import settings
 
         cls = _resolve_cls(spec.cls_path)
@@ -139,6 +139,9 @@ def _make_factory(spec: DriverSpec) -> Callable[[str | None], object]:
         for ctor_kwarg, attr_name in spec.kwarg_map.items():
             kwargs[ctor_kwarg] = getattr(settings, attr_name, None)
         kwargs["model"] = model or getattr(settings, spec.default_model, spec.default_model)
+        # Explicit constructor options (e.g. Laya's ``preload``/``device``)
+        # win over the values read from settings.
+        kwargs.update(overrides)
         return cls(**kwargs)
 
     return factory

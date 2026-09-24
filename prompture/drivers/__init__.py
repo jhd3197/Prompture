@@ -481,6 +481,13 @@ def get_driver_for_model(
     if not model_str:
         raise ValueError("Model string cannot be empty")
 
+    # Aliases, combo/<name> and auto/<mode> resolve to resilient drivers.
+    from ..resilience.virtual import resolve_virtual_model
+
+    model_str, virtual = resolve_virtual_model(model_str)
+    if virtual is not None:
+        return virtual
+
     # Extract provider and model ID
     parts = model_str.split("/", 1)
     provider = parts[0].lower()

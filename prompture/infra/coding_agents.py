@@ -477,6 +477,7 @@ async def astream_coding_agent(
     verify_binary: bool = True,
     verify_timeout: int = 5,
     session_id: str | None = None,
+    timeout: float | None = None,
 ) -> AsyncIterator[CodingAgentEvent]:
     """Stream :class:`CodingAgentEvent` instances from a coding-agent CLI as they arrive.
 
@@ -485,7 +486,8 @@ async def astream_coding_agent(
     structured enough to be useful event-by-event.
 
     Cancelling the generator (e.g. via ``async for`` break) terminates the
-    underlying subprocess.
+    underlying subprocess. With *timeout* (seconds for the whole run), an
+    overrunning agent is terminated and a final ``error`` event is yielded.
     """
     agent_id = _normalize_agent(agent)
     mode = _normalize_approval_mode(approval_mode)
@@ -548,8 +550,20 @@ async def astream_coding_agent(
         stderr=asyncio.subprocess.PIPE,
     )
     assert proc.stdout is not None
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout if timeout else None
     try:
-        async for raw in proc.stdout:
+        while True:
+            try:
+                if deadline is None:
+                    raw = await proc.stdout.readline()
+                else:
+                    raw = await asyncio.wait_for(proc.stdout.readline(), max(0.0, deadline - loop.time()))
+            except asyncio.TimeoutError:
+                yield CodingAgentEvent(type="error", error=f"{agent_id} timed out after {timeout:g}s")
+                return
+            if not raw:
+                break
             line = raw.decode(errors="replace").rstrip()
             if not line:
                 continue

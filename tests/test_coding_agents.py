@@ -472,6 +472,9 @@ class TestStreaming:
                 except StopIteration:
                     raise StopAsyncIteration from None
 
+            async def readline(self) -> bytes:
+                return next(self._iter, b"")
+
         class _FakeStderr:
             def __init__(self, data: bytes):
                 self._data = data
@@ -578,6 +581,54 @@ class TestStreaming:
         assert len(events) == 1
         assert events[0].type == "error"
         assert "exited with code 1" in (events[0].error or "")
+
+    @patch(
+        "prompture.infra.coding_agents.resolve_coding_agent_executable",
+        return_value=_executable("/usr/local/bin/claude"),
+    )
+    def test_astream_timeout_terminates_hung_agent(self, _mock_resolve, tmp_path):
+        import asyncio
+
+        from prompture.infra import astream_coding_agent
+
+        terminated = []
+
+        class _HungStdout:
+            async def readline(self) -> bytes:
+                await asyncio.sleep(30)
+                return b""
+
+        class _HungProc:
+            stdout = _HungStdout()
+            stderr = None
+            returncode = None
+
+            async def wait(self):
+                self.returncode = -15
+                return -15
+
+            def terminate(self):
+                terminated.append(True)
+
+            def kill(self):
+                pass
+
+        async def _factory(*args, **kwargs):
+            return _HungProc()
+
+        async def _run():
+            with patch("prompture.infra.coding_agents.asyncio.create_subprocess_exec", side_effect=_factory):
+                return [
+                    ev
+                    async for ev in astream_coding_agent(
+                        "claude", "x", cwd=tmp_path, approval_mode="auto", timeout=0.05
+                    )
+                ]
+
+        events = asyncio.run(_run())
+        assert [e.type for e in events] == ["error"]
+        assert "timed out after 0.05s" in (events[0].error or "")
+        assert terminated == [True]
 
     @patch(
         "prompture.infra.coding_agents.resolve_coding_agent_executable",

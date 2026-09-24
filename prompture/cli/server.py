@@ -111,6 +111,7 @@ def create_app(
 
     from ..agents.async_conversation import AsyncConversation
     from ..agents.tools_schema import ToolRegistry
+    from ..gateway import chat_chunk, chat_completion, driver_options, extract_images, flatten_content
 
     # ---- Authentication dependency ----
 
@@ -205,6 +206,11 @@ def create_app(
         presence_penalty: float | None = None
         frequency_penalty: float | None = None
         user: str | None = None
+        seed: int | None = None
+        max_completion_tokens: int | None = None
+        reasoning_effort: str | None = None
+        response_format: dict[str, Any] | None = None
+        stream_options: dict[str, Any] | None = None
 
     class OAICompletionsRequest(BaseModel):
         model: str | None = None
@@ -398,63 +404,11 @@ def create_app(
 
         return last_user_content, last_user_images
 
-    def _flatten_content(content: Any) -> str:
-        """Reduce OpenAI multipart content arrays to a single text string.
-
-        Drops image_url parts here — they're extracted separately by
-        :func:`_extract_images` and forwarded via ``options["images"]``.
-        """
-        if content is None:
-            return ""
-        if isinstance(content, str):
-            return content
-        if isinstance(content, list):
-            parts: list[str] = []
-            for part in content:
-                if isinstance(part, dict):
-                    if part.get("type") == "text" and isinstance(part.get("text"), str):
-                        parts.append(part["text"])
-                elif isinstance(part, str):
-                    parts.append(part)
-            return "\n".join(parts)
-        return str(content)
-
-    def _extract_images(content: Any) -> list[Any]:
-        """Pull image_url parts out of an OpenAI multipart message.
-
-        Returns a list of Prompture :class:`ImageInput`-compatible
-        values (URL strings or data URIs).  Vision-capable drivers
-        accept these directly via ``options["images"]``.
-        """
-        if not isinstance(content, list):
-            return []
-        images: list[Any] = []
-        for part in content:
-            if not isinstance(part, dict):
-                continue
-            if part.get("type") != "image_url":
-                continue
-            url_field = part.get("image_url")
-            url = url_field.get("url") if isinstance(url_field, dict) else url_field
-            if isinstance(url, str) and url:
-                images.append(url)
-        return images
+    _flatten_content = flatten_content
+    _extract_images = extract_images
 
     def _build_options(req: OAIChatRequest) -> dict[str, Any]:
-        opts: dict[str, Any] = {}
-        if req.temperature is not None:
-            opts["temperature"] = req.temperature
-        if req.top_p is not None:
-            opts["top_p"] = req.top_p
-        if req.max_tokens is not None:
-            opts["max_tokens"] = req.max_tokens
-        if req.stop is not None:
-            opts["stop"] = req.stop
-        if req.presence_penalty is not None:
-            opts["presence_penalty"] = req.presence_penalty
-        if req.frequency_penalty is not None:
-            opts["frequency_penalty"] = req.frequency_penalty
-        return opts
+        return driver_options(req)
 
     # ---- Health endpoint ----
 
@@ -568,42 +522,43 @@ def create_app(
 
             async def oai_stream() -> Any:
                 # First chunk includes role.
-                first_chunk = {
-                    "id": completion_id,
-                    "object": "chat.completion.chunk",
-                    "created": created,
-                    "model": resolved_model,
-                    "choices": [{"index": 0, "delta": {"role": "assistant"}, "finish_reason": None}],
+                yield {
+                    "data": json.dumps(
+                        chat_chunk(
+                            completion_id=completion_id,
+                            model=resolved_model,
+                            delta={"role": "assistant"},
+                            created=created,
+                        )
+                    )
                 }
-                yield {"data": json.dumps(first_chunk)}
 
                 async for chunk in conv.ask_stream(
                     last_user_content,
                     opts if opts else None,
                     images=last_user_images or None,
                 ):
-                    data = {
-                        "id": completion_id,
-                        "object": "chat.completion.chunk",
-                        "created": created,
-                        "model": resolved_model,
-                        "choices": [{"index": 0, "delta": {"content": chunk}, "finish_reason": None}],
-                    }
+                    data = chat_chunk(
+                        completion_id=completion_id,
+                        model=resolved_model,
+                        delta={"content": chunk},
+                        created=created,
+                    )
                     yield {"data": json.dumps(data)}
 
                 usage = conv.usage
-                final = {
-                    "id": completion_id,
-                    "object": "chat.completion.chunk",
-                    "created": created,
-                    "model": resolved_model,
-                    "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
-                    "usage": {
+                final = chat_chunk(
+                    completion_id=completion_id,
+                    model=resolved_model,
+                    delta={},
+                    finish="stop",
+                    created=created,
+                    usage={
                         "prompt_tokens": usage.get("prompt_tokens", 0),
                         "completion_tokens": usage.get("completion_tokens", 0),
                         "total_tokens": usage.get("total_tokens", 0),
                     },
-                }
+                )
                 yield {"data": json.dumps(final)}
                 yield {"data": "[DONE]"}
 
@@ -620,30 +575,20 @@ def create_app(
         # Surface tool_calls from the last assistant message if the
         # model emitted them without server-side execution.
         assistant_tool_calls: list[dict[str, Any]] | None = None
-        finish_reason = "stop"
         if conv._messages:
             last_msg = conv._messages[-1]
             if last_msg.get("role") == "assistant" and last_msg.get("tool_calls"):
                 assistant_tool_calls = last_msg["tool_calls"]
-                finish_reason = "tool_calls"
-
-        message: dict[str, Any] = {"role": "assistant", "content": text}
-        if assistant_tool_calls:
-            message["tool_calls"] = assistant_tool_calls
 
         return JSONResponse(
-            {
-                "id": completion_id,
-                "object": "chat.completion",
-                "created": created,
-                "model": resolved_model,
-                "choices": [{"index": 0, "message": message, "finish_reason": finish_reason}],
-                "usage": {
-                    "prompt_tokens": usage.get("prompt_tokens", 0),
-                    "completion_tokens": usage.get("completion_tokens", 0),
-                    "total_tokens": usage.get("total_tokens", 0),
-                },
-            }
+            chat_completion(
+                model=resolved_model,
+                text=text,
+                meta=usage,
+                tool_calls=assistant_tool_calls,
+                completion_id=completion_id,
+                created=created,
+            )
         )
 
     # ---- OpenAI-compatible: /v1/completions (legacy) ----
@@ -1075,6 +1020,7 @@ def create_app(
                         model=req.model,
                         extra_args=req.extra_args,
                         session_id=req.session_id,
+                        timeout=req.timeout,
                     ):
                         yield {"data": json.dumps(asdict(event), cls=PromptureJSONEncoder)}
                 except ValueError as exc:
@@ -1116,6 +1062,11 @@ def create_app(
             model_names = [m["id"] if isinstance(m, dict) else str(m) for m in models]
         except Exception:
             model_names = [model_name]
+
+        # Combos, aliases and auto/ modes are routable model names too.
+        from ..resilience.virtual import list_virtual_models
+
+        model_names = list_virtual_models() + model_names
 
         if allowed_models is not None:
             allowlist = set(allowed_models)

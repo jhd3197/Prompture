@@ -107,6 +107,20 @@ from .refusal import (
     RefusalResult,
     is_refusal,
 )
+from .resilience import (
+    AllTargetsFailedError,
+    AsyncResilientDriver,
+    ResilientDriver,
+    RetryPolicy,
+    async_resilient,
+    classify_error,
+    explain_route,
+    load_combos,
+    register_combo,
+    register_key_pool,
+    register_model_alias,
+    resilient,
+)
 from .security import (
     InjectionCategory,
     InjectionResult,
