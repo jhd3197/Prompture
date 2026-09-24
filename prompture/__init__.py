@@ -114,7 +114,10 @@ from .resilience import (
     RetryPolicy,
     async_resilient,
     classify_error,
+    load_combos,
+    register_combo,
     register_key_pool,
+    register_model_alias,
     resilient,
 )
 from .security import (

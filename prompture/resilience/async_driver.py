@@ -19,7 +19,9 @@ from .router import (
     failure_message,
     route_summary,
     should_retry_same,
+    sticky_hash,
 )
+from .strategies import RouteStats
 
 
 def _default_async_factory(model: str, *, api_key: str | None = None, **overrides: Any) -> Any:
@@ -42,6 +44,10 @@ class AsyncResilientDriver(AsyncDriver):
         policy: RetryPolicy | None = None,
         breakers: BreakerRegistry | None = None,
         use_key_pools: bool = True,
+        strategy: str = "priority",
+        weights: Sequence[float] | None = None,
+        sticky: bool = False,
+        stats: RouteStats | None = None,
         factory: Callable[..., Any] | None = None,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     ) -> None:
@@ -50,9 +56,13 @@ class AsyncResilientDriver(AsyncDriver):
             policy=policy,
             breakers=breakers,
             use_key_pools=use_key_pools,
+            strategy=strategy,
+            weights=weights,
+            stats=stats,
             factory=factory or _default_async_factory,
         )
         self._sleep = sleep
+        self._sticky = sticky
         self._flags: dict[str, bool] | None = None
         self.model = self._plan.primary.model
         self.last_route: dict[str, Any] | None = None
@@ -79,6 +89,7 @@ class AsyncResilientDriver(AsyncDriver):
         call: Callable[[Any], Awaitable[Any]],
         *,
         need: str | None = None,
+        sticky: int | None = None,
     ) -> tuple[Any, Target, list[dict[str, Any]]]:
         plan = self._plan
         attempts: list[dict[str, Any]] = []
@@ -87,7 +98,7 @@ class AsyncResilientDriver(AsyncDriver):
         for round_ in range(2):
             attempted = False
             min_wait: float | None = None
-            candidates = plan.candidates()
+            candidates = plan.candidates(sticky)
             for idx, target in enumerate(candidates):
                 is_last = idx == len(candidates) - 1
                 allowed, wait = plan.gate(target)
@@ -121,7 +132,7 @@ class AsyncResilientDriver(AsyncDriver):
                         attempts.append(attempt_record(target, outcome="error", elapsed_ms=elapsed, info=info))
                         if info.action is ErrorAction.FATAL:
                             plan.release(target)
-                            self.last_route = route_summary(target, attempts)
+                            self.last_route = route_summary(target, attempts, plan.strategy)
                             raise
                         delay = should_retry_same(plan.policy, info, attempt, is_last)
                         if delay is not None:
@@ -130,10 +141,9 @@ class AsyncResilientDriver(AsyncDriver):
                             continue
                         plan.penalize(target, info)
                         break
-                    plan.succeed(target)
-                    attempts.append(
-                        attempt_record(target, outcome="ok", elapsed_ms=(time.perf_counter() - started) * 1000)
-                    )
+                    elapsed = (time.perf_counter() - started) * 1000
+                    plan.succeed(target, elapsed)
+                    attempts.append(attempt_record(target, outcome="ok", elapsed_ms=elapsed))
                     return result, target, attempts
 
             if attempted or round_ or min_wait is None or min_wait > plan.policy.max_wait:
@@ -142,13 +152,28 @@ class AsyncResilientDriver(AsyncDriver):
 
         raise AllTargetsFailedError(failure_message(attempts), attempts=attempts, last_error=last_exc) from last_exc
 
-    async def _call(self, fn: Callable[[Any], Awaitable[dict[str, Any]]], *, need: str | None = None) -> dict[str, Any]:
-        result, target, attempts = await self._route(fn, need=need)
-        route = route_summary(target, attempts)
+    def _sticky_for(self, messages: Any) -> int | None:
+        return sticky_hash(messages) if self._sticky else None
+
+    async def _call(
+        self,
+        fn: Callable[[Any], Awaitable[dict[str, Any]]],
+        *,
+        need: str | None = None,
+        messages: Any = None,
+    ) -> dict[str, Any]:
+        result, target, attempts = await self._route(fn, need=need, sticky=self._sticky_for(messages))
+        route = route_summary(target, attempts, self._plan.strategy)
         self.last_route = route
         return _attach_route(result, route)
 
-    async def _stream(self, open_fn: Callable[[Any], AsyncIterator[Any]], *, need: str) -> AsyncIterator[Any]:
+    async def _stream(
+        self,
+        open_fn: Callable[[Any], AsyncIterator[Any]],
+        *,
+        need: str,
+        messages: Any = None,
+    ) -> AsyncIterator[Any]:
         async def opener(drv: Any) -> tuple[Any, AsyncIterator[Any]]:
             it = open_fn(drv).__aiter__()
             try:
@@ -157,8 +182,8 @@ class AsyncResilientDriver(AsyncDriver):
                 first = _EMPTY
             return first, it
 
-        (first, it), target, attempts = await self._route(opener, need=need)
-        route = route_summary(target, attempts)
+        (first, it), target, attempts = await self._route(opener, need=need, sticky=self._sticky_for(messages))
+        route = route_summary(target, attempts, self._plan.strategy)
         self.last_route = route
         if first is _EMPTY:
             return
@@ -173,10 +198,10 @@ class AsyncResilientDriver(AsyncDriver):
     # -- AsyncDriver interface ------------------------------------------------
 
     async def generate(self, prompt: str, options: dict[str, Any]) -> dict[str, Any]:
-        return await self._call(lambda d: d.generate(prompt, dict(options or {})))
+        return await self._call(lambda d: d.generate(prompt, dict(options or {})), messages=prompt)
 
     async def generate_messages(self, messages: list[dict[str, Any]], options: dict[str, Any]) -> dict[str, Any]:
-        return await self._call(lambda d: d.generate_messages(messages, dict(options or {})))
+        return await self._call(lambda d: d.generate_messages(messages, dict(options or {})), messages=messages)
 
     async def generate_messages_with_tools(
         self,
@@ -187,6 +212,7 @@ class AsyncResilientDriver(AsyncDriver):
         return await self._call(
             lambda d: d.generate_messages_with_tools(messages, tools, dict(options or {})),
             need="supports_tool_use",
+            messages=messages,
         )
 
     async def generate_messages_stream(
@@ -197,6 +223,7 @@ class AsyncResilientDriver(AsyncDriver):
         async for event in self._stream(
             lambda d: d.generate_messages_stream(messages, dict(options or {})),
             need="supports_streaming",
+            messages=messages,
         ):
             yield event
 
@@ -209,6 +236,7 @@ class AsyncResilientDriver(AsyncDriver):
         async for event in self._stream(
             lambda d: d.generate_messages_with_tools_stream(messages, tools, dict(options or {})),
             need="supports_tool_use",
+            messages=messages,
         ):
             yield event
 

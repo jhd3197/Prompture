@@ -30,7 +30,9 @@ from .router import (
     failure_message,
     route_summary,
     should_retry_same,
+    sticky_hash,
 )
+from .strategies import RouteStats
 
 _CAPABILITY_FLAGS = (
     "supports_json_mode",
@@ -94,6 +96,10 @@ class ResilientDriver(Driver):
         policy: RetryPolicy | None = None,
         breakers: BreakerRegistry | None = None,
         use_key_pools: bool = True,
+        strategy: str = "priority",
+        weights: Sequence[float] | None = None,
+        sticky: bool = False,
+        stats: RouteStats | None = None,
         factory: Callable[..., Any] | None = None,
         sleep: Callable[[float], None] = time.sleep,
     ) -> None:
@@ -102,9 +108,13 @@ class ResilientDriver(Driver):
             policy=policy,
             breakers=breakers,
             use_key_pools=use_key_pools,
+            strategy=strategy,
+            weights=weights,
+            stats=stats,
             factory=factory or _default_factory,
         )
         self._sleep = sleep
+        self._sticky = sticky
         self._flags: dict[str, bool] | None = None
         self.model = self._plan.primary.model
         self.last_route: dict[str, Any] | None = None
@@ -131,7 +141,11 @@ class ResilientDriver(Driver):
     # -- the attempt loop ---------------------------------------------------
 
     def _route(
-        self, call: Callable[[Any], Any], *, need: str | None = None
+        self,
+        call: Callable[[Any], Any],
+        *,
+        need: str | None = None,
+        sticky: int | None = None,
     ) -> tuple[Any, Target, list[dict[str, Any]]]:
         plan = self._plan
         attempts: list[dict[str, Any]] = []
@@ -140,7 +154,7 @@ class ResilientDriver(Driver):
         for round_ in range(2):
             attempted = False
             min_wait: float | None = None
-            candidates = plan.candidates()
+            candidates = plan.candidates(sticky)
             for idx, target in enumerate(candidates):
                 is_last = idx == len(candidates) - 1
                 allowed, wait = plan.gate(target)
@@ -174,7 +188,7 @@ class ResilientDriver(Driver):
                         attempts.append(attempt_record(target, outcome="error", elapsed_ms=elapsed, info=info))
                         if info.action is ErrorAction.FATAL:
                             plan.release(target)
-                            self.last_route = route_summary(target, attempts)
+                            self.last_route = route_summary(target, attempts, plan.strategy)
                             raise
                         delay = should_retry_same(plan.policy, info, attempt, is_last)
                         if delay is not None:
@@ -183,10 +197,9 @@ class ResilientDriver(Driver):
                             continue
                         plan.penalize(target, info)
                         break
-                    plan.succeed(target)
-                    attempts.append(
-                        attempt_record(target, outcome="ok", elapsed_ms=(time.perf_counter() - started) * 1000)
-                    )
+                    elapsed = (time.perf_counter() - started) * 1000
+                    plan.succeed(target, elapsed)
+                    attempts.append(attempt_record(target, outcome="ok", elapsed_ms=elapsed))
                     return result, target, attempts
 
             if attempted or round_ or min_wait is None or min_wait > plan.policy.max_wait:
@@ -197,13 +210,22 @@ class ResilientDriver(Driver):
 
         raise AllTargetsFailedError(failure_message(attempts), attempts=attempts, last_error=last_exc) from last_exc
 
-    def _call(self, fn: Callable[[Any], dict[str, Any]], *, need: str | None = None) -> dict[str, Any]:
-        result, target, attempts = self._route(fn, need=need)
-        route = route_summary(target, attempts)
+    def _sticky_for(self, messages: Any) -> int | None:
+        return sticky_hash(messages) if self._sticky else None
+
+    def _call(
+        self,
+        fn: Callable[[Any], dict[str, Any]],
+        *,
+        need: str | None = None,
+        messages: Any = None,
+    ) -> dict[str, Any]:
+        result, target, attempts = self._route(fn, need=need, sticky=self._sticky_for(messages))
+        route = route_summary(target, attempts, self._plan.strategy)
         self.last_route = route
         return _attach_route(result, route)
 
-    def _stream(self, open_fn: Callable[[Any], Any], *, need: str) -> Iterator[Any]:
+    def _stream(self, open_fn: Callable[[Any], Any], *, need: str, messages: Any = None) -> Iterator[Any]:
         def opener(drv: Any) -> tuple[Any, Iterator[Any]]:
             it = iter(open_fn(drv))
             try:
@@ -212,8 +234,8 @@ class ResilientDriver(Driver):
                 first = _EMPTY
             return first, it
 
-        (first, it), target, attempts = self._route(opener, need=need)
-        route = route_summary(target, attempts)
+        (first, it), target, attempts = self._route(opener, need=need, sticky=self._sticky_for(messages))
+        route = route_summary(target, attempts, self._plan.strategy)
         self.last_route = route
         if first is _EMPTY:
             return
@@ -230,10 +252,10 @@ class ResilientDriver(Driver):
     # -- Driver interface ---------------------------------------------------
 
     def generate(self, prompt: str, options: dict[str, Any]) -> dict[str, Any]:
-        return self._call(lambda d: d.generate(prompt, dict(options or {})))
+        return self._call(lambda d: d.generate(prompt, dict(options or {})), messages=prompt)
 
     def generate_messages(self, messages: list[dict[str, Any]], options: dict[str, Any]) -> dict[str, Any]:
-        return self._call(lambda d: d.generate_messages(messages, dict(options or {})))
+        return self._call(lambda d: d.generate_messages(messages, dict(options or {})), messages=messages)
 
     def generate_messages_with_tools(
         self,
@@ -244,6 +266,7 @@ class ResilientDriver(Driver):
         return self._call(
             lambda d: d.generate_messages_with_tools(messages, tools, dict(options or {})),
             need="supports_tool_use",
+            messages=messages,
         )
 
     def generate_messages_stream(
@@ -254,6 +277,7 @@ class ResilientDriver(Driver):
         yield from self._stream(
             lambda d: d.generate_messages_stream(messages, dict(options or {})),
             need="supports_streaming",
+            messages=messages,
         )
 
     def generate_messages_with_tools_stream(
@@ -265,6 +289,7 @@ class ResilientDriver(Driver):
         yield from self._stream(
             lambda d: d.generate_messages_with_tools_stream(messages, tools, dict(options or {})),
             need="supports_tool_use",
+            messages=messages,
         )
 
 

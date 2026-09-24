@@ -1063,6 +1063,11 @@ def create_app(
         except Exception:
             model_names = [model_name]
 
+        # Combos, aliases and auto/ modes are routable model names too.
+        from ..resilience.virtual import list_virtual_models
+
+        model_names = list_virtual_models() + model_names
+
         if allowed_models is not None:
             allowlist = set(allowed_models)
             model_names = [m for m in model_names if m in allowlist]

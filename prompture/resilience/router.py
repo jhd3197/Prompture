@@ -17,6 +17,7 @@ from .backoff import RetryPolicy
 from .breaker import BreakerRegistry, get_breaker_registry, key_scope, model_scope, provider_scope
 from .errors import ErrorAction, ErrorInfo
 from .keys import get_key_pool, key_id
+from .strategies import Orderer, RouteStats, get_route_stats
 
 #: How long an unknown / retired model is skipped after a 404-style failure.
 MODEL_NOT_FOUND_COOLDOWN = 600.0
@@ -70,11 +71,19 @@ class _Group:
         self._counter = itertools.count()
         self._lock = threading.Lock()
 
-    def ordered(self) -> list[Target]:
+    @property
+    def model(self) -> str:
+        return self.targets[0].model
+
+    def ordered(self, sticky: int | None = None) -> list[Target]:
+        """Keys in round-robin order, or pinned by *sticky* (a session hash)."""
         if len(self.targets) < 2:
             return list(self.targets)
-        with self._lock:
-            start = next(self._counter) % len(self.targets)
+        if sticky is not None:
+            start = sticky % len(self.targets)
+        else:
+            with self._lock:
+                start = next(self._counter) % len(self.targets)
         return self.targets[start:] + self.targets[:start]
 
 
@@ -89,11 +98,16 @@ class RoutePlan:
         breakers: BreakerRegistry | None = None,
         use_key_pools: bool = True,
         factory: Callable[..., Any],
+        strategy: str = "priority",
+        weights: Sequence[float] | None = None,
+        stats: RouteStats | None = None,
     ) -> None:
         if not targets:
             raise ValueError("A resilient route needs at least one target")
         self.policy = policy or RetryPolicy()
         self.breakers = breakers or get_breaker_registry()
+        self.stats = stats or get_route_stats()
+        self.orderer = Orderer(strategy, weights=weights, stats=self.stats)
         self._factory = factory
         self._lock = threading.Lock()
         self.groups: list[_Group] = [_Group(self._expand(t, use_key_pools)) for t in targets]
@@ -109,7 +123,9 @@ class RoutePlan:
                     return [Target(spec.model, k, dict(spec.overrides)) for k in pool.rotation()]
             return [spec]
         if isinstance(spec, str):
-            return RoutePlan._expand(Target(spec), use_key_pools)
+            from .virtual import resolve_model_alias
+
+            return RoutePlan._expand(Target(resolve_model_alias(spec)), use_key_pools)
         # A ready driver instance.
         return [Target(_model_name_of(spec), getattr(spec, "api_key", None) or None, driver=spec)]
 
@@ -140,8 +156,13 @@ class RoutePlan:
 
     # -- ordering + gating -----------------------------------------------------
 
-    def candidates(self) -> list[Target]:
-        return [t for g in self.groups for t in g.ordered()]
+    @property
+    def strategy(self) -> str:
+        return self.orderer.strategy
+
+    def candidates(self, sticky: int | None = None) -> list[Target]:
+        groups = self.orderer.order(self.groups, key=lambda g: g.model)
+        return [t for g in groups for t in g.ordered(sticky)]
 
     def gate(self, target: Target) -> tuple[bool, float]:
         """``(allowed, seconds_until_available)`` for *target*."""
@@ -153,9 +174,10 @@ class RoutePlan:
 
     # -- outcomes ----------------------------------------------------------------
 
-    def succeed(self, target: Target) -> None:
+    def succeed(self, target: Target, elapsed_ms: float | None = None) -> None:
         for s in target.scopes():
             self.breakers.get(s).record_success()
+        self.stats.record_success(target.model, elapsed_ms)
 
     def release(self, target: Target) -> None:
         for s in target.scopes():
@@ -164,6 +186,8 @@ class RoutePlan:
     def penalize(self, target: Target, info: ErrorInfo) -> None:
         p = self.policy
         action = info.action
+        if action is not ErrorAction.FAILOVER:
+            self.stats.record_failure(target.model)
         if action is ErrorAction.COOLDOWN:
             scope = key_scope(target.provider, target.key_id) if target.key_id else model_scope(target.model)
             self.breakers.get(scope).cooldown(info.retry_after or p.default_cooldown, info.category)
@@ -203,8 +227,34 @@ def attempt_record(
     return rec
 
 
-def route_summary(target: Target, attempts: list[dict[str, Any]]) -> dict[str, Any]:
+def sticky_hash(messages: Any) -> int:
+    """Stable hash of a conversation's opening (system + first user turn).
+
+    Later turns share the same opening, so they hash identically and land
+    on the same key — which keeps the provider's prompt cache warm.
+    """
+    import hashlib
+    import json
+
+    if isinstance(messages, str):
+        basis: Any = messages[:2000]
+    else:
+        basis = []
+        for m in messages or []:
+            if not isinstance(m, dict):
+                continue
+            if m.get("role") in ("system", "developer"):
+                basis.append(m)
+            elif m.get("role") == "user":
+                basis.append(m)
+                break
+    raw = json.dumps(basis, sort_keys=True, default=str).encode()
+    return int.from_bytes(hashlib.sha256(raw).digest()[:8], "big")
+
+
+def route_summary(target: Target, attempts: list[dict[str, Any]], strategy: str = "priority") -> dict[str, Any]:
     return {
+        "strategy": strategy,
         "served_by": target.model,
         "key_id": target.key_id,
         "fallback": any(a["outcome"] != "ok" for a in attempts),

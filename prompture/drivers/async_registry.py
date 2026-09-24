@@ -172,6 +172,13 @@ def get_async_driver_for_model(
     if not model_str:
         raise ValueError("Model string cannot be empty")
 
+    # Aliases, combo/<name> and auto/<mode> resolve to resilient drivers.
+    from ..resilience.virtual import resolve_virtual_model
+
+    model_str, virtual = resolve_virtual_model(model_str, async_=True)
+    if virtual is not None:
+        return virtual
+
     parts = model_str.split("/", 1)
     provider = parts[0].lower()
     model_id = parts[1] if len(parts) > 1 else None
