@@ -420,3 +420,88 @@ class TestGroqDriver:
         attach_rate_limit_hook(driver.client)
         result = driver.generate("hello", {})
         assert result["meta"]["rate_limits"]["windows"]["requests"]["limit"] == 14400
+
+
+def _requests_response(headers: dict[str, str], body: bytes, content_type: str = "application/json"):
+    import requests
+
+    resp = requests.Response()
+    resp.status_code = 200
+    resp.headers.update({**headers, "content-type": content_type})
+    resp._content = body
+    resp._content_consumed = True
+    resp.encoding = "utf-8"
+    resp.url = "https://api.example.test/v1/chat/completions"
+    return resp
+
+
+class TestOpenAICompatibleDriver:
+    def _driver(self):
+        from prompture.drivers.openai_compatible_driver import OpenAICompatibleDriver
+
+        return OpenAICompatibleDriver(api_key="k", model="some-model", endpoint="https://api.example.test/v1")
+
+    def test_generate_reports_rate_limits(self, monkeypatch):
+        import requests
+
+        body = json.dumps({**CHAT_COMPLETION, "model": "some-model"}).encode()
+        monkeypatch.setattr(requests, "post", lambda *a, **kw: _requests_response(OPENAI_HEADERS, body))
+        result = self._driver().generate("hello", {})
+        assert result["meta"]["rate_limits"]["windows"]["requests"]["remaining"] == 59
+
+    def test_endpoint_without_headers_adds_no_key(self, monkeypatch):
+        import requests
+
+        body = json.dumps({**CHAT_COMPLETION, "model": "some-model"}).encode()
+        monkeypatch.setattr(requests, "post", lambda *a, **kw: _requests_response({}, body))
+        assert "rate_limits" not in self._driver().generate("hello", {})["meta"]
+
+    def test_raw_http_tool_stream_reports_rate_limits(self, monkeypatch):
+        import requests
+
+        monkeypatch.setattr(
+            requests,
+            "post",
+            lambda *a, **kw: _requests_response(GROQ_HEADERS, _openai_stream_body(), "text/event-stream"),
+        )
+        tools = [{"type": "function", "function": {"name": "noop", "parameters": {"type": "object"}}}]
+        events = list(
+            self._driver().generate_messages_with_tools_stream([{"role": "user", "content": "hi"}], tools, {})
+        )
+        assert events[-1].usage["rate_limits"]["windows"]["requests"]["limit"] == 14400
+
+    def test_async_generate_reports_rate_limits(self, monkeypatch):
+        from prompture.drivers.async_openai_compatible_driver import AsyncOpenAICompatibleDriver
+
+        real = httpx.AsyncClient
+        transport = httpx.MockTransport(
+            lambda r: httpx.Response(200, headers=OPENAI_HEADERS, json={**CHAT_COMPLETION, "model": "some-model"})
+        )
+        monkeypatch.setattr(httpx, "AsyncClient", lambda *a, **kw: real(*a, transport=transport, **kw))
+
+        async def run() -> dict:
+            driver = AsyncOpenAICompatibleDriver(
+                api_key="k", model="some-model", endpoint="https://api.example.test/v1"
+            )
+            return await driver.generate("hello", {})
+
+        result = asyncio.run(run())
+        assert result["meta"]["rate_limits"]["windows"]["tokens"]["remaining"] == 149984
+
+
+class TestAzureDriver:
+    def test_generate_reports_rate_limits(self, monkeypatch):
+        openai = pytest.importorskip("openai")
+        from prompture.drivers import azure_driver
+
+        transport = httpx.MockTransport(lambda r: httpx.Response(200, headers=OPENAI_HEADERS, json=CHAT_COMPLETION))
+        monkeypatch.setattr(
+            azure_driver,
+            "AzureOpenAI",
+            lambda **kw: openai.AzureOpenAI(**kw, http_client=httpx.Client(transport=transport), max_retries=0),
+        )
+        driver = azure_driver.AzureDriver(
+            api_key="k", endpoint="https://example.openai.azure.com", deployment_id="gpt-4o-mini", model="gpt-4o-mini"
+        )
+        result = driver.generate("hello", {})
+        assert result["meta"]["rate_limits"]["windows"]["requests"]["remaining"] == 59

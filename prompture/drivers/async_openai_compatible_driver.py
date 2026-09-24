@@ -10,6 +10,7 @@ from typing import Any
 import httpx
 
 from ..infra.cost_mixin import CostMixin
+from ..infra.rate_limits import add_rate_limits, limits_from_response
 from .async_base import AsyncDriver
 from .openai_compatible_driver import (
     OPENAI_COMPATIBLE_PROFILES,
@@ -120,7 +121,9 @@ class AsyncOpenAICompatibleDriver(CostMixin, AsyncDriver):
             except Exception as e:
                 raise RuntimeError(f"OpenAI-compatible API request failed: {e!s}") from e
 
-        return self._parse_response(resp, model, endpoint, tools=tools)
+        result = self._parse_response(resp, model, endpoint, tools=tools)
+        add_rate_limits(result["meta"], limits_from_response(response))
+        return result
 
     async def _stream_events(
         self,

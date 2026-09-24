@@ -35,6 +35,7 @@ from typing import Any
 import requests
 
 from ..infra.cost_mixin import CostMixin, prepare_strict_schema
+from ..infra.rate_limits import add_rate_limits, limits_from_response
 from .base import Driver, _apply_openai_tool_options, _tool_call_dict
 
 logger = logging.getLogger(__name__)
@@ -267,7 +268,9 @@ class OpenAICompatibleDriver(CostMixin, Driver):
         except requests.exceptions.RequestException as e:
             raise RuntimeError(f"OpenAI-compatible API request failed: {e!s}") from e
 
-        return self._parse_response(resp, model, endpoint, tools=tools)
+        result = self._parse_response(resp, model, endpoint, tools=tools)
+        add_rate_limits(result["meta"], limits_from_response(response))
+        return result
 
     def _parse_response(
         self,

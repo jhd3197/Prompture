@@ -574,6 +574,7 @@ def stream_raw_http_compat_tool_call(
         timeout=timeout,
     ) as resp:
         resp.raise_for_status()
+        limits = limits_from_response(resp)
         for raw_line in resp.iter_lines(decode_unicode=True):
             if not raw_line:
                 continue
@@ -598,7 +599,9 @@ def stream_raw_http_compat_tool_call(
         state["completion_tokens"],
         cached_tokens=state["cached_prompt_tokens"],
     )
-    yield _build_message_stop(state, model, cost)
+    stop = _build_message_stop(state, model, cost)
+    add_rate_limits(stop.usage, limits)
+    yield stop
 
 
 async def astream_raw_http_compat_tool_call(
@@ -645,6 +648,7 @@ async def astream_raw_http_compat_tool_call(
         ) as resp,
     ):
         resp.raise_for_status()
+        limits = limits_from_response(resp)
         async for raw_line in resp.aiter_lines():
             if not raw_line:
                 continue
@@ -671,7 +675,9 @@ async def astream_raw_http_compat_tool_call(
         state["completion_tokens"],
         cached_tokens=state["cached_prompt_tokens"],
     )
-    yield _build_message_stop(state, model, cost)
+    stop = _build_message_stop(state, model, cost)
+    add_rate_limits(stop.usage, limits)
+    yield stop
 
 
 __all__ = [
