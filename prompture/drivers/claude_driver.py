@@ -255,6 +255,38 @@ def _apply_temperature(kwargs: dict[str, Any], temperature: float) -> None:
     extra_body["temperature"] = temperature
 
 
+def _json_mode_input(value: Any, json_schema: dict[str, Any] | None) -> Any:
+    """Undo Claude string-encoding a structured field in forced-tool JSON mode.
+
+    Given a schema with an array or object property, the model sometimes
+    returns that property as a JSON *string* - often the whole answer, e.g.
+    ``{"translations": "{\\"translations\\": [...]}"}`` - which then fails the
+    caller's validation although the content is right. A property the schema
+    types as a string is never touched.
+    """
+    if not isinstance(value, dict) or not isinstance(json_schema, dict):
+        return value
+    properties = json_schema.get("properties") or {}
+    repaired = dict(value)
+    for key, field in value.items():
+        spec = properties.get(key)
+        if not isinstance(field, str) or not isinstance(spec, dict):
+            continue
+        if spec.get("type") == "string" or not (
+            spec.get("type") in ("array", "object") or "items" in spec or "properties" in spec
+        ):
+            continue
+        try:
+            decoded = json.loads(field)
+        except ValueError:
+            continue
+        # The whole answer wrapped inside its own first field.
+        if isinstance(decoded, dict) and key in decoded and spec.get("type") != "object":
+            decoded = decoded[key]
+        repaired[key] = decoded
+    return repaired
+
+
 def _build_anthropic_json_mode_tool_def(json_schema: dict[str, Any]) -> dict[str, Any]:
     return {
         "name": "extract_json",
@@ -471,7 +503,7 @@ class ClaudeDriver(CostMixin, Driver):
                 text = ""
                 for block in resp.content:
                     if block.type == "tool_use":
-                        text = json.dumps(block.input)
+                        text = json.dumps(_json_mode_input(block.input, options["json_schema"]))
                         break
             else:
                 resp = client.messages.create(**common_kwargs)
