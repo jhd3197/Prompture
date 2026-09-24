@@ -23,11 +23,13 @@ whose filesystem is ephemeral).
 
 from __future__ import annotations
 
+import atexit
 import contextlib
 import contextvars
 import copy
 import json
 import logging
+import os
 import sqlite3
 import threading
 import uuid
@@ -175,6 +177,12 @@ _ctx_extraction: contextvars.ContextVar[dict[str, Any] | None] = contextvars.Con
     "usage_extraction", default=None
 )
 _ctx_operation: contextvars.ContextVar[str | None] = contextvars.ContextVar("usage_operation", default=None)
+_ctx_project: contextvars.ContextVar[str | None] = contextvars.ContextVar("usage_project", default=None)
+
+#: Tag prefix that attributes an event to a project (see :meth:`UsageTracker.project`).
+PROJECT_TAG = "project:"
+#: Environment variable naming the project for every call a process makes.
+PROJECT_ENV = "PROMPTURE_PROJECT"
 
 # ---------------------------------------------------------------------------
 # Data classes
@@ -230,6 +238,14 @@ class UsageEvent:
         pricing = self.metadata.get("pricing")
         source = pricing.get("source") if isinstance(pricing, dict) else None
         return source if isinstance(source, str) else None
+
+    @property
+    def project(self) -> str | None:
+        """Project this call is attributed to (a ``project:<name>`` tag), if any."""
+        for tag in self.tags or []:
+            if isinstance(tag, str) and tag.startswith(PROJECT_TAG):
+                return tag[len(PROJECT_TAG) :] or None
+        return None
 
     @property
     def rate_limits(self) -> LimitSnapshot | None:
@@ -438,6 +454,9 @@ class UsageTracker:
         enabled: Whether tracking is active.  When ``False``, ``record()``
             is a no-op.
         flush_threshold: Number of events to buffer before auto-flushing.
+        flush_interval: Seconds after which a partly filled buffer is written
+            anyway, so readers of the ledger (dashboards, the companion
+            service) see calls within a couple of seconds. ``0`` disables it.
         sinks: Callables invoked with each recorded :class:`UsageEvent`
             (after context injection). Individually guarded — a raising
             sink is logged and skipped, never propagated.
@@ -451,6 +470,7 @@ class UsageTracker:
         *,
         enabled: bool = True,
         flush_threshold: int = 10,
+        flush_interval: float = 2.0,
         sinks: Iterable[UsageSink] | None = None,
         persist: bool = True,
     ) -> None:
@@ -459,6 +479,8 @@ class UsageTracker:
         self._enabled = enabled
         self._persist = persist
         self._flush_threshold = max(1, flush_threshold)
+        self._flush_interval = max(0.0, flush_interval)
+        self._flush_timer: threading.Timer | None = None
         self._buffer: list[UsageEvent] = []
         self._sinks: list[UsageSink] = list(sinks or [])
         self._lock = threading.Lock()
@@ -546,6 +568,10 @@ class UsageTracker:
                 event.tool_name = _ctx_tool_name.get()
             if event.operation is None:
                 event.operation = _ctx_operation.get()
+            if event.project is None:
+                project = _ctx_project.get() or os.environ.get(PROJECT_ENV)
+                if project:
+                    event.tags = [*(event.tags or []), PROJECT_TAG + project]
 
             # Fan out to sinks first — a full context event, before the
             # buffered SQLite write. Each sink is guarded on its own so one
@@ -566,8 +592,17 @@ class UsageTracker:
                 self._buffer.append(event)
                 if len(self._buffer) >= self._flush_threshold:
                     self._flush_locked()
+                elif self._flush_interval and self._flush_timer is None:
+                    self._flush_timer = threading.Timer(self._flush_interval, self._timed_flush)
+                    self._flush_timer.daemon = True
+                    self._flush_timer.start()
         except Exception:
             logger.debug("Failed to record usage event", exc_info=True)
+
+    def _timed_flush(self) -> None:
+        with self._lock:
+            self._flush_timer = None
+            self._flush_locked()
 
     def flush(self) -> None:
         """Flush buffered events to disk."""
@@ -576,6 +611,9 @@ class UsageTracker:
 
     def _flush_locked(self) -> None:
         """Flush buffer while holding _lock.  Never raises."""
+        if self._flush_timer is not None:
+            self._flush_timer.cancel()
+            self._flush_timer = None
         if not self._buffer:
             return
         events = list(self._buffer)
@@ -660,6 +698,20 @@ class UsageTracker:
             yield tool_name
         finally:
             _ctx_tool_name.reset(token)
+
+    @contextlib.contextmanager
+    def project(self, name: str) -> Generator[str]:
+        """Attribute nested calls to a project.
+
+        Stored as a ``project:<name>`` tag, so spend can be split per project
+        by anything reading the ledger. ``PROMPTURE_PROJECT`` sets a
+        process-wide default.
+        """
+        token = _ctx_project.set(name)
+        try:
+            yield name
+        finally:
+            _ctx_project.reset(token)
 
     @contextlib.contextmanager
     def operation(self, operation_name: str) -> Generator[str]:
@@ -1120,6 +1172,15 @@ class UsageTracker:
 
 _tracker: UsageTracker | None = None
 _tracker_lock = threading.Lock()
+
+
+def _flush_at_exit() -> None:
+    """Write buffered events before the interpreter exits (short scripts)."""
+    if _tracker is not None:
+        _tracker.flush()
+
+
+atexit.register(_flush_at_exit)
 
 
 def get_tracker() -> UsageTracker:

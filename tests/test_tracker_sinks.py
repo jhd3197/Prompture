@@ -161,3 +161,53 @@ def test_driver_usage_reaches_sinks_with_provenance(tmp_path, monkeypatch):
     assert seen[0].rate_limits is not None
     assert seen[0].rate_limits.windows["requests"].remaining == 1
     assert "raw_response" not in seen[0].metadata
+
+
+def test_project_scope_and_env_tag_events(tmp_path, monkeypatch):
+    seen: list[UsageEvent] = []
+    tracker = UsageTracker(db_path=tmp_path / "u.db", persist=False, sinks=[seen.append])
+    with tracker.project("shop"):
+        tracker.record(_event())
+    monkeypatch.setenv("PROMPTURE_PROJECT", "blog")
+    tracker.record(_event())
+    tracker.record(_event(tags=["project:explicit"]))
+    monkeypatch.delenv("PROMPTURE_PROJECT")
+    tracker.record(_event())
+    assert [e.project for e in seen] == ["shop", "blog", "explicit", None]
+
+
+def _rows_on_disk(db) -> int:
+    import sqlite3
+
+    if not db.exists():
+        return 0
+    conn = sqlite3.connect(str(db))
+    try:
+        return conn.execute("SELECT COUNT(*) FROM usage_events").fetchone()[0]
+    except sqlite3.OperationalError:
+        return 0
+    finally:
+        conn.close()
+
+
+def test_partial_buffer_is_flushed_after_the_interval(tmp_path):
+    import time
+
+    db = tmp_path / "u.db"
+    tracker = UsageTracker(db_path=db, flush_threshold=100, flush_interval=0.2)
+    tracker.record(_event())
+    assert _rows_on_disk(db) == 0
+    time.sleep(0.6)
+    assert _rows_on_disk(db) == 1
+
+
+def test_flush_interval_zero_keeps_batching(tmp_path):
+    import time
+
+    db = tmp_path / "u.db"
+    tracker = UsageTracker(db_path=db, flush_threshold=100, flush_interval=0)
+    tracker.record(_event())
+    time.sleep(0.3)
+    assert _rows_on_disk(db) == 0
+    tracker.flush()
+    assert _rows_on_disk(db) == 1
