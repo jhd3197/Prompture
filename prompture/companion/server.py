@@ -123,6 +123,22 @@ class _Handler(BaseHTTPRequestHandler):
         token = header[7:].strip() if header.lower().startswith("bearer ") else ""
         return bool(token) and secrets.compare_digest(token, self.server.token)
 
+    def do_POST(self) -> None:
+        url = urlparse(self.path)
+        if not self._authorized():
+            return self._json(401, {"detail": "Missing or wrong companion token (see ~/.prompture/companion.json)."})
+        if url.path == "/v1/tools/claude-plan" and self.server.coding_tools is not None:
+            try:
+                length = int(self.headers.get("Content-Length") or 0)
+                body = json.loads(self.rfile.read(length) or b"{}")
+            except ValueError:
+                return self._json(400, {"detail": "Body must be JSON."})
+            if not isinstance(body, dict) or not isinstance(body.get("enabled"), bool):
+                return self._json(422, {"detail": 'Send {"enabled": true|false}.'})
+            self.server.coding_tools.set_claude_plan_usage(body["enabled"])
+            return self._json(200, {"claude_plan_usage": self.server.coding_tools.plan_usage})
+        return self._json(404, {"detail": "Not found"})
+
     def do_GET(self) -> None:
         url = urlparse(self.path)
         query = {k: v[-1] for k, v in parse_qs(url.query).items()}
@@ -134,7 +150,11 @@ class _Handler(BaseHTTPRequestHandler):
             period = query.get("period", "day")
             if period not in PERIODS:
                 return self._json(422, {"detail": "period must be day, week or month"})
-            return self._json(200, summarize_spend(self.server.rows(period), period))
+            sources = query.get("sources", "all")
+            if sources not in ("all", "api"):
+                return self._json(422, {"detail": "sources must be all or api"})
+            # "api": only calls made through Prompture, billed per token — what budgets measure.
+            return self._json(200, summarize_spend(self.server.rows(period, api_only=sources == "api"), period))
         if url.path == "/v1/limits":
             return self._json(200, self.server.limits(accounts=query.get("accounts", "true") != "false"))
         if url.path == "/v1/alerts":
@@ -241,10 +261,10 @@ class CompanionServer(ThreadingHTTPServer):
     def url(self) -> str:
         return f"http://127.0.0.1:{self.server_address[1]}"
 
-    def rows(self, period: str) -> list[UsageRow]:
-        """The ledger's rows for *period*, plus coding-tool calls when enabled."""
+    def rows(self, period: str, *, api_only: bool = False) -> list[UsageRow]:
+        """The ledger's rows for *period*, plus coding-tool calls when enabled (unless ``api_only``)."""
         rows = self.ledger.rows(period)
-        if self.coding_tools is not None:
+        if self.coding_tools is not None and not api_only:
             rows += self.coding_tools.rows(period)
         return rows
 

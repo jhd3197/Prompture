@@ -20,7 +20,9 @@ read — never prompts, replies or tool output.
 
 from __future__ import annotations
 
+import json
 import logging
+import os
 import threading
 import time
 from datetime import datetime, timedelta, timezone
@@ -37,6 +39,16 @@ logger = logging.getLogger("prompture.companion")
 OVERVIEW_TTL = 60.0
 #: How far back calls are kept: a year of activity, plus a week of slack.
 RETENTION = timedelta(days=372)
+#: Companion choices that outlive a restart (today: whether Claude plan windows are fetched).
+PREFS_FILE = Path.home() / ".prompture" / "companion-prefs.json"
+
+
+def _load_prefs(path: Path) -> dict[str, Any]:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
 
 
 def call_event(call: AgentCall, name: str) -> dict[str, Any]:
@@ -78,14 +90,20 @@ class CodingToolSource:
         plan_usage: bool | None = None,
         cache_dir: str | Path | None = None,
         readers: list[UsageReader] | None = None,
+        prefs_file: str | Path | None = PREFS_FILE,
     ) -> None:
         from ..infra.coding_agent_readers import ClaudeCodeReader, CodexReader
         from ..infra.coding_agent_usage import USAGE_READERS
 
+        self.prefs_file = Path(prefs_file) if prefs_file else None
+        explicit_dirs = bool(claude_dir or codex_dir)
+        if plan_usage is None and not explicit_dirs and "PROMPTURE_CLAUDE_PLAN_USAGE" not in os.environ:
+            # The environment wins; otherwise the choice made in a companion app.
+            plan_usage = bool(_load_prefs(self.prefs_file).get("claude_plan_usage")) if self.prefs_file else None
         if readers is None:
             claude = ClaudeCodeReader(claude_dir, plan_usage=plan_usage, cache_dir=cache_dir)
             codex = CodexReader(codex_dir)
-            if claude_dir or codex_dir:
+            if explicit_dirs:
                 readers = [claude, codex]
             else:
                 others = [cls() for agent, cls in USAGE_READERS.items() if agent not in ("claude", "codex")]
@@ -98,6 +116,22 @@ class CodingToolSource:
     def plan_usage(self) -> bool:
         """Whether Claude Code's plan windows are fetched (opt-in; see ``ClaudeCodeReader``)."""
         return any(getattr(r, "plan_usage", False) for r in self.usage.readers)
+
+    def set_claude_plan_usage(self, enabled: bool) -> None:
+        """Turn Claude Code's plan windows on or off, and remember the choice."""
+        for reader in self.usage.readers:
+            if hasattr(reader, "plan_usage"):
+                reader.plan_usage = enabled
+                if not enabled:
+                    reader._plan = None  # forget the last answer too
+        if self.prefs_file:
+            prefs = _load_prefs(self.prefs_file)
+            prefs["claude_plan_usage"] = enabled
+            try:
+                self.prefs_file.parent.mkdir(parents=True, exist_ok=True)
+                self.prefs_file.write_text(json.dumps(prefs), encoding="utf-8")
+            except OSError:
+                logger.debug("could not save companion prefs", exc_info=True)
 
     def refresh(self, *, force: bool = False) -> list[AgentCall]:
         """Read what the logs gained since the last scan; returns the new calls."""
@@ -135,6 +169,7 @@ class CodingToolSource:
             "start": start.isoformat(),
             "agents": self.usage.summary(start),
             "installed": [a for a in self._overview[1] if a["installed"]],
+            "claude_plan_usage": self.plan_usage,
         }
 
     def tail(self, bus: LiveBus, stop: threading.Event, interval: float = 3.0) -> None:

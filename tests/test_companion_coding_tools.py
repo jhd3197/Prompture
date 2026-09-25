@@ -224,3 +224,17 @@ def test_claude_plan_usage_is_off_unless_opted_in(dirs, tmp_path, monkeypatch):
     assert CodingToolSource(claude, codex).plan_usage is False
     monkeypatch.setenv("PROMPTURE_CLAUDE_PLAN_USAGE", "1")
     assert CodingToolSource(claude, codex).plan_usage is True
+
+
+def test_claude_plan_choice_is_remembered(tmp_path, monkeypatch):
+    from prompture.infra.coding_agent_readers import ClaudeCodeReader
+
+    monkeypatch.delenv("PROMPTURE_CLAUDE_PLAN_USAGE", raising=False)
+    prefs = tmp_path / "prefs.json"
+    claude = ClaudeCodeReader(tmp_path / "claude", plan_usage=False)
+    src = CodingToolSource(readers=[claude], prefs_file=prefs)
+    assert src.plan_usage is False
+    src.set_claude_plan_usage(True)
+    assert src.plan_usage is True and json.loads(prefs.read_text()) == {"claude_plan_usage": True}
+    src.set_claude_plan_usage(False)
+    assert src.plan_usage is False

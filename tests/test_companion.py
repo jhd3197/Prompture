@@ -199,10 +199,21 @@ class TestServer:
             + "\n"
         )
         _, source = _ledger(tmp_path)
-        tools = CodingToolSource(readers=[ContinueReader(tmp_path / "continue")])
+        tools = CodingToolSource(readers=[ContinueReader(tmp_path / "continue")], prefs_file=tmp_path / "prefs.json")
         srv = CompanionServer(source, token="t0ken", bus=LiveBus(), state_path=None, coding_tools=tools)
         srv.start_background()
         try:
+            # Budgets measure API calls only: coding-tool usage stays out of sources=api.
+            assert _get(f"{srv.url}/v1/spend?period=day&sources=api")[1]["total"]["tokens"] == 0
+            req = urllib.request.Request(
+                f"{srv.url}/v1/tools/claude-plan",
+                data=json.dumps({"enabled": True}).encode(),
+                headers={"Authorization": "Bearer t0ken", "Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                assert json.loads(resp.read()) == {"claude_plan_usage": False}  # no Claude reader in this source
+            assert json.loads((tmp_path / "prefs.json").read_text()) == {"claude_plan_usage": True}
             _, info = _get(f"{srv.url}/v1/companion/info", token=None)
             assert info["capabilities"]["coding_tools"] is True
             _, body = _get(f"{srv.url}/v1/tools?period=day")
