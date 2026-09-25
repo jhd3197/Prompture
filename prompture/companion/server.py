@@ -9,6 +9,9 @@ Prompture usage with no hub at all:
 - ``GET /v1/spend?period=day|week|month`` and ``GET /v1/limits``.
 - ``GET /v1/alerts`` — always empty; alert rules live in the hub.
 
+With an :class:`~.automations.Automations` it also runs queued coding-agent
+steps one after another (``/v1/automations``).
+
 With a :class:`~.coding_tools.CodingToolSource` it also counts the calls local
 coding agents (Claude Code, Codex, Kimi Code, Gemini CLI, …) log on disk, adds
 their plan windows to the limits, and serves ``GET /v1/tools?period=`` — each
@@ -34,6 +37,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
+from .automations import AutomationError, Automations, roadmap_steps
 from .coding_tools import CodingToolSource
 from .live import LiveBus, get_bus, sse_event
 from .local import LedgerSource
@@ -62,6 +66,7 @@ CAPABILITIES = {
     "alert_rules": False,
     "coding_tools": False,
     "activity": True,
+    "automations": False,
 }
 
 
@@ -74,14 +79,17 @@ def _version() -> str:
         return "0"
 
 
-def info(coding_tools: bool = False) -> dict[str, Any]:
+def info(coding_tools: bool = False, automations: bool = False) -> dict[str, Any]:
+    features = dict(FEATURES)
+    if automations:
+        features["automations"] = "/v1/automations"
     return {
         "service": "prompture",
         "mode": "local",
         "version": _version(),
         "api_version": COMPANION_API_VERSION,
-        "features": dict(FEATURES),
-        "capabilities": {**CAPABILITIES, "coding_tools": coding_tools},
+        "features": features,
+        "capabilities": {**CAPABILITIES, "coding_tools": coding_tools, "automations": automations},
     }
 
 
@@ -132,14 +140,24 @@ class _Handler(BaseHTTPRequestHandler):
         token = header[7:].strip() if header.lower().startswith("bearer ") else ""
         return bool(token) and secrets.compare_digest(token, self.server.token)
 
+    def _body(self) -> Any:
+        """The request's JSON body; raises ``ValueError`` when it isn't JSON."""
+        length = int(self.headers.get("Content-Length") or 0)
+        return json.loads(self.rfile.read(length) or b"{}")
+
     def do_POST(self) -> None:
         url = urlparse(self.path)
         if not self._authorized():
             return self._json(401, {"detail": "Missing or wrong companion token (see ~/.prompture/companion.json)."})
+        if url.path.startswith("/v1/automations") and self.server.automations is not None:
+            try:
+                body = self._body()
+            except ValueError:
+                return self._json(400, {"detail": "Body must be JSON."})
+            return self._automations_post(url.path, body if isinstance(body, dict) else {})
         if url.path == "/v1/tools/claude-plan" and self.server.coding_tools is not None:
             try:
-                length = int(self.headers.get("Content-Length") or 0)
-                body = json.loads(self.rfile.read(length) or b"{}")
+                body = self._body()
             except ValueError:
                 return self._json(400, {"detail": "Body must be JSON."})
             if not isinstance(body, dict) or not isinstance(body.get("enabled"), bool):
@@ -152,7 +170,7 @@ class _Handler(BaseHTTPRequestHandler):
         url = urlparse(self.path)
         query = {k: v[-1] for k, v in parse_qs(url.query).items()}
         if url.path == "/v1/companion/info":
-            return self._json(200, info(self.server.coding_tools is not None))
+            return self._json(200, info(self.server.coding_tools is not None, self.server.automations is not None))
         if not self._authorized():
             return self._json(401, {"detail": "Missing or wrong companion token (see ~/.prompture/companion.json)."})
         if url.path == "/v1/spend":
@@ -194,6 +212,44 @@ class _Handler(BaseHTTPRequestHandler):
             return self._json(200, self.server.coding_tools.tools(period, offset_minutes=_tz_offset(query)))
         if url.path == "/v1/live":
             return self._live(query)
+        if url.path.startswith("/v1/automations") and self.server.automations is not None:
+            return self._automations_get(url.path, query)
+        return self._json(404, {"detail": "Not found"})
+
+    def _automations_get(self, path: str, query: dict[str, str]) -> None:
+        auto = self.server.automations
+        assert auto is not None
+        parts = path.strip("/").split("/")[2:]  # after v1/automations
+        try:
+            if not parts:
+                return self._json(200, auto.state())
+            if parts == ["roadmap"]:
+                return self._json(200, {"steps": roadmap_steps(query.get("cwd", ""))})
+            if len(parts) == 2 and parts[0] == "runs":
+                return self._json(200, auto.get_run(parts[1]))
+            if len(parts) == 5 and parts[0] == "runs" and parts[2] == "steps" and parts[4] == "log":
+                return self._json(200, {"lines": auto.log(parts[1], parts[3])})
+        except AutomationError as exc:
+            return self._json(exc.status, {"detail": exc.detail})
+        return self._json(404, {"detail": "Not found"})
+
+    def _automations_post(self, path: str, body: dict[str, Any]) -> None:
+        auto = self.server.automations
+        assert auto is not None
+        parts = path.strip("/").split("/")[2:]
+        try:
+            if not parts:
+                return self._json(200, auto.start(body))
+            if len(parts) == 2 and parts[0] == "current":
+                action = parts[1]
+                if action == "steps":
+                    return self._json(200, auto.set_steps(body.get("steps")))
+                if action == "answer":
+                    return self._json(200, auto.answer(str(body.get("text") or "")))
+                if action in ("pause", "resume", "skip", "stop"):
+                    return self._json(200, getattr(auto, action)())
+        except AutomationError as exc:
+            return self._json(exc.status, {"detail": exc.detail})
         return self._json(404, {"detail": "Not found"})
 
     def _live(self, query: dict[str, str]) -> None:
@@ -265,6 +321,7 @@ class CompanionServer(ThreadingHTTPServer):
         bus: LiveBus | None = None,
         state_path: Path | None = STATE_FILE,
         coding_tools: CodingToolSource | None = None,
+        automations: Automations | None = None,
     ) -> None:
         super().__init__(("127.0.0.1", port), _Handler)
         self.ledger = ledger or LedgerSource()
@@ -272,6 +329,7 @@ class CompanionServer(ThreadingHTTPServer):
         self.bus = bus or get_bus()
         self.state_path = state_path
         self.coding_tools = coding_tools
+        self.automations = automations
         self.stopping = threading.Event()
 
     @property
@@ -393,6 +451,8 @@ class CompanionServer(ThreadingHTTPServer):
 
     def shutdown_companion(self) -> None:
         self.stopping.set()
+        if self.automations is not None:
+            self.automations.shutdown()
         if self.state_path is not None:
             state = read_state(self.state_path)
             if state and state.get("pid") == os.getpid():
