@@ -6,12 +6,14 @@ Two servers speak it:
   adds keys, projects, alert rules and controls.
 - **the local companion** (``prompture companion``) — no hub needed; reports
   this machine's Prompture usage from the usage ledger, rate-limit headroom and
-  provider account balances.
+  provider account balances, plus the usage local coding agents (Claude Code,
+  Codex, Kimi Code, Gemini CLI, Qwen Code, OpenCode, Cline, …) log on disk.
 
 This package holds what both share — the live event bus, the spend / limits
 aggregations and the API version — plus the local server itself.
 """
 
+from .coding_tools import CodingToolSource
 from .live import LiveBus, get_bus, new_request_id, sse_event, visible
 from .local import LedgerSource
 from .server import CompanionServer, read_state, running_instance
@@ -29,6 +31,7 @@ from .summary import (
 __all__ = [
     "COMPANION_API_VERSION",
     "PERIODS",
+    "CodingToolSource",
     "CompanionServer",
     "LedgerSource",
     "LiveBus",

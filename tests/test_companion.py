@@ -140,7 +140,53 @@ class TestServer:
         assert body["service"] == "prompture" and body["mode"] == "local"
         assert body["api_version"] == 1
         assert body["capabilities"]["key_controls"] is False
-        assert set(body["features"]) == {"live", "limits", "spend", "alerts"}
+        assert set(body["features"]) == {"live", "limits", "spend", "alerts", "tools"}
+        assert body["capabilities"]["coding_tools"] is False
+
+    def test_tools_needs_coding_tools(self, server):
+        srv, _ = server
+        with pytest.raises(urllib.error.HTTPError) as err:
+            _get(f"{srv.url}/v1/tools")
+        assert err.value.code == 404
+
+    def test_coding_tool_calls_join_spend_and_tools(self, tmp_path, monkeypatch):
+        from prompture.companion import CodingToolSource
+        from prompture.companion import coding_tools as ct
+        from prompture.infra.coding_agent_readers import ContinueReader
+
+        monkeypatch.setattr(
+            ct,
+            "coding_agents_overview",
+            lambda: [{"id": "continue", "name": "Continue", "installed": True, "runnable": False, "usage": True}],
+        )
+        log = tmp_path / "continue" / "dev_data" / "0.2.0" / "tokensGenerated.jsonl"
+        log.parent.mkdir(parents=True)
+        ts = datetime.now(timezone.utc).isoformat()
+        log.write_text(
+            json.dumps({"timestamp": ts, "model": "m", "provider": "ollama", "promptTokens": 30, "generatedTokens": 12})
+            + "\n"
+        )
+        _, source = _ledger(tmp_path)
+        tools = CodingToolSource(readers=[ContinueReader(tmp_path / "continue")])
+        srv = CompanionServer(source, token="t0ken", bus=LiveBus(), state_path=None, coding_tools=tools)
+        srv.start_background()
+        try:
+            _, info = _get(f"{srv.url}/v1/companion/info", token=None)
+            assert info["capabilities"]["coding_tools"] is True
+            _, body = _get(f"{srv.url}/v1/tools?period=day")
+            assert body["period"] == "day" and body["installed"][0]["id"] == "continue"
+            agent = body["agents"][0]
+            assert (agent["agent"], agent["name"], agent["requests"], agent["tokens"]) == (
+                "continue",
+                "Continue",
+                1,
+                42,
+            )
+            _, spend = _get(f"{srv.url}/v1/spend?period=day")
+            assert spend["total"]["tokens"] == 42
+        finally:
+            srv.shutdown()
+            srv.shutdown_companion()
 
     def test_token_required(self, server):
         srv, _ = server

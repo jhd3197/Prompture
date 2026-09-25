@@ -9,6 +9,11 @@ Prompture usage with no hub at all:
 - ``GET /v1/spend?period=day|week|month`` and ``GET /v1/limits``.
 - ``GET /v1/alerts`` — always empty; alert rules live in the hub.
 
+With a :class:`~.coding_tools.CodingToolSource` it also counts the calls local
+coding agents (Claude Code, Codex, Kimi Code, Gemini CLI, …) log on disk, adds
+their plan windows to the limits, and serves ``GET /v1/tools?period=`` — each
+agent's usage plus which agents are installed.
+
 It listens on ``127.0.0.1`` only, on a free port the OS picks, and writes the
 address and a random bearer token to ``~/.prompture/companion.json`` (readable
 only by the current user on POSIX). Readers take both from there. Only the
@@ -29,9 +34,10 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
+from .coding_tools import CodingToolSource
 from .live import LiveBus, get_bus, sse_event
 from .local import LedgerSource
-from .summary import COMPANION_API_VERSION, PERIODS, account_limits, provider_limits, summarize_spend
+from .summary import COMPANION_API_VERSION, PERIODS, UsageRow, account_limits, provider_limits, summarize_spend
 
 logger = logging.getLogger("prompture.companion")
 
@@ -39,13 +45,20 @@ STATE_FILE = Path.home() / ".prompture" / "companion.json"
 HEARTBEAT_SECONDS = 15.0
 
 #: What a client can rely on from this server. The hub advertises more.
-FEATURES = {"live": "/v1/live", "limits": "/v1/limits", "spend": "/v1/spend", "alerts": "/v1/alerts"}
+FEATURES = {
+    "live": "/v1/live",
+    "limits": "/v1/limits",
+    "spend": "/v1/spend",
+    "alerts": "/v1/alerts",
+    "tools": "/v1/tools",
+}
 CAPABILITIES = {
     "running_calls": False,  # the ledger only sees calls after they finish
     "projects": True,
     "key_controls": False,
     "provider_controls": False,
     "alert_rules": False,
+    "coding_tools": False,
 }
 
 
@@ -58,14 +71,14 @@ def _version() -> str:
         return "0"
 
 
-def info() -> dict[str, Any]:
+def info(coding_tools: bool = False) -> dict[str, Any]:
     return {
         "service": "prompture",
         "mode": "local",
         "version": _version(),
         "api_version": COMPANION_API_VERSION,
         "features": dict(FEATURES),
-        "capabilities": dict(CAPABILITIES),
+        "capabilities": {**CAPABILITIES, "coding_tools": coding_tools},
     }
 
 
@@ -112,18 +125,27 @@ class _Handler(BaseHTTPRequestHandler):
         url = urlparse(self.path)
         query = {k: v[-1] for k, v in parse_qs(url.query).items()}
         if url.path == "/v1/companion/info":
-            return self._json(200, info())
+            return self._json(200, info(self.server.coding_tools is not None))
         if not self._authorized():
             return self._json(401, {"detail": "Missing or wrong companion token (see ~/.prompture/companion.json)."})
         if url.path == "/v1/spend":
             period = query.get("period", "day")
             if period not in PERIODS:
                 return self._json(422, {"detail": "period must be day, week or month"})
-            return self._json(200, summarize_spend(self.server.ledger.rows(period), period))
+            return self._json(200, summarize_spend(self.server.rows(period), period))
         if url.path == "/v1/limits":
             return self._json(200, self.server.limits(accounts=query.get("accounts", "true") != "false"))
         if url.path == "/v1/alerts":
             return self._json(200, [])
+        if url.path == "/v1/tools":
+            if self.server.coding_tools is None:
+                return self._json(
+                    404, {"detail": "Coding-tool usage is off (companion started with --no-coding-tools)."}
+                )
+            period = query.get("period", "day")
+            if period not in PERIODS:
+                return self._json(422, {"detail": "period must be day, week or month"})
+            return self._json(200, self.server.coding_tools.tools(period))
         if url.path == "/v1/live":
             return self._live(query)
         return self._json(404, {"detail": "Not found"})
@@ -196,17 +218,40 @@ class CompanionServer(ThreadingHTTPServer):
         token: str | None = None,
         bus: LiveBus | None = None,
         state_path: Path | None = STATE_FILE,
+        coding_tools: CodingToolSource | None = None,
     ) -> None:
         super().__init__(("127.0.0.1", port), _Handler)
         self.ledger = ledger or LedgerSource()
         self.token = token or secrets.token_urlsafe(32)
         self.bus = bus or get_bus()
         self.state_path = state_path
+        self.coding_tools = coding_tools
         self.stopping = threading.Event()
 
     @property
     def url(self) -> str:
         return f"http://127.0.0.1:{self.server_address[1]}"
+
+    def rows(self, period: str) -> list[UsageRow]:
+        """The ledger's rows for *period*, plus coding-tool calls when enabled."""
+        rows = self.ledger.rows(period)
+        if self.coding_tools is not None:
+            rows += self.coding_tools.rows(period)
+        return rows
+
+    def rate_limits(self) -> dict[str, dict[str, Any]]:
+        limits = self.ledger.rate_limits()
+        if self.coding_tools is not None:
+            try:
+                limits.update(self.coding_tools.rate_limits())
+            except Exception:  # coding-tool limits are extra context, never a failure
+                logger.debug("coding tool limits failed", exc_info=True)
+        return limits
+
+    def _tail(self) -> None:
+        threading.Thread(target=self.ledger.tail, args=(self.bus, self.stopping), daemon=True).start()
+        if self.coding_tools is not None:
+            threading.Thread(target=self.coding_tools.tail, args=(self.bus, self.stopping), daemon=True).start()
 
     def limits(self, *, accounts: bool = True) -> dict[str, Any]:
         from datetime import datetime, timezone
@@ -214,7 +259,7 @@ class CompanionServer(ThreadingHTTPServer):
         body: dict[str, Any] = {
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "keys": [],
-            "providers": provider_limits(self.ledger.rate_limits()),
+            "providers": provider_limits(self.rate_limits()),
             "accounts": None,
             "paused_providers": [],
         }
@@ -228,7 +273,7 @@ class CompanionServer(ThreadingHTTPServer):
 
     def start_background(self) -> threading.Thread:
         """Start tailing the ledger and serving on background threads (for tests and embedding)."""
-        threading.Thread(target=self.ledger.tail, args=(self.bus, self.stopping), daemon=True).start()
+        self._tail()
         thread = threading.Thread(target=self.serve_forever, daemon=True)
         thread.start()
         return thread
@@ -237,7 +282,7 @@ class CompanionServer(ThreadingHTTPServer):
         """Serve until interrupted, advertising the address in the state file."""
         if self.state_path is not None:
             _write_state(self.state_path, {"url": self.url, "token": self.token, "pid": os.getpid()})
-        threading.Thread(target=self.ledger.tail, args=(self.bus, self.stopping), daemon=True).start()
+        self._tail()
         try:
             self.serve_forever()
         finally:
