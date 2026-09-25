@@ -28,10 +28,10 @@ class TestCodingAgentCommands:
         assert command.argv == [
             "/usr/local/bin/codex",
             "exec",
-            "--sandbox",
-            "workspace-write",
-            "--ask-for-approval",
-            "never",
+            "-c",
+            "sandbox_mode=workspace-write",
+            "-c",
+            "approval_policy=never",
             "fix the tests",
         ]
 
@@ -479,8 +479,9 @@ class TestStreaming:
             def __init__(self, data: bytes):
                 self._data = data
 
-            async def read(self) -> bytes:
-                return self._data
+            async def read(self, n: int = -1) -> bytes:
+                data, self._data = self._data, b""
+                return data
 
         class _FakeProc:
             def __init__(self):
@@ -580,7 +581,7 @@ class TestStreaming:
         events = asyncio.run(_run())
         assert len(events) == 1
         assert events[0].type == "error"
-        assert "exited with code 1" in (events[0].error or "")
+        assert "exited with code 1: boom" in (events[0].error or "")
 
     @patch(
         "prompture.infra.coding_agents.resolve_coding_agent_executable",

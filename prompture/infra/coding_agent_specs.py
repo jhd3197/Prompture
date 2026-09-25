@@ -103,7 +103,9 @@ def _build_codex_args(
     if model:
         args.extend(["--model", model])
     if approval_mode == "auto":
-        args.extend(["--sandbox", "workspace-write", "--ask-for-approval", "never"])
+        # Config overrides rather than flags: `exec resume` has no --sandbox, and
+        # neither form has --ask-for-approval.
+        args.extend(["-c", "sandbox_mode=workspace-write", "-c", "approval_policy=never"])
     elif approval_mode == "yolo":
         args.append("--dangerously-bypass-approvals-and-sandbox")
     args.extend(extra_args)
