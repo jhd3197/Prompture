@@ -140,7 +140,7 @@ class TestServer:
         assert body["service"] == "prompture" and body["mode"] == "local"
         assert body["api_version"] == 1
         assert body["capabilities"]["key_controls"] is False
-        assert set(body["features"]) == {"live", "limits", "spend", "alerts", "tools", "activity"}
+        assert set(body["features"]) == {"live", "limits", "spend", "alerts", "tools", "activity", "recent"}
         assert body["capabilities"]["coding_tools"] is False and body["capabilities"]["activity"] is True
 
     def test_activity_merges_ledger_and_coding_tools_by_local_day(self, tmp_path):
@@ -227,6 +227,10 @@ class TestServer:
             )
             _, spend = _get(f"{srv.url}/v1/spend?period=day")
             assert spend["total"]["tokens"] == 42
+            _, recent = _get(f"{srv.url}/v1/recent?minutes=30")
+            assert [(e["type"], e["key_name"], e["prompt_tokens"]) for e in recent] == [
+                ("request.finished", "Continue", 30)
+            ]
         finally:
             srv.shutdown()
             srv.shutdown_companion()

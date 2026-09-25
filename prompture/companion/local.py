@@ -126,14 +126,25 @@ class LedgerSource:
         rows = self._query("SELECT MAX(rowid) AS last FROM usage_events")
         return int(rows[0]["last"] or 0) if rows else 0
 
+    _EVENT_COLUMNS = (
+        "SELECT rowid, id, timestamp, model_name, cost, prompt_tokens, completion_tokens, total_tokens, "
+        "elapsed_ms, status, error_message, tags, metadata FROM usage_events "
+    )
+
     def events_after(self, rowid: int) -> list[tuple[int, dict[str, Any]]]:
         """``request.finished`` payloads for rows newer than *rowid*."""
+        return self._events(self._EVENT_COLUMNS + "WHERE rowid > ? ORDER BY rowid", (rowid,))
+
+    def events_since(self, since: datetime, limit: int = 500) -> list[dict[str, Any]]:
+        """``request.finished`` payloads for calls at or after ``since``, newest last."""
+        rows = self._events(
+            self._EVENT_COLUMNS + "WHERE timestamp >= ? ORDER BY rowid DESC LIMIT ?", (since.isoformat(), limit)
+        )
+        return [event for _, event in reversed(rows)]
+
+    def _events(self, sql: str, params: tuple) -> list[tuple[int, dict[str, Any]]]:
         out = []
-        for r in self._query(
-            "SELECT rowid, id, timestamp, model_name, cost, prompt_tokens, completion_tokens, total_tokens, "
-            "elapsed_ms, status, error_message, tags, metadata FROM usage_events WHERE rowid > ? ORDER BY rowid",
-            (rowid,),
-        ):
+        for r in self._query(sql, params):
             meta = _meta(r["metadata"])
             route = meta.get("route") if isinstance(meta.get("route"), dict) else {}
             attempts = sum(1 for a in route.get("attempts", []) if a.get("outcome") in ("ok", "error")) or 1

@@ -172,6 +172,10 @@ class CodingToolSource:
             "claude_plan_usage": self.plan_usage,
         }
 
+    def events_since(self, since: datetime, limit: int = 500) -> list[dict[str, Any]]:
+        """``request.finished`` payloads for calls at or after ``since``, newest last."""
+        return [self.event(c) for c in self.usage.calls(since)[-limit:]]
+
     def tail(self, bus: LiveBus, stop: threading.Event, interval: float = 3.0) -> None:
         """Publish a ``request.finished`` event for every call logged from now on."""
         self.refresh(force=True)

@@ -52,6 +52,7 @@ FEATURES = {
     "alerts": "/v1/alerts",
     "tools": "/v1/tools",
     "activity": "/v1/activity",
+    "recent": "/v1/recent",
 }
 CAPABILITIES = {
     "running_calls": False,  # the ledger only sees calls after they finish
@@ -169,6 +170,12 @@ class _Handler(BaseHTTPRequestHandler):
             return self._json(200, self.server.limits(accounts=query.get("accounts", "true") != "false"))
         if url.path == "/v1/alerts":
             return self._json(200, [])
+        if url.path == "/v1/recent":
+            try:
+                minutes = min(24 * 60, max(1, int(query.get("minutes", "30"))))
+            except ValueError:
+                return self._json(422, {"detail": "minutes must be an integer"})
+            return self._json(200, self.server.recent(minutes))
         if url.path == "/v1/activity":
             try:
                 days = min(400, max(1, int(query.get("days", "371"))))
@@ -291,6 +298,21 @@ class CompanionServer(ThreadingHTTPServer):
         threading.Thread(target=self.ledger.tail, args=(self.bus, self.stopping), daemon=True).start()
         if self.coding_tools is not None:
             threading.Thread(target=self.coding_tools.tail, args=(self.bus, self.stopping), daemon=True).start()
+
+    def recent(self, minutes: int = 30, limit: int = 500) -> list[dict[str, Any]]:
+        """Calls that finished in the last ``minutes``, oldest first, as ``request.finished`` payloads.
+
+        Lets a client that just connected fill its recent-calls view before new
+        calls stream in over ``/v1/live``.
+        """
+        from datetime import datetime, timedelta, timezone
+
+        since = datetime.now(timezone.utc) - timedelta(minutes=minutes)
+        events = self.ledger.events_since(since, limit)
+        if self.coding_tools is not None:
+            events += self.coding_tools.events_since(since, limit)
+        events.sort(key=lambda e: str(e.get("ts") or ""))
+        return [{"type": "request.finished", **e} for e in events[-limit:]]
 
     def activity(self, days: int = 371, offset_minutes: int = 0) -> dict[str, Any]:
         """Per-day totals for the last ``days`` local days: Prompture calls plus coding tools.
