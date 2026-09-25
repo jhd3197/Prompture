@@ -16,6 +16,10 @@
 
 **Prompture** is a Python library that turns LLM responses into validated, structured data. Define a schema or Pydantic model, point it at any provider, and get typed output back — with token tracking, cost calculation, and automatic JSON repair built in.
 
+```bash
+pip install prompture
+```
+
 ```python
 from pydantic import BaseModel
 from prompture import extract_with_model
@@ -71,6 +75,7 @@ print(person.name)  # Maria
 
 **Ops**
 - Resilient routing — `resilient()` retries transient errors, honors `Retry-After`, rotates API keys, trips circuit breakers and fails over across models; every response records who served it — see [Resilient Routing](#resilient-routing)
+- [Prompture Desk](#prompture-desk-usage-in-your-tray) — desktop tray app: usage per provider and project, rate limits and balances, live calls
 - [prompture-hub](#prompture-hub-gateway--dashboard) — optional companion app: web dashboard, scoped per-app keys, spend caps and per-call metering (`pip install prompture[hub]`)
 - `prompture serve` — OpenAI-compatible server (`/v1/chat/completions`, `/v1/embeddings`, `/v1/coding-agents`, …) routes any client to any provider
 - Usage tracking — tokens + cost on every call
@@ -1995,6 +2000,17 @@ Selected flags:
 | `--cors-origins` | CORS allowed origins. |
 
 Full example walkthrough: [`examples/openai_server_example.md`](examples/openai_server_example.md).
+
+## Prompture Desk: Usage in Your Tray
+
+**[Prompture Desk](https://github.com/jhd3197/Prompture-Desk)** is a small desktop app (Windows, macOS, Linux) that shows what your Prompture apps are spending: tokens and cost per provider and project, rate-limit headroom, balances, and your coding tools (Claude Code, Codex, …).
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/jhd3197/Prompture-Desk/main/docs/screenshots/capsule.png" width="380" alt="Prompture Desk capsule: per-provider usage today" />
+  <img src="https://raw.githubusercontent.com/jhd3197/Prompture-Desk/main/docs/screenshots/dock.png" width="250" alt="Prompture Desk edge dock with a provider's card open" />
+</p>
+
+No setup: Desk runs `prompture companion` (Prompture 1.13+) on localhost for you. Pair it with [prompture-hub](#prompture-hub-gateway--dashboard) to also see calls while they run and pause keys or providers. [Download it from Releases](https://github.com/jhd3197/Prompture-Desk/releases).
 
 ## prompture-hub: Gateway + Dashboard
 
