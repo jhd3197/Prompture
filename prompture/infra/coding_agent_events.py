@@ -164,6 +164,8 @@ def parse_codex_json_lines(lines: Iterable[str]) -> Iterator[CodingAgentEvent]:
 def _codex_event_to_events(obj: Mapping[str, Any]) -> Iterator[CodingAgentEvent]:
     msg = obj.get("msg") if isinstance(obj.get("msg"), dict) else None
     if msg is None:
+        if isinstance(obj.get("type"), str):
+            yield from _codex_thread_event_to_events(obj)
         return
     kind = msg.get("type")
     if kind in ("task_started", "session_configured"):
@@ -240,6 +242,81 @@ def _codex_event_to_events(obj: Mapping[str, Any]) -> Iterator[CodingAgentEvent]
             raw=obj,
         )
         return
+
+
+def _unwrap_error(message: Any) -> str | None:
+    """Codex passes API errors through as JSON text; pull the readable message out."""
+    if not isinstance(message, str):
+        return None
+    try:
+        body = json.loads(message)
+    except ValueError:
+        return message
+    inner = body.get("error") if isinstance(body, dict) else None
+    if isinstance(inner, dict) and isinstance(inner.get("message"), str):
+        return inner["message"]
+    if isinstance(body, dict) and isinstance(body.get("message"), str):
+        return body["message"]
+    return message
+
+
+def _codex_thread_event_to_events(obj: Mapping[str, Any]) -> Iterator[CodingAgentEvent]:
+    """Newer Codex (``thread.started`` / ``item.*`` / ``turn.*`` at the top level)."""
+    kind = obj.get("type")
+    if kind == "thread.started":
+        tid = obj.get("thread_id")
+        yield CodingAgentEvent(type="system", session_id=tid if isinstance(tid, str) else None, raw=obj)
+        return
+    if kind == "turn.completed":
+        usage = obj.get("usage") if isinstance(obj.get("usage"), dict) else {}
+        yield CodingAgentEvent(
+            type="done",
+            input_tokens=_safe_int(usage.get("input_tokens")),
+            output_tokens=_safe_int(usage.get("output_tokens")),
+            raw=obj,
+        )
+        return
+    if kind in ("turn.failed", "error"):
+        err = obj.get("error") if isinstance(obj.get("error"), dict) else obj
+        message = _unwrap_error(err.get("message")) or "codex error"
+        # A top-level "error" can be a notice the turn survives (a retried stream);
+        # turn.failed repeats the one that ends it.
+        if kind == "turn.failed":
+            yield CodingAgentEvent(type="error", error=message, raw=obj)
+        else:
+            yield CodingAgentEvent(type="message", text=message, raw=obj)
+        return
+    if kind not in ("item.started", "item.completed"):
+        return
+    item = obj.get("item") if isinstance(obj.get("item"), dict) else {}
+    item_type = item.get("type")
+    done = kind == "item.completed"
+    if item_type == "agent_message" and done and isinstance(item.get("text"), str):
+        yield CodingAgentEvent(type="message", text=item["text"], raw=obj)
+        question = _question_event_for_text(item["text"], obj)
+        if question is not None:
+            yield question
+    elif item_type == "command_execution":
+        if done:
+            output = item.get("aggregated_output")
+            yield CodingAgentEvent(type="tool_result", tool_output=output if isinstance(output, str) else None, raw=obj)
+        else:
+            yield CodingAgentEvent(
+                type="tool_call", tool_name="exec", tool_input={"command": item.get("command")}, raw=obj
+            )
+    elif item_type == "file_change" and done:
+        changes = item.get("changes") if isinstance(item.get("changes"), list) else []
+        for change in changes:
+            if isinstance(change, dict) and isinstance(change.get("path"), str):
+                yield CodingAgentEvent(
+                    type="tool_call", tool_name="edit", tool_input={"file_path": change["path"]}, raw=obj
+                )
+    elif item_type == "mcp_tool_call" and not done:
+        tool = item.get("tool")
+        yield CodingAgentEvent(type="tool_call", tool_name=tool if isinstance(tool, str) else "mcp", raw=obj)
+    elif item_type == "error" and isinstance(item.get("message"), str):
+        # Error items are warnings the turn carries on past; failures come as turn.failed.
+        yield CodingAgentEvent(type="message", text=item["message"], raw=obj)
 
 
 _QUESTION_PHRASE_RE = re.compile(

@@ -315,6 +315,52 @@ class TestCodexJSONParser:
         assert events == []
 
 
+class TestCodexThreadEvents:
+    """Newer Codex: ``thread.started`` / ``item.*`` / ``turn.*`` at the top level."""
+
+    def test_full_turn(self):
+        events = list(
+            parse_codex_json_lines(
+                _lines(
+                    {"type": "thread.started", "thread_id": "t-1"},
+                    {"type": "turn.started"},
+                    {"type": "item.started", "item": {"type": "command_execution", "command": "bash -lc ls"}},
+                    {"type": "item.completed", "item": {"type": "command_execution", "aggregated_output": "a.py"}},
+                    {"type": "item.completed", "item": {"type": "file_change", "changes": [{"path": "a.py"}]}},
+                    {"type": "item.completed", "item": {"type": "agent_message", "text": "Done."}},
+                    {"type": "turn.completed", "usage": {"input_tokens": 50, "output_tokens": 7}},
+                )
+            )
+        )
+        assert [e.type for e in events] == ["system", "tool_call", "tool_result", "tool_call", "message", "done"]
+        assert events[0].session_id == "t-1"
+        assert events[1].tool_input == {"command": "bash -lc ls"}
+        assert events[3].tool_name == "edit" and events[3].tool_input == {"file_path": "a.py"}
+        assert events[-1].input_tokens == 50 and events[-1].output_tokens == 7
+
+    def test_turn_failed_is_error(self):
+        events = list(parse_codex_json_lines(_lines({"type": "turn.failed", "error": {"message": "quota"}})))
+        assert [(e.type, e.error) for e in events] == [("error", "quota")]
+
+    def test_api_error_json_is_unwrapped(self):
+        api = json.dumps({"type": "error", "status": 400, "error": {"message": "Upgrade Codex."}})
+        events = list(
+            parse_codex_json_lines(
+                _lines({"type": "error", "message": api}, {"type": "turn.failed", "error": {"message": api}})
+            )
+        )
+        assert [(e.type, e.text or e.error) for e in events] == [
+            ("message", "Upgrade Codex."),
+            ("error", "Upgrade Codex."),
+        ]
+
+    def test_error_item_is_only_a_warning(self):
+        events = list(
+            parse_codex_json_lines(_lines({"type": "item.completed", "item": {"type": "error", "message": "w"}}))
+        )
+        assert [e.type for e in events] == ["message"]
+
+
 class TestQuestionDetection:
     def test_simple_question_mark_triggers(self):
         from prompture.infra.coding_agent_events import detect_question

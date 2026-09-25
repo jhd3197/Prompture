@@ -58,6 +58,12 @@ def _record_into_session(
 
 CodingAgentId = str
 ApprovalMode = Literal["default", "auto", "yolo"]
+
+#: Longest single line a streamed agent may print. Tool results (a whole file,
+#: a long test log) arrive as one JSON line, far past asyncio's 64 KiB default.
+STREAM_LINE_LIMIT = 32 * 1024 * 1024
+#: Keep a console agent from opening a window when its parent has none (Windows).
+_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 OutputFormat = Literal["text", "json"]
 
 _SUPPORTED_APPROVAL_MODES = {"default", "auto", "yolo"}
@@ -546,10 +552,24 @@ async def astream_coding_agent(
         *command.argv,
         cwd=command.cwd,
         env=child_env,
+        stdin=asyncio.subprocess.DEVNULL,  # the task is in argv; an open stdin makes some CLIs wait for more
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
+        limit=STREAM_LINE_LIMIT,
+        creationflags=_NO_WINDOW,
     )
     assert proc.stdout is not None
+    # Drain stderr as it comes: a chatty agent would otherwise fill the pipe and stall.
+    stderr_tail: list[bytes] = []
+
+    async def drain_stderr() -> None:
+        if proc.stderr is None:
+            return
+        while chunk := await proc.stderr.read(4096):
+            stderr_tail.append(chunk)
+            del stderr_tail[:-16]
+
+    stderr_task = asyncio.ensure_future(drain_stderr())
     loop = asyncio.get_running_loop()
     deadline = loop.time() + timeout if timeout else None
     try:
@@ -571,12 +591,15 @@ async def astream_coding_agent(
                 yield event
         rc = await proc.wait()
         if rc != 0:
-            stderr_bytes = await proc.stderr.read() if proc.stderr is not None else b""
+            with contextlib.suppress(asyncio.TimeoutError):
+                await asyncio.wait_for(stderr_task, timeout=2)
+            stderr_text = b"".join(stderr_tail).decode(errors="replace").strip()
             yield CodingAgentEvent(
                 type="error",
-                error=f"{agent_id} exited with code {rc}: {stderr_bytes.decode(errors='replace').strip()[:500]}",
+                error=f"{agent_id} exited with code {rc}: {stderr_text[-500:]}",
             )
     finally:
+        stderr_task.cancel()
         if proc.returncode is None:
             with contextlib.suppress(ProcessLookupError, OSError):
                 proc.terminate()

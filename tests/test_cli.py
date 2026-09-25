@@ -117,4 +117,4 @@ def test_code_agent_dry_run_auto_approve(tmp_path):
 
     assert result.exit_code == 0
     assert "/usr/local/bin/codex exec" in result.output
-    assert "--ask-for-approval never" in result.output
+    assert "-c approval_policy=never" in result.output
