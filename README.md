@@ -45,6 +45,19 @@ print(person.name)  # Maria
 > | `ollama/llama3.1:8b`, … (local) | no extra needed | — (set `OLLAMA_HOST` if non-default) |
 > | everything in one go | `pip install "prompture[all]"` | provider-specific |
 
+## Prompture Desk: Usage in Your Tray
+
+**See what your LLM calls cost, live, from your tray.** [Prompture Desk](https://github.com/jhd3197/Prompture-Desk) tracks tokens and spend per provider and project, rate-limit headroom, balances, and your coding tools (Claude Code, Codex, …). Windows, macOS and Linux.
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/jhd3197/Prompture-Desk/main/docs/screenshots/capsule.png" width="380" alt="Prompture Desk capsule: per-provider usage today" />
+  <img src="https://raw.githubusercontent.com/jhd3197/Prompture-Desk/main/docs/screenshots/dock.png" width="250" alt="Prompture Desk edge dock with a provider's card open" />
+</p>
+
+No setup: Desk runs `prompture companion` (Prompture 1.13+) on localhost for you. Pair it with [prompture-hub](#prompture-hub-gateway--dashboard) to also see calls while they run and pause keys or providers.
+
+<p align="center"><a href="https://github.com/jhd3197/Prompture-Desk/releases"><b>Download Prompture Desk →</b></a></p>
+
 ## Key Features
 
 **Structured extraction**
@@ -2000,17 +2013,6 @@ Selected flags:
 | `--cors-origins` | CORS allowed origins. |
 
 Full example walkthrough: [`examples/openai_server_example.md`](examples/openai_server_example.md).
-
-## Prompture Desk: Usage in Your Tray
-
-**[Prompture Desk](https://github.com/jhd3197/Prompture-Desk)** is a small desktop app (Windows, macOS, Linux) that shows what your Prompture apps are spending: tokens and cost per provider and project, rate-limit headroom, balances, and your coding tools (Claude Code, Codex, …).
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/jhd3197/Prompture-Desk/main/docs/screenshots/capsule.png" width="380" alt="Prompture Desk capsule: per-provider usage today" />
-  <img src="https://raw.githubusercontent.com/jhd3197/Prompture-Desk/main/docs/screenshots/dock.png" width="250" alt="Prompture Desk edge dock with a provider's card open" />
-</p>
-
-No setup: Desk runs `prompture companion` (Prompture 1.13+) on localhost for you. Pair it with [prompture-hub](#prompture-hub-gateway--dashboard) to also see calls while they run and pause keys or providers. [Download it from Releases](https://github.com/jhd3197/Prompture-Desk/releases).
 
 ## prompture-hub: Gateway + Dashboard
 
