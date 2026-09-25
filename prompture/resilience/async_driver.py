@@ -12,6 +12,7 @@ from .backoff import RetryPolicy
 from .breaker import BreakerRegistry
 from .driver import _CAPABILITY_FLAGS, _EMPTY, _attach_route, _attach_route_to_event
 from .errors import AllTargetsFailedError, ErrorAction, classify_error
+from .headroom import HeadroomTracker
 from .router import (
     RoutePlan,
     Target,
@@ -48,6 +49,7 @@ class AsyncResilientDriver(AsyncDriver):
         weights: Sequence[float] | None = None,
         sticky: bool = False,
         stats: RouteStats | None = None,
+        headroom: HeadroomTracker | None = None,
         factory: Callable[..., Any] | None = None,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     ) -> None:
@@ -59,6 +61,7 @@ class AsyncResilientDriver(AsyncDriver):
             strategy=strategy,
             weights=weights,
             stats=stats,
+            headroom=headroom,
             factory=factory or _default_async_factory,
         )
         self._sleep = sleep
@@ -90,15 +93,16 @@ class AsyncResilientDriver(AsyncDriver):
         *,
         need: str | None = None,
         sticky: int | None = None,
-    ) -> tuple[Any, Target, list[dict[str, Any]]]:
+    ) -> tuple[Any, Target, list[dict[str, Any]], list[dict[str, Any]]]:
         plan = self._plan
         attempts: list[dict[str, Any]] = []
+        deprioritized: list[dict[str, Any]] = []
         last_exc: BaseException | None = None
 
         for round_ in range(2):
             attempted = False
             min_wait: float | None = None
-            candidates = plan.candidates(sticky)
+            candidates, deprioritized = plan.ordered_candidates(sticky)
             for idx, target in enumerate(candidates):
                 is_last = idx == len(candidates) - 1
                 allowed, wait = plan.gate(target)
@@ -129,10 +133,11 @@ class AsyncResilientDriver(AsyncDriver):
                         elapsed = (time.perf_counter() - started) * 1000
                         info = classify_error(exc)
                         last_exc = exc
+                        plan.observe(target, exc)
                         attempts.append(attempt_record(target, outcome="error", elapsed_ms=elapsed, info=info))
                         if info.action is ErrorAction.FATAL:
                             plan.release(target)
-                            self.last_route = route_summary(target, attempts, plan.strategy)
+                            self.last_route = route_summary(target, attempts, plan.strategy, deprioritized)
                             raise
                         delay = should_retry_same(plan.policy, info, attempt, is_last)
                         if delay is not None:
@@ -143,8 +148,9 @@ class AsyncResilientDriver(AsyncDriver):
                         break
                     elapsed = (time.perf_counter() - started) * 1000
                     plan.succeed(target, elapsed)
+                    plan.observe(target, result)
                     attempts.append(attempt_record(target, outcome="ok", elapsed_ms=elapsed))
-                    return result, target, attempts
+                    return result, target, attempts, deprioritized
 
             if attempted or round_ or min_wait is None or min_wait > plan.policy.max_wait:
                 break
@@ -162,8 +168,8 @@ class AsyncResilientDriver(AsyncDriver):
         need: str | None = None,
         messages: Any = None,
     ) -> dict[str, Any]:
-        result, target, attempts = await self._route(fn, need=need, sticky=self._sticky_for(messages))
-        route = route_summary(target, attempts, self._plan.strategy)
+        result, target, attempts, deprioritized = await self._route(fn, need=need, sticky=self._sticky_for(messages))
+        route = route_summary(target, attempts, self._plan.strategy, deprioritized)
         self.last_route = route
         return _attach_route(result, route)
 
@@ -182,14 +188,18 @@ class AsyncResilientDriver(AsyncDriver):
                 first = _EMPTY
             return first, it
 
-        (first, it), target, attempts = await self._route(opener, need=need, sticky=self._sticky_for(messages))
-        route = route_summary(target, attempts, self._plan.strategy)
+        (first, it), target, attempts, deprioritized = await self._route(
+            opener, need=need, sticky=self._sticky_for(messages)
+        )
+        route = route_summary(target, attempts, self._plan.strategy, deprioritized)
         self.last_route = route
         if first is _EMPTY:
             return
+        self._plan.observe(target, first)
         yield _attach_route_to_event(first, route)
         try:
             async for event in it:
+                self._plan.observe(target, event)
                 yield _attach_route_to_event(event, route)
         except Exception as exc:
             self._plan.penalize(target, classify_error(exc))

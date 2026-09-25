@@ -69,4 +69,7 @@ def explain_route(route: dict[str, Any] | None) -> str:
         head += f" — strategy: {strategy}"
     lines = [head]
     lines += [f"  {i}. {explain_attempt(a)}" for i, a in enumerate(attempts, 1)]
+    for note in route.get("deprioritized") or []:
+        window = (note.get("window") or "rate limit").replace("_", " ")
+        lines.append(f"  moved last: {note.get('target', '?')} — {note.get('headroom', 0):.0%} of {window} left")
     return "\n".join(lines)

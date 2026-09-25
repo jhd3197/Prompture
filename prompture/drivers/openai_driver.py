@@ -13,6 +13,7 @@ except ImportError:
     OpenAI = None  # type: ignore[misc, assignment]
 
 from ..infra.cost_mixin import CostMixin, prepare_strict_schema
+from ..infra.rate_limits import add_rate_limits, attach_rate_limit_hook, capture_rate_limits, limits_from_response
 from ._prompt_cache import derive_prompt_cache_key
 from ._usage_reporting import usage_meta
 from .base import Driver, _apply_openai_tool_options, _normalize_stop_reason, _tool_call_dict
@@ -206,6 +207,7 @@ class OpenAIDriver(CostMixin, Driver):
         if self.base_url:
             client_kwargs["base_url"] = self.base_url
         self.client = OpenAI(**client_kwargs)
+        attach_rate_limit_hook(self.client)
 
     @classmethod
     def list_models(cls, *, api_key: str | None = None, timeout: int = 10, **kw: object) -> list[str] | None:
@@ -285,10 +287,12 @@ class OpenAIDriver(CostMixin, Driver):
                     kwargs["messages"] = messages
 
         _apply_openai_reporting_options(kwargs, options)
-        resp = self.client.chat.completions.create(**kwargs)
+        with capture_rate_limits() as limits:
+            resp = self.client.chat.completions.create(**kwargs)
 
         meta = usage_meta(self, "openai", model, getattr(resp, "usage", None), response=resp, options=options)
         meta["raw_response"] = resp.model_dump()
+        add_rate_limits(meta, limits.snapshot)
 
         text = resp.choices[0].message.content
         return {"text": text, "meta": meta}
@@ -341,10 +345,12 @@ class OpenAIDriver(CostMixin, Driver):
         _apply_openai_tool_options(kwargs, options)
 
         _apply_openai_reporting_options(kwargs, options)
-        resp = self.client.chat.completions.create(**kwargs)
+        with capture_rate_limits() as limits:
+            resp = self.client.chat.completions.create(**kwargs)
 
         meta = usage_meta(self, "openai", model, getattr(resp, "usage", None), response=resp, options=options)
         meta["raw_response"] = resp.model_dump()
+        add_rate_limits(meta, limits.snapshot)
 
         choice = resp.choices[0]
         text = choice.message.content or ""
@@ -428,6 +434,7 @@ class OpenAIDriver(CostMixin, Driver):
 
         meta = usage_meta(self, "openai", model, final_usage, response=response_info, options=options)
         meta["raw_response"] = {}
+        add_rate_limits(meta, limits_from_response(getattr(stream, "response", None)))
         yield {"type": "done", "text": full_text, "meta": meta}
 
     # ------------------------------------------------------------------

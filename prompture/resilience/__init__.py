@@ -31,6 +31,7 @@ from .errors import (
     reset_error_rules,
 )
 from .explain import explain_attempt, explain_route
+from .headroom import HeadroomTracker, get_headroom_tracker, partition_by_headroom
 from .keys import KeyPool, clear_key_pools, get_key_pool, key_id, register_key_pool
 from .router import Target
 from .strategies import STRATEGIES, RouteStats, get_route_stats
@@ -64,6 +65,7 @@ __all__ = [
     "ErrorAction",
     "ErrorInfo",
     "ErrorRule",
+    "HeadroomTracker",
     "KeyPool",
     "ResilientDriver",
     "RetryPolicy",
@@ -78,6 +80,7 @@ __all__ = [
     "explain_route",
     "get_breaker_registry",
     "get_combo",
+    "get_headroom_tracker",
     "get_key_pool",
     "get_route_stats",
     "key_id",
@@ -88,6 +91,7 @@ __all__ = [
     "load_combos",
     "model_scope",
     "parse_duration",
+    "partition_by_headroom",
     "provider_scope",
     "register_combo",
     "register_error_rule",

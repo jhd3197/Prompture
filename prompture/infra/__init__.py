@@ -1,5 +1,14 @@
 """Infrastructure: settings, logging, callbacks, caching, costs, discovery."""
 
+from .accounts import (
+    AccountSnapshot,
+    AccountSource,
+    aget_account_snapshots,
+    get_account_snapshot,
+    get_account_snapshots,
+    register_account_source,
+    unregister_account_source,
+)
 from .billing import (
     BillingAPIError,
     BillingClient,
@@ -101,6 +110,14 @@ from .model_rates import (
 )
 from .otel import instrument_driver, otel_callbacks
 from .provider_env import ProviderEnvironment
+from .rate_limits import (
+    LimitSnapshot,
+    LimitWindow,
+    add_rate_limits,
+    capture_rate_limits,
+    limits_from_response,
+    parse_rate_limit_headers,
+)
 
 try:
     from .tukuy_backend import TukuyLLMBackend, create_tukuy_backend
@@ -120,6 +137,8 @@ from .tracker import UsageEvent, UsageSink, UsageTracker, configure_tracker, get
 
 __all__ = [
     "CODING_AGENT_SPECS",
+    "AccountSnapshot",
+    "AccountSource",
     "ApprovalMode",
     "AudioCostMixin",
     "BillingAPIError",
@@ -142,6 +161,8 @@ __all__ = [
     "DriverCallbacks",
     "EmbeddingCostMixin",
     "JSONFormatter",
+    "LimitSnapshot",
+    "LimitWindow",
     "LocalCostSummary",
     "MemoryCacheBackend",
     "ModelCapabilities",
@@ -159,10 +180,13 @@ __all__ = [
     "UsageTracker",
     "VideoCostMixin",
     "acount_request_tokens",
+    "add_rate_limits",
     "aestimate_request_cost",
+    "aget_account_snapshots",
     "arun_coding_agent",
     "astream_coding_agent",
     "build_coding_agent_command",
+    "capture_rate_limits",
     "clear_discovery_cache",
     "clear_overrides",
     "compress_messages",
@@ -178,6 +202,8 @@ __all__ = [
     "estimate_cost",
     "estimate_request_cost",
     "estimate_tokens",
+    "get_account_snapshot",
+    "get_account_snapshots",
     "get_available_audio_models",
     "get_available_coding_agents",
     "get_available_decision_models",
@@ -201,13 +227,16 @@ __all__ = [
     "get_recently_used_models",
     "get_tracker",
     "instrument_driver",
+    "limits_from_response",
     "otel_callbacks",
     "override_capabilities",
     "parse_claude_stream_json_lines",
     "parse_codex_json_lines",
+    "parse_rate_limit_headers",
     "pick_best_coding_agent",
     "reconcile_costs",
     "refresh_rates_cache",
+    "register_account_source",
     "register_model",
     "register_provider",
     "resolve_budget_policy",
@@ -216,6 +245,7 @@ __all__ = [
     "run_coding_agent",
     "settings",
     "supported_coding_agent_ids",
+    "unregister_account_source",
     "verify_coding_agent_binary",
     "verify_coding_agent_executable",
 ]

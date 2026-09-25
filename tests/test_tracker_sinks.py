@@ -103,3 +103,131 @@ def test_public_exports(exported):
     import prompture
 
     assert hasattr(prompture, exported)
+
+
+def test_event_exposes_cost_provenance_and_rate_limits():
+    event = _event(
+        metadata={
+            "cost_status": "estimated",
+            "pricing": {"source": "local_kb", "currency": "USD"},
+            "rate_limits": {
+                "source": "headers",
+                "observed_at": 1_800_000_000.0,
+                "windows": {"tokens": {"limit": 100, "remaining": 25, "resets_at": 1_800_000_060.0}},
+            },
+        }
+    )
+    assert event.cost_status == "estimated"
+    assert event.cost_source == "local_kb"
+    limits = event.rate_limits
+    assert limits is not None
+    assert limits.headroom == 0.25
+    assert limits.tightest_window == "tokens"
+
+
+def test_event_without_provenance_returns_none():
+    event = _event()
+    assert (event.cost_status, event.cost_source, event.rate_limits) == (None, None, None)
+
+
+def test_driver_usage_reaches_sinks_with_provenance(tmp_path, monkeypatch):
+    from prompture.drivers.base import Driver
+    from prompture.infra import tracker as tracker_module
+
+    seen: list[UsageEvent] = []
+    monkeypatch.setattr(tracker_module, "_tracker", UsageTracker(db_path=tmp_path / "u.db", sinks=[seen.append]))
+
+    class StubDriver(Driver):
+        model = "openai/gpt-4o-mini"
+
+        def generate(self, prompt, options):
+            return {}
+
+    StubDriver()._auto_record_usage(
+        {
+            "meta": {
+                "model_name": "openai/gpt-4o-mini",
+                "cost": 0.001,
+                "cost_status": "estimated",
+                "pricing": {"source": "models.dev"},
+                "rate_limits": {"windows": {"requests": {"limit": 60, "remaining": 1}}, "observed_at": 1.0},
+                "raw_response": {"big": "payload"},
+            }
+        },
+        12.0,
+    )
+    assert len(seen) == 1
+    assert seen[0].cost_source == "models.dev"
+    assert seen[0].rate_limits is not None
+    assert seen[0].rate_limits.windows["requests"].remaining == 1
+    assert "raw_response" not in seen[0].metadata
+
+
+def test_project_scope_and_env_tag_events(tmp_path, monkeypatch):
+    seen: list[UsageEvent] = []
+    tracker = UsageTracker(db_path=tmp_path / "u.db", persist=False, sinks=[seen.append])
+    with tracker.project("shop"):
+        tracker.record(_event())
+    monkeypatch.setenv("PROMPTURE_PROJECT", "blog")
+    tracker.record(_event())
+    tracker.record(_event(tags=["project:explicit"]))
+    monkeypatch.delenv("PROMPTURE_PROJECT")
+    tracker.record(_event())
+    assert [e.project for e in seen] == ["shop", "blog", "explicit", None]
+
+
+def _rows_on_disk(db) -> int:
+    import sqlite3
+
+    if not db.exists():
+        return 0
+    conn = sqlite3.connect(str(db))
+    try:
+        return conn.execute("SELECT COUNT(*) FROM usage_events").fetchone()[0]
+    except sqlite3.OperationalError:
+        return 0
+    finally:
+        conn.close()
+
+
+def test_partial_buffer_is_flushed_after_the_interval(tmp_path):
+    import time
+
+    db = tmp_path / "u.db"
+    tracker = UsageTracker(db_path=db, flush_threshold=100, flush_interval=0.2)
+    tracker.record(_event())
+    assert _rows_on_disk(db) == 0
+    time.sleep(0.6)
+    assert _rows_on_disk(db) == 1
+
+
+def test_flush_interval_zero_keeps_batching(tmp_path):
+    import time
+
+    db = tmp_path / "u.db"
+    tracker = UsageTracker(db_path=db, flush_threshold=100, flush_interval=0)
+    tracker.record(_event())
+    time.sleep(0.3)
+    assert _rows_on_disk(db) == 0
+    tracker.flush()
+    assert _rows_on_disk(db) == 1
+
+
+def test_openai_compatible_usage_is_recorded_under_its_profile(tmp_path, monkeypatch):
+    from prompture.drivers.async_openai_compatible_driver import AsyncOpenAICompatibleDriver
+    from prompture.drivers.openai_compatible_driver import OpenAICompatibleDriver
+    from prompture.infra import tracker as tracker_module
+
+    seen: list[UsageEvent] = []
+    monkeypatch.setattr(tracker_module, "_tracker", UsageTracker(db_path=tmp_path / "u.db", sinks=[seen.append]))
+    monkeypatch.setenv("FIREWORKS_API_KEY", "k")
+
+    fireworks = OpenAICompatibleDriver(model="fireworks/accounts/fw/models/llama")
+    fireworks._auto_record_usage({"meta": {"model_name": "accounts/fw/models/llama", "cost": 0.1}}, 5.0)
+    custom = AsyncOpenAICompatibleDriver(api_key="k", model="echo", endpoint="http://127.0.0.1:1/v1")
+    custom._auto_record_usage({"meta": {"model_name": "echo"}}, 5.0)
+
+    assert [(e.provider, e.model_name) for e in seen] == [
+        ("openai_compatible", "openai_compatible/fireworks/accounts/fw/models/llama"),
+        ("openai_compatible", "openai_compatible/echo"),
+    ]

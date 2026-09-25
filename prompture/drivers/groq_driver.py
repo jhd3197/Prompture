@@ -12,6 +12,7 @@ except ImportError:
     groq = None  # type: ignore[assignment]
 
 from ..infra.cost_mixin import CostMixin
+from ..infra.rate_limits import add_rate_limits, attach_rate_limit_hook, capture_rate_limits
 from .base import Driver, _apply_openai_tool_options, _normalize_stop_reason, _tool_call_dict
 
 logger = logging.getLogger(__name__)
@@ -48,6 +49,7 @@ class GroqDriver(CostMixin, Driver):
                 "See https://github.com/jhd3197/prompture#configuration"
             )
         self.client: Any = groq.Client(api_key=self.api_key)
+        attach_rate_limit_hook(self.client)
 
     @classmethod
     def list_models(cls, *, api_key: str | None = None, timeout: int = 10, **kw: object) -> list[str] | None:
@@ -107,7 +109,8 @@ class GroqDriver(CostMixin, Driver):
             kwargs["response_format"] = {"type": "json_object"}
 
         try:
-            resp = self.client.chat.completions.create(**kwargs)
+            with capture_rate_limits() as limits:
+                resp = self.client.chat.completions.create(**kwargs)
         except Exception:
             # Re-raise any Groq API errors
             raise
@@ -148,6 +151,7 @@ class GroqDriver(CostMixin, Driver):
         if not text and reasoning_content:
             text = reasoning_content
 
+        add_rate_limits(meta, limits.snapshot)
         result: dict[str, Any] = {"text": text, "meta": meta}
         if reasoning_content is not None:
             result["reasoning_content"] = reasoning_content
@@ -190,7 +194,8 @@ class GroqDriver(CostMixin, Driver):
 
         _apply_openai_tool_options(kwargs, options)
 
-        resp = self.client.chat.completions.create(**kwargs)
+        with capture_rate_limits() as limits:
+            resp = self.client.chat.completions.create(**kwargs)
 
         from .openai_driver import _extract_openai_cached_tokens
 
@@ -231,6 +236,7 @@ class GroqDriver(CostMixin, Driver):
         stop_reason = _normalize_stop_reason(raw_stop_reason, tool_calls_present=bool(tool_calls_out))
         meta["raw_stop_reason"] = raw_stop_reason
 
+        add_rate_limits(meta, limits.snapshot)
         result: dict[str, Any] = {
             "text": text,
             "meta": meta,

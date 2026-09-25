@@ -22,6 +22,9 @@ class RetryPolicy:
             provider gave no ``Retry-After`` hint.
         disable_cooldown: How long to park a key after an auth / billing /
             exhausted-quota error.
+        min_headroom: Targets whose reported rate-limit headroom (fraction of
+            a still-open window left) is below this move to the back of the
+            route. ``None`` turns headroom-aware ordering off.
     """
 
     max_attempts: int = 2
@@ -32,6 +35,7 @@ class RetryPolicy:
     max_wait: float = 30.0
     default_cooldown: float = 30.0
     disable_cooldown: float = 3600.0
+    min_headroom: float | None = 0.05
 
     def backoff(self, attempt: int, retry_after: float | None = None) -> float:
         """Delay before retry number *attempt* (0-based) of the same target."""

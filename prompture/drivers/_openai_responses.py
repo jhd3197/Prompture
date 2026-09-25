@@ -7,6 +7,7 @@ from collections.abc import AsyncIterator, Iterator
 from typing import Any
 
 from ..infra.cost_mixin import prepare_strict_schema
+from ..infra.rate_limits import LimitSnapshot, add_rate_limits, capture_rate_limits, limits_from_response
 from ._usage_reporting import as_dict, text_value, usage_meta, value
 from .base import _normalize_stop_reason, _tool_call_dict
 
@@ -167,16 +168,22 @@ def generate(
     driver: Any, messages: list[dict[str, Any]], options: dict[str, Any], tools: list[dict[str, Any]] | None = None
 ) -> dict[str, Any]:
     request = build_request(driver, messages, options, tools)
-    response = driver.client.responses.create(**request)
-    return result_from_response(driver, response, request["model"], options)
+    with capture_rate_limits() as limits:
+        response = driver.client.responses.create(**request)
+    result = result_from_response(driver, response, request["model"], options)
+    add_rate_limits(result["meta"], limits.snapshot)
+    return result
 
 
 async def agenerate(
     driver: Any, messages: list[dict[str, Any]], options: dict[str, Any], tools: list[dict[str, Any]] | None = None
 ) -> dict[str, Any]:
     request = build_request(driver, messages, options, tools)
-    response = await driver.client.responses.create(**request)
-    return result_from_response(driver, response, request["model"], options)
+    with capture_rate_limits() as limits:
+        response = await driver.client.responses.create(**request)
+    result = result_from_response(driver, response, request["model"], options)
+    add_rate_limits(result["meta"], limits.snapshot)
+    return result
 
 
 def _events(event: Any, state: dict[str, Any], live: bool) -> Iterator[Any]:
@@ -239,16 +246,25 @@ def _pending_tool_stops(state: dict[str, Any]) -> Iterator[Any]:
         )
 
 
-def _done(driver: Any, state: dict[str, Any], model: str, options: dict[str, Any], live: bool) -> Any:
+def _done(
+    driver: Any,
+    state: dict[str, Any],
+    model: str,
+    options: dict[str, Any],
+    live: bool,
+    limits: LimitSnapshot | None = None,
+) -> Any:
     from ..agents.live_events import MessageStop
 
     if state["response"] is not None:
         result = result_from_response(driver, state["response"], model, options)
+        add_rate_limits(result["meta"], limits)
         if live:
             return MessageStop(stop_reason=result["stop_reason"], usage=result["meta"])
         return {"type": "done", "text": result["text"], "meta": result["meta"]}
     meta = usage_meta(driver, "openai", model, None, options=options, complete=False, responses_api=True)
     meta["raw_response"] = {}
+    add_rate_limits(meta, limits)
     return (
         MessageStop(stop_reason="error", usage=meta) if live else {"type": "done", "text": state["text"], "meta": meta}
     )
@@ -264,7 +280,8 @@ def stream(
         for event in response_stream:
             yield from _events(event, state, tools is not None)
         yield from _pending_tool_stops(state)
-        yield _done(driver, state, request["model"], options, tools is not None)
+        limits = limits_from_response(getattr(response_stream, "response", None))
+        yield _done(driver, state, request["model"], options, tools is not None, limits)
     finally:
         if callable(getattr(response_stream, "close", None)):
             response_stream.close()
@@ -282,7 +299,8 @@ async def astream(
                 yield output
         for output in _pending_tool_stops(state):
             yield output
-        yield _done(driver, state, request["model"], options, tools is not None)
+        limits = limits_from_response(getattr(response_stream, "response", None))
+        yield _done(driver, state, request["model"], options, tools is not None, limits)
     finally:
         if callable(getattr(response_stream, "close", None)):
             await response_stream.close()

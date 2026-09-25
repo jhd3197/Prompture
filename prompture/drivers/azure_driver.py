@@ -25,6 +25,7 @@ except ImportError:
     anthropic = None  # type: ignore[assignment]
 
 from ..infra.cost_mixin import CostMixin, prepare_strict_schema
+from ..infra.rate_limits import add_rate_limits, attach_rate_limit_hook, capture_rate_limits
 from .azure_config import classify_backend, resolve_config
 from .base import Driver
 
@@ -115,6 +116,7 @@ class AzureDriver(CostMixin, Driver):
                 api_version=config.get("api_version", "2024-02-15-preview"),
                 azure_endpoint=config["endpoint"],
             )
+        attach_rate_limit_hook(self._openai_clients[cache_key])
         return self._openai_clients[cache_key]
 
     def _get_anthropic_client(self, config: dict[str, Any]) -> Any:
@@ -127,6 +129,7 @@ class AzureDriver(CostMixin, Driver):
                 base_url=config["endpoint"],
                 api_key=config["api_key"],
             )
+        attach_rate_limit_hook(self._anthropic_clients[cache_key])
         return self._anthropic_clients[cache_key]
 
     def generate(self, prompt: str, options: dict[str, Any]) -> dict[str, Any]:
@@ -141,11 +144,14 @@ class AzureDriver(CostMixin, Driver):
         config = self._resolve_model_config(model, options)
         backend = classify_backend(model)
 
-        if backend == "claude":
-            return self._generate_claude(messages, options, config, model)
-        else:
-            # Both "openai" and "mistral" use the OpenAI-compatible protocol
-            return self._generate_openai(messages, options, config, model)
+        with capture_rate_limits() as limits:
+            if backend == "claude":
+                result = self._generate_claude(messages, options, config, model)
+            else:
+                # Both "openai" and "mistral" use the OpenAI-compatible protocol
+                result = self._generate_openai(messages, options, config, model)
+        add_rate_limits(result["meta"], limits.snapshot)
+        return result
 
     def _generate_openai(
         self,
@@ -302,10 +308,13 @@ class AzureDriver(CostMixin, Driver):
         config = self._resolve_model_config(model, options)
         backend = classify_backend(model)
 
-        if backend == "claude":
-            return self._generate_claude_with_tools(messages, tools, options, config, model)
-        else:
-            return self._generate_openai_with_tools(messages, tools, options, config, model)
+        with capture_rate_limits() as limits:
+            if backend == "claude":
+                result = self._generate_claude_with_tools(messages, tools, options, config, model)
+            else:
+                result = self._generate_openai_with_tools(messages, tools, options, config, model)
+        add_rate_limits(result["meta"], limits.snapshot)
+        return result
 
     def _generate_openai_with_tools(
         self,
