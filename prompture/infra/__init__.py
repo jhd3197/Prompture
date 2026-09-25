@@ -64,6 +64,14 @@ from .coding_agent_specs import (
 from .coding_agent_specs import (
     supported_agent_ids as supported_coding_agent_ids,
 )
+from .coding_agent_usage import (
+    USAGE_READERS,
+    AgentCall,
+    CodingAgentUsage,
+    UsageReader,
+    coding_agents_overview,
+    register_usage_reader,
+)
 from .coding_agents import (
     ApprovalMode,
     CodingAgentCommand,
@@ -137,8 +145,10 @@ from .tracker import UsageEvent, UsageSink, UsageTracker, configure_tracker, get
 
 __all__ = [
     "CODING_AGENT_SPECS",
+    "USAGE_READERS",
     "AccountSnapshot",
     "AccountSource",
+    "AgentCall",
     "ApprovalMode",
     "AudioCostMixin",
     "BillingAPIError",
@@ -155,6 +165,7 @@ __all__ = [
     "CodingAgentInfo",
     "CodingAgentRunResult",
     "CodingAgentSpec",
+    "CodingAgentUsage",
     "CompressionStats",
     "CostEstimate",
     "CostReconciliation",
@@ -175,6 +186,7 @@ __all__ = [
     "TokenCount",
     "TukuyLLMBackend",
     "UsageEvent",
+    "UsageReader",
     "UsageSession",
     "UsageSink",
     "UsageTracker",
@@ -189,6 +201,7 @@ __all__ = [
     "capture_rate_limits",
     "clear_discovery_cache",
     "clear_overrides",
+    "coding_agents_overview",
     "compress_messages",
     "configure_cache",
     "configure_logging",
@@ -239,6 +252,7 @@ __all__ = [
     "register_account_source",
     "register_model",
     "register_provider",
+    "register_usage_reader",
     "resolve_budget_policy",
     "resolve_coding_agent_binary",
     "resolve_coding_agent_executable",

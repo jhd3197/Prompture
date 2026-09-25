@@ -140,7 +140,100 @@ class TestServer:
         assert body["service"] == "prompture" and body["mode"] == "local"
         assert body["api_version"] == 1
         assert body["capabilities"]["key_controls"] is False
-        assert set(body["features"]) == {"live", "limits", "spend", "alerts"}
+        assert set(body["features"]) == {"live", "limits", "spend", "alerts", "tools", "activity", "recent"}
+        assert body["capabilities"]["coding_tools"] is False and body["capabilities"]["activity"] is True
+
+    def test_activity_merges_ledger_and_coding_tools_by_local_day(self, tmp_path):
+        from prompture.companion import CodingToolSource
+        from prompture.infra.coding_agent_readers import ContinueReader
+
+        log = tmp_path / "continue" / "dev_data" / "0.2.0" / "tokensGenerated.jsonl"
+        log.parent.mkdir(parents=True)
+        ts = datetime.now(timezone.utc).isoformat()
+        log.write_text(
+            json.dumps({"timestamp": ts, "model": "m", "provider": "ollama", "promptTokens": 30, "generatedTokens": 12})
+            + "\n"
+        )
+        tracker, source = _ledger(tmp_path)
+        _record(tracker, cost=0.5)
+        _record(tracker, cost=0.25)
+        tools = CodingToolSource(readers=[ContinueReader(tmp_path / "continue")])
+        srv = CompanionServer(source, token="t0ken", bus=LiveBus(), state_path=None, coding_tools=tools)
+        srv.start_background()
+        try:
+            _, body = _get(f"{srv.url}/v1/activity?days=7&tz_offset=0")
+            today = datetime.now(timezone.utc).date().isoformat()
+            assert body["end"] == today and len(body["days"]) == 1
+            day = body["days"][0]
+            assert day["date"] == today and day["requests"] == 3
+            assert day["cost_usd"] == pytest.approx(0.75)
+            assert {s["name"] for s in day["sources"]} == {"Prompture", "Continue"}
+            with pytest.raises(urllib.error.HTTPError) as err:
+                _get(f"{srv.url}/v1/activity?days=soon")
+            assert err.value.code == 422
+        finally:
+            srv.shutdown()
+            srv.shutdown_companion()
+
+    def test_tools_needs_coding_tools(self, server):
+        srv, _ = server
+        with pytest.raises(urllib.error.HTTPError) as err:
+            _get(f"{srv.url}/v1/tools")
+        assert err.value.code == 404
+
+    def test_coding_tool_calls_join_spend_and_tools(self, tmp_path, monkeypatch):
+        from prompture.companion import CodingToolSource
+        from prompture.companion import coding_tools as ct
+        from prompture.infra.coding_agent_readers import ContinueReader
+
+        monkeypatch.setattr(
+            ct,
+            "coding_agents_overview",
+            lambda: [{"id": "continue", "name": "Continue", "installed": True, "runnable": False, "usage": True}],
+        )
+        log = tmp_path / "continue" / "dev_data" / "0.2.0" / "tokensGenerated.jsonl"
+        log.parent.mkdir(parents=True)
+        ts = datetime.now(timezone.utc).isoformat()
+        log.write_text(
+            json.dumps({"timestamp": ts, "model": "m", "provider": "ollama", "promptTokens": 30, "generatedTokens": 12})
+            + "\n"
+        )
+        _, source = _ledger(tmp_path)
+        tools = CodingToolSource(readers=[ContinueReader(tmp_path / "continue")], prefs_file=tmp_path / "prefs.json")
+        srv = CompanionServer(source, token="t0ken", bus=LiveBus(), state_path=None, coding_tools=tools)
+        srv.start_background()
+        try:
+            # Budgets measure API calls only: coding-tool usage stays out of sources=api.
+            assert _get(f"{srv.url}/v1/spend?period=day&sources=api")[1]["total"]["tokens"] == 0
+            req = urllib.request.Request(
+                f"{srv.url}/v1/tools/claude-plan",
+                data=json.dumps({"enabled": True}).encode(),
+                headers={"Authorization": "Bearer t0ken", "Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                assert json.loads(resp.read()) == {"claude_plan_usage": False}  # no Claude reader in this source
+            assert json.loads((tmp_path / "prefs.json").read_text()) == {"claude_plan_usage": True}
+            _, info = _get(f"{srv.url}/v1/companion/info", token=None)
+            assert info["capabilities"]["coding_tools"] is True
+            _, body = _get(f"{srv.url}/v1/tools?period=day")
+            assert body["period"] == "day" and body["installed"][0]["id"] == "continue"
+            agent = body["agents"][0]
+            assert (agent["agent"], agent["name"], agent["requests"], agent["tokens"]) == (
+                "continue",
+                "Continue",
+                1,
+                42,
+            )
+            _, spend = _get(f"{srv.url}/v1/spend?period=day")
+            assert spend["total"]["tokens"] == 42
+            _, recent = _get(f"{srv.url}/v1/recent?minutes=30")
+            assert [(e["type"], e["key_name"], e["prompt_tokens"]) for e in recent] == [
+                ("request.finished", "Continue", 30)
+            ]
+        finally:
+            srv.shutdown()
+            srv.shutdown_companion()
 
     def test_token_required(self, server):
         srv, _ = server

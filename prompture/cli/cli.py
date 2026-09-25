@@ -212,7 +212,12 @@ def test_suite(specfile: str, providers: str | None, models: str | None, fmt: st
     type=int,
     help="Stop when this process exits (used by apps that start the companion for themselves).",
 )
-def companion(port: int, db_path: str | None, exit_with_pid: int | None) -> None:
+@click.option(
+    "--coding-tools/--no-coding-tools",
+    default=True,
+    help="Also count the usage local coding agents (Claude Code, Codex, Kimi Code, …) log on disk (default: on).",
+)
+def companion(port: int, db_path: str | None, exit_with_pid: int | None, coding_tools: bool) -> None:
     """Serve this machine's Prompture usage to desktop companions (no hub needed).
 
     Reads the usage ledger every Prompture call writes to, plus rate-limit
@@ -221,13 +226,15 @@ def companion(port: int, db_path: str | None, exit_with_pid: int | None) -> None
     written to ~/.prompture/companion.json. If a companion is already running,
     this prints its address and exits.
     """
-    from ..companion import CompanionServer, LedgerSource, running_instance
+    from ..companion import CodingToolSource, CompanionServer, LedgerSource, running_instance
 
     existing = running_instance()
     if existing:
         click.echo(f"Prompture companion already running at {existing['url']} (pid {existing.get('pid')}).")
         return
-    server = CompanionServer(LedgerSource(db_path), port=port)
+    server = CompanionServer(
+        LedgerSource(db_path), port=port, coding_tools=CodingToolSource() if coding_tools else None
+    )
     click.echo(f"Prompture companion on {server.url} - ledger {server.ledger.db_path}")
     click.echo("Address and token in ~/.prompture/companion.json. Ctrl+C to stop.")
     if exit_with_pid:

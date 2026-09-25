@@ -80,9 +80,9 @@ class LedgerSource:
             project=_project(r["tags"]),
         )
 
-    def rows(self, period: str = "day", now: datetime | None = None) -> list[UsageRow]:
-        """Calls in the current UTC ``period`` window."""
-        start = window_start(period, now).isoformat()
+    def rows(self, period: str = "day", now: datetime | None = None, offset_minutes: int = 0) -> list[UsageRow]:
+        """Calls in the current ``period`` window (UTC unless ``offset_minutes`` is given)."""
+        start = window_start(period, now, offset_minutes).isoformat()
         return [
             self._row(r)
             for r in self._query(
@@ -90,6 +90,23 @@ class LedgerSource:
                 (start,),
             )
         ]
+
+    def daily(self, since: datetime, offset_minutes: int = 0) -> dict[str, dict[str, Any]]:
+        """Calls, tokens and cost per local day since ``since``.
+
+        ``offset_minutes`` is the reader's UTC offset as JavaScript reports it
+        (minutes *behind* UTC, e.g. 240 for UTC-4), so days break at local midnight.
+        """
+        rows = self._query(
+            "SELECT date(timestamp, ?) AS day, COUNT(*) AS n, SUM(total_tokens) AS tokens, SUM(cost) AS cost "
+            "FROM usage_events WHERE timestamp >= ? GROUP BY day",
+            (f"{-offset_minutes:+d} minutes", since.isoformat()),
+        )
+        return {
+            r["day"]: {"requests": int(r["n"]), "tokens": int(r["tokens"] or 0), "cost_usd": float(r["cost"] or 0.0)}
+            for r in rows
+            if r["day"]
+        }
 
     def rate_limits(self) -> dict[str, dict[str, Any]]:
         """Latest rate-limit snapshot per model, from recent calls' metadata."""
@@ -109,14 +126,25 @@ class LedgerSource:
         rows = self._query("SELECT MAX(rowid) AS last FROM usage_events")
         return int(rows[0]["last"] or 0) if rows else 0
 
+    _EVENT_COLUMNS = (
+        "SELECT rowid, id, timestamp, model_name, cost, prompt_tokens, completion_tokens, total_tokens, "
+        "elapsed_ms, status, error_message, tags, metadata FROM usage_events "
+    )
+
     def events_after(self, rowid: int) -> list[tuple[int, dict[str, Any]]]:
         """``request.finished`` payloads for rows newer than *rowid*."""
+        return self._events(self._EVENT_COLUMNS + "WHERE rowid > ? ORDER BY rowid", (rowid,))
+
+    def events_since(self, since: datetime, limit: int = 500) -> list[dict[str, Any]]:
+        """``request.finished`` payloads for calls at or after ``since``, newest last."""
+        rows = self._events(
+            self._EVENT_COLUMNS + "WHERE timestamp >= ? ORDER BY rowid DESC LIMIT ?", (since.isoformat(), limit)
+        )
+        return [event for _, event in reversed(rows)]
+
+    def _events(self, sql: str, params: tuple) -> list[tuple[int, dict[str, Any]]]:
         out = []
-        for r in self._query(
-            "SELECT rowid, id, timestamp, model_name, cost, prompt_tokens, completion_tokens, total_tokens, "
-            "elapsed_ms, status, error_message, tags, metadata FROM usage_events WHERE rowid > ? ORDER BY rowid",
-            (rowid,),
-        ):
+        for r in self._query(sql, params):
             meta = _meta(r["metadata"])
             route = meta.get("route") if isinstance(meta.get("route"), dict) else {}
             attempts = sum(1 for a in route.get("attempts", []) if a.get("outcome") in ("ok", "error")) or 1
