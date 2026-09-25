@@ -274,22 +274,38 @@ async def _async_hook(response: Any) -> None:
     _record(response)
 
 
+def _http_client_classes() -> tuple[tuple[type, ...], tuple[type, ...]]:
+    """Sync and async client classes of the HTTP packages the SDKs build on.
+
+    Older SDK releases use ``httpx``; newer ones use its fork ``httpx2``, which
+    keeps the same client and ``event_hooks`` API.
+    """
+    sync: list[type] = []
+    async_: list[type] = []
+    for name in ("httpx", "httpx2"):
+        try:
+            module = __import__(name)
+        except ImportError:
+            continue
+        sync.append(module.Client)
+        async_.append(module.AsyncClient)
+    return tuple(sync), tuple(async_)
+
+
 def attach_rate_limit_hook(sdk_client: Any) -> None:
     """Add the header-capturing response hook to an OpenAI/Anthropic/Groq SDK client.
 
-    These SDKs keep their ``httpx`` client on ``_client``. Hooking it (rather
-    than passing a custom ``http_client``) keeps the SDK's own connection and
-    timeout defaults and its cleanup on garbage collection. Anything that is
-    not a real httpx client (a test double, a future SDK layout) is left alone.
+    These SDKs keep their ``httpx`` (or ``httpx2``) client on ``_client``.
+    Hooking it (rather than passing a custom ``http_client``) keeps the SDK's
+    own connection and timeout defaults and its cleanup on garbage collection.
+    Anything that is not a real client (a test double, a future SDK layout) is
+    left alone.
     """
-    try:
-        import httpx
-    except ImportError:  # pragma: no cover - httpx ships with every supported SDK
-        return
+    sync_classes, async_classes = _http_client_classes()
     http = getattr(sdk_client, "_client", None)
-    if isinstance(http, httpx.AsyncClient):
+    if async_classes and isinstance(http, async_classes):
         hook: Any = _async_hook
-    elif isinstance(http, httpx.Client):
+    elif sync_classes and isinstance(http, sync_classes):
         hook = _sync_hook
     else:
         return

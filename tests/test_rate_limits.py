@@ -58,6 +58,18 @@ def _ts(iso: str) -> float:
     return datetime.fromisoformat(iso.replace("Z", "+00:00")).astimezone(timezone.utc).timestamp()
 
 
+def _sdk_http(sdk, client_name: str):
+    """The HTTP package an SDK builds on: ``httpx``, or ``httpx2`` in newer releases."""
+    import importlib
+
+    client = getattr(sdk, client_name)(api_key="test")
+    for cls in type(client._client).__mro__:
+        root = cls.__module__.partition(".")[0]
+        if root in ("httpx", "httpx2"):
+            return importlib.import_module(root)
+    return httpx
+
+
 class TestParseHeaders:
     def test_openai_windows_and_duration_resets(self):
         snap = parse_rate_limit_headers(OPENAI_HEADERS, now=NOW)
@@ -204,6 +216,17 @@ class TestCapture:
         attach_rate_limit_hook(holder)
         assert len(holder._client.event_hooks["response"]) == 1
 
+    def test_httpx2_clients_are_hooked(self):
+        httpx2 = pytest.importorskip("httpx2")
+        client = httpx2.Client(transport=httpx2.MockTransport(lambda r: httpx2.Response(200, headers=OPENAI_HEADERS)))
+        holder = MagicMock()
+        holder._client = client
+        attach_rate_limit_hook(holder)
+        with capture_rate_limits() as limits:
+            client.get("https://example.test/")
+        assert limits.snapshot is not None
+        assert limits.snapshot.windows["requests"].remaining == 59
+
     def test_non_httpx_clients_are_left_alone(self):
         holder = MagicMock()
         attach_rate_limit_hook(holder)  # must not raise
@@ -274,18 +297,20 @@ class TestOpenAIDriver:
         openai = pytest.importorskip("openai")
         from prompture.drivers.openai_driver import OpenAIDriver
 
-        def handler(request: httpx.Request) -> httpx.Response:
+        h = _sdk_http(openai, "OpenAI")
+
+        def handler(request: h.Request) -> h.Response:
             if json.loads(request.content).get("stream"):
-                return httpx.Response(
+                return h.Response(
                     200,
                     headers={**OPENAI_HEADERS, "content-type": "text/event-stream"},
                     content=_openai_stream_body(),
                 )
-            return httpx.Response(200, headers=OPENAI_HEADERS, json=CHAT_COMPLETION)
+            return h.Response(200, headers=OPENAI_HEADERS, json=CHAT_COMPLETION)
 
         driver = OpenAIDriver(api_key="sk-test", model="gpt-4o-mini")
         driver.client = openai.OpenAI(
-            api_key="sk-test", http_client=httpx.Client(transport=httpx.MockTransport(handler)), max_retries=0
+            api_key="sk-test", http_client=h.Client(transport=h.MockTransport(handler)), max_retries=0
         )
         attach_rate_limit_hook(driver.client)
         return driver
@@ -337,14 +362,14 @@ class TestAsyncOpenAIDriver:
         openai = pytest.importorskip("openai")
         from prompture.drivers.async_openai_driver import AsyncOpenAIDriver
 
+        h = _sdk_http(openai, "AsyncOpenAI")
+
         async def run() -> dict:
             driver = AsyncOpenAIDriver(api_key="sk-test", model="gpt-4o-mini")
             driver.client = openai.AsyncOpenAI(
                 api_key="sk-test",
-                http_client=httpx.AsyncClient(
-                    transport=httpx.MockTransport(
-                        lambda r: httpx.Response(200, headers=OPENAI_HEADERS, json=CHAT_COMPLETION)
-                    )
+                http_client=h.AsyncClient(
+                    transport=h.MockTransport(lambda r: h.Response(200, headers=OPENAI_HEADERS, json=CHAT_COMPLETION))
                 ),
                 max_retries=0,
             )
@@ -360,12 +385,11 @@ class TestClaudeDriver:
     def patched_anthropic(self, monkeypatch):
         anthropic = pytest.importorskip("anthropic")
         real = anthropic.Anthropic
+        h = _sdk_http(anthropic, "Anthropic")
 
         def factory(**kwargs):
-            transport = httpx.MockTransport(
-                lambda r: httpx.Response(200, headers=ANTHROPIC_HEADERS, json=ANTHROPIC_MESSAGE)
-            )
-            return real(**kwargs, http_client=httpx.Client(transport=transport), max_retries=0)
+            transport = h.MockTransport(lambda r: h.Response(200, headers=ANTHROPIC_HEADERS, json=ANTHROPIC_MESSAGE))
+            return real(**kwargs, http_client=h.Client(transport=transport), max_retries=0)
 
         monkeypatch.setattr(anthropic, "Anthropic", factory)
         return anthropic
@@ -382,13 +406,15 @@ class TestClaudeDriver:
         anthropic = pytest.importorskip("anthropic")
         from prompture.drivers.async_claude_driver import AsyncClaudeDriver
 
+        h = _sdk_http(anthropic, "AsyncAnthropic")
+
         async def run() -> dict:
             driver = AsyncClaudeDriver(api_key="sk-ant-test")
             driver.client = anthropic.AsyncAnthropic(
                 api_key="sk-ant-test",
-                http_client=httpx.AsyncClient(
-                    transport=httpx.MockTransport(
-                        lambda r: httpx.Response(200, headers=ANTHROPIC_HEADERS, json=ANTHROPIC_MESSAGE)
+                http_client=h.AsyncClient(
+                    transport=h.MockTransport(
+                        lambda r: h.Response(200, headers=ANTHROPIC_HEADERS, json=ANTHROPIC_MESSAGE)
                     )
                 ),
                 max_retries=0,
@@ -403,14 +429,15 @@ class TestClaudeDriver:
 class TestGroqDriver:
     def test_generate_reports_rate_limits(self):
         groq = pytest.importorskip("groq")
+        h = _sdk_http(groq, "Groq")
         from prompture.drivers.groq_driver import GroqDriver
 
         driver = GroqDriver(api_key="gsk-test", model="llama-3.1-8b-instant")
         driver.client = groq.Client(
             api_key="gsk-test",
-            http_client=httpx.Client(
-                transport=httpx.MockTransport(
-                    lambda r: httpx.Response(
+            http_client=h.Client(
+                transport=h.MockTransport(
+                    lambda r: h.Response(
                         200, headers=GROQ_HEADERS, json={**CHAT_COMPLETION, "model": "llama-3.1-8b-instant"}
                     )
                 )
@@ -492,13 +519,14 @@ class TestOpenAICompatibleDriver:
 class TestAzureDriver:
     def test_generate_reports_rate_limits(self, monkeypatch):
         openai = pytest.importorskip("openai")
+        h = _sdk_http(openai, "OpenAI")
         from prompture.drivers import azure_driver
 
-        transport = httpx.MockTransport(lambda r: httpx.Response(200, headers=OPENAI_HEADERS, json=CHAT_COMPLETION))
+        transport = h.MockTransport(lambda r: h.Response(200, headers=OPENAI_HEADERS, json=CHAT_COMPLETION))
         monkeypatch.setattr(
             azure_driver,
             "AzureOpenAI",
-            lambda **kw: openai.AzureOpenAI(**kw, http_client=httpx.Client(transport=transport), max_retries=0),
+            lambda **kw: openai.AzureOpenAI(**kw, http_client=h.Client(transport=transport), max_retries=0),
         )
         driver = azure_driver.AzureDriver(
             api_key="k", endpoint="https://example.openai.azure.com", deployment_id="gpt-4o-mini", model="gpt-4o-mini"
