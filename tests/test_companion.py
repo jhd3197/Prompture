@@ -140,8 +140,40 @@ class TestServer:
         assert body["service"] == "prompture" and body["mode"] == "local"
         assert body["api_version"] == 1
         assert body["capabilities"]["key_controls"] is False
-        assert set(body["features"]) == {"live", "limits", "spend", "alerts", "tools"}
-        assert body["capabilities"]["coding_tools"] is False
+        assert set(body["features"]) == {"live", "limits", "spend", "alerts", "tools", "activity"}
+        assert body["capabilities"]["coding_tools"] is False and body["capabilities"]["activity"] is True
+
+    def test_activity_merges_ledger_and_coding_tools_by_local_day(self, tmp_path):
+        from prompture.companion import CodingToolSource
+        from prompture.infra.coding_agent_readers import ContinueReader
+
+        log = tmp_path / "continue" / "dev_data" / "0.2.0" / "tokensGenerated.jsonl"
+        log.parent.mkdir(parents=True)
+        ts = datetime.now(timezone.utc).isoformat()
+        log.write_text(
+            json.dumps({"timestamp": ts, "model": "m", "provider": "ollama", "promptTokens": 30, "generatedTokens": 12})
+            + "\n"
+        )
+        tracker, source = _ledger(tmp_path)
+        _record(tracker, cost=0.5)
+        _record(tracker, cost=0.25)
+        tools = CodingToolSource(readers=[ContinueReader(tmp_path / "continue")])
+        srv = CompanionServer(source, token="t0ken", bus=LiveBus(), state_path=None, coding_tools=tools)
+        srv.start_background()
+        try:
+            _, body = _get(f"{srv.url}/v1/activity?days=7&tz_offset=0")
+            today = datetime.now(timezone.utc).date().isoformat()
+            assert body["end"] == today and len(body["days"]) == 1
+            day = body["days"][0]
+            assert day["date"] == today and day["requests"] == 3
+            assert day["cost_usd"] == pytest.approx(0.75)
+            assert {s["name"] for s in day["sources"]} == {"Prompture", "Continue"}
+            with pytest.raises(urllib.error.HTTPError) as err:
+                _get(f"{srv.url}/v1/activity?days=soon")
+            assert err.value.code == 422
+        finally:
+            srv.shutdown()
+            srv.shutdown_companion()
 
     def test_tools_needs_coding_tools(self, server):
         srv, _ = server

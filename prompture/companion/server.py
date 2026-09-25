@@ -51,6 +51,7 @@ FEATURES = {
     "spend": "/v1/spend",
     "alerts": "/v1/alerts",
     "tools": "/v1/tools",
+    "activity": "/v1/activity",
 }
 CAPABILITIES = {
     "running_calls": False,  # the ledger only sees calls after they finish
@@ -59,6 +60,7 @@ CAPABILITIES = {
     "provider_controls": False,
     "alert_rules": False,
     "coding_tools": False,
+    "activity": True,
 }
 
 
@@ -137,6 +139,13 @@ class _Handler(BaseHTTPRequestHandler):
             return self._json(200, self.server.limits(accounts=query.get("accounts", "true") != "false"))
         if url.path == "/v1/alerts":
             return self._json(200, [])
+        if url.path == "/v1/activity":
+            try:
+                days = min(400, max(1, int(query.get("days", "371"))))
+                offset = min(840, max(-840, int(query.get("tz_offset", "0"))))
+            except ValueError:
+                return self._json(422, {"detail": "days and tz_offset must be integers"})
+            return self._json(200, self.server.activity(days, offset))
         if url.path == "/v1/tools":
             if self.server.coding_tools is None:
                 return self._json(
@@ -252,6 +261,46 @@ class CompanionServer(ThreadingHTTPServer):
         threading.Thread(target=self.ledger.tail, args=(self.bus, self.stopping), daemon=True).start()
         if self.coding_tools is not None:
             threading.Thread(target=self.coding_tools.tail, args=(self.bus, self.stopping), daemon=True).start()
+
+    def activity(self, days: int = 371, offset_minutes: int = 0) -> dict[str, Any]:
+        """Per-day totals for the last ``days`` local days: Prompture calls plus coding tools.
+
+        Only days with activity are listed; each names what contributed
+        (``sources``: "Prompture" and each coding agent, by tokens).
+        """
+        from datetime import datetime, timedelta, timezone
+
+        local_now = datetime.now(timezone.utc) - timedelta(minutes=offset_minutes)
+        first_day = local_now.date() - timedelta(days=days - 1)
+        since = datetime.combine(first_day, datetime.min.time(), timezone.utc) + timedelta(minutes=offset_minutes)
+        merged: dict[str, dict[str, Any]] = {}
+
+        def add(day: str, requests: int, tokens: int, cost: float, name: str) -> None:
+            d = merged.setdefault(day, {"date": day, "requests": 0, "tokens": 0, "cost_usd": 0.0, "sources": {}})
+            d["requests"] += requests
+            d["tokens"] += tokens
+            d["cost_usd"] += cost
+            s = d["sources"].setdefault(name, {"name": name, "requests": 0, "tokens": 0})
+            s["requests"] += requests
+            s["tokens"] += tokens
+
+        for day, t in self.ledger.daily(since, offset_minutes).items():
+            add(day, t["requests"], t["tokens"], t["cost_usd"], "Prompture")
+        if self.coding_tools is not None:
+            names = self.coding_tools.names
+            for day, t in self.coding_tools.usage.daily(since, offset_minutes).items():
+                for agent, a in t["agents"].items():
+                    share = a["tokens"] / t["tokens"] if t["tokens"] else 0.0
+                    add(day, a["requests"], a["tokens"], t["cost_usd"] * share, names.get(agent, agent))
+        out = []
+        for day in sorted(merged):
+            if day < first_day.isoformat():
+                continue
+            d = merged[day]
+            d["cost_usd"] = round(d["cost_usd"], 6)
+            d["sources"] = sorted(d["sources"].values(), key=lambda s: -s["tokens"])
+            out.append(d)
+        return {"start": first_day.isoformat(), "end": local_now.date().isoformat(), "days": out}
 
     def limits(self, *, accounts: bool = True) -> dict[str, Any]:
         from datetime import datetime, timezone

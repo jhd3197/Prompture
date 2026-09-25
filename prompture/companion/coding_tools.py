@@ -35,6 +35,8 @@ logger = logging.getLogger("prompture.companion")
 
 #: Seconds an installed-agents answer is reused (it looks up executables on PATH).
 OVERVIEW_TTL = 60.0
+#: How far back calls are kept: a year of activity, plus a week of slack.
+RETENTION = timedelta(days=372)
 
 
 def call_event(call: AgentCall, name: str) -> dict[str, Any]:
@@ -88,7 +90,7 @@ class CodingToolSource:
             else:
                 others = [cls() for agent, cls in USAGE_READERS.items() if agent not in ("claude", "codex")]
                 readers = [claude, codex, *others]
-        self.usage = CodingAgentUsage(readers)
+        self.usage = CodingAgentUsage(readers, retention=RETENTION)
         self.names = {r.agent: r.display_name for r in readers}
         self._overview: tuple[float, list[dict[str, Any]]] | None = None
 

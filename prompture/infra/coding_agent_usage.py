@@ -48,7 +48,7 @@ DEFAULT_RETENTION = timedelta(days=35)
 SCAN_INTERVAL = 2.0
 
 
-@dataclasses.dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True, slots=True)
 class AgentCall:
     """One model call a coding agent logged."""
 
@@ -354,6 +354,25 @@ class CodingAgentUsage:
                 ]
             out.append(a)
         return out
+
+    def daily(self, since: datetime, offset_minutes: int = 0) -> dict[str, dict[str, Any]]:
+        """Calls, tokens and cost per local day, with tokens per agent.
+
+        ``offset_minutes`` is minutes *behind* UTC (JavaScript's
+        ``getTimezoneOffset``), so days break at the reader's local midnight.
+        """
+        shift = timedelta(minutes=offset_minutes)
+        days: dict[str, dict[str, Any]] = {}
+        for c in self.calls(since):
+            day = (c.ts - shift).date().isoformat()
+            d = days.setdefault(day, {"requests": 0, "tokens": 0, "cost_usd": 0.0, "agents": {}})
+            d["requests"] += 1
+            d["tokens"] += c.tokens
+            d["cost_usd"] += c.cost_usd
+            a = d["agents"].setdefault(c.agent, {"requests": 0, "tokens": 0})
+            a["requests"] += 1
+            a["tokens"] += c.tokens
+        return days
 
     def plan_limits(self) -> dict[str, dict[str, Any]]:
         """Plan windows from every agent that has them."""

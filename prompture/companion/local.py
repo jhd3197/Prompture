@@ -91,6 +91,23 @@ class LedgerSource:
             )
         ]
 
+    def daily(self, since: datetime, offset_minutes: int = 0) -> dict[str, dict[str, Any]]:
+        """Calls, tokens and cost per local day since ``since``.
+
+        ``offset_minutes`` is the reader's UTC offset as JavaScript reports it
+        (minutes *behind* UTC, e.g. 240 for UTC-4), so days break at local midnight.
+        """
+        rows = self._query(
+            "SELECT date(timestamp, ?) AS day, COUNT(*) AS n, SUM(total_tokens) AS tokens, SUM(cost) AS cost "
+            "FROM usage_events WHERE timestamp >= ? GROUP BY day",
+            (f"{-offset_minutes:+d} minutes", since.isoformat()),
+        )
+        return {
+            r["day"]: {"requests": int(r["n"]), "tokens": int(r["tokens"] or 0), "cost_usd": float(r["cost"] or 0.0)}
+            for r in rows
+            if r["day"]
+        }
+
     def rate_limits(self) -> dict[str, dict[str, Any]]:
         """Latest rate-limit snapshot per model, from recent calls' metadata."""
         out: dict[str, dict[str, Any]] = {}
