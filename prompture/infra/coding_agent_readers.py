@@ -33,6 +33,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import sqlite3
 import time
 import urllib.error
@@ -388,10 +389,25 @@ class CodexReader(UsageReader):
 
 # ------------------------------------------------------------------ Kimi Code
 
+#: "You've reached your 5-hour usage limit" / "... weekly usage limit" in a failed turn.
+_KIMI_LIMIT = re.compile(r"reached your (5-hour|weekly|daily|monthly) usage limit", re.IGNORECASE)
+_KIMI_WINDOWS = {
+    "5-hour": ("session_5h", 5 * 3600),
+    "weekly": ("weekly", 7 * 86400),
+    "daily": ("daily", 86400),
+    "monthly": ("monthly", 30 * 86400),
+}
+
 
 @register_usage_reader
 class KimiCodeReader(UsageReader):
-    """Kimi Code session wire logs (main agent and subagents each have their own file)."""
+    """Kimi Code session wire logs (main agent and subagents each have their own file).
+
+    Kimi Code doesn't log how much of its plan is left, but it does log the
+    error when a window runs out ("You've reached your 5-hour usage limit").
+    That window is reported as used up until the latest time it can reset —
+    the hit time plus the window length, since the window's start isn't logged.
+    """
 
     agent = "kimi"
     display_name = "Kimi Code"
@@ -399,6 +415,29 @@ class KimiCodeReader(UsageReader):
     def __init__(self, root: str | Path | None = None) -> None:
         self.root = Path(root) if root else env_path("KIMI_CODE_HOME", home() / ".kimi-code")
         self.cursor = JsonlCursor()
+        self.limit_hits: dict[str, float] = {}  # window name -> latest hit (epoch seconds)
+
+    def _limit_hit(self, line: str) -> None:
+        match = _KIMI_LIMIT.search(line)
+        entry = _loads(line) if match else None
+        ts = parse_ts(entry.get("time")) if isinstance(entry, dict) else None
+        if match and ts is not None:
+            name = _KIMI_WINDOWS[match.group(1).lower()][0]
+            self.limit_hits[name] = max(self.limit_hits.get(name, 0.0), ts.timestamp())
+
+    def plan_limits(self) -> dict[str, dict[str, Any]]:
+        now = time.time()
+        windows = {}
+        latest = 0.0
+        for name, seconds in _KIMI_WINDOWS.values():
+            hit = self.limit_hits.get(name)
+            if hit and hit + seconds > now:
+                windows[name] = {"limit": 100, "remaining": 0, "resets_at": hit + seconds}
+                latest = max(latest, hit)
+        if not windows:
+            return {}
+        snap = _plan_snapshot(self.agent, self.display_name, windows, latest, None)
+        return {"moonshot/kimi-code": {**snap, "estimated_reset": True}}
 
     def paths(self) -> list[Path]:
         return [self.root / "sessions"]
@@ -411,6 +450,9 @@ class KimiCodeReader(UsageReader):
             project = work[3:].rsplit("_", 1)[0] if work.startswith("wd_") else None
             rel = f"{session}/{path.parent.name}"
             for offset, line in self.cursor.new_lines(path):
+                if "usage limit" in line:
+                    self._limit_hit(line)
+                    continue
                 if '"usage.record"' not in line:
                     continue
                 entry = _loads(line)

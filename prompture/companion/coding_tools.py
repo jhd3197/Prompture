@@ -137,14 +137,14 @@ class CodingToolSource:
         """Read what the logs gained since the last scan; returns the new calls."""
         return self.usage.refresh(force=force)
 
-    def calls(self, period: str = "day", now: datetime | None = None) -> list[AgentCall]:
-        return self.usage.calls(window_start(period, now))
+    def calls(self, period: str = "day", now: datetime | None = None, offset_minutes: int = 0) -> list[AgentCall]:
+        return self.usage.calls(window_start(period, now, offset_minutes))
 
-    def rows(self, period: str = "day", now: datetime | None = None) -> list[UsageRow]:
+    def rows(self, period: str = "day", now: datetime | None = None, offset_minutes: int = 0) -> list[UsageRow]:
         """Calls in the current ``period`` window, as usage rows."""
         return [
             UsageRow(model=c.model, cost_usd=c.cost_usd, tokens=c.tokens, project=c.project)
-            for c in self.calls(period, now)
+            for c in self.calls(period, now, offset_minutes)
         ]
 
     def rate_limits(self) -> dict[str, dict[str, Any]]:
@@ -155,7 +155,7 @@ class CodingToolSource:
     def event(self, call: AgentCall) -> dict[str, Any]:
         return call_event(call, self.names.get(call.agent, call.agent))
 
-    def tools(self, period: str = "day", now: datetime | None = None) -> dict[str, Any]:
+    def tools(self, period: str = "day", now: datetime | None = None, offset_minutes: int = 0) -> dict[str, Any]:
         """``/v1/tools``: each agent's usage for the period, plus what is installed."""
         if self._overview is None or time.monotonic() - self._overview[0] > OVERVIEW_TTL:
             try:
@@ -163,7 +163,7 @@ class CodingToolSource:
             except Exception:
                 logger.debug("coding agent overview failed", exc_info=True)
                 self._overview = (time.monotonic(), [])
-        start = window_start(period, now)
+        start = window_start(period, now, offset_minutes)
         return {
             "period": period,
             "start": start.isoformat(),

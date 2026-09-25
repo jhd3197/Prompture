@@ -80,9 +80,9 @@ class LedgerSource:
             project=_project(r["tags"]),
         )
 
-    def rows(self, period: str = "day", now: datetime | None = None) -> list[UsageRow]:
-        """Calls in the current UTC ``period`` window."""
-        start = window_start(period, now).isoformat()
+    def rows(self, period: str = "day", now: datetime | None = None, offset_minutes: int = 0) -> list[UsageRow]:
+        """Calls in the current ``period`` window (UTC unless ``offset_minutes`` is given)."""
+        start = window_start(period, now, offset_minutes).isoformat()
         return [
             self._row(r)
             for r in self._query(

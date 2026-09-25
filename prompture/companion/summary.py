@@ -20,26 +20,35 @@ COMPANION_API_VERSION = 1
 PERIODS = ("day", "week", "month")
 
 
-def window_start(period: str, now: datetime | None = None) -> datetime:
-    """First UTC instant of the current ``day`` / ``week`` (Monday) / ``month``."""
-    now = now or datetime.now(timezone.utc)
+def window_start(period: str, now: datetime | None = None, offset_minutes: int = 0) -> datetime:
+    """First instant of the current ``day`` / ``week`` (Monday) / ``month``, as a UTC datetime.
+
+    Windows break at midnight UTC by default. ``offset_minutes`` moves them to a
+    reader's local midnight; it is minutes *behind* UTC, as JavaScript's
+    ``getTimezoneOffset()`` reports it (240 for UTC-4).
+    """
+    shift = timedelta(minutes=offset_minutes)
+    now = (now or datetime.now(timezone.utc)) - shift  # the reader's wall clock
     p = (period or "day").lower()
     if p == "week":
-        return (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
-    if p == "month":
-        return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    return now.replace(hour=0, minute=0, second=0, microsecond=0)
+        start = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+    elif p == "month":
+        start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    else:
+        start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    return start + shift
 
 
-def window_end(period: str, now: datetime | None = None) -> datetime:
+def window_end(period: str, now: datetime | None = None, offset_minutes: int = 0) -> datetime:
     """When the current window for ``period`` resets (exclusive end)."""
-    start = window_start(period, now)
+    shift = timedelta(minutes=offset_minutes)
+    start = window_start(period, now, offset_minutes) - shift
     p = (period or "day").lower()
     if p == "week":
-        return start + timedelta(days=7)
+        return start + timedelta(days=7) + shift
     if p == "month":
-        return (start + timedelta(days=32)).replace(day=1)
-    return start + timedelta(days=1)
+        return (start + timedelta(days=32)).replace(day=1) + shift
+    return start + timedelta(days=1) + shift
 
 
 def iso_utc(dt: datetime | None) -> str | None:
@@ -86,6 +95,7 @@ def summarize_spend(
     *,
     key_names: Mapping[int, str] | None = None,
     now: datetime | None = None,
+    offset_minutes: int = 0,
 ) -> dict[str, Any]:
     """The ``/v1/spend`` document for rows already limited to the current window."""
     total = _bucket()
@@ -104,8 +114,8 @@ def summarize_spend(
     total["cost_usd"] = round(total["cost_usd"], 6)
     return {
         "period": period,
-        "start": iso_utc(window_start(period, now)),
-        "resets_at": iso_utc(window_end(period, now)),
+        "start": iso_utc(window_start(period, now, offset_minutes)),
+        "resets_at": iso_utc(window_end(period, now, offset_minutes)),
         "total": total,
         "by_project": _ranked(by_project, "project"),
         "by_key": keys,

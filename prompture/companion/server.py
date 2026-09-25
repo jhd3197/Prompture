@@ -102,6 +102,14 @@ def _write_state(path: Path, data: dict[str, Any]) -> None:
     os.replace(tmp, path)
 
 
+def _tz_offset(query: dict[str, str]) -> int:
+    """``tz_offset`` (minutes behind UTC, as JavaScript reports it); 0 = UTC windows."""
+    try:
+        return min(840, max(-840, int(query.get("tz_offset", "0"))))
+    except ValueError:
+        return 0
+
+
 class _Handler(BaseHTTPRequestHandler):
     server: CompanionServer  # type: ignore[assignment]
     protocol_version = "HTTP/1.1"
@@ -154,7 +162,9 @@ class _Handler(BaseHTTPRequestHandler):
             if sources not in ("all", "api"):
                 return self._json(422, {"detail": "sources must be all or api"})
             # "api": only calls made through Prompture, billed per token — what budgets measure.
-            return self._json(200, summarize_spend(self.server.rows(period, api_only=sources == "api"), period))
+            offset = _tz_offset(query)
+            rows = self.server.rows(period, api_only=sources == "api", offset_minutes=offset)
+            return self._json(200, summarize_spend(rows, period, offset_minutes=offset))
         if url.path == "/v1/limits":
             return self._json(200, self.server.limits(accounts=query.get("accounts", "true") != "false"))
         if url.path == "/v1/alerts":
@@ -174,7 +184,7 @@ class _Handler(BaseHTTPRequestHandler):
             period = query.get("period", "day")
             if period not in PERIODS:
                 return self._json(422, {"detail": "period must be day, week or month"})
-            return self._json(200, self.server.coding_tools.tools(period))
+            return self._json(200, self.server.coding_tools.tools(period, offset_minutes=_tz_offset(query)))
         if url.path == "/v1/live":
             return self._live(query)
         return self._json(404, {"detail": "Not found"})
@@ -261,11 +271,11 @@ class CompanionServer(ThreadingHTTPServer):
     def url(self) -> str:
         return f"http://127.0.0.1:{self.server_address[1]}"
 
-    def rows(self, period: str, *, api_only: bool = False) -> list[UsageRow]:
+    def rows(self, period: str, *, api_only: bool = False, offset_minutes: int = 0) -> list[UsageRow]:
         """The ledger's rows for *period*, plus coding-tool calls when enabled (unless ``api_only``)."""
-        rows = self.ledger.rows(period)
+        rows = self.ledger.rows(period, offset_minutes=offset_minutes)
         if self.coding_tools is not None and not api_only:
-            rows += self.coding_tools.rows(period)
+            rows += self.coding_tools.rows(period, offset_minutes=offset_minutes)
         return rows
 
     def rate_limits(self) -> dict[str, dict[str, Any]]:

@@ -279,3 +279,35 @@ def test_missing_folders_mean_not_available(tmp_path, reader):
     r = reader(tmp_path / "nothing")
     assert r.available() is False
     assert list(r.read(SINCE)) == []
+
+
+def test_kimi_reports_a_window_it_ran_out_of(tmp_path):
+    wire = tmp_path / "sessions" / "wd_app_0123456789ab" / "session_1" / "agents" / "main" / "wire.jsonl"
+    hit = {
+        "type": "turn.ended",
+        "reason": "failed",
+        "error": {
+            "code": "provider.auth_error",
+            "message": "403 You've reached your 5-hour usage limit. Your quota will reset soon.",
+        },
+        "time": _ms(T),
+    }
+    old = {**hit, "time": _ms(NOW - timedelta(hours=6))}
+    _jsonl(wire, [old, hit])
+    usage = _usage([KimiCodeReader(tmp_path)])
+    usage.refresh(force=True)
+    snap = usage.plan_limits()["moonshot/kimi-code"]
+    window = snap["windows"]["session_5h"]
+    assert window["remaining"] == 0 and snap["source"] == "plan" and snap["tool_name"] == "Kimi Code"
+    assert window["resets_at"] == pytest.approx(T.timestamp() + 5 * 3600)
+
+
+def test_windows_follow_the_readers_local_midnight():
+    from prompture.companion.summary import window_end, window_start
+
+    now = datetime(2026, 9, 25, 1, 30, tzinfo=timezone.utc)  # 21:30 on Sep 24 in UTC-4
+    assert window_start("day", now) == datetime(2026, 9, 25, tzinfo=timezone.utc)
+    assert window_start("day", now, 240) == datetime(2026, 9, 24, 4, tzinfo=timezone.utc)
+    assert window_end("day", now, 240) == datetime(2026, 9, 25, 4, tzinfo=timezone.utc)
+    assert window_start("week", now, 240) == datetime(2026, 9, 21, 4, tzinfo=timezone.utc)  # Monday, local
+    assert window_start("month", now, 240) == datetime(2026, 9, 1, 4, tzinfo=timezone.utc)
