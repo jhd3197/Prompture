@@ -204,6 +204,16 @@ def test_state_file_round_trip(tmp_path):
     assert read_state(state_path) is None
 
 
+@pytest.mark.parametrize(
+    "url",
+    ["file:///etc/passwd", "https://127.0.0.1:5123", "http://example.com:80", "http://127.0.0.1"],
+)
+def test_running_instance_only_trusts_loopback_http(tmp_path, url):
+    state_path = tmp_path / "companion.json"
+    state_path.write_text(json.dumps({"url": url, "token": "t", "pid": 1}))
+    assert running_instance(state_path) is None
+
+
 def test_stops_when_owner_process_exits(tmp_path):
     import os
     import subprocess

@@ -254,21 +254,27 @@ class CompanionServer(ThreadingHTTPServer):
 
 
 def running_instance(path: Path = STATE_FILE, timeout: float = 2.0) -> dict[str, Any] | None:
-    """The state of a companion that is already up and answering, else ``None``."""
-    import urllib.request
+    """The state of a companion that is already up and answering, else ``None``.
+
+    The state file is only trusted to name a plain-HTTP loopback address, so a
+    tampered file can't point this check at another host or a ``file:`` URL.
+    """
+    import http.client
 
     state = read_state(path)
     if not state:
         return None
+    url = urlparse(str(state.get("url", "")))
+    if url.scheme != "http" or url.hostname not in {"127.0.0.1", "localhost"} or not url.port:
+        return None
+    conn = http.client.HTTPConnection(url.hostname, url.port, timeout=timeout)
     try:
-        with urllib.request.urlopen(
-            f"{state['url']}/v1/companion/info", timeout=timeout
-        ) as resp:  # loopback URL we wrote ourselves
-            if resp.status == 200:
-                return state
+        conn.request("GET", "/v1/companion/info")
+        return state if conn.getresponse().status == 200 else None
     except OSError:
         return None
-    return None
+    finally:
+        conn.close()
 
 
 def process_alive(pid: int) -> bool:
