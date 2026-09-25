@@ -310,9 +310,10 @@ class CompanionServer(ThreadingHTTPServer):
             d["requests"] += requests
             d["tokens"] += tokens
             d["cost_usd"] += cost
-            s = d["sources"].setdefault(name, {"name": name, "requests": 0, "tokens": 0})
+            s = d["sources"].setdefault(name, {"name": name, "requests": 0, "tokens": 0, "cost_usd": 0.0})
             s["requests"] += requests
             s["tokens"] += tokens
+            s["cost_usd"] += cost
 
         for day, t in self.ledger.daily(since, offset_minutes).items():
             add(day, t["requests"], t["tokens"], t["cost_usd"], "Prompture")
@@ -320,15 +321,16 @@ class CompanionServer(ThreadingHTTPServer):
             names = self.coding_tools.names
             for day, t in self.coding_tools.usage.daily(since, offset_minutes).items():
                 for agent, a in t["agents"].items():
-                    share = a["tokens"] / t["tokens"] if t["tokens"] else 0.0
-                    add(day, a["requests"], a["tokens"], t["cost_usd"] * share, names.get(agent, agent))
+                    add(day, a["requests"], a["tokens"], a["cost_usd"], names.get(agent, agent))
         out = []
         for day in sorted(merged):
             if day < first_day.isoformat():
                 continue
             d = merged[day]
             d["cost_usd"] = round(d["cost_usd"], 6)
-            d["sources"] = sorted(d["sources"].values(), key=lambda s: -s["tokens"])
+            d["sources"] = sorted(
+                ({**s, "cost_usd": round(s["cost_usd"], 6)} for s in d["sources"].values()), key=lambda s: -s["tokens"]
+            )
             out.append(d)
         return {"start": first_day.isoformat(), "end": local_now.date().isoformat(), "days": out}
 

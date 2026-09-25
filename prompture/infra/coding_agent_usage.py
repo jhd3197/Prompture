@@ -369,9 +369,10 @@ class CodingAgentUsage:
             d["requests"] += 1
             d["tokens"] += c.tokens
             d["cost_usd"] += c.cost_usd
-            a = d["agents"].setdefault(c.agent, {"requests": 0, "tokens": 0})
+            a = d["agents"].setdefault(c.agent, {"requests": 0, "tokens": 0, "cost_usd": 0.0})
             a["requests"] += 1
             a["tokens"] += c.tokens
+            a["cost_usd"] += c.cost_usd
         return days
 
     def plan_limits(self) -> dict[str, dict[str, Any]]:
