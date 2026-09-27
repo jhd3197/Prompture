@@ -245,7 +245,7 @@ class RoutedCall:
     endpoint: str
     requested: str  # provider/model the CLI asked for
     served: str  # provider/model that answered (or was last tried)
-    route: str  # "passthrough" | "native" (same vendor, other model) | "routed"
+    route: str  # "passthrough" | "native" (same vendor, other model) | "routed" | "cached"
     rule: dict[str, Any]  # {"source", "match", "target", "reason"}
     billing: str  # of the destination
     original_billing: str  # of the path the CLI would have taken
@@ -322,7 +322,7 @@ def settle(call: RoutedCall, usage: Usage, *, vendor: str, cache_ratio: float | 
     call.output_tokens = usage.output_tokens
     call.cache_read_tokens = usage.cache_read_tokens
     call.cache_write_tokens = usage.cache_write_tokens
-    if call.route == "routed":
+    if call.route in ("routed", "cached"):
         cost_known = call.cost_source not in ("unknown", "")
         if not cost_known:
             call.cost_usd, call.cost_source = price(call.served, usage, vendor)

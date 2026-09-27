@@ -278,6 +278,16 @@ class _Handler(BaseHTTPRequestHandler):
         assert routing is not None and router is not None
         parts = path.strip("/").split("/")[2:]  # after v1/router
         try:
+            if len(parts) == 4 and parts[0] == "sessions" and parts[3] == "switch":
+                to = body.get("to")
+                if not isinstance(to, str) or not to.strip():
+                    return self._json(
+                        422, {"detail": 'Send {"to": "native:<model>" | "<provider/model>" | "original"}.'}
+                    )
+                switched = router.switch(parts[1], parts[2], to.strip(), now=body.get("now") is True)
+                if switched is None:
+                    return self._json(404, {"detail": "No such task; it may have ended."})
+                return self._json(200, {"task": switched.to_dict()})
             if len(parts) == 4 and parts[0] == "sessions" and parts[3] == "escalate":
                 decision = router.escalate(parts[1], parts[2], str(body.get("reason") or ""))
                 task = router.policy.find(parts[1], parts[2])

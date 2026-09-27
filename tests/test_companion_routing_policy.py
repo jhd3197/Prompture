@@ -585,3 +585,82 @@ def test_hooks_carry_the_project_folder_and_mark_permission_waits(tmp_path):
     assert task.waiting and task.project == "shop"
     router.hook("claude", "PostToolUse", "s")
     assert not task.waiting
+
+
+# ------------------------------------------------------------------ local models, switching, reuse
+
+
+def _title(prompt, *, session="t", system="Generate a 5-10 word title for the conversation."):
+    return {
+        "model": "claude-haiku-4-5",
+        "system": system,
+        "metadata": {"user_id": f"user_abc_account_def_session_{session}"},
+        "messages": [{"role": "user", "content": prompt}],
+    }
+
+
+def test_a_preferred_local_model_takes_titles_and_goes_first_on_fallback(stack):
+    srv, router, routes, drivers = stack
+    routes.save({"local": {"model": "ollama/tiny", "fallback": True}})
+    url = f"{srv.url}/tools/claude-code/v1/messages"
+    _post(url, _title("Fix the login bug in the auth module"), KEY)
+    _post(url, _msg("claude-sonnet-5", session="l1"), KEY)
+    assert drivers["ollama/tiny"].calls == 1 and len(_Vendor.seen) == 1  # the title stayed local
+    title, main = _wait_calls(router, 2)
+    assert title.rule["source"] == "local" and title.served == "ollama/tiny" and title.billing == "local"
+    assert main.route == "passthrough"
+
+    drivers["ollama/down"] = _Driver(fail=True)
+    routes.save(
+        {
+            "tools": {"claude-code": {"kinds": {"main": "ollama/down"}}},
+            "local": {"model": "ollama/tiny", "fallback": True},
+        }
+    )
+    _post(url, _msg("claude-sonnet-5", session="l2"), KEY)
+    call = _wait_calls(router, 3)[-1]
+    assert [a["model"] for a in call.attempts] == ["ollama/down", "ollama/tiny"]
+
+
+def test_a_switch_waits_for_the_next_prompt_unless_asked_for_now(stack):
+    srv, router, routes, _ = stack
+    routes.save({"tools": {"claude-code": {"preset": "economy"}}})
+    url = f"{srv.url}/tools/claude-code/v1/messages"
+    _post(url, _msg("claude-opus-5-5", session="sw1"), PLAN)
+    assert _Vendor.seen[-1]["body"]["model"] == "claude-sonnet-5"
+    req = urllib.request.Request(
+        f"{srv.url}/v1/router/sessions/claude-code/sw1/switch",
+        data=json.dumps({"to": "original"}).encode(),
+        headers={"Authorization": "Bearer t0ken", "Content-Type": "application/json"},
+    )
+    assert json.loads(urllib.request.urlopen(req, timeout=5).read())["task"]["pending_switch"]["to"] == "original"
+    _post(url, _tool_turn("claude-opus-5-5", "ok", session="sw1"), PLAN)
+    assert _Vendor.seen[-1]["body"]["model"] == "claude-sonnet-5"  # mid tool loop: not yet
+    _post(url, _msg("claude-opus-5-5", "next", session="sw1"), PLAN)
+    assert _Vendor.seen[-1]["body"]["model"] == "claude-opus-5-5"
+    call = _wait_calls(router, 3)[-1]
+    assert call.rule["source"] == "switch" and call.switched
+
+    router.switch("claude-code", "sw1", "native:claude-haiku-4-5", now=True)
+    _post(url, _tool_turn("claude-opus-5-5", "ok", session="sw1"), PLAN)
+    assert _Vendor.seen[-1]["body"]["model"] == "claude-haiku-4-5"  # right away when asked
+    assert len(router.policy.find("claude-code", "sw1").switches) == 2
+
+
+def test_titles_for_near_identical_prompts_reuse_one_answer(stack):
+    srv, router, routes, _ = stack
+    url = f"{srv.url}/tools/claude-code/v1/messages"
+    _post(url, _title("Fix the login bug in the auth module please"), KEY)  # off: nothing kept
+    routes.save({"cache": {"enabled": True}})
+    _post(url, _title("Fix the login bug in the auth module please"), KEY)
+    status, raw = _post(url, _title("fix the login bug in the auth module please!"), KEY)
+    assert status == 200 and json.loads(raw)["id"] == "msg_vendor"
+    assert len(_Vendor.seen) == 2  # the third came from the cache
+    _post(url, _title("Write a haiku about databases and indexes"), KEY)  # not alike: the vendor
+    _post(
+        url, _title("Fix the login bug in the auth module please", system="Summarize this."), KEY
+    )  # other instructions
+    assert len(_Vendor.seen) == 4
+    reused = _wait_calls(router, 5)[2]
+    assert reused.route == "cached" and reused.rule["source"] == "cache" and reused.cost_usd == 0
+    assert reused.input_tokens == 1000 and reused.savings_usd > 0

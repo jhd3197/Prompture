@@ -26,7 +26,9 @@ from ``~/.prompture/routes.json``::
      "projects": {"my-app": {"preset": "quality"}},
      "fallback": {"models": ["auto/cheap"], "allow_paid": false},
      "escalation": {"enabled": true, "after_failures": 3},
-     "budget": {"task_usd": 2.0, "task_attempts": 6}}
+     "budget": {"task_usd": 2.0, "task_attempts": 6},
+     "local": {"model": "ollama/qwen3:8b", "kinds": ["title"], "fallback": true},
+     "cache": {"enabled": true, "kinds": ["title"], "similarity": 0.9}}
 
 ``kinds`` matches what a request is for (:func:`anthropic_kind`,
 :func:`responses_kind`): ``main`` turns, ``tool_result`` follow-ups, and the
@@ -69,6 +71,7 @@ from urllib.parse import urlsplit
 from .calls import CallLog, RoutedCall, Usage, UsageSniffer, billing_of, settle
 from .live import LiveBus, new_request_id
 from .memory import MemoryService, cwd_of, previous_task, project_name, prompt_text, prompts_of
+from .reuse import AnswerCache
 from .routing_policy import (
     BACKGROUND_KINDS,
     PASS,
@@ -387,6 +390,30 @@ def normalize_routes(data: Any) -> dict[str, Any]:
             entry["to"] = esc["to"].strip()
         if entry:
             out["escalation"] = entry
+    local = data.get("local")
+    if isinstance(local, dict):
+        entry = {}
+        if isinstance(local.get("model"), str) and local["model"].strip():
+            entry["model"] = local["model"].strip()
+        kinds_list = [k for k in local.get("kinds") or [] if k in KINDS and k not in ("probe",)]
+        if isinstance(local.get("kinds"), list):
+            entry["kinds"] = kinds_list
+        if isinstance(local.get("fallback"), bool):
+            entry["fallback"] = local["fallback"]
+        if entry:
+            out["local"] = entry
+    cache = data.get("cache")
+    if isinstance(cache, dict):
+        entry = {}
+        if isinstance(cache.get("enabled"), bool):
+            entry["enabled"] = cache["enabled"]
+        if isinstance(cache.get("kinds"), list):
+            entry["kinds"] = [k for k in cache["kinds"] if k in ("title", "compaction")]
+        sim = _number(cache.get("similarity"))
+        if sim is not None and 0.5 <= sim <= 1:
+            entry["similarity"] = sim
+        if entry:
+            out["cache"] = entry
     budget = data.get("budget")
     if isinstance(budget, dict):
         entry = {}
@@ -588,6 +615,7 @@ class Router:
         self.bus = bus
         self.memory = memory
         self.capacity: Any = None
+        self.answers = AnswerCache()
         self.routes = routes or Routes()
         self.upstream = upstream or (lambda tool: None)
         self._driver_for = driver_for
@@ -632,6 +660,8 @@ class Router:
         req = self._begin(handler, tool, suffix, body, model, kind)
         if self._with_memory(req):
             raw = json.dumps(req.body).encode()
+        if self._from_cache(handler, req):
+            return None
         if req.decision.stop:
             self._finish(req, Usage(), error=req.decision.reason)
             return _send_json(
@@ -743,6 +773,45 @@ class Router:
             logger.debug("router: could not record call", exc_info=True)
         self._ended(req.rid, req.tool, req.started, error, call)
 
+    def _cache_settings(self) -> dict[str, Any]:
+        return {"enabled": False, "kinds": ["title"], "similarity": 0.9, **(self.routes.data().get("cache") or {})}
+
+    def _cacheable(self, req: _Request) -> bool:
+        conf = self._cache_settings()
+        return bool(conf["enabled"]) and req.kind in conf["kinds"] and req.decision.route != "routed"
+
+    def _from_cache(self, handler: BaseHTTPRequestHandler, req: _Request) -> bool:
+        """Answer a cacheable request from an earlier, near-identical one; ``True`` when it did."""
+        if not self._cacheable(req):
+            return False
+        hit = self.answers.lookup(
+            req.tool.id, req.tool.dialect, req.kind, req.body, float(self._cache_settings()["similarity"])
+        )
+        if hit is None:
+            return False
+        answer, score = hit
+        minutes = max(1, int((time.time() - answer.at) / 60))
+        req.call.route, req.call.served, req.call.billing = "cached", "cache", "local"
+        req.call.cost_source = "cache"
+        req.call.rule = {
+            **req.call.rule,
+            "source": "cache",
+            "match": f"{score:.0%}",
+            "reason": f"Reused the answer to a {score:.0%} alike {req.kind} request from {minutes} min ago.",
+        }
+        try:
+            handler.send_response(answer.status)
+            handler.send_header("Content-Type", answer.content_type or "application/json")
+            handler.send_header("Content-Length", str(len(answer.body)))
+            handler.end_headers()
+            handler.wfile.write(answer.body)
+            error = None
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            error = "client disconnected"
+        usage = Usage(**{k: v for k, v in answer.usage.items() if k in Usage.__dataclass_fields__}, model=None)
+        self._finish(req, usage, error)
+        return True
+
     def _with_memory(self, req: _Request) -> bool:
         """Give a session its project notes: chosen at its first prompt, repeated verbatim after.
 
@@ -852,6 +921,8 @@ class Router:
         if raw or method == "POST":
             headers["Content-Length"] = str(len(raw))
         sniffer = UsageSniffer(tool.dialect)
+        capture: bytearray | None = bytearray() if req is not None and self._cacheable(req) else None
+        status_code, content_type = 0, ""
         conn: http.client.HTTPConnection
         if url.scheme == "https":
             conn = http.client.HTTPSConnection(
@@ -885,9 +956,12 @@ class Router:
                     handler.send_header(key, value)
             if self.capacity is not None:
                 self.capacity.observe(tool.id, resp.getheaders())
+            status_code, content_type = resp.status, resp.getheader("Content-Type") or ""
             if not _streams(resp):
                 data = resp.read()
                 sniffer.feed(data, stream=False)
+                if capture is not None:
+                    capture.extend(data)
                 handler.send_header("Content-Length", str(len(data)))
                 handler.end_headers()
                 handler.wfile.write(data)
@@ -904,6 +978,8 @@ class Router:
                     self._first_token(req)
                     first = False
                 sniffer.feed(chunk, stream=True)
+                if capture is not None and len(capture) < (256 << 10):
+                    capture.extend(chunk)
                 handler.wfile.write(chunk)
                 handler.wfile.flush()
         except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
@@ -925,7 +1001,25 @@ class Router:
                             "cost_usd": 0.0,
                         }
                     )
-                self._finish(req, sniffer.finish(), error)
+                usage = sniffer.finish()
+                self._finish(req, usage, error)
+                if capture and not error and status_code == 200:
+                    self.answers.store(
+                        tool.id,
+                        tool.dialect,
+                        req.kind,
+                        req.body,
+                        status=status_code,
+                        content_type=content_type,
+                        data=bytes(capture),
+                        usage={
+                            "input_tokens": usage.input_tokens,
+                            "output_tokens": usage.output_tokens,
+                            "cache_read_tokens": usage.cache_read_tokens,
+                            "cache_write_tokens": usage.cache_write_tokens,
+                        },
+                        model=usage.model,
+                    )
 
     # -- route to a Prompture model -------------------------------------------
 
@@ -1130,6 +1224,10 @@ class Router:
             self.policy.set_waiting(tool.id, session, True)
         elif event in ("UserPromptSubmit", "PostToolUse", "Stop"):
             self.policy.set_waiting(tool.id, session, False)
+
+    def switch(self, tool_id: str, session: str, to: str, *, now: bool = False) -> Task | None:
+        """Move a session to *to* at its next prompt (or ``now``); see :meth:`RoutePolicy.request_switch`."""
+        return self.policy.request_switch(tool_id, session, to, now=now)
 
     def escalate(self, tool_id: str, session: str, reason: str) -> Decision | None:
         """A reviewer (or the user) says the task's answers aren't good enough: move it up."""

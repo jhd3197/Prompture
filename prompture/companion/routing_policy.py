@@ -11,7 +11,8 @@ into a :class:`Decision` for each request. In order:
    task budgets change it on purpose (below); editing rules takes effect on
    the next task.
 3. **Explicit rules**: the project's rules for the tool, then the tool's own
-   (a request *kind* first, then a requested-model pattern).
+   (a request *kind* first, then a requested-model pattern); then a **local
+   model** you prefer for some kinds (``local``: titles by default).
 4. **Presets**: the project's preset for the tool, the project's, the tool's,
    then the default. Built in: ``quality`` (nothing changes), ``balanced``
    (titles on the vendor's small model, summaries on its mid one) and
@@ -38,6 +39,11 @@ request chained with ``previous_response_id`` only works on its own backend).
   (``POST /v1/router/sessions/<tool>/<session>/escalate``). A permission
   prompt, or the user declining a tool, is the user deciding, not the model
   failing, and never counts.
+
+A task can also be **switched** on purpose (``request_switch``): to another
+native model, a Prompture model, or back to what the CLI asked for. It takes
+effect at the task's next prompt, where the prompt cache would be rebuilt
+anyway, unless asked for right away.
 
 Both are bounded per task by ``budget``: ``task_attempts`` (fallback attempts
 plus escalations) and ``task_usd`` (routed spend). Past either, the task stays
@@ -86,6 +92,7 @@ NATIVE_DEFAULTS: dict[str, dict[str, str]] = {
 
 DEFAULT_ESCALATION = {"enabled": True, "after_failures": 3, "after_repeats": 2, "to": "native"}
 DEFAULT_BUDGET = {"task_usd": None, "task_attempts": 6, "on_exceed": "native"}
+DEFAULT_LOCAL: dict[str, Any] = {"model": None, "kinds": ["title"], "fallback": False}
 #: Most attempts one request makes, whatever the task budget allows.
 MAX_ATTEMPTS_PER_REQUEST = 3
 #: A task (session) nobody has touched this long is forgotten.
@@ -124,7 +131,7 @@ class Decision:
     vendor; both ``None`` means unchanged.
     """
 
-    source: str = "none"  # none | native_only | sticky | kind | model | preset | fallback | escalation | budget
+    source: str = "none"  # none | native_only | kind | model | local | preset | fallback | escalation | switch | budget
     reason: str = "Passed through unchanged."
     match: str | None = None
     target: str | None = None
@@ -356,6 +363,8 @@ class Task:
     attempts: int = 0  # fallback attempts + escalations
     spent_usd: float = 0.0  # new API spend of its routed calls
     escalations: list[dict[str, Any]] = dataclasses.field(default_factory=list)
+    switch: dict[str, Any] | None = None  # a switch asked for, not applied yet: {"to", "now", "at"}
+    switches: list[dict[str, Any]] = dataclasses.field(default_factory=list)
     waiting: bool = False  # a permission prompt is open
     cache_ratio: float | None = None  # prompt share the original path read from cache
     seen: float = dataclasses.field(default_factory=time.monotonic)
@@ -372,6 +381,8 @@ class Task:
             "attempts": self.attempts,
             "spent_usd": round(self.spent_usd, 6),
             "escalations": self.escalations,
+            "pending_switch": self.switch,
+            "switches": self.switches,
             "waiting": self.waiting,
         }
 
@@ -459,6 +470,7 @@ class RoutePolicy:
             "fallback": {"models": [], "allow_paid": False, **(data.get("fallback") or {})},
             "escalation": {**DEFAULT_ESCALATION, **(data.get("escalation") or {})},
             "budget": {**DEFAULT_BUDGET, **(data.get("budget") or {})},
+            "local": {**DEFAULT_LOCAL, **(data.get("local") or {})},
         }
 
     def decide(
@@ -479,16 +491,42 @@ class RoutePolicy:
             return Decision(source="native_only", reason="Quota and connectivity checks always go to the vendor.")
         self.observe_model(dialect, model)
         task = self.task(tool, session, project) if kind in TASK_KINDS else None
+        if task and task.switch and (task.switch.get("now") or kind == "main"):
+            self._apply_switch(task, dialect, model)
         if task and task.decision is not None:
             pinned = task.decision
             # New rules take effect at the next prompt, never mid tool loop; a model the
             # user switched to is decided afresh (a pin must never move it up).
             fresh = kind == "main" and task.rules_version != self.version()
-            if pinned.source == "escalation" or (task.pinned_for == model and not fresh):
+            if pinned.source in ("escalation", "switch") or (task.pinned_for == model and not fresh):
                 return self._finish(pinned, tool, dialect, model, needs, task, original_billing, kept=True)
             task.decision = None
         decision = self._rules_decision(tool, dialect, model, kind, project)
         return self._finish(decision, tool, dialect, model, needs, task, original_billing)
+
+    def request_switch(self, tool: str, session: str, to: str, *, now: bool = False) -> Task | None:
+        """Ask for *session* to move to *to* (``native:<model>``, a Prompture model, or ``original``).
+
+        It happens at the task's next prompt, unless ``now``: mid tool loop the
+        prompt cache is rebuilt on the new model, which the call records show.
+        """
+        with self._lock:
+            task = self._tasks.get((tool, session))
+            if task is not None:
+                task.switch = {"to": to, "now": now, "at": time.time()}
+            return task
+
+    def _apply_switch(self, task: Task, dialect: str, model: str) -> None:
+        pending, task.switch = task.switch or {}, None
+        to = str(pending.get("to") or "original")
+        if to in ("original", "passthrough", "native"):
+            decision = Decision(source="switch", reason=f"Switched back to {model} by you.")
+        else:
+            decision = self._to(to, dialect, model, "switch", to, "Switched by you")
+        task.decision, task.pinned_for, task.rules_version = decision, model, self.version()
+        task.switches.append(
+            {"at": time.time(), "to": to, "asked_at": pending.get("at"), "now": bool(pending.get("now"))}
+        )
 
     def version(self) -> str:
         """A fingerprint of the current rules, to tell when they changed."""
@@ -516,7 +554,7 @@ class RoutePolicy:
                 decision = Decision(source="budget", reason=f"Task budget reached ({over}); back on {model}.")
             if task.decision is None:
                 task.decision, task.pinned_for, task.rules_version = decision, model, self.version()
-            elif kept and decision is task.decision and decision.source not in ("escalation", "budget"):
+            elif kept and decision is task.decision and decision.source not in ("escalation", "switch", "budget"):
                 decision = decision.with_reason(f"{decision.reason} Kept for this task.")
         return decision
 
@@ -538,6 +576,10 @@ class RoutePolicy:
             for pattern, to in (rules.get("models") or {}).items():
                 if fnmatch.fnmatchcase(model.lower(), pattern.lower()):
                     return self._to(to, dialect, model, "model", pattern, f"{model} matches {pattern}{scope}")
+        local = self.settings()["local"]
+        if isinstance(local.get("model"), str) and local["model"] and kind in (local.get("kinds") or []):
+            words = _KIND_WORDS.get(kind, kind)
+            return self._to(local["model"], dialect, model, "local", local["model"], f"Local model for {words}")
         for name, scope in (
             (proj_tool.get("preset"), f"{project}'s preset for this tool"),
             (proj.get("preset"), f"{project}'s preset"),
@@ -594,9 +636,14 @@ class RoutePolicy:
         """Prompture models to try, in order, after *decision*'s target fails (the vendor path comes after them)."""
         if task is not None and self._over_budget(task):
             return []
-        conf = self.settings()["fallback"]
+        settings = self.settings()
+        conf = settings["fallback"]
+        local = settings["local"]
         out: list[str] = []
-        for model in conf.get("models") or []:
+        candidates = list(conf.get("models") or [])
+        if local.get("fallback") and isinstance(local.get("model"), str) and local["model"]:
+            candidates.insert(0, local["model"])  # on this machine: no bill, no plan
+        for model in candidates:
             if not isinstance(model, str) or model == decision.target or model in out:
                 continue
             from .calls import billing_of
