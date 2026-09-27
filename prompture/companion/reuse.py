@@ -64,7 +64,8 @@ def split_request(dialect: str, body: dict[str, Any]) -> tuple[str, str]:
         messages = body.get("messages") or []
         prompt = messages[-1].get("content") if messages and isinstance(messages[-1], dict) else ""
     elif dialect == "gemini":
-        inner = body.get("request") if isinstance(body.get("request"), dict) else body
+        nested = body.get("request")
+        inner: dict[str, Any] = nested if isinstance(nested, dict) else body
         fixed = {"system": inner.get("systemInstruction"), "tools": inner.get("tools"), "model": body.get("model")}
         contents = inner.get("contents") or []
         prompt = contents[-1].get("parts") if contents and isinstance(contents[-1], dict) else ""
