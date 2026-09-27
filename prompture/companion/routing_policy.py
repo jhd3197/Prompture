@@ -257,7 +257,7 @@ def _block_text(content: Any) -> str:
 
 def _action_hash(name: str, arguments: Any) -> str:
     raw = arguments if isinstance(arguments, str) else json.dumps(arguments, sort_keys=True, default=str)
-    return hashlib.sha1(f"{name}\0{raw}".encode()).hexdigest()[:16]
+    return hashlib.sha1(f"{name}\0{raw}".encode(), usedforsecurity=False).hexdigest()[:16]
 
 
 def tool_outcome(dialect: str, body: dict[str, Any]) -> ToolOutcome | None:
@@ -531,7 +531,7 @@ class RoutePolicy:
     def version(self) -> str:
         """A fingerprint of the current rules, to tell when they changed."""
         raw = json.dumps(self.rules(), sort_keys=True, default=str)
-        return hashlib.sha1(raw.encode()).hexdigest()[:12]
+        return hashlib.sha1(raw.encode(), usedforsecurity=False).hexdigest()[:12]
 
     def _finish(
         self,
