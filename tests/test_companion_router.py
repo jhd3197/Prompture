@@ -428,7 +428,7 @@ def test_router_endpoints_switch_routing_and_save_rules(companion, tmp_path):
     assert err.value.code == 401
 
     srv.tool_routing.restore_all()  # what the companion does when it stops
-    assert not json.loads((tmp_path / "claude" / "settings.json").read_text()).get("env")
+    assert not (tmp_path / "claude" / "settings.json").exists()  # it only existed for routing
 
 
 # ------------------------------------------------------------------ hooks
