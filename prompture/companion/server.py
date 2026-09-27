@@ -123,6 +123,9 @@ def info(
             "agent_turns": coding_tools,
             "automations": automations,
             "router": router,
+            # Call records, savings, presets, fallback and task controls (/v1/router/calls, …).
+            "router_calls": router,
+            "gemini_routing": router,
             "memory": memory,
         },
     }
