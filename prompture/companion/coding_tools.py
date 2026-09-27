@@ -11,7 +11,14 @@ adapts it to the companion API:
 - plan windows (Codex from its logs; Claude Code only when opted in) join
   ``/v1/limits`` as ``source: "plan"`` targets;
 - ``/v1/tools`` lists every agent: installed, runnable by Prompture, and its
-  usage for the period.
+  usage for the period;
+- a Claude Code or Codex turn in progress shows as a running call: a
+  ``request.started`` event when it starts (id ``agent:<agent>:<session>``),
+  ``request.activity`` when its model or state changes, and ``request.ended``
+  when it's over (see :mod:`prompture.infra.coding_agent_activity`). Its usage
+  still arrives as ``request.finished`` events for the calls it made. With
+  Claude Code's hooks installed (:mod:`.hook`), a turn stuck on a permission
+  prompt shows ``state: "waiting"``.
 
 Costs are what the same tokens would cost on the API; subscriptions don't
 bill per token. Only token counts, model names, times and folder names are
@@ -29,6 +36,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from ..infra.coding_agent_activity import ActiveTurn, AgentActivity
 from ..infra.coding_agent_usage import AgentCall, CodingAgentUsage, UsageReader, coding_agents_overview
 from .live import LiveBus
 from .summary import UsageRow, window_start
@@ -39,6 +47,10 @@ logger = logging.getLogger("prompture.companion")
 OVERVIEW_TTL = 60.0
 #: How far back calls are kept: a year of activity, plus a week of slack.
 RETENTION = timedelta(days=372)
+#: How long a turn waiting on the user stays listed after its log went quiet.
+WAITING_TTL = 6 * 3600.0
+#: Hook events that mean the agent is working again (a prompt, a tool starting or done).
+WORKING_HOOKS = {"UserPromptSubmit", "PreToolUse", "PostToolUse", "SubagentStop"}
 #: Companion choices that outlive a restart (today: whether Claude plan windows are fetched).
 PREFS_FILE = Path.home() / ".prompture" / "companion-prefs.json"
 
@@ -49,6 +61,22 @@ def _load_prefs(path: Path) -> dict[str, Any]:
     except (OSError, ValueError):
         return {}
     return data if isinstance(data, dict) else {}
+
+
+def turn_event(turn: ActiveTurn, name: str, state: str = "working") -> dict[str, Any]:
+    """A ``request.started`` payload for an agent turn in progress."""
+    return {
+        "request_id": turn.request_id,
+        "ts": turn.since.isoformat(),
+        "key_id": None,
+        "key_name": name,
+        "model": turn.model or turn.agent,
+        "project": turn.project,
+        "endpoint": "coding-agent",
+        "stream": True,
+        "state": state,
+        "tool": turn.agent,
+    }
 
 
 def call_event(call: AgentCall, name: str) -> dict[str, Any]:
@@ -91,6 +119,7 @@ class CodingToolSource:
         cache_dir: str | Path | None = None,
         readers: list[UsageReader] | None = None,
         prefs_file: str | Path | None = PREFS_FILE,
+        activity: AgentActivity | None = None,
     ) -> None:
         from ..infra.coding_agent_readers import ClaudeCodeReader, CodexReader
         from ..infra.coding_agent_usage import USAGE_READERS
@@ -110,6 +139,16 @@ class CodingToolSource:
                 readers = [claude, codex, *others]
         self.usage = CodingAgentUsage(readers, retention=RETENTION)
         self.names = {r.agent: r.display_name for r in readers}
+        if activity is None:
+            roots = {r.agent: getattr(r, "root", None) for r in readers}
+            if "claude" in roots or "codex" in roots:
+                activity = AgentActivity(roots.get("claude"), roots.get("codex"))
+        self.activity = activity
+        self._turns: dict[str, ActiveTurn] = {}
+        self._states: dict[str, str] = {}
+        #: State reported by an agent's hooks, per turn: ``(state, monotonic time)``.
+        self._hooked: dict[str, tuple[str, float]] = {}
+        self._turn_lock = threading.Lock()
         self._overview: tuple[float, list[dict[str, Any]]] | None = None
 
     @property
@@ -176,10 +215,71 @@ class CodingToolSource:
         """``request.finished`` payloads for calls at or after ``since``, newest last."""
         return [self.event(c) for c in self.usage.calls(since)[-limit:]]
 
-    def tail(self, bus: LiveBus, stop: threading.Event, interval: float = 3.0) -> None:
-        """Publish a ``request.finished`` event for every call logged from now on."""
-        self.refresh(force=True)
-        while not stop.wait(interval):
+    def publish_turns(self, bus: LiveBus) -> None:
+        """Publish how the agents' running turns changed since the last call."""
+        if self.activity is None:
+            return
+        with self._turn_lock:
+            turns = {t.request_id: t for t in self.activity.scan()}
+            now = time.monotonic()
+            for rid, (state, at) in self._hooked.items():
+                # A permission prompt writes nothing to the log; the turn is still on.
+                if state == "waiting" and rid not in turns and rid in self._turns and now - at < WAITING_TTL:
+                    turns[rid] = self._turns[rid]
+            for rid, turn in turns.items():
+                before = self._turns.get(rid)
+                state = self._hooked.get(rid, ("working", 0.0))[0]
+                if before is None:
+                    bus.publish("request.started", turn_event(turn, self.names.get(turn.agent, turn.agent), state))
+                elif (before.model != turn.model and turn.model) or self._states.get(rid) != state:
+                    bus.publish(
+                        "request.activity", {"request_id": rid, "model": turn.model or turn.agent, "state": state}
+                    )
+                self._states[rid] = state
+            for rid in self._turns.keys() - turns.keys():
+                gone = self._turns[rid]
+                self._states.pop(rid, None)
+                self._hooked.pop(rid, None)
+                bus.publish(
+                    "request.ended", {"request_id": rid, "tool": gone.agent, "key_name": self.names.get(gone.agent)}
+                )
+            self._turns = turns
+
+    def hook_event(self, bus: LiveBus, agent: str, event: str, session: str) -> None:
+        """Apply one event an agent's hooks reported (see :mod:`.hook`), then publish what changed.
+
+        ``Notification`` during a turn means it waits on the user (a permission
+        prompt); a prompt or a tool starting or finishing means it works again;
+        ``Stop`` / ``SessionEnd`` end it.
+        """
+        rid = f"agent:{agent}:{session}"
+        with self._turn_lock:
+            if event in ("Stop", "SessionEnd"):
+                self._hooked.pop(rid, None)
+            elif event == "Notification":
+                if rid in self._turns:
+                    self._hooked[rid] = ("waiting", time.monotonic())
+            elif event in WORKING_HOOKS:
+                self._hooked[rid] = ("working", time.monotonic())
+        self.publish_turns(bus)
+
+    def tail(self, bus: LiveBus, stop: threading.Event, interval: float = 2.0) -> None:
+        """Publish agent calls as they're logged, and agent turns as they start and end."""
+        first = True
+        while True:
+            try:
+                self.publish_turns(bus)
+            except Exception:
+                logger.debug("coding agent activity scan failed", exc_info=True)
+            if first:
+                # The first read takes in the whole history (seconds); turns in progress show before it.
+                first = False
+                try:
+                    self.refresh(force=True)
+                except Exception:
+                    logger.debug("coding tool scan failed", exc_info=True)
+            if stop.wait(interval):
+                break
             try:
                 for call in sorted(self.refresh(force=True), key=lambda c: c.ts):
                     if datetime.now(timezone.utc) - call.ts < timedelta(minutes=30):

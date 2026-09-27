@@ -61,6 +61,10 @@ from .coding_agent_usage import (
 
 logger = logging.getLogger("prompture.coding_agents")
 
+#: Reply ids of calls the companion's router sent to a Prompture model. The usage
+#: ledger already counts those, so the agents' logs skip them.
+ROUTED_PREFIXES = ("msg_prompture_", "resp_prompture_")
+
 
 def _loads(line: str) -> Any:
     try:
@@ -142,6 +146,8 @@ class ClaudeCodeReader(UsageReader):
             return None
         usage, model, ts = message.get("usage"), message.get("model"), parse_ts(entry.get("timestamp"))
         if not isinstance(usage, dict) or not isinstance(model, str) or model.startswith("<") or ts is None:
+            return None
+        if str(message.get("id") or "").startswith(ROUTED_PREFIXES):
             return None
         fresh, read = as_int(usage.get("input_tokens")), as_int(usage.get("cache_read_input_tokens"))
         write, output = as_int(usage.get("cache_creation_input_tokens")), as_int(usage.get("output_tokens"))
@@ -311,6 +317,8 @@ class CodexReader(UsageReader):
             payload = entry.get("payload") if isinstance(entry, dict) else None
             ts = parse_ts(entry.get("timestamp")) if isinstance(entry, dict) else None
             if not isinstance(payload, dict) or ts is None or not isinstance(payload.get("usage"), dict):
+                return None
+            if str(payload.get("response_id") or "").startswith(ROUTED_PREFIXES):
                 return None
             rid = payload.get("response_id") or f"{ts.isoformat()}:{payload.get('turn_id')}"
             return self._call(f"codex:{rid}", ts, payload["usage"], state)

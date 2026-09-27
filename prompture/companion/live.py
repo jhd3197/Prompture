@@ -1,7 +1,9 @@
 """In-process live event bus behind a companion's ``GET /v1/live``.
 
 Producers publish an event when a call starts, produces its first token,
-changes activity and finishes. Events carry metadata only: ids, model,
+changes activity and finishes. ``request.ended`` closes a running entry that
+has no ``request.finished`` of its own (a coding agent's turn, whose calls are
+reported separately). Events carry metadata only: ids, model,
 project, status, tokens, cost, timings — never prompt or completion text.
 
 The bus keeps the last :data:`RING_SIZE` events, so a client that reconnects
@@ -59,7 +61,7 @@ class LiveBus:
                 self.in_flight[request_id] = {**event, "_mono": time.monotonic()}
             elif request_id in self.in_flight and type_ in ("request.first_token", "request.activity"):
                 self.in_flight[request_id].update({k: v for k, v in data.items() if k != "request_id"})
-            elif type_ == "request.finished" and request_id:
+            elif type_ in ("request.finished", "request.ended") and request_id:
                 self.in_flight.pop(request_id, None)
             subscribers = list(self._subscribers)
         for sub in subscribers:

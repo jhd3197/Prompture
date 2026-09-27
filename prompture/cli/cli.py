@@ -202,7 +202,12 @@ def test_suite(specfile: str, providers: str | None, models: str | None, fmt: st
 
 
 @cli.command()
-@click.option("--port", default=0, type=int, help="Port on 127.0.0.1 (default: a free one the OS picks).")
+@click.option(
+    "--port",
+    default=None,
+    type=int,
+    help="Port on 127.0.0.1 (default: 47811 when free, else one the OS picks). 0 = always let the OS pick.",
+)
 @click.option(
     "--db", "db_path", default=None, type=click.Path(), help="Usage ledger (default ~/.prompture/usage/usage.db)."
 )
@@ -222,7 +227,19 @@ def test_suite(specfile: str, providers: str | None, models: str | None, fmt: st
     default=True,
     help="Run queued coding-agent steps one after another for companion apps (default: on).",
 )
-def companion(port: int, db_path: str | None, exit_with_pid: int | None, coding_tools: bool, automations: bool) -> None:
+@click.option(
+    "--router/--no-router",
+    default=True,
+    help="Let companion apps route Claude Code and Codex through this companion (default: on).",
+)
+def companion(
+    port: int | None,
+    db_path: str | None,
+    exit_with_pid: int | None,
+    coding_tools: bool,
+    automations: bool,
+    router: bool,
+) -> None:
     """Serve this machine's Prompture usage to desktop companions (no hub needed).
 
     Reads the usage ledger every Prompture call writes to, plus rate-limit
@@ -230,16 +247,35 @@ def companion(port: int, db_path: str | None, exit_with_pid: int | None, coding_
     the same companion API as prompture-hub. The address and a bearer token are
     written to ~/.prompture/companion.json. If a companion is already running,
     this prints its address and exits.
+
+    With the router on, a companion app can point Claude Code and Codex at it
+    (their model traffic then passes through, or goes to any Prompture model),
+    so the companion prefers the same port each time: 47811.
     """
     from ..companion import Automations, CodingToolSource, CompanionServer, LedgerSource, running_instance
+    from ..companion.server import DEFAULT_PORT
+    from ..companion.tool_routing import ToolRouting
 
     existing = running_instance()
     if existing:
         click.echo(f"Prompture companion already running at {existing['url']} (pid {existing.get('pid')}).")
         return
-    server = CompanionServer(
-        LedgerSource(db_path), port=port, coding_tools=CodingToolSource() if coding_tools else None
-    )
+
+    def make(on_port: int) -> CompanionServer:
+        return CompanionServer(
+            LedgerSource(db_path),
+            port=on_port,
+            coding_tools=CodingToolSource() if coding_tools else None,
+            tool_routing=ToolRouting() if router else None,
+        )
+
+    if port is None:
+        try:
+            server = make(DEFAULT_PORT)
+        except OSError:  # taken: any free port works, routing follows it
+            server = make(0)
+    else:
+        server = make(port)
     if automations:
         server.automations = Automations(bus=server.bus, limits=server.rate_limits)
     click.echo(f"Prompture companion on {server.url} - ledger {server.ledger.db_path}")
