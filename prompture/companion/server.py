@@ -17,6 +17,11 @@ coding agents (Claude Code, Codex, Kimi Code, Gemini CLI, …) log on disk, adds
 their plan windows to the limits, and serves ``GET /v1/tools?period=`` — each
 agent's usage plus which agents are installed.
 
+With a :class:`~.router.Router` it routes coding CLIs: ``/tools/<tool>/…``
+takes Claude Code's and Codex's model traffic (passed through to the vendor,
+or sent to a Prompture model), and ``/v1/router`` turns routing, request
+rules and Claude Code's live-state hooks (``POST /v1/hooks``) on and off.
+
 It listens on ``127.0.0.1`` only, on a free port the OS picks, and writes the
 address and a random bearer token to ``~/.prompture/companion.json`` (readable
 only by the current user on POSIX). Readers take both from there. Only the
@@ -41,11 +46,15 @@ from .automations import AutomationError, Automations, roadmap_steps
 from .coding_tools import CodingToolSource
 from .live import LiveBus, get_bus, sse_event
 from .local import LedgerSource
+from .router import Router
 from .summary import COMPANION_API_VERSION, PERIODS, UsageRow, account_limits, provider_limits, summarize_spend
+from .tool_routing import RoutingError, ToolRouting
 
 logger = logging.getLogger("prompture.companion")
 
 STATE_FILE = Path.home() / ".prompture" / "companion.json"
+#: The port ``prompture companion`` asks for first, so routed CLIs find it at the same address.
+DEFAULT_PORT = 47811
 HEARTBEAT_SECONDS = 15.0
 
 #: What a client can rely on from this server. The hub advertises more.
@@ -79,17 +88,27 @@ def _version() -> str:
         return "0"
 
 
-def info(coding_tools: bool = False, automations: bool = False) -> dict[str, Any]:
+def info(coding_tools: bool = False, automations: bool = False, router: bool = False) -> dict[str, Any]:
     features = dict(FEATURES)
     if automations:
         features["automations"] = "/v1/automations"
+    if router:
+        features["router"] = "/v1/router"
     return {
         "service": "prompture",
         "mode": "local",
         "version": _version(),
         "api_version": COMPANION_API_VERSION,
         "features": features,
-        "capabilities": {**CAPABILITIES, "coding_tools": coding_tools, "automations": automations},
+        "capabilities": {
+            **CAPABILITIES,
+            # Coding agents' turns and routed requests show while they run.
+            "running_calls": coding_tools or router,
+            "coding_tools": coding_tools,
+            "agent_turns": coding_tools,
+            "automations": automations,
+            "router": router,
+        },
     }
 
 
@@ -145,7 +164,25 @@ class _Handler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length") or 0)
         return json.loads(self.rfile.read(length) or b"{}")
 
+    def _routed(self, method: str) -> bool:
+        """Hand ``/tools/…`` to the router; ``True`` when it took the request."""
+        url = urlparse(self.path)
+        if not url.path.startswith("/tools/") or self.server.router is None:
+            return False
+        self.server.router.handle(self, method, url.path, url.query)
+        return True
+
+    def do_PUT(self) -> None:
+        if not self._routed("PUT"):
+            self._json(404, {"detail": "Not found"})
+
+    def do_DELETE(self) -> None:
+        if not self._routed("DELETE"):
+            self._json(404, {"detail": "Not found"})
+
     def do_POST(self) -> None:
+        if self._routed("POST"):
+            return
         url = urlparse(self.path)
         if not self._authorized():
             return self._json(401, {"detail": "Missing or wrong companion token (see ~/.prompture/companion.json)."})
@@ -164,13 +201,56 @@ class _Handler(BaseHTTPRequestHandler):
                 return self._json(422, {"detail": 'Send {"enabled": true|false}.'})
             self.server.coding_tools.set_claude_plan_usage(body["enabled"])
             return self._json(200, {"claude_plan_usage": self.server.coding_tools.plan_usage})
+        if url.path == "/v1/hooks" and self.server.coding_tools is not None:
+            try:
+                body = self._body()
+            except ValueError:
+                return self._json(400, {"detail": "Body must be JSON."})
+            fields = [body.get(k) if isinstance(body, dict) else None for k in ("agent", "event", "session")]
+            if not all(isinstance(f, str) and f for f in fields):
+                return self._json(422, {"detail": "Send agent, event and session."})
+            agent, event, session = (str(f) for f in fields)
+            self.server.coding_tools.hook_event(self.server.bus, agent, event, session)
+            return self._json(200, {"ok": True})
+        if url.path.startswith("/v1/router/") and self.server.tool_routing is not None:
+            try:
+                body = self._body()
+            except ValueError:
+                return self._json(400, {"detail": "Body must be JSON."})
+            return self._router_post(url.path, body if isinstance(body, dict) else {})
         return self._json(404, {"detail": "Not found"})
 
+    def _router_post(self, path: str, body: dict[str, Any]) -> None:
+        routing, router = self.server.tool_routing, self.server.router
+        assert routing is not None and router is not None
+        parts = path.strip("/").split("/")[2:]  # after v1/router
+        try:
+            if parts == ["routes"]:
+                router.routes.save(body)
+            elif parts == ["hooks"] and isinstance(body.get("enabled"), bool):
+                routing.set_hooks(body["enabled"])
+            elif len(parts) == 2 and parts[0] == "tools" and isinstance(body.get("enabled"), bool):
+                routing.set_enabled(parts[1], body["enabled"], self.server.url)
+            else:
+                return self._json(422, {"detail": 'Send {"enabled": true|false}, or rules to /v1/router/routes.'})
+        except RoutingError as exc:
+            return self._json(409, {"detail": str(exc)})
+        return self._json(200, self.server.router_state())
+
     def do_GET(self) -> None:
+        if self._routed("GET"):
+            return
         url = urlparse(self.path)
         query = {k: v[-1] for k, v in parse_qs(url.query).items()}
         if url.path == "/v1/companion/info":
-            return self._json(200, info(self.server.coding_tools is not None, self.server.automations is not None))
+            return self._json(
+                200,
+                info(
+                    self.server.coding_tools is not None,
+                    self.server.automations is not None,
+                    self.server.router is not None,
+                ),
+            )
         if not self._authorized():
             return self._json(401, {"detail": "Missing or wrong companion token (see ~/.prompture/companion.json)."})
         if url.path == "/v1/spend":
@@ -212,6 +292,8 @@ class _Handler(BaseHTTPRequestHandler):
             return self._json(200, self.server.coding_tools.tools(period, offset_minutes=_tz_offset(query)))
         if url.path == "/v1/live":
             return self._live(query)
+        if url.path == "/v1/router" and self.server.tool_routing is not None:
+            return self._json(200, self.server.router_state())
         if url.path.startswith("/v1/automations") and self.server.automations is not None:
             return self._automations_get(url.path, query)
         return self._json(404, {"detail": "Not found"})
@@ -311,6 +393,8 @@ class CompanionServer(ThreadingHTTPServer):
     """Threaded HTTP server bound to localhost; see the module docstring."""
 
     daemon_threads = True
+    # On Windows, SO_REUSEADDR would let two servers share a port.
+    allow_reuse_address = os.name != "nt"
 
     def __init__(
         self,
@@ -322,6 +406,8 @@ class CompanionServer(ThreadingHTTPServer):
         state_path: Path | None = STATE_FILE,
         coding_tools: CodingToolSource | None = None,
         automations: Automations | None = None,
+        tool_routing: ToolRouting | None = None,
+        router: Router | None = None,
     ) -> None:
         super().__init__(("127.0.0.1", port), _Handler)
         self.ledger = ledger or LedgerSource()
@@ -330,11 +416,27 @@ class CompanionServer(ThreadingHTTPServer):
         self.state_path = state_path
         self.coding_tools = coding_tools
         self.automations = automations
+        self.tool_routing = tool_routing
+        if router is None and tool_routing is not None:
+            router = Router(self.bus, upstream=tool_routing.upstream)
+        self.router = router
         self.stopping = threading.Event()
 
     @property
     def url(self) -> str:
         return f"http://127.0.0.1:{self.server_address[1]}"
+
+    def router_state(self) -> dict[str, Any]:
+        """``/v1/router``: each CLI's routing switch, the request rules, and the hooks switch."""
+        assert self.tool_routing is not None and self.router is not None
+        from .router import BACKGROUND_KINDS, KINDS
+
+        return {
+            **self.tool_routing.status(self.url),
+            "routes": self.router.routes.data(),
+            "kinds": list(KINDS),
+            "background_kinds": sorted(BACKGROUND_KINDS),
+        }
 
     def rows(self, period: str, *, api_only: bool = False, offset_minutes: int = 0) -> list[UsageRow]:
         """The ledger's rows for *period*, plus coding-tool calls when enabled (unless ``api_only``)."""
@@ -443,6 +545,9 @@ class CompanionServer(ThreadingHTTPServer):
         """Serve until interrupted, advertising the address in the state file."""
         if self.state_path is not None:
             _write_state(self.state_path, {"url": self.url, "token": self.token, "pid": os.getpid()})
+        if self.tool_routing is not None:
+            for problem in self.tool_routing.apply_enabled(self.url):
+                logger.warning("Routing: %s", problem)
         self._tail()
         try:
             self.serve_forever()
@@ -451,6 +556,8 @@ class CompanionServer(ThreadingHTTPServer):
 
     def shutdown_companion(self) -> None:
         self.stopping.set()
+        if self.tool_routing is not None:
+            self.tool_routing.restore_all()  # never leave a CLI pointing at a stopped companion
         if self.automations is not None:
             self.automations.shutdown()
         if self.state_path is not None:

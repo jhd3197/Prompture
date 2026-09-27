@@ -14,9 +14,11 @@ adapts it to the companion API:
   usage for the period;
 - a Claude Code or Codex turn in progress shows as a running call: a
   ``request.started`` event when it starts (id ``agent:<agent>:<session>``),
-  ``request.activity`` when its model changes, and ``request.ended`` when it's
-  over (see :mod:`prompture.infra.coding_agent_activity`). Its usage still
-  arrives as ``request.finished`` events for the calls it made.
+  ``request.activity`` when its model or state changes, and ``request.ended``
+  when it's over (see :mod:`prompture.infra.coding_agent_activity`). Its usage
+  still arrives as ``request.finished`` events for the calls it made. With
+  Claude Code's hooks installed (:mod:`.hook`), a turn stuck on a permission
+  prompt shows ``state: "waiting"``.
 
 Costs are what the same tokens would cost on the API; subscriptions don't
 bill per token. Only token counts, model names, times and folder names are
@@ -45,6 +47,10 @@ logger = logging.getLogger("prompture.companion")
 OVERVIEW_TTL = 60.0
 #: How far back calls are kept: a year of activity, plus a week of slack.
 RETENTION = timedelta(days=372)
+#: How long a turn waiting on the user stays listed after its log went quiet.
+WAITING_TTL = 6 * 3600.0
+#: Hook events that mean the agent is working again (a prompt, a tool starting or done).
+WORKING_HOOKS = {"UserPromptSubmit", "PreToolUse", "PostToolUse", "SubagentStop"}
 #: Companion choices that outlive a restart (today: whether Claude plan windows are fetched).
 PREFS_FILE = Path.home() / ".prompture" / "companion-prefs.json"
 
@@ -57,7 +63,7 @@ def _load_prefs(path: Path) -> dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
-def turn_event(turn: ActiveTurn, name: str) -> dict[str, Any]:
+def turn_event(turn: ActiveTurn, name: str, state: str = "working") -> dict[str, Any]:
     """A ``request.started`` payload for an agent turn in progress."""
     return {
         "request_id": turn.request_id,
@@ -68,7 +74,7 @@ def turn_event(turn: ActiveTurn, name: str) -> dict[str, Any]:
         "project": turn.project,
         "endpoint": "coding-agent",
         "stream": True,
-        "state": "working",
+        "state": state,
         "tool": turn.agent,
     }
 
@@ -139,6 +145,10 @@ class CodingToolSource:
                 activity = AgentActivity(roots.get("claude"), roots.get("codex"))
         self.activity = activity
         self._turns: dict[str, ActiveTurn] = {}
+        self._states: dict[str, str] = {}
+        #: State reported by an agent's hooks, per turn: ``(state, monotonic time)``.
+        self._hooked: dict[str, tuple[str, float]] = {}
+        self._turn_lock = threading.Lock()
         self._overview: tuple[float, list[dict[str, Any]]] | None = None
 
     @property
@@ -209,19 +219,49 @@ class CodingToolSource:
         """Publish how the agents' running turns changed since the last call."""
         if self.activity is None:
             return
-        turns = {t.request_id: t for t in self.activity.scan()}
-        for rid, turn in turns.items():
-            before = self._turns.get(rid)
-            if before is None:
-                bus.publish("request.started", turn_event(turn, self.names.get(turn.agent, turn.agent)))
-            elif before.model != turn.model and turn.model:
-                bus.publish("request.activity", {"request_id": rid, "model": turn.model, "state": "working"})
-        for rid in self._turns.keys() - turns.keys():
-            gone = self._turns[rid]
-            bus.publish(
-                "request.ended", {"request_id": rid, "tool": gone.agent, "key_name": self.names.get(gone.agent)}
-            )
-        self._turns = turns
+        with self._turn_lock:
+            turns = {t.request_id: t for t in self.activity.scan()}
+            now = time.monotonic()
+            for rid, (state, at) in self._hooked.items():
+                # A permission prompt writes nothing to the log; the turn is still on.
+                if state == "waiting" and rid not in turns and rid in self._turns and now - at < WAITING_TTL:
+                    turns[rid] = self._turns[rid]
+            for rid, turn in turns.items():
+                before = self._turns.get(rid)
+                state = self._hooked.get(rid, ("working", 0.0))[0]
+                if before is None:
+                    bus.publish("request.started", turn_event(turn, self.names.get(turn.agent, turn.agent), state))
+                elif (before.model != turn.model and turn.model) or self._states.get(rid) != state:
+                    bus.publish(
+                        "request.activity", {"request_id": rid, "model": turn.model or turn.agent, "state": state}
+                    )
+                self._states[rid] = state
+            for rid in self._turns.keys() - turns.keys():
+                gone = self._turns[rid]
+                self._states.pop(rid, None)
+                self._hooked.pop(rid, None)
+                bus.publish(
+                    "request.ended", {"request_id": rid, "tool": gone.agent, "key_name": self.names.get(gone.agent)}
+                )
+            self._turns = turns
+
+    def hook_event(self, bus: LiveBus, agent: str, event: str, session: str) -> None:
+        """Apply one event an agent's hooks reported (see :mod:`.hook`), then publish what changed.
+
+        ``Notification`` during a turn means it waits on the user (a permission
+        prompt); a prompt or a tool starting or finishing means it works again;
+        ``Stop`` / ``SessionEnd`` end it.
+        """
+        rid = f"agent:{agent}:{session}"
+        with self._turn_lock:
+            if event in ("Stop", "SessionEnd"):
+                self._hooked.pop(rid, None)
+            elif event == "Notification":
+                if rid in self._turns:
+                    self._hooked[rid] = ("waiting", time.monotonic())
+            elif event in WORKING_HOOKS:
+                self._hooked[rid] = ("working", time.monotonic())
+        self.publish_turns(bus)
 
     def tail(self, bus: LiveBus, stop: threading.Event, interval: float = 2.0) -> None:
         """Publish agent calls as they're logged, and agent turns as they start and end."""

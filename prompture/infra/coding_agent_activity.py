@@ -90,6 +90,10 @@ def tail_entries(path: Path, max_bytes: int = TAIL_BYTES) -> Iterator[dict[str, 
             yield entry
 
 
+def _dict(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
 def _text_of(content: Any) -> str:
     if isinstance(content, str):
         return content
@@ -115,7 +119,7 @@ def claude_turn(path: Path) -> ActiveTurn | None:
         kind = entry.get("type")
         if kind not in ("user", "assistant", "system") or entry.get("isSidechain"):
             continue
-        message = entry.get("message") if isinstance(entry.get("message"), dict) else {}
+        message = _dict(entry.get("message"))
         if not working:
             # The newest conversation entry decides.
             if kind == "system":
@@ -153,7 +157,7 @@ def codex_turn(path: Path) -> ActiveTurn | None:
     model: str | None = None
     cwd: str | None = None
     for entry in tail_entries(path):
-        payload = entry.get("payload") if isinstance(entry.get("payload"), dict) else {}
+        payload = _dict(entry.get("payload"))
         if entry.get("type") == "event_msg" and since is None:
             if payload.get("type") in ("task_complete", "turn_aborted"):
                 return None
@@ -225,7 +229,7 @@ def _windows_image_names() -> list[str]:
             ("szExeFile", ctypes.c_wchar * 260),
         ]
 
-    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)  # type: ignore[attr-defined,unused-ignore]
     kernel32.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
     kernel32.Process32FirstW.argtypes = kernel32.Process32NextW.argtypes = [
         wintypes.HANDLE,
