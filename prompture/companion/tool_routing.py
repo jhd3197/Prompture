@@ -12,7 +12,9 @@ Only those entries are written, each marked as Prompture's, and whatever they
 replaced is kept in the companion prefs and put back when routing is turned
 off. A config file that doesn't parse is left alone. Routing is re-applied
 when the companion starts (its port may have changed) and taken back when it
-stops, so a CLI never points at a companion that isn't running.
+stops, so a CLI never points at a companion that isn't running. A companion
+killed outright can't take it back; the next one to start fixes the configs,
+and ``prompture companion --restore`` puts them back without starting one.
 
 Hooks (Claude Code only) are separate and opt-in: a few ``hooks`` entries in
 ``settings.json`` that run :mod:`.hook` so a permission prompt shows as
@@ -206,23 +208,37 @@ class ToolRouting:
         self._save_prefs(prefs)
 
     def apply_enabled(self, base_url: str) -> list[str]:
-        """Point every enabled tool at *base_url* (companion start); returns the problems."""
+        """Point every enabled tool at *base_url* (companion start); returns the problems.
+
+        A tool still pointing at a router it wasn't enabled for (left behind
+        by a companion that was killed before it could restore it) is put back.
+        """
         problems = []
-        for tool in self.enabled():
+        on = self.enabled()
+        for tool in TOOLS:
             try:
-                self.apply(tool, base_url)
+                if tool in on:
+                    self.apply(tool, base_url)
+                elif self.routed(tool):
+                    self.restore(tool)
             except RoutingError as exc:
                 problems.append(str(exc))
         return problems
 
-    def restore_all(self) -> None:
-        """Take routing back from every tool (companion stop); the choices stay on."""
+    def restore_all(self) -> list[str]:
+        """Take routing back from every tool (companion stop); the choices stay on.
+
+        Returns the tools that were put back.
+        """
+        restored = []
         for tool in TOOLS:
             try:
                 if self.routed(tool):
                     self.restore(tool)
+                    restored.append(tool)
             except RoutingError:
                 continue
+        return restored
 
     def apply(self, tool: str, base_url: str) -> None:
         if tool == "claude-code":

@@ -8,6 +8,7 @@ Prompture usage with no hub at all:
 - ``GET /v1/live`` — Server-Sent Events (calls as they finish).
 - ``GET /v1/spend?period=day|week|month`` and ``GET /v1/limits``.
 - ``GET /v1/alerts`` — always empty; alert rules live in the hub.
+- ``POST /v1/shutdown`` — stop cleanly (CLI configs put back first).
 
 With an :class:`~.automations.Automations` it also runs queued coding-agent
 steps one after another (``/v1/automations``).
@@ -66,6 +67,7 @@ FEATURES = {
     "tools": "/v1/tools",
     "activity": "/v1/activity",
     "recent": "/v1/recent",
+    "shutdown": "/v1/shutdown",
 }
 CAPABILITIES = {
     "running_calls": False,  # the ledger only sees calls after they finish
@@ -212,6 +214,12 @@ class _Handler(BaseHTTPRequestHandler):
             agent, event, session = (str(f) for f in fields)
             self.server.coding_tools.hook_event(self.server.bus, agent, event, session)
             return self._json(200, {"ok": True})
+        if url.path == "/v1/shutdown":
+            # How an app that started the companion stops it: routing is put back first,
+            # which a killed process can't do.
+            self._json(202, {"stopping": True})
+            threading.Thread(target=self.server.shutdown, daemon=True).start()
+            return None
         if url.path.startswith("/v1/router/") and self.server.tool_routing is not None:
             try:
                 body = self._body()
@@ -542,7 +550,12 @@ class CompanionServer(ThreadingHTTPServer):
         return thread
 
     def run(self) -> None:
-        """Serve until interrupted, advertising the address in the state file."""
+        """Serve until interrupted, advertising the address in the state file.
+
+        SIGTERM (a plain ``kill``) stops it like Ctrl+C does, so routed CLIs
+        are put back; only a forced kill skips that.
+        """
+        _stop_on_sigterm()
         if self.state_path is not None:
             _write_state(self.state_path, {"url": self.url, "token": self.token, "pid": os.getpid()})
         if self.tool_routing is not None:
@@ -566,6 +579,20 @@ class CompanionServer(ThreadingHTTPServer):
                 with contextlib.suppress(OSError):
                     self.state_path.unlink()
         self.server_close()
+
+
+def _stop_on_sigterm() -> None:
+    """Turn SIGTERM into KeyboardInterrupt, so ``run()``'s cleanup runs (main thread only)."""
+    import signal
+
+    if threading.current_thread() is not threading.main_thread() or not hasattr(signal, "SIGTERM"):
+        return
+
+    def interrupt(signum: int, frame: Any) -> None:
+        raise KeyboardInterrupt
+
+    with contextlib.suppress(ValueError, OSError):
+        signal.signal(signal.SIGTERM, interrupt)
 
 
 def running_instance(path: Path = STATE_FILE, timeout: float = 2.0) -> dict[str, Any] | None:

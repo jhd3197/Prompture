@@ -527,3 +527,64 @@ def test_claude_settings_keep_their_line_ends_and_text(tmp_path):
     assert "café ☕" in settings.read_bytes().decode()
     routing.set_enabled("claude-code", False, "")
     assert settings.read_bytes() == original.encode()
+
+
+# ------------------------------------------------------------------ crash recovery
+
+
+def test_a_new_companion_repoints_enabled_tools_and_restores_stale_ones(tmp_path):
+    """A killed companion leaves configs pointing at a dead port; the next one fixes them."""
+    claude = tmp_path / "claude"
+    claude.mkdir()
+    (claude / "settings.json").write_text(json.dumps({"env": {"ANTHROPIC_BASE_URL": "https://gw.example"}}))
+    routing = ToolRouting(tmp_path / "prefs.json", claude_root=claude, codex_root=tmp_path / "codex")
+    routing.set_enabled("claude-code", True, "http://127.0.0.1:5000")
+    routing.set_enabled("codex", True, "http://127.0.0.1:5000")
+
+    # The next companion comes up on another port: enabled tools follow it.
+    assert routing.apply_enabled("http://127.0.0.1:6000") == []
+    env = json.loads((claude / "settings.json").read_text())["env"]
+    assert env["ANTHROPIC_BASE_URL"] == "http://127.0.0.1:6000/tools/claude-code"
+    assert "127.0.0.1:6000/tools/codex/v1" in (tmp_path / "codex" / "config.toml").read_text()
+
+    # Codex was turned off while its config still pointed at the dead companion.
+    prefs = json.loads((tmp_path / "prefs.json").read_text())
+    prefs["routed_tools"] = ["claude-code"]
+    (tmp_path / "prefs.json").write_text(json.dumps(prefs))
+    assert routing.apply_enabled("http://127.0.0.1:6000") == []
+    assert not routing.routed("codex")
+    assert routing.routed("claude-code")
+
+    # `prompture companion --restore`: everything back, the gateway it replaced included.
+    assert routing.restore_all() == ["claude-code"]
+    assert json.loads((claude / "settings.json").read_text()) == {"env": {"ANTHROPIC_BASE_URL": "https://gw.example"}}
+
+
+def test_shutdown_needs_the_token_then_stops_and_puts_configs_back(tmp_path):
+    routing = ToolRouting(tmp_path / "prefs.json", claude_root=tmp_path / "claude", codex_root=tmp_path / "codex")
+    srv = CompanionServer(
+        LedgerSource(tmp_path / "none.db"), token="t0ken", bus=LiveBus(), state_path=None, tool_routing=routing
+    )
+    done = threading.Event()
+
+    def serve():
+        try:
+            srv.run()
+        finally:
+            done.set()
+
+    threading.Thread(target=serve, daemon=True).start()
+    info = json.loads(urllib.request.urlopen(f"{srv.url}/v1/companion/info", timeout=5).read())
+    assert info["features"]["shutdown"] == "/v1/shutdown"
+    routing.set_enabled("claude-code", True, srv.url)
+    assert routing.routed("claude-code")
+
+    with pytest.raises(urllib.error.HTTPError) as err:
+        _post(f"{srv.url}/v1/shutdown", {})
+    assert err.value.code == 401
+
+    status, _, _ = _post(f"{srv.url}/v1/shutdown", {}, {"Authorization": "Bearer t0ken"})
+    assert status == 202
+    assert done.wait(5)
+    assert not routing.routed("claude-code")
+    assert routing.enabled() == ["claude-code"]  # the choice survives for the next start

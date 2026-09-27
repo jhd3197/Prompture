@@ -232,6 +232,11 @@ def test_suite(specfile: str, providers: str | None, models: str | None, fmt: st
     default=True,
     help="Let companion apps route Claude Code and Codex through this companion (default: on).",
 )
+@click.option(
+    "--restore",
+    is_flag=True,
+    help="Point Claude Code and Codex back at their vendors (after a companion was killed) and exit.",
+)
 def companion(
     port: int | None,
     db_path: str | None,
@@ -239,6 +244,7 @@ def companion(
     coding_tools: bool,
     automations: bool,
     router: bool,
+    restore: bool,
 ) -> None:
     """Serve this machine's Prompture usage to desktop companions (no hub needed).
 
@@ -257,6 +263,14 @@ def companion(
     from ..companion.tool_routing import ToolRouting
 
     existing = running_instance()
+    if restore:
+        if existing:
+            raise click.ClickException(
+                f"A companion is running at {existing['url']}; turn routing off in its app, or stop it first."
+            )
+        restored = ToolRouting().restore_all()
+        click.echo(f"Restored: {', '.join(restored)}." if restored else "Nothing was routed.")
+        return
     if existing:
         click.echo(f"Prompture companion already running at {existing['url']} (pid {existing.get('pid')}).")
         return
