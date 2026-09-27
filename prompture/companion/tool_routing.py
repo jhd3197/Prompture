@@ -283,7 +283,7 @@ class ToolRouting:
         env = _obj(data.get("env"))
         current = env.get(CLAUDE_KEY)
         if not _OURS_CLAUDE.match(str(current or "")):
-            self._set_backup("claude-code", {CLAUDE_KEY: current})
+            self._set_backup("claude-code", {CLAUDE_KEY: current, "existed": self.claude_settings.exists()})
         env[CLAUDE_KEY] = url
         data["env"] = env
         _write(self.claude_settings, json.dumps(data, indent=2, ensure_ascii=False) + "\n")
@@ -301,7 +301,10 @@ class ToolRouting:
                 data["env"] = env
             else:
                 data.pop("env", None)
-            _write(self.claude_settings, json.dumps(data, indent=2, ensure_ascii=False) + "\n")
+            if not data and self._backup("claude-code").get("existed") is False:
+                self.claude_settings.unlink(missing_ok=True)  # routing created it; nothing else is in it
+            else:
+                _write(self.claude_settings, json.dumps(data, indent=2, ensure_ascii=False) + "\n")
         self._set_backup("claude-code", None)
 
     # -- Codex ----------------------------------------------------------------

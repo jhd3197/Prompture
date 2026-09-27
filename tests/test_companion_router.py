@@ -643,3 +643,11 @@ def test_gemini_routing_restores_its_env_file_byte_for_byte(tmp_path, original):
         assert not env.exists()
     else:
         assert env.read_bytes() == original.encode()
+
+
+def test_a_claude_settings_file_routing_created_is_removed_again(tmp_path):
+    routing = ToolRouting(None, claude_root=tmp_path, codex_root=tmp_path / "codex")
+    routing.set_enabled("claude-code", True, "http://127.0.0.1:47811")
+    assert (tmp_path / "settings.json").exists()
+    routing.set_enabled("claude-code", False, "")
+    assert not (tmp_path / "settings.json").exists()
