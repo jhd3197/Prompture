@@ -43,6 +43,8 @@ _TOOL_EVENTS = {"PreToolUse", "PostToolUse"}
 _OURS_CLAUDE = re.compile(r"^http://(127\.0\.0\.1|localhost):\d+/tools/claude-code/?$")
 _TABLE = re.compile(r"^\s*\[")
 _PROVIDER = re.compile(r"^\s*model_provider\s*=")
+_CODEX_LINE = f'model_provider = "prompture"  # {MARK}'
+_CODEX_BLOCK = re.compile(rf"\n?# {MARK}: begin\n.*?# {MARK}: end\n?", re.S)
 
 
 class RoutingError(Exception):
@@ -66,9 +68,16 @@ def _load_json(path: Path) -> dict[str, Any]:
 
 
 def _write(path: Path, text: str) -> None:
+    """Replace *path* atomically, keeping its line ends (CRLF stays CRLF, LF stays LF)."""
+    try:
+        crlf = b"\r\n" in path.read_bytes()
+    except OSError:
+        crlf = False
+    if crlf and "\r\n" not in text:
+        text = text.replace("\n", "\r\n")
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.name + ".prompture.tmp")
-    tmp.write_text(text, encoding="utf-8")
+    tmp.write_bytes(text.encode("utf-8"))
     os.replace(tmp, path)
 
 
@@ -237,7 +246,7 @@ class ToolRouting:
             self._set_backup("claude-code", {CLAUDE_KEY: current})
         env[CLAUDE_KEY] = url
         data["env"] = env
-        _write(self.claude_settings, json.dumps(data, indent=2) + "\n")
+        _write(self.claude_settings, json.dumps(data, indent=2, ensure_ascii=False) + "\n")
 
     def _restore_claude(self) -> None:
         data = _load_json(self.claude_settings)
@@ -252,66 +261,65 @@ class ToolRouting:
                 data["env"] = env
             else:
                 data.pop("env", None)
-            _write(self.claude_settings, json.dumps(data, indent=2) + "\n")
+            _write(self.claude_settings, json.dumps(data, indent=2, ensure_ascii=False) + "\n")
         self._set_backup("claude-code", None)
 
     # -- Codex ----------------------------------------------------------------
 
-    @staticmethod
-    def _strip_codex(lines: list[str]) -> list[str]:
-        out: list[str] = []
-        inside = False
-        for line in lines:
-            if line.strip() == f"# {MARK}: begin":
-                inside = True
-                continue
-            if inside:
-                if line.strip() == f"# {MARK}: end":
-                    inside = False
-                continue
-            if line.rstrip().endswith(f"# {MARK}"):
-                continue
-            out.append(line)
-        while out and not out[-1].strip():
-            out.pop()
-        return out
-
-    def _read_codex(self) -> list[str]:
+    def _codex_text(self) -> tuple[str, str]:
+        """The config with ``\\n`` line ends, and the line end the file uses."""
         try:
-            return self.codex_config.read_text(encoding="utf-8").splitlines() if self.codex_config.exists() else []
-        except OSError as exc:
+            raw = self.codex_config.read_bytes().decode("utf-8") if self.codex_config.exists() else ""
+        except (OSError, UnicodeDecodeError) as exc:
             raise RoutingError(f"Can't read {self.codex_config}: {exc}") from exc
+        return raw.replace("\r\n", "\n"), "\r\n" if "\r\n" in raw else "\n"
+
+    @staticmethod
+    def _strip_codex(text: str) -> str:
+        """*text* without what :meth:`_apply_codex` added."""
+        text = _CODEX_BLOCK.sub("", text)
+        return "".join(line for line in text.splitlines(keepends=True) if line.rstrip("\n") != _CODEX_LINE)
 
     def _apply_codex(self, url: str) -> None:
-        lines = self._strip_codex(self._read_codex())
+        text, newline = self._codex_text()
+        body = self._strip_codex(text)
+        lines = body.split("\n")
         first_table = next((i for i, line in enumerate(lines) if _TABLE.match(line)), len(lines))
         found = next((i for i in range(first_table) if _PROVIDER.match(lines[i])), None)
-        backup = self._backup("codex")
+        if f"# {MARK}" not in text or found is not None:
+            # What gets put back: the provider line it replaces, where it was, and the file's last newline.
+            self._set_backup(
+                "codex",
+                {
+                    "model_provider": lines[found] if found is not None else None,
+                    "line": found,
+                    "final_newline": body.endswith("\n") or not body,
+                },
+            )
         if found is not None:
-            self._set_backup("codex", {"model_provider": lines.pop(found)})
-        elif "model_provider" not in backup:
-            self._set_backup("codex", {"model_provider": None})
-        lines.insert(0, f'model_provider = "prompture"  # {MARK}')
-        lines += [
-            "",
-            f"# {MARK}: begin",
-            "[model_providers.prompture]",
-            'name = "Prompture"',
-            f'base_url = "{url}"',
-            'wire_api = "responses"',
-            "requires_openai_auth = true",
-            f"# {MARK}: end",
-        ]
-        _write(self.codex_config, "\n".join(lines) + "\n")
+            lines.pop(found)
+        body = "\n".join(lines)
+        if body and not body.endswith("\n"):
+            body += "\n"
+        block = (
+            f'\n# {MARK}: begin\n[model_providers.prompture]\nname = "Prompture"\nbase_url = "{url}"\n'
+            f'wire_api = "responses"\nrequires_openai_auth = true\n# {MARK}: end\n'
+        )
+        _write(self.codex_config, f"{_CODEX_LINE}\n{body}{block}".replace("\n", newline))
 
     def _restore_codex(self) -> None:
-        lines = self._read_codex()
-        stripped = self._strip_codex(lines)
-        previous = self._backup("codex").get("model_provider")
-        if isinstance(previous, str) and previous.strip():
-            stripped.insert(0, previous)
-        if stripped != lines:
-            _write(self.codex_config, "\n".join(stripped) + ("\n" if stripped else ""))
+        text, newline = self._codex_text()
+        if f"# {MARK}" in text:
+            body = self._strip_codex(text)
+            backup = self._backup("codex")
+            previous, at = backup.get("model_provider"), backup.get("line")
+            if isinstance(previous, str):
+                lines = body.split("\n")
+                lines.insert(at if isinstance(at, int) and 0 <= at <= len(lines) else 0, previous)
+                body = "\n".join(lines)
+            if backup.get("final_newline") is False and body.endswith("\n"):
+                body = body[:-1]
+            _write(self.codex_config, body.replace("\n", newline))
         self._set_backup("codex", None)
 
     # -- hooks ----------------------------------------------------------------
@@ -366,4 +374,4 @@ class ToolRouting:
             data["hooks"] = hooks
         else:
             data.pop("hooks", None)
-        _write(self.claude_settings, json.dumps(data, indent=2) + "\n")
+        _write(self.claude_settings, json.dumps(data, indent=2, ensure_ascii=False) + "\n")

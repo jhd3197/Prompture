@@ -265,12 +265,19 @@ class CodingToolSource:
 
     def tail(self, bus: LiveBus, stop: threading.Event, interval: float = 2.0) -> None:
         """Publish agent calls as they're logged, and agent turns as they start and end."""
-        self.refresh(force=True)
+        first = True
         while True:
             try:
                 self.publish_turns(bus)
             except Exception:
                 logger.debug("coding agent activity scan failed", exc_info=True)
+            if first:
+                # The first read takes in the whole history (seconds); turns in progress show before it.
+                first = False
+                try:
+                    self.refresh(force=True)
+                except Exception:
+                    logger.debug("coding tool scan failed", exc_info=True)
             if stop.wait(interval):
                 break
             try:

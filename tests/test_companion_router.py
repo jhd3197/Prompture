@@ -500,3 +500,30 @@ def test_routed_calls_are_written_to_the_usage_ledger(companion):
     )
     _post(f"{srv.url}/tools/claude-code/v1/messages", {"model": "claude-haiku-4-5", "messages": []})
     assert recorded == [({"prompt_tokens": 5, "completion_tokens": 2}, "success")] * 2
+
+
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
+@pytest.mark.parametrize("final", [True, False])
+def test_codex_routing_restores_the_file_byte_for_byte(tmp_path, newline, final):
+    codex = tmp_path / "codex"
+    codex.mkdir()
+    lines = ['model = "gpt-5.5"', 'model_provider = "azure"', "", "[tui]", "theme = 'dark'", "", ""]
+    original = newline.join(lines) + (newline if final else "")
+    (codex / "config.toml").write_bytes(original.encode())
+    routing = ToolRouting(None, claude_root=tmp_path, codex_root=codex)
+    routing.set_enabled("codex", True, "http://127.0.0.1:47811")
+    routing.apply_enabled("http://127.0.0.1:50000")
+    assert (b"\r\n" in (codex / "config.toml").read_bytes()) == (newline == "\r\n")
+    routing.set_enabled("codex", False, "")
+    assert (codex / "config.toml").read_bytes() == original.encode()
+
+
+def test_claude_settings_keep_their_line_ends_and_text(tmp_path):
+    settings = tmp_path / "settings.json"
+    original = '{\r\n  "statusLine": "café ☕"\r\n}\r\n'
+    settings.write_bytes(original.encode())
+    routing = ToolRouting(None, claude_root=tmp_path, codex_root=tmp_path)
+    routing.set_enabled("claude-code", True, "http://127.0.0.1:47811")
+    assert "café ☕" in settings.read_bytes().decode()
+    routing.set_enabled("claude-code", False, "")
+    assert settings.read_bytes() == original.encode()
