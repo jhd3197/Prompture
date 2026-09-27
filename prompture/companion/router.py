@@ -76,6 +76,7 @@ from .routing_policy import (
     Needs,
     RoutePolicy,
     Task,
+    tool_outcome,
 )
 
 logger = logging.getLogger("prompture.companion.router")
@@ -579,10 +580,12 @@ class Router:
         billing = billing_of_request(tool, handler.headers)
         needs = Needs.of(tool.dialect, body)
         task = self.policy.task(tool.id, session, project) if kind in TASK_KINDS else None
+        outcome = tool_outcome(tool.dialect, body) if kind == "tool_result" else None
+        escalated = False
         decision = PASS
         if self._routable(suffix):
             if kind == "tool_result":
-                self.policy.observe(tool.id, tool.dialect, body, task, model)
+                escalated = self.policy.observe(tool.id, tool.dialect, body, task, model) is not None
             decision = self.policy.decide(
                 tool.id,
                 tool.dialect,
@@ -612,6 +615,8 @@ class Router:
             original_billing=billing,
             session=session,
             project=project,
+            tool_failed=(outcome.failed and not outcome.user_decision) if outcome else None,
+            escalated=escalated,
         )
         return _Request(
             tool, suffix, body, model, kind, session, project, billing, needs, task, decision, rid, started, call

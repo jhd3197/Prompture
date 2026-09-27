@@ -243,6 +243,8 @@ class RoutedCall:
     plan_equivalent_usd: float = 0.0  # API price of plan traffic, for context
     savings_usd: float = 0.0  # baseline - cost; negative when routing cost more
     switched: bool = False  # the session's destination changed with this call (prompt cache lost)
+    tool_failed: bool | None = None  # the tool result this request reports failed (None: not a tool result)
+    escalated: bool = False  # this request moved its task to a stronger model
 
     def to_dict(self) -> dict[str, Any]:
         return dataclasses.asdict(self)
@@ -421,6 +423,9 @@ def _bucket() -> dict[str, Any]:
         "plan_equivalent_usd": 0.0,
         "cache_read_tokens": 0,
         "input_tokens": 0,
+        "tool_results": 0,
+        "tool_failures": 0,
+        "escalations": 0,
     }
 
 
@@ -437,12 +442,17 @@ def _add(b: dict[str, Any], c: RoutedCall) -> None:
     b["plan_equivalent_usd"] += c.plan_equivalent_usd
     b["cache_read_tokens"] += c.cache_read_tokens
     b["input_tokens"] += c.input_tokens
+    b["tool_results"] += c.tool_failed is not None
+    b["tool_failures"] += bool(c.tool_failed)
+    b["escalations"] += c.escalated
 
 
 def _round(b: dict[str, Any]) -> dict[str, Any]:
     for k in ("cost_usd", "baseline_usd", "savings_usd", "new_spend_usd", "plan_equivalent_usd"):
         b[k] = round(b[k], 6)
     b["cache_hit"] = round(b["cache_read_tokens"] / b["input_tokens"], 4) if b["input_tokens"] else None
+    # How often the tools the model chose worked: the success measure presets are compared by.
+    b["tool_success"] = round(1 - b["tool_failures"] / b["tool_results"], 4) if b["tool_results"] else None
     return b
 
 
@@ -454,14 +464,20 @@ def rule_label(rule: dict[str, Any]) -> str:
 
 
 def summarize_calls(calls: Iterable[RoutedCall], start: datetime) -> dict[str, Any]:
-    """``/v1/router/savings``: totals, then per tool, project, rule and destination."""
+    """``/v1/router/savings``: totals, then per tool, project, rule, preset and destination."""
     total = _bucket()
-    groups: dict[str, dict[str, dict[str, Any]]] = {"tool": {}, "project": {}, "rule": {}, "served": {}}
+    groups: dict[str, dict[str, dict[str, Any]]] = {"tool": {}, "project": {}, "rule": {}, "preset": {}, "served": {}}
     for c in calls:
         if c.when < start:
             continue
         _add(total, c)
-        keys = {"tool": c.tool, "project": c.project or "", "rule": rule_label(c.rule), "served": c.served}
+        keys = {
+            "tool": c.tool,
+            "project": c.project or "",
+            "rule": rule_label(c.rule),
+            "preset": str(c.rule.get("preset") or "none"),
+            "served": c.served,
+        }
         for group, key in keys.items():
             _add(groups[group].setdefault(key, _bucket()), c)
 
@@ -475,5 +491,6 @@ def summarize_calls(calls: Iterable[RoutedCall], start: datetime) -> dict[str, A
         "by_tool": listing("tool", "tool"),
         "by_project": listing("project", "project"),
         "by_rule": listing("rule", "rule"),
+        "by_preset": listing("preset", "preset"),
         "by_served": listing("served", "served"),
     }

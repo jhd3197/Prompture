@@ -482,8 +482,14 @@ def test_failing_tool_results_escalate_the_task_back_to_the_requested_model(stac
     assert _Vendor.seen[-1]["body"]["model"] == "claude-sonnet-5"  # the declined tool reset the count
     _post(url, _tool_turn("claude-opus-5-5", "Error: build broke", session="x1", command="npm run build"), PLAN)
     assert _Vendor.seen[-1]["body"]["model"] == "claude-opus-5-5"  # the same failing action twice
-    call = _wait_calls(router, 5)[-1]
+    calls = _wait_calls(router, 5)
+    call = calls[-1]
     assert call.rule["source"] == "escalation" and "same action failed 2 times" in call.rule["reason"]
+    assert call.escalated and [c.tool_failed for c in calls] == [None, True, False, True, True]
+    economy = next(r for r in _get(f"{srv.url}/v1/router/savings")["by_preset"] if r["preset"] == "economy")
+    assert (economy["tool_results"], economy["tool_failures"], economy["tool_success"]) == (3, 2, 0.3333)
+    escalation = next(r for r in _get(f"{srv.url}/v1/router/savings")["by_preset"] if r["preset"] == "none")
+    assert escalation["escalations"] == 1
     tasks = _get(f"{srv.url}/v1/router/tasks")
     assert tasks[0]["session"] == "x1" and tasks[0]["attempts"] == 1 and len(tasks[0]["escalations"]) == 1
 
