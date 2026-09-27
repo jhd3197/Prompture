@@ -32,6 +32,18 @@ class MemoryKind(str, enum.Enum):
     instruction = "instruction"
     """A persistent system-instruction the user asked Claude to follow."""
 
+    decision = "decision"
+    """A project decision and why it was made (see :mod:`.project`)."""
+
+    convention = "convention"
+    """How things are done in a project: naming, layout, style."""
+
+    command = "command"
+    """A command that works in a project (build, test, run)."""
+
+    fix = "fix"
+    """A problem that was solved, and how."""
+
 
 @dataclass
 class MemoryFact:

@@ -140,7 +140,7 @@ class TestServer:
         assert body["service"] == "prompture" and body["mode"] == "local"
         assert body["api_version"] == 1
         assert body["capabilities"]["key_controls"] is False
-        assert set(body["features"]) == {"live", "limits", "spend", "alerts", "tools", "activity", "recent"}
+        assert set(body["features"]) == {"live", "limits", "spend", "alerts", "tools", "activity", "recent", "shutdown"}
         assert body["capabilities"]["coding_tools"] is False and body["capabilities"]["activity"] is True
 
     def test_activity_merges_ledger_and_coding_tools_by_local_day(self, tmp_path):

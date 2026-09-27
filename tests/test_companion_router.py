@@ -108,6 +108,16 @@ def companion(tmp_path, upstream):
     srv.shutdown_companion()
 
 
+def _calls(router, n=1, timeout=5.0):
+    """The router's recorded calls once there are ``n`` (they're written just after the reply)."""
+    import time
+
+    deadline = time.monotonic() + timeout
+    while len(router.calls.calls()) < n and time.monotonic() < deadline:
+        time.sleep(0.02)
+    return router.calls.calls()
+
+
 def _post(url: str, body: dict, headers: dict | None = None):
     req = urllib.request.Request(
         url, data=json.dumps(body).encode(), headers={"Content-Type": "application/json", **(headers or {})}
@@ -256,23 +266,24 @@ def test_a_matching_rule_sends_the_request_to_a_prompture_model(companion):
     assert body["id"].startswith("resp_prompture_") and body["output"][0]["content"][0]["text"] == "routed answer"
 
 
-def test_an_unusable_route_answers_with_an_error_in_the_clis_format(tmp_path):
+def test_an_unusable_route_falls_back_to_the_vendor(tmp_path, upstream):
     def broken(model):
         raise ValueError("no such model")
 
     bus = LiveBus()
     routes = Routes(tmp_path / "routes.json")
     routes.save({"tools": {"claude-code": {"models": {"*": "nope/model"}}}})
-    srv = CompanionServer(
-        LedgerSource(tmp_path / "none.db"), bus=bus, state_path=None, router=Router(bus, routes, driver_for=broken)
-    )
+    router = Router(bus, routes, driver_for=broken, upstream=lambda tool: upstream)
+    srv = CompanionServer(LedgerSource(tmp_path / "none.db"), bus=bus, state_path=None, router=router)
     srv.start_background()
     try:
-        with pytest.raises(urllib.error.HTTPError) as err:
-            _post(f"{srv.url}/tools/claude-code/v1/messages", {"model": "claude-x", "messages": []})
-        assert err.value.code == 502
-        body = json.loads(err.value.read())
-        assert body["type"] == "error" and "nope/model" in body["error"]["message"]
+        status, _, raw = _post(f"{srv.url}/tools/claude-code/v1/messages", {"model": "claude-x", "messages": []})
+        assert status == 200 and json.loads(raw)["id"] == "msg_vendor"  # the CLI never saw the failure
+        (call,) = _calls(router)
+        assert call.served == "claude/claude-x" and call.route == "passthrough"
+        assert [a["model"] for a in call.attempts] == ["nope/model", "claude/claude-x"]
+        assert call.attempts[0]["status"] == "error" and "no such model" in call.attempts[0]["error"]
+        assert call.rule["source"] == "fallback" and "fell back to claude-x" in call.rule["reason"]
         assert bus.running() == []
     finally:
         srv.shutdown()
@@ -371,7 +382,8 @@ def test_hooks_install_and_remove_only_prompture_entries(tmp_path):
     hooks = json.loads((tmp_path / "settings.json").read_text())["hooks"]
     assert set(hooks) == {"UserPromptSubmit", "PostToolUse", "Notification", "Stop", "SessionEnd"}
     assert hooks["Stop"][0] == mine
-    assert hooks["Stop"][1]["hooks"][0]["command"] == '"C:/py/python.exe" -m prompture.companion.hook claude'
+    command = hooks["Stop"][1]["hooks"][0]["command"]
+    assert command.startswith('"C:/py/python.exe" "') and command.endswith('/prompture/companion/hook.py" claude')
     assert hooks["PostToolUse"][0]["matcher"] == "*"
     assert routing.hooks_installed()
 
@@ -381,6 +393,18 @@ def test_hooks_install_and_remove_only_prompture_entries(tmp_path):
     routing.set_hooks(False)
     assert json.loads((tmp_path / "settings.json").read_text()) == {"hooks": {"Stop": [mine]}}
     assert not routing.hooks_installed()
+
+
+def test_hooks_from_an_older_prompture_are_brought_up_to_date(tmp_path):
+    old = {"hooks": [{"type": "command", "command": '"C:/old/python.exe" -m prompture.companion.hook claude'}]}
+    mine = {"hooks": [{"type": "command", "command": "notify-send done"}]}
+    (tmp_path / "settings.json").write_text(json.dumps({"hooks": {"Stop": [mine, old], "Notification": [old]}}))
+    routing = ToolRouting(None, claude_root=tmp_path, codex_root=tmp_path, python=r"C:\py\python.exe")
+    assert routing.hooks_installed() and routing.refresh_hooks()
+    hooks = json.loads((tmp_path / "settings.json").read_text())["hooks"]
+    assert hooks["Stop"][0] == mine and len(hooks["Stop"]) == 2
+    assert all(g["hooks"][0]["command"] == routing.hook_command for e in hooks.values() for g in e if g != mine)
+    assert not routing.refresh_hooks()  # already current
 
 
 def test_router_endpoints_switch_routing_and_save_rules(companion, tmp_path):
@@ -404,15 +428,23 @@ def test_router_endpoints_switch_routing_and_save_rules(companion, tmp_path):
     assert err.value.code == 401
 
     srv.tool_routing.restore_all()  # what the companion does when it stops
-    assert not json.loads((tmp_path / "claude" / "settings.json").read_text()).get("env")
+    assert not (tmp_path / "claude" / "settings.json").exists()  # it only existed for routing
 
 
 # ------------------------------------------------------------------ hooks
 
 
-def test_hook_payload_keeps_only_the_event_and_session():
-    raw = json.dumps({"hook_event_name": "Notification", "session_id": "s1", "message": "secret", "cwd": "/x"})
-    assert hook.payload("claude", raw) == {"agent": "claude", "event": "Notification", "session": "s1"}
+def test_hook_payload_keeps_only_the_event_session_and_folder():
+    raw = json.dumps({"hook_event_name": "Notification", "session_id": "s1", "message": "secret", "cwd": "/home/me/x"})
+    assert hook.payload("claude", raw) == {
+        "agent": "claude",
+        "event": "Notification",
+        "session": "s1",
+        "project": "x",
+        "cwd": "/home/me/x",
+    }
+    prompt = json.dumps({"hook_event_name": "UserPromptSubmit", "session_id": "s1", "prompt": "fix the build"})
+    assert hook.payload("claude", prompt)["prompt"] == "fix the build"  # only a prompt event carries it
     assert hook.payload("claude", "not json") is None
     assert hook.payload("claude", json.dumps({"hook_event_name": "Stop"})) is None
 
@@ -527,3 +559,95 @@ def test_claude_settings_keep_their_line_ends_and_text(tmp_path):
     assert "café ☕" in settings.read_bytes().decode()
     routing.set_enabled("claude-code", False, "")
     assert settings.read_bytes() == original.encode()
+
+
+# ------------------------------------------------------------------ crash recovery
+
+
+def test_a_new_companion_repoints_enabled_tools_and_restores_stale_ones(tmp_path):
+    """A killed companion leaves configs pointing at a dead port; the next one fixes them."""
+    claude = tmp_path / "claude"
+    claude.mkdir()
+    (claude / "settings.json").write_text(json.dumps({"env": {"ANTHROPIC_BASE_URL": "https://gw.example"}}))
+    routing = ToolRouting(tmp_path / "prefs.json", claude_root=claude, codex_root=tmp_path / "codex")
+    routing.set_enabled("claude-code", True, "http://127.0.0.1:5000")
+    routing.set_enabled("codex", True, "http://127.0.0.1:5000")
+
+    # The next companion comes up on another port: enabled tools follow it.
+    assert routing.apply_enabled("http://127.0.0.1:6000") == []
+    env = json.loads((claude / "settings.json").read_text())["env"]
+    assert env["ANTHROPIC_BASE_URL"] == "http://127.0.0.1:6000/tools/claude-code"
+    assert "127.0.0.1:6000/tools/codex/v1" in (tmp_path / "codex" / "config.toml").read_text()
+
+    # Codex was turned off while its config still pointed at the dead companion.
+    prefs = json.loads((tmp_path / "prefs.json").read_text())
+    prefs["routed_tools"] = ["claude-code"]
+    (tmp_path / "prefs.json").write_text(json.dumps(prefs))
+    assert routing.apply_enabled("http://127.0.0.1:6000") == []
+    assert not routing.routed("codex")
+    assert routing.routed("claude-code")
+
+    # `prompture companion --restore`: everything back, the gateway it replaced included.
+    assert routing.restore_all() == ["claude-code"]
+    assert json.loads((claude / "settings.json").read_text()) == {"env": {"ANTHROPIC_BASE_URL": "https://gw.example"}}
+
+
+def test_shutdown_needs_the_token_then_stops_and_puts_configs_back(tmp_path):
+    routing = ToolRouting(tmp_path / "prefs.json", claude_root=tmp_path / "claude", codex_root=tmp_path / "codex")
+    srv = CompanionServer(
+        LedgerSource(tmp_path / "none.db"), token="t0ken", bus=LiveBus(), state_path=None, tool_routing=routing
+    )
+    done = threading.Event()
+
+    def serve():
+        try:
+            srv.run()
+        finally:
+            done.set()
+
+    threading.Thread(target=serve, daemon=True).start()
+    info = json.loads(urllib.request.urlopen(f"{srv.url}/v1/companion/info", timeout=5).read())
+    assert info["features"]["shutdown"] == "/v1/shutdown"
+    routing.set_enabled("claude-code", True, srv.url)
+    assert routing.routed("claude-code")
+
+    with pytest.raises(urllib.error.HTTPError) as err:
+        _post(f"{srv.url}/v1/shutdown", {})
+    assert err.value.code == 401
+
+    status, _, _ = _post(f"{srv.url}/v1/shutdown", {}, {"Authorization": "Bearer t0ken"})
+    assert status == 202
+    assert done.wait(5)
+    assert not routing.routed("claude-code")
+    assert routing.enabled() == ["claude-code"]  # the choice survives for the next start
+
+
+@pytest.mark.parametrize(
+    "original", [None, "", "GEMINI_MODEL=pro\n", "CODE_ASSIST_ENDPOINT=https://proxy.example\nX=1", "A=1\r\nB=2\r\n"]
+)
+def test_gemini_routing_restores_its_env_file_byte_for_byte(tmp_path, original):
+    gemini = tmp_path / "gemini"
+    gemini.mkdir()
+    env = gemini / ".env"
+    if original is not None:
+        env.write_bytes(original.encode())
+    routing = ToolRouting(None, claude_root=tmp_path / "c", codex_root=tmp_path / "x", gemini_root=gemini)
+    routing.set_enabled("gemini-cli", True, "http://127.0.0.1:47811")
+    text = env.read_text()
+    assert "CODE_ASSIST_ENDPOINT=http://127.0.0.1:47811/tools/gemini-cli" in text
+    assert "proxy.example" not in text and routing.routed("gemini-cli")
+    routing.apply_enabled("http://127.0.0.1:50000")  # a new port: still one block
+    assert env.read_text().count("CODE_ASSIST_ENDPOINT") == 1
+    routing.set_enabled("gemini-cli", False, "")
+    if original is None:
+        assert not env.exists()
+    else:
+        assert env.read_bytes() == original.encode()
+
+
+def test_a_claude_settings_file_routing_created_is_removed_again(tmp_path):
+    routing = ToolRouting(None, claude_root=tmp_path, codex_root=tmp_path / "codex")
+    routing.set_enabled("claude-code", True, "http://127.0.0.1:47811")
+    assert (tmp_path / "settings.json").exists()
+    routing.set_enabled("claude-code", False, "")
+    assert not (tmp_path / "settings.json").exists()

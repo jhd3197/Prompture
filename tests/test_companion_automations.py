@@ -271,3 +271,48 @@ def test_http_routes(tmp_path, agent):
     finally:
         server.shutdown()
         server.shutdown_companion()
+
+
+def _plans(claude_left, codex_left):
+    now = time.time()
+    return {
+        "claude/claude-code": {
+            "windows": {"session_5h": {"limit": 100, "remaining": claude_left, "resets_at": now + 3600}}
+        },
+        "openai/codex": {"windows": {"weekly": {"limit": 100, "remaining": codex_left, "resets_at": now + 86400}}},
+    }
+
+
+def test_an_auto_queue_starts_on_the_agent_with_the_most_plan_left(tmp_path, agent):
+    limits = _plans(30, 90)
+    auto = Automations(tmp_path / "a", runner=agent, limits=lambda: limits, installed=lambda _id: True)
+    run = auto.start({"cwd": str(tmp_path), "agent": "auto", "steps": ["a"]})
+    assert run["agent"] == "codex" and run["auto"] and "90% of its plan left" in run["note"]
+    wait_until(lambda: status(auto) == "finished")
+    assert agent.calls[0]["agent"] == "codex"
+
+
+def test_an_auto_queue_moves_agents_instead_of_waiting_for_a_reset(tmp_path, agent):
+    limits = _plans(60, 50)
+    agent.gate.clear()
+    auto = Automations(tmp_path / "a", runner=agent, limits=lambda: limits, installed=lambda _id: True)
+    auto.start({"cwd": str(tmp_path), "agent": "auto", "steps": [{"text": "one"}, {"text": "two", "session": "new"}]})
+    wait_until(lambda: len(agent.calls) == 1)
+    limits["claude/claude-code"]["windows"]["session_5h"]["remaining"] = 3  # Claude's plan runs low mid-queue
+    agent.gate.set()
+    wait_until(lambda: status(auto) == "finished")
+    assert [c["agent"] for c in agent.calls] == ["claude", "codex"]
+    assert "Moved to Codex" in auto.run.note
+
+
+def test_an_auto_queue_still_pauses_a_step_that_continues_a_session(tmp_path, agent):
+    limits = _plans(60, 50)
+    agent.gate.clear()
+    auto = Automations(tmp_path / "a", runner=agent, limits=lambda: limits, installed=lambda _id: True)
+    auto.start({"cwd": str(tmp_path), "agent": "auto", "steps": ["one", "two"]})  # "two" continues the session
+    wait_until(lambda: len(agent.calls) == 1)
+    limits["claude/claude-code"]["windows"]["session_5h"]["remaining"] = 3
+    agent.gate.set()
+    wait_until(lambda: status(auto) == "paused")
+    assert auto.run.reason == "limit" and auto.run.agent == "claude"
+    auto.stop()

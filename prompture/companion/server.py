@@ -8,6 +8,7 @@ Prompture usage with no hub at all:
 - ``GET /v1/live`` — Server-Sent Events (calls as they finish).
 - ``GET /v1/spend?period=day|week|month`` and ``GET /v1/limits``.
 - ``GET /v1/alerts`` — always empty; alert rules live in the hub.
+- ``POST /v1/shutdown`` — stop cleanly (CLI configs put back first).
 
 With an :class:`~.automations.Automations` it also runs queued coding-agent
 steps one after another (``/v1/automations``).
@@ -20,7 +21,14 @@ agent's usage plus which agents are installed.
 With a :class:`~.router.Router` it routes coding CLIs: ``/tools/<tool>/…``
 takes Claude Code's and Codex's model traffic (passed through to the vendor,
 or sent to a Prompture model), and ``/v1/router`` turns routing, request
-rules and Claude Code's live-state hooks (``POST /v1/hooks``) on and off.
+rules, presets and Claude Code's live-state hooks (``POST /v1/hooks``) on and
+off. ``/v1/router/calls`` lists what each call cost and why it went where it
+did, ``/v1/router/savings`` adds them up per tool, project and rule, and
+``/v1/router/tasks`` shows each session's destination, failures and budget.
+
+With a :class:`~.memory.MemoryService`, ``/v1/memory`` keeps each project's
+notes (decisions, conventions, commands, verified fixes), shows what each
+session was given, and lists skill proposals mined from finished tasks.
 
 It listens on ``127.0.0.1`` only, on a free port the OS picks, and writes the
 address and a random bearer token to ``~/.prompture/companion.json`` (readable
@@ -40,12 +48,14 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 from .automations import AutomationError, Automations, roadmap_steps
+from .capacity import PlanCapacity
 from .coding_tools import CodingToolSource
 from .live import LiveBus, get_bus, sse_event
 from .local import LedgerSource
+from .memory import MemoryService
 from .router import Router
 from .summary import COMPANION_API_VERSION, PERIODS, UsageRow, account_limits, provider_limits, summarize_spend
 from .tool_routing import RoutingError, ToolRouting
@@ -66,6 +76,7 @@ FEATURES = {
     "tools": "/v1/tools",
     "activity": "/v1/activity",
     "recent": "/v1/recent",
+    "shutdown": "/v1/shutdown",
 }
 CAPABILITIES = {
     "running_calls": False,  # the ledger only sees calls after they finish
@@ -88,12 +99,16 @@ def _version() -> str:
         return "0"
 
 
-def info(coding_tools: bool = False, automations: bool = False, router: bool = False) -> dict[str, Any]:
+def info(
+    coding_tools: bool = False, automations: bool = False, router: bool = False, memory: bool = False
+) -> dict[str, Any]:
     features = dict(FEATURES)
     if automations:
         features["automations"] = "/v1/automations"
     if router:
         features["router"] = "/v1/router"
+    if memory:
+        features["memory"] = "/v1/memory"
     return {
         "service": "prompture",
         "mode": "local",
@@ -108,6 +123,10 @@ def info(coding_tools: bool = False, automations: bool = False, router: bool = F
             "agent_turns": coding_tools,
             "automations": automations,
             "router": router,
+            # Call records, savings, presets, fallback and task controls (/v1/router/calls, …).
+            "router_calls": router,
+            "gemini_routing": router,
+            "memory": memory,
         },
     }
 
@@ -177,8 +196,18 @@ class _Handler(BaseHTTPRequestHandler):
             self._json(404, {"detail": "Not found"})
 
     def do_DELETE(self) -> None:
-        if not self._routed("DELETE"):
-            self._json(404, {"detail": "Not found"})
+        if self._routed("DELETE"):
+            return
+        url = urlparse(self.path)
+        if not self._authorized():
+            return self._json(401, {"detail": "Missing or wrong companion token (see ~/.prompture/companion.json)."})
+        parts = [unquote(p) for p in url.path.strip("/").split("/")]
+        memory = self.server.memory
+        if memory is not None and len(parts) == 6 and parts[:3] == ["v1", "memory", "projects"] and parts[4] == "facts":
+            if memory.memory.delete(parts[3], parts[5]):
+                return self._json(200, {"deleted": parts[5]})
+            return self._json(404, {"detail": "No such note."})
+        self._json(404, {"detail": "Not found"})
 
     def do_POST(self) -> None:
         if self._routed("POST"):
@@ -210,8 +239,35 @@ class _Handler(BaseHTTPRequestHandler):
             if not all(isinstance(f, str) and f for f in fields):
                 return self._json(422, {"detail": "Send agent, event and session."})
             agent, event, session = (str(f) for f in fields)
+            project = body.get("project") if isinstance(body.get("project"), str) else None
+            if project:
+                self.server.remember_project(agent, session, project)
             self.server.coding_tools.hook_event(self.server.bus, agent, event, session)
-            return self._json(200, {"ok": True})
+            if self.server.router is not None:
+                self.server.router.hook(agent, event, session, project)
+            answer: dict[str, Any] = {"ok": True}
+            memory = self.server.memory
+            if memory is not None:
+                cwd = body.get("cwd") if isinstance(body.get("cwd"), str) else None
+                memory.remember_folder(project, cwd)
+                if event == "UserPromptSubmit":
+                    prompt = body.get("prompt") if isinstance(body.get("prompt"), str) else ""
+                    context = memory.inject(agent, session, project, prompt, via="hook")
+                    if context:
+                        answer["context"] = context
+            return self._json(200, answer)
+        if url.path == "/v1/shutdown":
+            # How an app that started the companion stops it: routing is put back first,
+            # which a killed process can't do.
+            self._json(202, {"stopping": True})
+            threading.Thread(target=self.server.shutdown, daemon=True).start()
+            return None
+        if url.path.startswith("/v1/memory") and self.server.memory is not None:
+            try:
+                body = self._body()
+            except ValueError:
+                return self._json(400, {"detail": "Body must be JSON."})
+            return self._memory_post(url.path, body if isinstance(body, dict) else {})
         if url.path.startswith("/v1/router/") and self.server.tool_routing is not None:
             try:
                 body = self._body()
@@ -225,6 +281,22 @@ class _Handler(BaseHTTPRequestHandler):
         assert routing is not None and router is not None
         parts = path.strip("/").split("/")[2:]  # after v1/router
         try:
+            if len(parts) == 4 and parts[0] == "sessions" and parts[3] == "switch":
+                to = body.get("to")
+                if not isinstance(to, str) or not to.strip():
+                    return self._json(
+                        422, {"detail": 'Send {"to": "native:<model>" | "<provider/model>" | "original"}.'}
+                    )
+                switched = router.switch(parts[1], parts[2], to.strip(), now=body.get("now") is True)
+                if switched is None:
+                    return self._json(404, {"detail": "No such task; it may have ended."})
+                return self._json(200, {"task": switched.to_dict()})
+            if len(parts) == 4 and parts[0] == "sessions" and parts[3] == "escalate":
+                decision = router.escalate(parts[1], parts[2], str(body.get("reason") or ""))
+                task = router.policy.find(parts[1], parts[2])
+                if task is None:
+                    return self._json(404, {"detail": "No such task; it may have ended."})
+                return self._json(200, {"escalated": decision is not None, "task": task.to_dict()})
             if parts == ["routes"]:
                 router.routes.save(body)
             elif parts == ["hooks"] and isinstance(body.get("enabled"), bool):
@@ -249,6 +321,7 @@ class _Handler(BaseHTTPRequestHandler):
                     self.server.coding_tools is not None,
                     self.server.automations is not None,
                     self.server.router is not None,
+                    self.server.memory is not None,
                 ),
             )
         if not self._authorized():
@@ -294,8 +367,103 @@ class _Handler(BaseHTTPRequestHandler):
             return self._live(query)
         if url.path == "/v1/router" and self.server.tool_routing is not None:
             return self._json(200, self.server.router_state())
+        if url.path.startswith("/v1/router/") and self.server.router is not None:
+            return self._router_get(url.path, query)
+        if url.path.startswith("/v1/memory") and self.server.memory is not None:
+            return self._memory_get(url.path, query)
         if url.path.startswith("/v1/automations") and self.server.automations is not None:
             return self._automations_get(url.path, query)
+        return self._json(404, {"detail": "Not found"})
+
+    def _memory_post(self, path: str, body: dict[str, Any]) -> None:
+        memory = self.server.memory
+        assert memory is not None
+        parts = [unquote(p) for p in path.strip("/").split("/")][2:]  # after v1/memory
+        if parts == ["settings"]:
+            return self._json(200, memory.save_settings(body))
+        if len(parts) >= 3 and parts[0] == "projects":
+            project = parts[1]
+            if parts[2:] == ["facts"]:
+                try:
+                    fact = memory.memory.add(
+                        project,
+                        str(body.get("content") or ""),
+                        kind=str(body.get("kind") or "fact"),
+                        source=body.get("source") if isinstance(body.get("source"), str) else None,
+                        verified=bool(body.get("verified")),
+                        pinned=bool(body.get("pinned")),
+                        agent=str(body.get("agent") or "you"),
+                    )
+                except ValueError as exc:
+                    return self._json(422, {"detail": str(exc)})
+                return self._json(200, _fact(fact))
+            if len(parts) == 4 and parts[2] == "facts":
+                updated = memory.memory.update(project, parts[3], **body)
+                return self._json(200, _fact(updated)) if updated else self._json(404, {"detail": "No such note."})
+            if len(parts) == 5 and parts[2] == "skills" and parts[4] == "save":
+                try:
+                    return self._json(200, {"path": memory.save_skill(project, parts[3])})
+                except KeyError as exc:
+                    return self._json(404, {"detail": str(exc.args[0])})
+                except (FileNotFoundError, FileExistsError, OSError) as exc:
+                    return self._json(409, {"detail": str(exc)})
+        return self._json(404, {"detail": "Not found"})
+
+    def _memory_get(self, path: str, query: dict[str, str]) -> None:
+        memory = self.server.memory
+        assert memory is not None
+        parts = [unquote(p) for p in path.strip("/").split("/")][2:]
+        if not parts:
+            return self._json(200, {"settings": memory.settings(), "projects": memory.projects()})
+        if parts == ["injections"]:
+            return self._json(200, memory.injections(query.get("project"), query.get("session")))
+        if len(parts) == 2 and parts[0] == "projects":
+            project = parts[1]
+            return self._json(
+                200,
+                {
+                    "project": project,
+                    "folder": memory.folder(project),
+                    "facts": [_fact(f) for f in memory.memory.notes(project)],
+                    "injections": memory.injections(project, limit=20),
+                    "skills": memory.skills(project),
+                },
+            )
+        return self._json(404, {"detail": "Not found"})
+
+    def _router_get(self, path: str, query: dict[str, str]) -> None:
+        from .calls import summarize_calls
+        from .summary import window_start
+
+        router = self.server.router
+        assert router is not None
+        parts = path.strip("/").split("/")[2:]  # after v1/router
+        period = query.get("period", "day")
+        if period not in PERIODS:
+            return self._json(422, {"detail": "period must be day, week or month"})
+        start = window_start(period, offset_minutes=_tz_offset(query))
+        if parts == ["savings"]:
+            return self._json(200, {"period": period, **summarize_calls(router.calls.calls(start), start)})
+        if parts == ["tasks"]:
+            return self._json(200, [t.to_dict() for t in router.policy.tasks()])
+        if parts == ["calls"]:
+            try:
+                limit = min(1000, max(1, int(query.get("limit", "200"))))
+            except ValueError:
+                return self._json(422, {"detail": "limit must be an integer"})
+            calls = router.calls.calls(start)
+            for key in ("tool", "session", "project", "route"):
+                if query.get(key):
+                    calls = [c for c in calls if getattr(c, key) == query[key]]
+            if query.get("routed") == "true":
+                calls = [c for c in calls if c.route != "passthrough"]
+            return self._json(200, [c.to_dict() for c in reversed(calls[-limit:])])
+        if len(parts) == 2 and parts[0] == "calls":
+            call = router.calls.get(parts[1])
+            if call is None:
+                return self._json(404, {"detail": "No such call."})
+            task = router.policy.find(call.tool, call.session) if call.session else None
+            return self._json(200, {**call.to_dict(), "task": task.to_dict() if task else None})
         return self._json(404, {"detail": "Not found"})
 
     def _automations_get(self, path: str, query: dict[str, str]) -> None:
@@ -408,6 +576,7 @@ class CompanionServer(ThreadingHTTPServer):
         automations: Automations | None = None,
         tool_routing: ToolRouting | None = None,
         router: Router | None = None,
+        memory: MemoryService | None = None,
     ) -> None:
         super().__init__(("127.0.0.1", port), _Handler)
         self.ledger = ledger or LedgerSource()
@@ -417,25 +586,50 @@ class CompanionServer(ThreadingHTTPServer):
         self.coding_tools = coding_tools
         self.automations = automations
         self.tool_routing = tool_routing
+        self._projects: dict[tuple[str, str], str] = {}
+        self.memory = memory
         if router is None and tool_routing is not None:
-            router = Router(self.bus, upstream=tool_routing.upstream)
+            router = Router(self.bus, upstream=tool_routing.upstream, project_for=self.project_for, memory=memory)
         self.router = router
+        #: Plan windows read from replies through the router (fresher than the CLIs' logs).
+        self.capacity = PlanCapacity()
+        if router is not None:
+            router.capacity = self.capacity
         self.stopping = threading.Event()
 
     @property
     def url(self) -> str:
         return f"http://127.0.0.1:{self.server_address[1]}"
 
+    def remember_project(self, agent: str, session: str, project: str) -> None:
+        """A hook named the folder a session works in."""
+        self._projects[(agent, session)] = project
+
+    def project_for(self, agent: str, session: str) -> str | None:
+        """The project a coding-agent session works in: from its hooks, else its logs."""
+        project = self._projects.get((agent, session))
+        if project is None and self.coding_tools is not None:
+            try:
+                project = self.coding_tools.project_for(agent, session)
+            except Exception:
+                logger.debug("project lookup failed", exc_info=True)
+            if project:
+                self._projects[(agent, session)] = project
+        return project
+
     def router_state(self) -> dict[str, Any]:
         """``/v1/router``: each CLI's routing switch, the request rules, and the hooks switch."""
         assert self.tool_routing is not None and self.router is not None
-        from .router import BACKGROUND_KINDS, KINDS
+        from .router import KINDS
+        from .routing_policy import BACKGROUND_KINDS, NATIVE_ONLY_KINDS, PRESETS
 
         return {
             **self.tool_routing.status(self.url),
             "routes": self.router.routes.data(),
             "kinds": list(KINDS),
-            "background_kinds": sorted(BACKGROUND_KINDS),
+            "background_kinds": sorted(BACKGROUND_KINDS - NATIVE_ONLY_KINDS),
+            "presets": {name: dict(kinds) for name, kinds in PRESETS.items()},
+            "settings": self.router.policy.settings(),
         }
 
     def rows(self, period: str, *, api_only: bool = False, offset_minutes: int = 0) -> list[UsageRow]:
@@ -452,6 +646,10 @@ class CompanionServer(ThreadingHTTPServer):
                 limits.update(self.coding_tools.rate_limits())
             except Exception:  # coding-tool limits are extra context, never a failure
                 logger.debug("coding tool limits failed", exc_info=True)
+        for target, snap in self.capacity.limits().items():
+            known = limits.get(target)
+            if not known or float(known.get("observed_at") or 0) <= float(snap.get("observed_at") or 0):
+                limits[target] = snap
         return limits
 
     def _tail(self) -> None:
@@ -542,12 +740,24 @@ class CompanionServer(ThreadingHTTPServer):
         return thread
 
     def run(self) -> None:
-        """Serve until interrupted, advertising the address in the state file."""
+        """Serve until interrupted, advertising the address in the state file.
+
+        SIGTERM (a plain ``kill``) stops it like Ctrl+C does, so routed CLIs
+        are put back; only a forced kill skips that.
+        """
+        _stop_on_sigterm()
         if self.state_path is not None:
             _write_state(self.state_path, {"url": self.url, "token": self.token, "pid": os.getpid()})
         if self.tool_routing is not None:
             for problem in self.tool_routing.apply_enabled(self.url):
                 logger.warning("Routing: %s", problem)
+            try:
+                self.tool_routing.refresh_hooks()
+            except RoutingError as exc:
+                logger.warning("Hooks: %s", exc)
+        if self.memory is not None:
+            # The first prompt of a session waits on this; load it before anyone asks.
+            threading.Thread(target=self.memory.warm, daemon=True).start()
         self._tail()
         try:
             self.serve_forever()
@@ -566,6 +776,36 @@ class CompanionServer(ThreadingHTTPServer):
                 with contextlib.suppress(OSError):
                     self.state_path.unlink()
         self.server_close()
+
+
+def _fact(fact: Any) -> dict[str, Any]:
+    """A project note as the API shows it."""
+    meta = fact.metadata or {}
+    return {
+        "id": fact.id,
+        "kind": fact.kind,
+        "content": fact.content,
+        "source": meta.get("source"),
+        "verified": bool(meta.get("verified")),
+        "pinned": bool(meta.get("pinned")),
+        "agent": meta.get("agent"),
+        "ts": fact.ts,
+        "updated": meta.get("updated") or fact.ts,
+    }
+
+
+def _stop_on_sigterm() -> None:
+    """Turn SIGTERM into KeyboardInterrupt, so ``run()``'s cleanup runs (main thread only)."""
+    import signal
+
+    if threading.current_thread() is not threading.main_thread() or not hasattr(signal, "SIGTERM"):
+        return
+
+    def interrupt(signum: int, frame: Any) -> None:
+        raise KeyboardInterrupt
+
+    with contextlib.suppress(ValueError, OSError):
+        signal.signal(signal.SIGTERM, interrupt)
 
 
 def running_instance(path: Path = STATE_FILE, timeout: float = 2.0) -> dict[str, Any] | None:
