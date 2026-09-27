@@ -7,6 +7,11 @@
   and a ``[model_providers.prompture]`` table pointing at
   ``<companion>/tools/codex/v1``, with ``requires_openai_auth`` so its ChatGPT
   or API-key login still applies.
+- **Gemini CLI** (signed in with Google): ``~/.gemini/.env`` gets
+  ``CODE_ASSIST_ENDPOINT=<companion>/tools/gemini-cli`` between marker
+  comments. Gemini CLI reads that file only when the project has no ``.env``
+  of its own (or ``.gemini/.env``), so those projects go direct; API-key
+  sign-ins aren't routed (Gemini CLI has no base-URL setting for them).
 
 Only those entries are written, each marked as Prompture's, and whatever they
 replaced is kept in the companion prefs and put back when routing is turned
@@ -37,6 +42,9 @@ PREFS_FILE = Path.home() / ".prompture" / "companion-prefs.json"
 MARK = "prompture-router"
 CLAUDE_KEY = "ANTHROPIC_BASE_URL"
 HOOK_MODULE = "prompture.companion.hook"
+#: Run as a script, not with ``-m``: importing the prompture package costs ~2 s,
+#: and Claude Code waits for the hook after every tool call.
+HOOK_FILE = Path(__file__).with_name("hook.py")
 #: Claude Code events the hooks report. Tool events only on completion, so a
 #: tool call never waits on the hook before it runs.
 HOOK_EVENTS = ("UserPromptSubmit", "PostToolUse", "Notification", "Stop", "SessionEnd")
@@ -47,6 +55,8 @@ _TABLE = re.compile(r"^\s*\[")
 _PROVIDER = re.compile(r"^\s*model_provider\s*=")
 _CODEX_LINE = f'model_provider = "prompture"  # {MARK}'
 _CODEX_BLOCK = re.compile(rf"\n?# {MARK}: begin\n.*?# {MARK}: end\n?", re.S)
+GEMINI_KEY = "CODE_ASSIST_ENDPOINT"
+_GEMINI_LINE = re.compile(rf"^\s*(export\s+)?{GEMINI_KEY}\s*=")
 
 
 class RoutingError(Exception):
@@ -92,11 +102,13 @@ class ToolRouting:
         *,
         claude_root: str | Path | None = None,
         codex_root: str | Path | None = None,
+        gemini_root: str | Path | None = None,
         python: str | None = None,
     ) -> None:
         self.prefs_file = Path(prefs_file) if prefs_file else None
         self.claude_root = Path(claude_root) if claude_root else env_path("CLAUDE_CONFIG_DIR", home() / ".claude")
         self.codex_root = Path(codex_root) if codex_root else env_path("CODEX_HOME", home() / ".codex")
+        self.gemini_root = Path(gemini_root) if gemini_root else home() / ".gemini"
         self.python = (python or sys.executable).replace("\\", "/")
         self._memory: dict[str, Any] = {}
 
@@ -152,8 +164,15 @@ class ToolRouting:
     def codex_config(self) -> Path:
         return self.codex_root / "config.toml"
 
+    @property
+    def gemini_env(self) -> Path:
+        return self.gemini_root / ".env"
+
+    def config_path(self, tool: str) -> Path:
+        return {"claude-code": self.claude_settings, "codex": self.codex_config}.get(tool, self.gemini_env)
+
     def installed(self, tool: str) -> bool:
-        return (self.claude_root if tool == "claude-code" else self.codex_root).is_dir()
+        return {"claude-code": self.claude_root, "codex": self.codex_root}.get(tool, self.gemini_root).is_dir()
 
     @staticmethod
     def tool_url(base_url: str, tool: str) -> str:
@@ -168,7 +187,8 @@ class ToolRouting:
             if tool == "claude-code":
                 env = _load_json(self.claude_settings).get("env")
                 return isinstance(env, dict) and bool(_OURS_CLAUDE.match(str(env.get(CLAUDE_KEY) or "")))
-            text = self.codex_config.read_text(encoding="utf-8") if self.codex_config.exists() else ""
+            path = self.codex_config if tool == "codex" else self.gemini_env
+            text = path.read_text(encoding="utf-8") if path.exists() else ""
             return f"# {MARK}" in text
         except (OSError, RoutingError):
             return False
@@ -185,7 +205,7 @@ class ToolRouting:
                     "enabled": tool.id in on,
                     "routed": self.routed(tool.id),
                     "url": self.tool_url(base_url, tool.id),
-                    "config": str(self.claude_settings if tool.id == "claude-code" else self.codex_config),
+                    "config": str(self.config_path(tool.id)),
                 }
                 for tool in TOOLS.values()
             ],
@@ -243,14 +263,18 @@ class ToolRouting:
     def apply(self, tool: str, base_url: str) -> None:
         if tool == "claude-code":
             self._apply_claude(self.tool_url(base_url, tool))
-        else:
+        elif tool == "codex":
             self._apply_codex(self.tool_url(base_url, tool))
+        else:
+            self._apply_gemini(self.tool_url(base_url, tool))
 
     def restore(self, tool: str) -> None:
         if tool == "claude-code":
             self._restore_claude()
-        else:
+        elif tool == "codex":
             self._restore_codex()
+        else:
+            self._restore_gemini()
 
     # -- Claude Code ----------------------------------------------------------
 
@@ -338,11 +362,91 @@ class ToolRouting:
             _write(self.codex_config, body.replace("\n", newline))
         self._set_backup("codex", None)
 
+    # -- Gemini CLI -----------------------------------------------------------
+
+    def _gemini_text(self) -> tuple[str | None, str]:
+        """``~/.gemini/.env`` with ``\\n`` line ends (``None`` when there is none), and its line end."""
+        path = self.gemini_env
+        if not path.exists():
+            return None, "\n"
+        try:
+            raw = path.read_bytes().decode("utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            raise RoutingError(f"Can't read {path}: {exc}") from exc
+        return raw.replace("\r\n", "\n"), "\r\n" if "\r\n" in raw else "\n"
+
+    def _apply_gemini(self, url: str) -> None:
+        text, newline = self._gemini_text()
+        body = _CODEX_BLOCK.sub("", text or "")
+        lines = body.split("\n")
+        found = next((i for i, line in enumerate(lines) if _GEMINI_LINE.match(line)), None)
+        if text is None or f"# {MARK}" not in text or found is not None:
+            self._set_backup(
+                "gemini-cli",
+                {
+                    "existed": text is not None,
+                    "line": lines[found] if found is not None else None,
+                    "at": found,
+                    "final_newline": body.endswith("\n") or not body,
+                },
+            )
+        if found is not None:
+            lines.pop(found)  # the endpoint it pointed at is kept, and put back later
+        body = "\n".join(lines)
+        if body and not body.endswith("\n"):
+            body += "\n"
+        block = f"\n# {MARK}: begin\n{GEMINI_KEY}={url}\n# {MARK}: end\n"
+        _write(self.gemini_env, (body + block).replace("\n", newline))
+
+    def _restore_gemini(self) -> None:
+        text, newline = self._gemini_text()
+        if text is not None and f"# {MARK}" in text:
+            backup = self._backup("gemini-cli")
+            body = _CODEX_BLOCK.sub("", text)
+            if isinstance(backup.get("line"), str):
+                lines = body.split("\n")
+                at = backup.get("at")
+                lines.insert(at if isinstance(at, int) and 0 <= at <= len(lines) else len(lines), backup["line"])
+                body = "\n".join(lines)
+            if backup.get("final_newline") is False and body.endswith("\n"):
+                body = body[:-1]
+            if backup.get("existed") is False and not body.strip():
+                self.gemini_env.unlink(missing_ok=True)  # it wasn't there before routing
+            else:
+                _write(self.gemini_env, body.replace("\n", newline))
+        self._set_backup("gemini-cli", None)
+
     # -- hooks ----------------------------------------------------------------
 
     @property
     def hook_command(self) -> str:
-        return f'"{self.python}" -m {HOOK_MODULE} claude'
+        return f'"{self.python}" "{HOOK_FILE.as_posix()}" claude'
+
+    @staticmethod
+    def _ours(command: Any) -> bool:
+        """A hook command Prompture installed (this form, or the older ``-m`` one)."""
+        text = str(command or "").replace("\\", "/")
+        return HOOK_MODULE in text or "/companion/hook.py" in text
+
+    def refresh_hooks(self) -> bool:
+        """Re-install installed hooks whose command is out of date (Python moved, older form)."""
+        try:
+            hooks = _load_json(self.claude_settings).get("hooks")
+        except RoutingError:
+            return False
+        commands = {
+            str(h.get("command"))
+            for groups in (hooks.values() if isinstance(hooks, dict) else [])
+            if isinstance(groups, list)
+            for group in groups
+            if isinstance(group, dict)
+            for h in group.get("hooks") or []
+            if isinstance(h, dict) and self._ours(h.get("command"))
+        }
+        if not commands or commands == {self.hook_command}:
+            return False
+        self.set_hooks(True)
+        return True
 
     def hooks_installed(self) -> bool:
         try:
@@ -350,7 +454,7 @@ class ToolRouting:
         except RoutingError:
             return False
         return isinstance(hooks, dict) and any(
-            HOOK_MODULE in str(h.get("command", ""))
+            self._ours(h.get("command"))
             for groups in hooks.values()
             if isinstance(groups, list)
             for group in groups
@@ -359,14 +463,14 @@ class ToolRouting:
             if isinstance(h, dict)
         )
 
-    @staticmethod
-    def _without_ours(groups: Any) -> list[Any]:
+    @classmethod
+    def _without_ours(cls, groups: Any) -> list[Any]:
         kept = []
         for group in groups if isinstance(groups, list) else []:
             if not isinstance(group, dict):
                 kept.append(group)
                 continue
-            hooks = [h for h in group.get("hooks") or [] if HOOK_MODULE not in str(h.get("command", ""))]
+            hooks = [h for h in group.get("hooks") or [] if not cls._ours(h.get("command"))]
             if hooks:
                 kept.append({**group, "hooks": hooks})
         return kept

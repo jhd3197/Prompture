@@ -82,6 +82,13 @@ class Usage:
             self.input_tokens = max(self.input_tokens, fresh + read + write)
         self.output_tokens = max(self.output_tokens, _int(usage.get("output_tokens")))
 
+    def merge_gemini(self, usage: dict[str, Any]) -> None:
+        """Gemini ``usageMetadata``: ``promptTokenCount`` includes the cached part; thoughts are output."""
+        self.input_tokens = max(self.input_tokens, _int(usage.get("promptTokenCount")))
+        self.cache_read_tokens = max(self.cache_read_tokens, _int(usage.get("cachedContentTokenCount")))
+        out = _int(usage.get("candidatesTokenCount")) + _int(usage.get("thoughtsTokenCount"))
+        self.output_tokens = max(self.output_tokens, out)
+
     def merge_openai(self, usage: dict[str, Any]) -> None:
         """Responses / chat ``usage``: ``input_tokens`` already includes ``cached_tokens``."""
         details = usage.get("input_tokens_details") or usage.get("prompt_tokens_details") or {}
@@ -122,6 +129,7 @@ class UsageSniffer:
         self.streaming = False
 
     def feed(self, chunk: bytes, *, stream: bool) -> None:
+        chunk = chunk.replace(b"\r\n", b"\n")
         if not stream:
             if len(self._json) < 8 << 20:  # a non-streamed reply; parsed in finish()
                 self._json.extend(chunk)
@@ -133,6 +141,14 @@ class UsageSniffer:
             self._event(event)
 
     def finish(self) -> Usage:
+        if (
+            self.streaming
+            and self._buffer.strip()
+            and not self._buffer.lstrip().startswith((b"data:", b"event:", b":"))
+        ):
+            # A reply that streamed without SSE framing: one JSON document.
+            self._json.extend(self._buffer)
+            self._buffer = b""
         if self._json:
             with contextlib.suppress(ValueError):
                 self._take(json.loads(bytes(self._json)))
@@ -143,7 +159,7 @@ class UsageSniffer:
         return self.usage
 
     def _event(self, raw: bytes) -> None:
-        if b"usage" not in raw and b"message_start" not in raw and b'"model"' not in raw:
+        if b"usage" not in raw and b"message_start" not in raw and b'"model"' not in raw and b"modelVersion" not in raw:
             return
         for line in raw.split(b"\n"):
             if line.startswith(b"data:"):
@@ -156,6 +172,14 @@ class UsageSniffer:
 
     def _take(self, data: dict[str, Any]) -> None:
         kind = data.get("type")
+        if self.dialect == "gemini":
+            _nested = data.get("response")
+            inner: dict[str, Any] = _nested if isinstance(_nested, dict) else data
+            if isinstance(inner.get("modelVersion"), str):
+                self.usage.model = inner["modelVersion"]
+            if isinstance(inner.get("usageMetadata"), dict):
+                self.usage.merge_gemini(inner["usageMetadata"])
+            return
         if self.dialect == "anthropic":
             message = data.get("message") if kind == "message_start" else data
             if isinstance(message, dict):

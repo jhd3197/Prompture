@@ -571,7 +571,13 @@ def test_hooks_carry_the_project_folder_and_mark_permission_waits(tmp_path):
     body = hook.payload(
         "claude", json.dumps({"hook_event_name": "Notification", "session_id": "s", "cwd": "C:\\work\\shop\\"})
     )
-    assert body == {"agent": "claude", "event": "Notification", "session": "s", "project": "shop"}
+    assert body == {
+        "agent": "claude",
+        "event": "Notification",
+        "session": "s",
+        "project": "shop",
+        "cwd": "C:\\work\\shop\\",
+    }
     router = Router(LiveBus(), Routes(None))
     router.policy.task("claude-code", "s")
     router.hook("claude", "Notification", "s", "shop")

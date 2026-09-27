@@ -26,6 +26,10 @@ off. ``/v1/router/calls`` lists what each call cost and why it went where it
 did, ``/v1/router/savings`` adds them up per tool, project and rule, and
 ``/v1/router/tasks`` shows each session's destination, failures and budget.
 
+With a :class:`~.memory.MemoryService`, ``/v1/memory`` keeps each project's
+notes (decisions, conventions, commands, verified fixes), shows what each
+session was given, and lists skill proposals mined from finished tasks.
+
 It listens on ``127.0.0.1`` only, on a free port the OS picks, and writes the
 address and a random bearer token to ``~/.prompture/companion.json`` (readable
 only by the current user on POSIX). Readers take both from there. Only the
@@ -44,12 +48,14 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 from .automations import AutomationError, Automations, roadmap_steps
+from .capacity import PlanCapacity
 from .coding_tools import CodingToolSource
 from .live import LiveBus, get_bus, sse_event
 from .local import LedgerSource
+from .memory import MemoryService
 from .router import Router
 from .summary import COMPANION_API_VERSION, PERIODS, UsageRow, account_limits, provider_limits, summarize_spend
 from .tool_routing import RoutingError, ToolRouting
@@ -93,12 +99,16 @@ def _version() -> str:
         return "0"
 
 
-def info(coding_tools: bool = False, automations: bool = False, router: bool = False) -> dict[str, Any]:
+def info(
+    coding_tools: bool = False, automations: bool = False, router: bool = False, memory: bool = False
+) -> dict[str, Any]:
     features = dict(FEATURES)
     if automations:
         features["automations"] = "/v1/automations"
     if router:
         features["router"] = "/v1/router"
+    if memory:
+        features["memory"] = "/v1/memory"
     return {
         "service": "prompture",
         "mode": "local",
@@ -113,6 +123,7 @@ def info(coding_tools: bool = False, automations: bool = False, router: bool = F
             "agent_turns": coding_tools,
             "automations": automations,
             "router": router,
+            "memory": memory,
         },
     }
 
@@ -182,8 +193,18 @@ class _Handler(BaseHTTPRequestHandler):
             self._json(404, {"detail": "Not found"})
 
     def do_DELETE(self) -> None:
-        if not self._routed("DELETE"):
-            self._json(404, {"detail": "Not found"})
+        if self._routed("DELETE"):
+            return
+        url = urlparse(self.path)
+        if not self._authorized():
+            return self._json(401, {"detail": "Missing or wrong companion token (see ~/.prompture/companion.json)."})
+        parts = [unquote(p) for p in url.path.strip("/").split("/")]
+        memory = self.server.memory
+        if memory is not None and len(parts) == 6 and parts[:3] == ["v1", "memory", "projects"] and parts[4] == "facts":
+            if memory.memory.delete(parts[3], parts[5]):
+                return self._json(200, {"deleted": parts[5]})
+            return self._json(404, {"detail": "No such note."})
+        self._json(404, {"detail": "Not found"})
 
     def do_POST(self) -> None:
         if self._routed("POST"):
@@ -221,13 +242,29 @@ class _Handler(BaseHTTPRequestHandler):
             self.server.coding_tools.hook_event(self.server.bus, agent, event, session)
             if self.server.router is not None:
                 self.server.router.hook(agent, event, session, project)
-            return self._json(200, {"ok": True})
+            answer: dict[str, Any] = {"ok": True}
+            memory = self.server.memory
+            if memory is not None:
+                cwd = body.get("cwd") if isinstance(body.get("cwd"), str) else None
+                memory.remember_folder(project, cwd)
+                if event == "UserPromptSubmit":
+                    prompt = body.get("prompt") if isinstance(body.get("prompt"), str) else ""
+                    context = memory.inject(agent, session, project, prompt, via="hook")
+                    if context:
+                        answer["context"] = context
+            return self._json(200, answer)
         if url.path == "/v1/shutdown":
             # How an app that started the companion stops it: routing is put back first,
             # which a killed process can't do.
             self._json(202, {"stopping": True})
             threading.Thread(target=self.server.shutdown, daemon=True).start()
             return None
+        if url.path.startswith("/v1/memory") and self.server.memory is not None:
+            try:
+                body = self._body()
+            except ValueError:
+                return self._json(400, {"detail": "Body must be JSON."})
+            return self._memory_post(url.path, body if isinstance(body, dict) else {})
         if url.path.startswith("/v1/router/") and self.server.tool_routing is not None:
             try:
                 body = self._body()
@@ -271,6 +308,7 @@ class _Handler(BaseHTTPRequestHandler):
                     self.server.coding_tools is not None,
                     self.server.automations is not None,
                     self.server.router is not None,
+                    self.server.memory is not None,
                 ),
             )
         if not self._authorized():
@@ -318,8 +356,66 @@ class _Handler(BaseHTTPRequestHandler):
             return self._json(200, self.server.router_state())
         if url.path.startswith("/v1/router/") and self.server.router is not None:
             return self._router_get(url.path, query)
+        if url.path.startswith("/v1/memory") and self.server.memory is not None:
+            return self._memory_get(url.path, query)
         if url.path.startswith("/v1/automations") and self.server.automations is not None:
             return self._automations_get(url.path, query)
+        return self._json(404, {"detail": "Not found"})
+
+    def _memory_post(self, path: str, body: dict[str, Any]) -> None:
+        memory = self.server.memory
+        assert memory is not None
+        parts = [unquote(p) for p in path.strip("/").split("/")][2:]  # after v1/memory
+        if parts == ["settings"]:
+            return self._json(200, memory.save_settings(body))
+        if len(parts) >= 3 and parts[0] == "projects":
+            project = parts[1]
+            if parts[2:] == ["facts"]:
+                try:
+                    fact = memory.memory.add(
+                        project,
+                        str(body.get("content") or ""),
+                        kind=str(body.get("kind") or "fact"),
+                        source=body.get("source") if isinstance(body.get("source"), str) else None,
+                        verified=bool(body.get("verified")),
+                        pinned=bool(body.get("pinned")),
+                        agent=str(body.get("agent") or "you"),
+                    )
+                except ValueError as exc:
+                    return self._json(422, {"detail": str(exc)})
+                return self._json(200, _fact(fact))
+            if len(parts) == 4 and parts[2] == "facts":
+                updated = memory.memory.update(project, parts[3], **body)
+                return self._json(200, _fact(updated)) if updated else self._json(404, {"detail": "No such note."})
+            if len(parts) == 5 and parts[2] == "skills" and parts[4] == "save":
+                try:
+                    return self._json(200, {"path": memory.save_skill(project, parts[3])})
+                except KeyError as exc:
+                    return self._json(404, {"detail": str(exc.args[0])})
+                except (FileNotFoundError, FileExistsError, OSError) as exc:
+                    return self._json(409, {"detail": str(exc)})
+        return self._json(404, {"detail": "Not found"})
+
+    def _memory_get(self, path: str, query: dict[str, str]) -> None:
+        memory = self.server.memory
+        assert memory is not None
+        parts = [unquote(p) for p in path.strip("/").split("/")][2:]
+        if not parts:
+            return self._json(200, {"settings": memory.settings(), "projects": memory.projects()})
+        if parts == ["injections"]:
+            return self._json(200, memory.injections(query.get("project"), query.get("session")))
+        if len(parts) == 2 and parts[0] == "projects":
+            project = parts[1]
+            return self._json(
+                200,
+                {
+                    "project": project,
+                    "folder": memory.folder(project),
+                    "facts": [_fact(f) for f in memory.memory.notes(project)],
+                    "injections": memory.injections(project, limit=20),
+                    "skills": memory.skills(project),
+                },
+            )
         return self._json(404, {"detail": "Not found"})
 
     def _router_get(self, path: str, query: dict[str, str]) -> None:
@@ -467,6 +563,7 @@ class CompanionServer(ThreadingHTTPServer):
         automations: Automations | None = None,
         tool_routing: ToolRouting | None = None,
         router: Router | None = None,
+        memory: MemoryService | None = None,
     ) -> None:
         super().__init__(("127.0.0.1", port), _Handler)
         self.ledger = ledger or LedgerSource()
@@ -477,9 +574,14 @@ class CompanionServer(ThreadingHTTPServer):
         self.automations = automations
         self.tool_routing = tool_routing
         self._projects: dict[tuple[str, str], str] = {}
+        self.memory = memory
         if router is None and tool_routing is not None:
-            router = Router(self.bus, upstream=tool_routing.upstream, project_for=self.project_for)
+            router = Router(self.bus, upstream=tool_routing.upstream, project_for=self.project_for, memory=memory)
         self.router = router
+        #: Plan windows read from replies through the router (fresher than the CLIs' logs).
+        self.capacity = PlanCapacity()
+        if router is not None:
+            router.capacity = self.capacity
         self.stopping = threading.Event()
 
     @property
@@ -531,6 +633,10 @@ class CompanionServer(ThreadingHTTPServer):
                 limits.update(self.coding_tools.rate_limits())
             except Exception:  # coding-tool limits are extra context, never a failure
                 logger.debug("coding tool limits failed", exc_info=True)
+        for target, snap in self.capacity.limits().items():
+            known = limits.get(target)
+            if not known or float(known.get("observed_at") or 0) <= float(snap.get("observed_at") or 0):
+                limits[target] = snap
         return limits
 
     def _tail(self) -> None:
@@ -632,6 +738,13 @@ class CompanionServer(ThreadingHTTPServer):
         if self.tool_routing is not None:
             for problem in self.tool_routing.apply_enabled(self.url):
                 logger.warning("Routing: %s", problem)
+            try:
+                self.tool_routing.refresh_hooks()
+            except RoutingError as exc:
+                logger.warning("Hooks: %s", exc)
+        if self.memory is not None:
+            # The first prompt of a session waits on this; load it before anyone asks.
+            threading.Thread(target=self.memory.warm, daemon=True).start()
         self._tail()
         try:
             self.serve_forever()
@@ -650,6 +763,22 @@ class CompanionServer(ThreadingHTTPServer):
                 with contextlib.suppress(OSError):
                     self.state_path.unlink()
         self.server_close()
+
+
+def _fact(fact: Any) -> dict[str, Any]:
+    """A project note as the API shows it."""
+    meta = fact.metadata or {}
+    return {
+        "id": fact.id,
+        "kind": fact.kind,
+        "content": fact.content,
+        "source": meta.get("source"),
+        "verified": bool(meta.get("verified")),
+        "pinned": bool(meta.get("pinned")),
+        "agent": meta.get("agent"),
+        "ts": fact.ts,
+        "updated": meta.get("updated") or fact.ts,
+    }
 
 
 def _stop_on_sigterm() -> None:

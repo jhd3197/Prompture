@@ -81,6 +81,7 @@ TIERS = ("small", "mid", "large")
 NATIVE_DEFAULTS: dict[str, dict[str, str]] = {
     "anthropic": {"small": "claude-haiku-4-5", "mid": "claude-sonnet-5", "large": "claude-opus-5-5"},
     "openai": {},
+    "gemini": {"small": "gemini-2.5-flash-lite", "mid": "gemini-2.5-flash", "large": "gemini-2.5-pro"},
 }
 
 DEFAULT_ESCALATION = {"enabled": True, "after_failures": 3, "after_repeats": 2, "to": "native"}
@@ -94,6 +95,10 @@ SESSION_TTL = 6 * 3600.0
 def tier_of(dialect: str, model: str) -> str | None:
     """Which tier a vendor model is in, from its name."""
     m = model.lower()
+    if dialect == "gemini":
+        if "gemini" not in m:
+            return None
+        return "small" if "lite" in m else "mid" if "flash" in m else "large" if "pro" in m else None
     if dialect == "anthropic":
         for tier, word in (("small", "haiku"), ("mid", "sonnet"), ("large", "opus")):
             if word in m:
@@ -159,6 +164,17 @@ class Needs:
 
     @classmethod
     def of(cls, dialect: str, body: dict[str, Any]) -> Needs:
+        if dialect == "gemini":
+            _nested = body.get("request")
+            inner: dict[str, Any] = _nested if isinstance(_nested, dict) else body
+            raw = json.dumps(inner, default=str)
+            config = inner.get("generationConfig") or {}
+            return cls(
+                tools=any((t or {}).get("functionDeclarations") for t in inner.get("tools") or []),
+                images='"inlineData"' in raw,
+                structured=bool(config.get("responseSchema") or config.get("responseJsonSchema")),
+                tokens=len(raw) // 4,
+            )
         raw = json.dumps(body, default=str)
         needs = cls(tools=bool(body.get("tools")), tokens=len(raw) // 4)
         needs.images = '"type": "image"' in raw or '"input_image"' in raw or '"type":"image"' in raw
@@ -239,6 +255,34 @@ def _action_hash(name: str, arguments: Any) -> str:
 
 def tool_outcome(dialect: str, body: dict[str, Any]) -> ToolOutcome | None:
     """The outcome of the tool call a ``tool_result`` request reports, or ``None``."""
+    if dialect == "gemini":
+        _nested = body.get("request")
+        inner: dict[str, Any] = _nested if isinstance(_nested, dict) else body
+        contents = [c for c in inner.get("contents") or [] if isinstance(c, dict)]
+        if not contents:
+            return None
+        responses = [
+            p["functionResponse"]
+            for p in contents[-1].get("parts") or []
+            if isinstance(p, dict) and isinstance(p.get("functionResponse"), dict)
+        ]
+        if not responses:
+            return None
+        calls = {
+            p["functionCall"].get("name"): p["functionCall"]
+            for c in contents[:-1][-1:]
+            for p in c.get("parts") or []
+            if isinstance(p, dict) and isinstance(p.get("functionCall"), dict)
+        }
+        texts = [json.dumps(r.get("response"), default=str) for r in responses]
+        name = responses[-1].get("name")
+        call = calls.get(name) or {}
+        return ToolOutcome(
+            failed=any('"error"' in t or _FAILED_OUTPUT.search(t) for t in texts),
+            user_decision=any(_USER_DECISION.search(t) for t in texts),
+            action=_action_hash(str(name), call.get("args")) if name else None,
+            name=name,
+        )
     if dialect == "anthropic":
         raw_messages = body.get("messages")
         messages: list[Any] = raw_messages if isinstance(raw_messages, list) else []

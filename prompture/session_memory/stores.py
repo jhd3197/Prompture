@@ -139,6 +139,11 @@ class InMemorySessionStore:
             out = out[-limit:]
         return out
 
+    def user_ids(self, prefix: str = "") -> list[str]:
+        """Owners that have facts, optionally only those starting with *prefix* (not part of the protocol)."""
+        with self._lock:
+            return sorted(u for u, records in self._by_user.items() if records and u.startswith(prefix))
+
     def search(
         self,
         user_id: str,
@@ -319,6 +324,16 @@ class SQLiteSessionStore:
         if limit is not None and limit >= 0:
             out = out[-limit:]
         return out
+
+    def user_ids(self, prefix: str = "") -> list[str]:
+        """Owners that have facts, optionally only those starting with *prefix* (not part of the protocol)."""
+        with self._lock:
+            conn = self._connect()
+            try:
+                rows = conn.execute("SELECT DISTINCT user_id FROM session_memory ORDER BY user_id").fetchall()
+            finally:
+                conn.close()
+        return [r["user_id"] for r in rows if str(r["user_id"]).startswith(prefix)]
 
     def search(
         self,

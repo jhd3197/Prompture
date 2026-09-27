@@ -9,7 +9,9 @@ permission prompts are skipped (``approval_mode="auto"``).
 A queue pauses by itself when a step fails, when the agent ends a step on a
 question (answering continues that step's session), when the agent's plan
 window is nearly used up (it resumes when the window resets), or when the run
-passes a cost cap. Steps that haven't started can be added, removed and
+passes a cost cap. With ``agent: "auto"`` the queue starts on whichever agent
+has the most plan left, and a step that starts a fresh session moves to the
+other agent instead of pausing when the current one runs low. Steps that haven't started can be added, removed and
 reordered while it runs. A step either continues the previous step's session
 (``"same"``) or starts a fresh one (``"new"``).
 
@@ -111,6 +113,8 @@ class Run:
     note: str | None = None
     #: Skip the plan-limit check for the next step ("Resume now").
     ignore_limit: bool = False
+    #: The agent is chosen by plan left, and may change between fresh sessions.
+    auto: bool = False
 
     @property
     def project(self) -> str:
@@ -128,6 +132,7 @@ class Run:
             "project": self.project,
             "agent": self.agent,
             "agent_name": AGENTS.get(self.agent, self.agent),
+            "auto": self.auto,
             "model": self.model,
             "status": self.status,
             "reason": self.reason,
@@ -349,8 +354,13 @@ class Automations:
         agent = str(body.get("agent") or "claude")
         if not cwd or not Path(cwd).is_dir():
             raise AutomationError(422, "Pick a project folder that exists.")
+        auto = agent == "auto"
+        note = None
+        if auto:
+            agent, why = self._most_room(list(AGENTS))
+            note = f"Started on {AGENTS[agent]}: {why}"
         if agent not in AGENTS:
-            raise AutomationError(422, f"agent must be one of {', '.join(AGENTS)}.")
+            raise AutomationError(422, f"agent must be auto or one of {', '.join(AGENTS)}.")
         steps = _parse_steps(body.get("steps"))
         if not steps:
             raise AutomationError(422, "Add at least one step.")
@@ -373,6 +383,8 @@ class Automations:
                     "cost_usd": float(cost) if isinstance(cost, (int, float)) and cost > 0 else None,
                 },
                 created_at=time.time(),
+                auto=auto,
+                note=note,
             )
             self.run = run
             self._save(run)
@@ -518,6 +530,41 @@ class Automations:
                 return step.session_id
         return None
 
+    def _most_room(self, agents: list[str]) -> tuple[str, str]:
+        """The agent with the most plan left, and why (plan windows from the companion's limits)."""
+        from .capacity import pick_agent
+
+        try:
+            limits = self.limits() if self.limits is not None else {}
+        except Exception:
+            logger.debug("plan limits failed", exc_info=True)
+            limits = {}
+        return pick_agent(limits, agents, PLAN_TARGETS)
+
+    def _switch_agent(self, run: Run, step: Step) -> bool:
+        """Move an auto queue to the other agent for a step that starts fresh; ``False`` if it can't."""
+        fresh = step.session == "new" or run.current == 0 or not self._session_before(run, run.current)
+        if not run.auto or step.reply or not fresh:
+            return False
+        others = [a for a in AGENTS if a != run.agent]
+        agent, why = self._most_room(others)
+        from .capacity import headroom
+
+        try:
+            room = headroom((self.limits() if self.limits is not None else {}).get(PLAN_TARGETS.get(agent, "")))
+        except Exception:
+            room = None
+        if room is not None and room <= NEAR_LIMIT:
+            return False
+        old, run.agent = run.agent, agent
+        run.note = f"Moved to {AGENTS[agent]} ({why}); {AGENTS[old]}'s plan is nearly used up"
+        # A step that continues a session must stay on the agent that owns it; new steps start fresh.
+        for later in run.steps[run.current + 1 :]:
+            if later.status == "pending" and later.session == "same":
+                later.session = "new"
+                break
+        return True
+
     def _plan_near(self, run: Run) -> tuple[bool, float | None]:
         """Whether the agent's plan is nearly used up, and when the tightest window resets."""
         if self.limits is None or not run.stop.get("limit"):
@@ -550,7 +597,7 @@ class Automations:
             run.ignore_limit = False
         else:
             near, resets = self._plan_near(run)
-            if near:
+            if near and not self._switch_agent(run, step):
                 self._pause(run, "limit", resets)
                 return None
         if step.reply:

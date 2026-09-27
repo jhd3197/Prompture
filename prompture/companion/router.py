@@ -1,8 +1,9 @@
 """The companion's router: coding CLIs send their model traffic through Prompture.
 
 A CLI pointed at ``<companion>/tools/<tool>`` (Claude Code through
-``ANTHROPIC_BASE_URL``, Codex through a ``model_providers`` entry; see
-:mod:`.tool_routing`) reaches this module instead of its vendor. Each request
+``ANTHROPIC_BASE_URL``, Codex through a ``model_providers`` entry, Gemini CLI
+through ``CODE_ASSIST_ENDPOINT``; see :mod:`.tool_routing`) reaches this
+module instead of its vendor. Each request
 is either:
 
 - **passed through** (the default): forwarded unchanged to the vendor with the
@@ -67,6 +68,7 @@ from urllib.parse import urlsplit
 
 from .calls import CallLog, RoutedCall, Usage, UsageSniffer, billing_of, settle
 from .live import LiveBus, new_request_id
+from .memory import MemoryService, cwd_of, previous_task, project_name, prompt_text, prompts_of
 from .routing_policy import (
     BACKGROUND_KINDS,
     PASS,
@@ -93,6 +95,10 @@ ANTHROPIC_UPSTREAM = "https://api.anthropic.com"
 OPENAI_UPSTREAM = "https://api.openai.com/v1"
 #: Where Codex sends requests when signed in with ChatGPT.
 CHATGPT_UPSTREAM = "https://chatgpt.com/backend-api/codex"
+#: Where Gemini CLI sends requests when signed in with Google (Code Assist).
+GEMINI_UPSTREAM = "https://cloudcode-pa.googleapis.com"
+#: Gemini's model calls; its other Code Assist methods (sign-in, quota, settings) always pass through.
+GEMINI_CALLS = (":streamGenerateContent", ":generateContent")
 
 KINDS = ("main", "tool_result", "title", "probe", "compaction")
 #: Vendor answers a fallback may step in for: rate limits, overload, outages.
@@ -121,17 +127,18 @@ class Tool:
     id: str
     name: str
     agent: str
-    dialect: str  # "anthropic" | "openai"
+    dialect: str  # "anthropic" | "openai" | "gemini"
 
     @property
     def vendor(self) -> str:
         """The Prompture provider of the CLI's own vendor."""
-        return "claude" if self.dialect == "anthropic" else "openai"
+        return {"anthropic": "claude", "openai": "openai", "gemini": "google"}[self.dialect]
 
 
 TOOLS: dict[str, Tool] = {
     "claude-code": Tool("claude-code", "Claude Code", "claude", "anthropic"),
     "codex": Tool("codex", "Codex", "codex", "openai"),
+    "gemini-cli": Tool("gemini-cli", "Gemini CLI", "gemini", "gemini"),
 }
 
 
@@ -185,6 +192,25 @@ def anthropic_kind(body: dict[str, Any]) -> str:
     return "main"
 
 
+def gemini_request(body: dict[str, Any]) -> dict[str, Any]:
+    """The ``generateContent`` request inside a Code Assist body (or the body itself)."""
+    inner = body.get("request")
+    return inner if isinstance(inner, dict) else body
+
+
+def gemini_kind(body: dict[str, Any]) -> str:
+    """What a Gemini ``generateContent`` request is for: one of :data:`KINDS`."""
+    contents = gemini_request(body).get("contents") or []
+    last = contents[-1] if contents and isinstance(contents[-1], dict) else {}
+    parts = [p for p in last.get("parts") or [] if isinstance(p, dict)]
+    if last.get("role") == "user" and parts and all("functionResponse" in p for p in parts):
+        return "tool_result"
+    config = gemini_request(body).get("generationConfig") or {}
+    if config.get("maxOutputTokens") == 1:
+        return "probe"
+    return "main"
+
+
 def responses_kind(body: dict[str, Any], path: str = "") -> str:
     """What an OpenAI Responses request is for: one of :data:`KINDS`."""
     if path.endswith("/compact"):
@@ -218,6 +244,9 @@ def session_of(tool: Tool, headers: Any, body: dict[str, Any]) -> str | None:
             if found:
                 return found.group(1)
         return None
+    if tool.dialect == "gemini":
+        sid = gemini_request(body).get("session_id")
+        return str(sid) if sid else None
     sid = headers.get("session_id") or headers.get("conversation_id") or body.get("prompt_cache_key")
     return str(sid) if sid else None
 
@@ -229,6 +258,8 @@ def billing_of_request(tool: Tool, headers: Any) -> str:
         if auth.lower().startswith("bearer sk-ant-oat"):
             return "subscription"
         return "api" if headers.get("x-api-key") or auth else "unknown"
+    if tool.dialect == "gemini":
+        return "subscription"  # Code Assist: the Google sign-in's own quota
     return "subscription" if headers.get("chatgpt-account-id") else "api"
 
 
@@ -402,6 +433,10 @@ def _read_body(handler: BaseHTTPRequestHandler) -> bytes:
 
 
 def _error_body(dialect: str, message: str, kind: str = "api_error") -> dict[str, Any]:
+    if dialect == "gemini":
+        return {
+            "error": {"code": 429 if kind == "rate_limit_error" else 502, "message": message, "status": "UNAVAILABLE"}
+        }
     if dialect == "anthropic":
         return {"type": "error", "error": {"type": kind, "message": message}}
     return {"error": {"message": message, "type": kind, "code": None}}
@@ -433,8 +468,9 @@ def local_request(handler: BaseHTTPRequestHandler) -> bool:
     return host in ("127.0.0.1", "localhost", "::1")
 
 
-#: Stream events that mean the reply has really started (content, or a tool call).
-_CONTENT_EVENTS = ("event: content_block_start", "event: content_block_delta", "event: response.output")
+#: Stream events that mean the reply has really started (content, or a tool call). Gemini's
+#: chunks have no event names; each one is content.
+_CONTENT_EVENTS = ("event: content_block_start", "event: content_block_delta", "event: response.output", "data:")
 _FAILED_EVENTS = ("event: error", "event: response.failed")
 
 
@@ -458,6 +494,48 @@ def _prefetch(frames: Iterator[str], limit: int = 64) -> tuple[list[str], str | 
         if frame.startswith(_CONTENT_EVENTS) or len(head) >= limit:
             break
     return head, None
+
+
+def _gemini_sse(chunk: dict[str, Any]) -> str:
+    """A Code Assist stream chunk: the inner response wrapped, or a failure as an error event."""
+    if "error" in chunk:
+        return f"event: error\ndata: {json.dumps(chunk, separators=(',', ':'))}\n\n"
+    return f"data: {json.dumps({'response': chunk}, separators=(',', ':'), default=str)}\n\n"
+
+
+def with_notes(dialect: str, body: dict[str, Any], text: str) -> dict[str, Any]:
+    """*body* with *text* at the very start of the conversation, the same place every time."""
+    if dialect == "gemini":
+        request = gemini_request(body)
+        contents = list(request.get("contents") or [])
+        if not contents or not isinstance(contents[0], dict):
+            return body
+        first = {**contents[0], "parts": [{"text": text}, *(contents[0].get("parts") or [])]}
+        inner = {**request, "contents": [first, *contents[1:]]}
+        return {**body, "request": inner} if isinstance(body.get("request"), dict) else inner
+    if dialect == "anthropic":
+        messages = list(body.get("messages") or [])
+        if not messages or not isinstance(messages[0], dict):
+            return body
+        first = dict(messages[0])
+        content = first.get("content")
+        blocks = [{"type": "text", "text": content}] if isinstance(content, str) else list(content or [])
+        first["content"] = [{"type": "text", "text": text}, *blocks]
+        return {**body, "messages": [first, *messages[1:]]}
+    note = {"type": "message", "role": "developer", "content": [{"type": "input_text", "text": text}]}
+    return {**body, "input": [note, *(body.get("input") or [])]}
+
+
+def _streams(resp: Any) -> bool:
+    """Whether a vendor reply streams: SSE, or any reply of unknown length that isn't JSON.
+
+    ChatGPT's Codex backend streams without a ``Content-Type``, so the header
+    alone can't be trusted.
+    """
+    ctype = (resp.getheader("Content-Type") or "").lower()
+    if "text/event-stream" in ctype:
+        return True
+    return resp.getheader("Content-Length") is None and "json" not in ctype
 
 
 def _now() -> str:
@@ -493,6 +571,7 @@ class Router:
     ``upstream(tool_id)`` names a custom vendor URL for a tool (the gateway it
     pointed at before routing was turned on), or ``None`` for the vendor's own.
     ``project_for(agent, session)`` names the project a CLI session works in.
+    With a ``memory``, sessions start with their project's notes (see :mod:`.memory`).
     """
 
     def __init__(
@@ -504,8 +583,11 @@ class Router:
         driver_for: Callable[[str], Any] | None = None,
         calls: CallLog | None = None,
         project_for: Callable[[str, str], str | None] | None = None,
+        memory: MemoryService | None = None,
     ) -> None:
         self.bus = bus
+        self.memory = memory
+        self.capacity: Any = None
         self.routes = routes or Routes()
         self.upstream = upstream or (lambda tool: None)
         self._driver_for = driver_for
@@ -529,7 +611,9 @@ class Router:
         parts = path.split("/", 3)  # "", "tools", "<tool>", "v1/…"
         tool = TOOLS.get(parts[2]) if len(parts) > 2 else None
         if tool is None:
-            return _send_json(handler, 404, {"detail": "Unknown tool; use /tools/claude-code or /tools/codex."})
+            return _send_json(
+                handler, 404, {"detail": "Unknown tool; use /tools/claude-code, /tools/codex or /tools/gemini-cli."}
+            )
         if not local_request(handler):
             return _send_json(handler, 403, _error_body(tool.dialect, "Only local programs may use the router."))
         suffix = "/" + parts[3] if len(parts) > 3 else "/"
@@ -546,6 +630,8 @@ class Router:
         if not model or not kind:
             return self._pass(handler, tool, method, suffix, query, raw, None)
         req = self._begin(handler, tool, suffix, body, model, kind)
+        if self._with_memory(req):
+            raw = json.dumps(req.body).encode()
         if req.decision.stop:
             self._finish(req, Usage(), error=req.decision.reason)
             return _send_json(
@@ -554,12 +640,14 @@ class Router:
         if req.decision.target:
             return self._route(handler, req, [req.decision.target], query)
         if req.decision.native:
-            rewritten = json.dumps({**body, "model": req.decision.native}).encode()
+            rewritten = json.dumps({**req.body, "model": req.decision.native}).encode()
             return self._pass(handler, tool, method, suffix, query, rewritten, req)
         return self._pass(handler, tool, method, suffix, query, raw, req)
 
     @staticmethod
     def _kind(tool: Tool, suffix: str, body: dict[str, Any]) -> str | None:
+        if tool.dialect == "gemini":
+            return gemini_kind(body) if suffix.endswith(GEMINI_CALLS) else None
         if suffix == "/v1/messages":
             return anthropic_kind(body)
         if suffix.startswith("/v1/responses"):
@@ -570,13 +658,20 @@ class Router:
 
     @staticmethod
     def _routable(suffix: str) -> bool:
-        return suffix in ("/v1/messages", "/v1/responses")
+        return suffix in ("/v1/messages", "/v1/responses") or suffix.endswith(GEMINI_CALLS)
 
     def _begin(
         self, handler: BaseHTTPRequestHandler, tool: Tool, suffix: str, body: dict[str, Any], model: str, kind: str
     ) -> _Request:
         session = session_of(tool, handler.headers, body)
-        project = self.project_for(tool.agent, session) if session else None
+        cwd = cwd_of(tool.dialect, body)
+        project = (self.project_for(tool.agent, session) if session else None) or project_name(cwd)
+        if self.memory is not None:
+            self.memory.remember_folder(project, cwd)
+            if kind == "main" and session and len(prompts := prompts_of(tool.dialect, body)) >= 2:
+                finished = previous_task(tool.dialect, body)
+                if finished:
+                    self.memory.observe_task(tool.agent, session, prompts[-2], project, cwd, finished)
         billing = billing_of_request(tool, handler.headers)
         needs = Needs.of(tool.dialect, body)
         task = self.policy.task(tool.id, session, project) if kind in TASK_KINDS else None
@@ -648,6 +743,30 @@ class Router:
             logger.debug("router: could not record call", exc_info=True)
         self._ended(req.rid, req.tool, req.started, error, call)
 
+    def _with_memory(self, req: _Request) -> bool:
+        """Give a session its project notes: chosen at its first prompt, repeated verbatim after.
+
+        Returns whether the body changed. Claude Code sessions that got their
+        notes through the hook are left alone.
+        """
+        if self.memory is None or not req.session or not req.project or req.kind not in TASK_KINDS:
+            return False
+        agent, dialect = req.tool.agent, req.tool.dialect
+        had = self.memory.received(agent, req.session)
+        if had is None:
+            prompts = prompts_of(dialect, req.body)
+            if req.kind != "main" or len(prompts) != 1:
+                return False  # not the session's start: adding notes now would rewrite its history
+            text = self.memory.inject(
+                agent, req.session, req.project, prompt_text(dialect, req.body, prompts[0]), via="router"
+            )
+        else:
+            text = had.get("text") if had.get("via") == "router" else None
+        if not text:
+            return False
+        req.body = with_notes(dialect, req.body, text)
+        return True
+
     # -- live events ----------------------------------------------------------
 
     def _started(
@@ -707,6 +826,8 @@ class Router:
     def upstream_url(self, tool: Tool, suffix: str, headers: Any) -> str:
         """Where a passed-through request goes."""
         custom = self.upstream(tool.id)
+        if tool.dialect == "gemini":
+            return (custom or GEMINI_UPSTREAM).rstrip("/") + suffix
         if tool.dialect == "anthropic":
             return (custom or ANTHROPIC_UPSTREAM).rstrip("/") + suffix
         rest = suffix[3:] if suffix.startswith("/v1/") else suffix
@@ -762,7 +883,9 @@ class Router:
             for key, value in resp.getheaders():
                 if key.lower() not in _HOP_HEADERS:
                     handler.send_header(key, value)
-            if "text/event-stream" not in (resp.getheader("Content-Type") or ""):
+            if self.capacity is not None:
+                self.capacity.observe(tool.id, resp.getheaders())
+            if not _streams(resp):
                 data = resp.read()
                 sniffer.feed(data, stream=False)
                 handler.send_header("Content-Length", str(len(data)))
@@ -821,6 +944,8 @@ class Router:
             anthropic_message,
             anthropic_sse,
             anthropic_to_driver,
+            gemini_response,
+            gemini_to_driver,
             get_reasoning_cache,
             live_events_for,
             response_object,
@@ -828,12 +953,14 @@ class Router:
             responses_to_driver,
             run_chat,
             stream_anthropic_events,
+            stream_gemini_events,
             stream_responses_events,
         )
 
         tool = req.tool
         anthropic = req.suffix == "/v1/messages"
-        stream = bool(req.body.get("stream"))
+        gemini = tool.dialect == "gemini"
+        stream = req.suffix.endswith(":streamGenerateContent") if gemini else bool(req.body.get("stream"))
         if targets and targets[0] == req.decision.target:
             targets = [*targets, *self.policy.fallbacks(req.decision, req.needs, req.task, req.billing)]
         reply_id = (MESSAGE_PREFIX if anthropic else RESPONSE_PREFIX) + uuid.uuid4().hex[:24]
@@ -845,7 +972,12 @@ class Router:
             attempt_started = time.perf_counter()
             outcome_box: list[Any] = []
             try:
-                msgs, tools, options = anthropic_to_driver(req.body) if anthropic else responses_to_driver(req.body)
+                if gemini:
+                    msgs, tools, options = gemini_to_driver(gemini_request(req.body))
+                elif anthropic:
+                    msgs, tools, options = anthropic_to_driver(req.body)
+                else:
+                    msgs, tools, options = responses_to_driver(req.body)
                 msgs = get_reasoning_cache().restore(msgs)
                 driver = self.driver(target)
             except Exception as exc:
@@ -882,16 +1014,24 @@ class Router:
                         raise
                     remember(outcome)
                     self._routed_attempt(req, target, outcome, "ok")
-                    body = (
-                        anthropic_message(outcome, model=req.model, message_id=reply_id)
-                        if anthropic
-                        else response_object(outcome, model=req.model, response_id=reply_id)
-                    )
+                    if gemini:
+                        body: Any = {"response": gemini_response(outcome, model=req.model, response_id=reply_id)}
+                    elif anthropic:
+                        body = anthropic_message(outcome, model=req.model, message_id=reply_id)
+                    else:
+                        body = response_object(outcome, model=req.model, response_id=reply_id)
                     _send_json(handler, 200, body)
                     return self._finish(req, Usage.from_meta(outcome.meta, target))
                 events = live_events_for(driver, msgs, tools, options)
                 frames: Iterator[str]
-                if anthropic:
+                if gemini:
+                    frames = (
+                        _gemini_sse(chunk)
+                        for chunk in stream_gemini_events(
+                            events, model=req.model, response_id=reply_id, on_complete=remember
+                        )
+                    )
+                elif anthropic:
                     frames = (
                         anthropic_sse(name, data)
                         for name, data in stream_anthropic_events(
@@ -950,7 +1090,7 @@ class Router:
             first = True
             for part in head, frames:
                 for f in part:
-                    if first and "delta" in f:
+                    if first and ("delta" in f or f.startswith("data:")):
                         self._first_token(req)
                         first = False
                     handler.wfile.write(f.encode())

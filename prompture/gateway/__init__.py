@@ -1,6 +1,6 @@
 """Building blocks for serving Prompture over HTTP.
 
-Speaks the OpenAI chat-completions, OpenAI Responses and Anthropic messages dialects.
+Speaks the OpenAI chat-completions, OpenAI Responses, Anthropic messages and Gemini generateContent dialects.
 Framework-agnostic: nothing here imports FastAPI, so any server (the
 built-in ``prompture serve``, a standalone gateway, your own app) can
 reuse the same wire-format code.
@@ -17,6 +17,7 @@ from .anthropic_format import (
     new_message_id,
     stream_anthropic_events,
 )
+from .gemini_format import gemini_response, gemini_to_driver, gemini_tools_to_openai, stream_gemini_events
 from .openai_format import (
     OPTION_FIELDS,
     SSE_DONE,
@@ -71,6 +72,9 @@ __all__ = [
     "extract_images",
     "finish_reason",
     "flatten_content",
+    "gemini_response",
+    "gemini_to_driver",
+    "gemini_tools_to_openai",
     "get_reasoning_cache",
     "live_events_for",
     "models_list",
@@ -85,6 +89,7 @@ __all__ = [
     "sse",
     "stream_anthropic_events",
     "stream_chat_chunks",
+    "stream_gemini_events",
     "stream_responses_events",
     "to_driver_messages",
     "tool_calls_to_openai",

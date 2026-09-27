@@ -382,7 +382,8 @@ def test_hooks_install_and_remove_only_prompture_entries(tmp_path):
     hooks = json.loads((tmp_path / "settings.json").read_text())["hooks"]
     assert set(hooks) == {"UserPromptSubmit", "PostToolUse", "Notification", "Stop", "SessionEnd"}
     assert hooks["Stop"][0] == mine
-    assert hooks["Stop"][1]["hooks"][0]["command"] == '"C:/py/python.exe" -m prompture.companion.hook claude'
+    command = hooks["Stop"][1]["hooks"][0]["command"]
+    assert command.startswith('"C:/py/python.exe" "') and command.endswith('/prompture/companion/hook.py" claude')
     assert hooks["PostToolUse"][0]["matcher"] == "*"
     assert routing.hooks_installed()
 
@@ -392,6 +393,18 @@ def test_hooks_install_and_remove_only_prompture_entries(tmp_path):
     routing.set_hooks(False)
     assert json.loads((tmp_path / "settings.json").read_text()) == {"hooks": {"Stop": [mine]}}
     assert not routing.hooks_installed()
+
+
+def test_hooks_from_an_older_prompture_are_brought_up_to_date(tmp_path):
+    old = {"hooks": [{"type": "command", "command": '"C:/old/python.exe" -m prompture.companion.hook claude'}]}
+    mine = {"hooks": [{"type": "command", "command": "notify-send done"}]}
+    (tmp_path / "settings.json").write_text(json.dumps({"hooks": {"Stop": [mine, old], "Notification": [old]}}))
+    routing = ToolRouting(None, claude_root=tmp_path, codex_root=tmp_path, python=r"C:\py\python.exe")
+    assert routing.hooks_installed() and routing.refresh_hooks()
+    hooks = json.loads((tmp_path / "settings.json").read_text())["hooks"]
+    assert hooks["Stop"][0] == mine and len(hooks["Stop"]) == 2
+    assert all(g["hooks"][0]["command"] == routing.hook_command for e in hooks.values() for g in e if g != mine)
+    assert not routing.refresh_hooks()  # already current
 
 
 def test_router_endpoints_switch_routing_and_save_rules(companion, tmp_path):
@@ -421,9 +434,17 @@ def test_router_endpoints_switch_routing_and_save_rules(companion, tmp_path):
 # ------------------------------------------------------------------ hooks
 
 
-def test_hook_payload_keeps_only_the_event_session_and_folder_name():
+def test_hook_payload_keeps_only_the_event_session_and_folder():
     raw = json.dumps({"hook_event_name": "Notification", "session_id": "s1", "message": "secret", "cwd": "/home/me/x"})
-    assert hook.payload("claude", raw) == {"agent": "claude", "event": "Notification", "session": "s1", "project": "x"}
+    assert hook.payload("claude", raw) == {
+        "agent": "claude",
+        "event": "Notification",
+        "session": "s1",
+        "project": "x",
+        "cwd": "/home/me/x",
+    }
+    prompt = json.dumps({"hook_event_name": "UserPromptSubmit", "session_id": "s1", "prompt": "fix the build"})
+    assert hook.payload("claude", prompt)["prompt"] == "fix the build"  # only a prompt event carries it
     assert hook.payload("claude", "not json") is None
     assert hook.payload("claude", json.dumps({"hook_event_name": "Stop"})) is None
 
@@ -599,3 +620,26 @@ def test_shutdown_needs_the_token_then_stops_and_puts_configs_back(tmp_path):
     assert done.wait(5)
     assert not routing.routed("claude-code")
     assert routing.enabled() == ["claude-code"]  # the choice survives for the next start
+
+
+@pytest.mark.parametrize(
+    "original", [None, "", "GEMINI_MODEL=pro\n", "CODE_ASSIST_ENDPOINT=https://proxy.example\nX=1", "A=1\r\nB=2\r\n"]
+)
+def test_gemini_routing_restores_its_env_file_byte_for_byte(tmp_path, original):
+    gemini = tmp_path / "gemini"
+    gemini.mkdir()
+    env = gemini / ".env"
+    if original is not None:
+        env.write_bytes(original.encode())
+    routing = ToolRouting(None, claude_root=tmp_path / "c", codex_root=tmp_path / "x", gemini_root=gemini)
+    routing.set_enabled("gemini-cli", True, "http://127.0.0.1:47811")
+    text = env.read_text()
+    assert "CODE_ASSIST_ENDPOINT=http://127.0.0.1:47811/tools/gemini-cli" in text
+    assert "proxy.example" not in text and routing.routed("gemini-cli")
+    routing.apply_enabled("http://127.0.0.1:50000")  # a new port: still one block
+    assert env.read_text().count("CODE_ASSIST_ENDPOINT") == 1
+    routing.set_enabled("gemini-cli", False, "")
+    if original is None:
+        assert not env.exists()
+    else:
+        assert env.read_bytes() == original.encode()

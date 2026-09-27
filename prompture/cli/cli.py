@@ -233,6 +233,11 @@ def test_suite(specfile: str, providers: str | None, models: str | None, fmt: st
     help="Let companion apps route Claude Code and Codex through this companion (default: on).",
 )
 @click.option(
+    "--memory/--no-memory",
+    default=True,
+    help="Give routed coding agents their project's shared notes at the start of each session (default: on).",
+)
+@click.option(
     "--restore",
     is_flag=True,
     help="Point Claude Code and Codex back at their vendors (after a companion was killed) and exit.",
@@ -244,6 +249,7 @@ def companion(
     coding_tools: bool,
     automations: bool,
     router: bool,
+    memory: bool,
     restore: bool,
 ) -> None:
     """Serve this machine's Prompture usage to desktop companions (no hub needed).
@@ -259,6 +265,7 @@ def companion(
     so the companion prefers the same port each time: 47811.
     """
     from ..companion import Automations, CodingToolSource, CompanionServer, LedgerSource, running_instance
+    from ..companion.memory import MemoryService
     from ..companion.server import DEFAULT_PORT
     from ..companion.tool_routing import ToolRouting
 
@@ -281,6 +288,7 @@ def companion(
             port=on_port,
             coding_tools=CodingToolSource() if coding_tools else None,
             tool_routing=ToolRouting() if router else None,
+            memory=MemoryService() if router and memory else None,
         )
 
     if port is None:
@@ -472,3 +480,92 @@ def scaffold(output_dir: str, name: str, model: str, docker: bool) -> None:
         include_docker=docker,
     )
     click.echo(f"Project scaffolded at {output_dir}")
+
+
+@cli.group()
+def memory() -> None:
+    """Project notes shared by coding agents (decisions, conventions, commands, fixes).
+
+    The companion gives each Claude Code and Codex session its project's
+    relevant notes when it starts. The project is this folder's name unless
+    --project says otherwise.
+    """
+
+
+def _project_or_cwd(project: str | None) -> str:
+    import os
+
+    from ..session_memory.project import project_name
+
+    name = project or project_name(os.getcwd())
+    if not name:
+        raise click.ClickException("Can't tell the project from this folder; pass --project.")
+    return name
+
+
+@memory.command("add")
+@click.argument("text")
+@click.option(
+    "--kind",
+    type=click.Choice(["decision", "convention", "command", "fix", "fact"]),
+    default="fact",
+    help="What sort of note it is.",
+)
+@click.option("--source", default=None, help="Where it comes from: a file and line, a commit, a doc.")
+@click.option(
+    "--verified", is_flag=True, help="It was checked (tests pass, the command ran). Verified notes are shared."
+)
+@click.option("--pinned", is_flag=True, help="Give it to every session, whatever the task.")
+@click.option("--project", default=None, help="Project name (default: this folder's name).")
+@click.option("--agent", default=None, help="Who is adding it (default: the agent running this, if known).")
+def memory_add(
+    text: str, kind: str, source: str | None, verified: bool, pinned: bool, project: str | None, agent: str | None
+) -> None:
+    """Save a note for later sessions in this project."""
+    import os
+
+    from ..session_memory.project import ProjectMemory
+
+    name = _project_or_cwd(project)
+    who = agent or ("claude" if os.environ.get("CLAUDECODE") else "codex" if os.environ.get("CODEX_SANDBOX") else None)
+    fact = ProjectMemory().add(name, text, kind=kind, source=source, verified=verified, pinned=pinned, agent=who)
+    state = "verified" if verified else "unverified (shared once verified)"
+    click.echo(f"Saved {kind} note {fact.id[:8]} for {name}, {state}.")
+
+
+@memory.command("list")
+@click.option("--project", default=None, help="Project name (default: this folder's name).")
+@click.option("--json", "as_json", is_flag=True, help="Print JSON.")
+def memory_list(project: str | None, as_json: bool) -> None:
+    """Show this project's notes."""
+    from ..session_memory.project import ProjectMemory
+
+    name = _project_or_cwd(project)
+    facts = ProjectMemory().notes(name)
+    if as_json:
+        click.echo(
+            json.dumps([{"id": f.id, "kind": f.kind, "content": f.content, **f.metadata} for f in facts], indent=2)
+        )
+        return
+    if not facts:
+        click.echo(f"No notes for {name} yet.")
+    for f in facts:
+        flag = "✓" if f.metadata.get("verified") else " "
+        source = f" ({f.metadata['source']})" if f.metadata.get("source") else ""
+        click.echo(f"{flag} {f.id[:8]} [{f.kind}] {f.content}{source}")
+
+
+@memory.command("rm")
+@click.argument("note_id")
+@click.option("--project", default=None, help="Project name (default: this folder's name).")
+def memory_rm(note_id: str, project: str | None) -> None:
+    """Delete a note (the id, or the first characters of it, as `list` shows)."""
+    from ..session_memory.project import ProjectMemory
+
+    name = _project_or_cwd(project)
+    store = ProjectMemory()
+    matches = [f for f in store.notes(name) if f.id.startswith(note_id)]
+    if len(matches) != 1:
+        raise click.ClickException(f"{len(matches)} notes match {note_id!r} in {name}.")
+    store.delete(name, matches[0].id)
+    click.echo(f"Deleted {matches[0].id[:8]}.")
