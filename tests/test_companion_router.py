@@ -108,6 +108,16 @@ def companion(tmp_path, upstream):
     srv.shutdown_companion()
 
 
+def _calls(router, n=1, timeout=5.0):
+    """The router's recorded calls once there are ``n`` (they're written just after the reply)."""
+    import time
+
+    deadline = time.monotonic() + timeout
+    while len(router.calls.calls()) < n and time.monotonic() < deadline:
+        time.sleep(0.02)
+    return router.calls.calls()
+
+
 def _post(url: str, body: dict, headers: dict | None = None):
     req = urllib.request.Request(
         url, data=json.dumps(body).encode(), headers={"Content-Type": "application/json", **(headers or {})}
@@ -256,23 +266,24 @@ def test_a_matching_rule_sends_the_request_to_a_prompture_model(companion):
     assert body["id"].startswith("resp_prompture_") and body["output"][0]["content"][0]["text"] == "routed answer"
 
 
-def test_an_unusable_route_answers_with_an_error_in_the_clis_format(tmp_path):
+def test_an_unusable_route_falls_back_to_the_vendor(tmp_path, upstream):
     def broken(model):
         raise ValueError("no such model")
 
     bus = LiveBus()
     routes = Routes(tmp_path / "routes.json")
     routes.save({"tools": {"claude-code": {"models": {"*": "nope/model"}}}})
-    srv = CompanionServer(
-        LedgerSource(tmp_path / "none.db"), bus=bus, state_path=None, router=Router(bus, routes, driver_for=broken)
-    )
+    router = Router(bus, routes, driver_for=broken, upstream=lambda tool: upstream)
+    srv = CompanionServer(LedgerSource(tmp_path / "none.db"), bus=bus, state_path=None, router=router)
     srv.start_background()
     try:
-        with pytest.raises(urllib.error.HTTPError) as err:
-            _post(f"{srv.url}/tools/claude-code/v1/messages", {"model": "claude-x", "messages": []})
-        assert err.value.code == 502
-        body = json.loads(err.value.read())
-        assert body["type"] == "error" and "nope/model" in body["error"]["message"]
+        status, _, raw = _post(f"{srv.url}/tools/claude-code/v1/messages", {"model": "claude-x", "messages": []})
+        assert status == 200 and json.loads(raw)["id"] == "msg_vendor"  # the CLI never saw the failure
+        (call,) = _calls(router)
+        assert call.served == "claude/claude-x" and call.route == "passthrough"
+        assert [a["model"] for a in call.attempts] == ["nope/model", "claude/claude-x"]
+        assert call.attempts[0]["status"] == "error" and "no such model" in call.attempts[0]["error"]
+        assert call.rule["source"] == "fallback" and "fell back to claude-x" in call.rule["reason"]
         assert bus.running() == []
     finally:
         srv.shutdown()
@@ -410,9 +421,9 @@ def test_router_endpoints_switch_routing_and_save_rules(companion, tmp_path):
 # ------------------------------------------------------------------ hooks
 
 
-def test_hook_payload_keeps_only_the_event_and_session():
-    raw = json.dumps({"hook_event_name": "Notification", "session_id": "s1", "message": "secret", "cwd": "/x"})
-    assert hook.payload("claude", raw) == {"agent": "claude", "event": "Notification", "session": "s1"}
+def test_hook_payload_keeps_only_the_event_session_and_folder_name():
+    raw = json.dumps({"hook_event_name": "Notification", "session_id": "s1", "message": "secret", "cwd": "/home/me/x"})
+    assert hook.payload("claude", raw) == {"agent": "claude", "event": "Notification", "session": "s1", "project": "x"}
     assert hook.payload("claude", "not json") is None
     assert hook.payload("claude", json.dumps({"hook_event_name": "Stop"})) is None
 

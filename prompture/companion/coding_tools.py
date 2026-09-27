@@ -186,6 +186,18 @@ class CodingToolSource:
             for c in self.calls(period, now, offset_minutes)
         ]
 
+    def project_for(self, agent: str, session: str) -> str | None:
+        """The project (folder name) of an agent session: from its running turn, else its logged calls."""
+        with self._turn_lock:
+            for turn in self._turns.values():
+                if turn.agent == agent and turn.session == session and turn.project:
+                    return turn.project
+        since = datetime.now(timezone.utc) - timedelta(days=2)
+        for call in reversed(self.usage.calls(since)):
+            if call.agent == agent and call.session == session and call.project:
+                return call.project
+        return None
+
     def rate_limits(self) -> dict[str, dict[str, Any]]:
         """Plan windows keyed like provider targets: ``openai/codex``, ``claude/claude-code``."""
         self.usage.refresh()

@@ -3,9 +3,10 @@
 Claude Code runs ``python -m prompture.companion.hook claude`` on the events
 :mod:`.tool_routing` installs (a prompt, tools starting and finishing,
 notifications, the end of a turn) and passes the event as JSON on stdin. This
-forwards the event's name and session id — nothing else — to the companion
-named in ``~/.prompture/companion.json``, which turns them into live state:
-``Notification`` mid-turn is a permission prompt waiting on the user.
+forwards the event's name, the session id and the project folder's name —
+nothing else — to the companion named in ``~/.prompture/companion.json``,
+which turns them into live state: ``Notification`` mid-turn is a permission
+prompt waiting on the user.
 
 It always exits 0 without output, quickly, whether or not a companion runs, so
 it never gets in the agent's way.
@@ -24,7 +25,7 @@ TIMEOUT = 1.5
 
 
 def payload(agent: str, raw: str) -> dict[str, Any] | None:
-    """What is sent for one hook event: the agent, the event name and the session id."""
+    """What is sent for one hook event: the agent, the event name, the session id and the folder's name."""
     try:
         data = json.loads(raw or "{}")
     except ValueError:
@@ -34,7 +35,13 @@ def payload(agent: str, raw: str) -> dict[str, Any] | None:
     event, session = data.get("hook_event_name"), data.get("session_id")
     if not isinstance(event, str) or not isinstance(session, str) or not session:
         return None
-    return {"agent": agent, "event": event, "session": session}
+    body: dict[str, Any] = {"agent": agent, "event": event, "session": session}
+    cwd = data.get("cwd")
+    if isinstance(cwd, str) and cwd.strip():
+        name = cwd.replace("\\", "/").rstrip("/").rsplit("/", 1)[-1]
+        if name:
+            body["project"] = name
+    return body
 
 
 def send(body: dict[str, Any], state_file: Path = STATE_FILE) -> bool:

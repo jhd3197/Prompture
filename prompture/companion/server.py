@@ -21,7 +21,10 @@ agent's usage plus which agents are installed.
 With a :class:`~.router.Router` it routes coding CLIs: ``/tools/<tool>/…``
 takes Claude Code's and Codex's model traffic (passed through to the vendor,
 or sent to a Prompture model), and ``/v1/router`` turns routing, request
-rules and Claude Code's live-state hooks (``POST /v1/hooks``) on and off.
+rules, presets and Claude Code's live-state hooks (``POST /v1/hooks``) on and
+off. ``/v1/router/calls`` lists what each call cost and why it went where it
+did, ``/v1/router/savings`` adds them up per tool, project and rule, and
+``/v1/router/tasks`` shows each session's destination, failures and budget.
 
 It listens on ``127.0.0.1`` only, on a free port the OS picks, and writes the
 address and a random bearer token to ``~/.prompture/companion.json`` (readable
@@ -212,7 +215,12 @@ class _Handler(BaseHTTPRequestHandler):
             if not all(isinstance(f, str) and f for f in fields):
                 return self._json(422, {"detail": "Send agent, event and session."})
             agent, event, session = (str(f) for f in fields)
+            project = body.get("project") if isinstance(body.get("project"), str) else None
+            if project:
+                self.server.remember_project(agent, session, project)
             self.server.coding_tools.hook_event(self.server.bus, agent, event, session)
+            if self.server.router is not None:
+                self.server.router.hook(agent, event, session, project)
             return self._json(200, {"ok": True})
         if url.path == "/v1/shutdown":
             # How an app that started the companion stops it: routing is put back first,
@@ -233,6 +241,12 @@ class _Handler(BaseHTTPRequestHandler):
         assert routing is not None and router is not None
         parts = path.strip("/").split("/")[2:]  # after v1/router
         try:
+            if len(parts) == 4 and parts[0] == "sessions" and parts[3] == "escalate":
+                decision = router.escalate(parts[1], parts[2], str(body.get("reason") or ""))
+                task = router.policy.find(parts[1], parts[2])
+                if task is None:
+                    return self._json(404, {"detail": "No such task; it may have ended."})
+                return self._json(200, {"escalated": decision is not None, "task": task.to_dict()})
             if parts == ["routes"]:
                 router.routes.save(body)
             elif parts == ["hooks"] and isinstance(body.get("enabled"), bool):
@@ -302,8 +316,45 @@ class _Handler(BaseHTTPRequestHandler):
             return self._live(query)
         if url.path == "/v1/router" and self.server.tool_routing is not None:
             return self._json(200, self.server.router_state())
+        if url.path.startswith("/v1/router/") and self.server.router is not None:
+            return self._router_get(url.path, query)
         if url.path.startswith("/v1/automations") and self.server.automations is not None:
             return self._automations_get(url.path, query)
+        return self._json(404, {"detail": "Not found"})
+
+    def _router_get(self, path: str, query: dict[str, str]) -> None:
+        from .calls import summarize_calls
+        from .summary import window_start
+
+        router = self.server.router
+        assert router is not None
+        parts = path.strip("/").split("/")[2:]  # after v1/router
+        period = query.get("period", "day")
+        if period not in PERIODS:
+            return self._json(422, {"detail": "period must be day, week or month"})
+        start = window_start(period, offset_minutes=_tz_offset(query))
+        if parts == ["savings"]:
+            return self._json(200, {"period": period, **summarize_calls(router.calls.calls(start), start)})
+        if parts == ["tasks"]:
+            return self._json(200, [t.to_dict() for t in router.policy.tasks()])
+        if parts == ["calls"]:
+            try:
+                limit = min(1000, max(1, int(query.get("limit", "200"))))
+            except ValueError:
+                return self._json(422, {"detail": "limit must be an integer"})
+            calls = router.calls.calls(start)
+            for key in ("tool", "session", "project", "route"):
+                if query.get(key):
+                    calls = [c for c in calls if getattr(c, key) == query[key]]
+            if query.get("routed") == "true":
+                calls = [c for c in calls if c.route != "passthrough"]
+            return self._json(200, [c.to_dict() for c in reversed(calls[-limit:])])
+        if len(parts) == 2 and parts[0] == "calls":
+            call = router.calls.get(parts[1])
+            if call is None:
+                return self._json(404, {"detail": "No such call."})
+            task = router.policy.find(call.tool, call.session) if call.session else None
+            return self._json(200, {**call.to_dict(), "task": task.to_dict() if task else None})
         return self._json(404, {"detail": "Not found"})
 
     def _automations_get(self, path: str, query: dict[str, str]) -> None:
@@ -425,8 +476,9 @@ class CompanionServer(ThreadingHTTPServer):
         self.coding_tools = coding_tools
         self.automations = automations
         self.tool_routing = tool_routing
+        self._projects: dict[tuple[str, str], str] = {}
         if router is None and tool_routing is not None:
-            router = Router(self.bus, upstream=tool_routing.upstream)
+            router = Router(self.bus, upstream=tool_routing.upstream, project_for=self.project_for)
         self.router = router
         self.stopping = threading.Event()
 
@@ -434,16 +486,35 @@ class CompanionServer(ThreadingHTTPServer):
     def url(self) -> str:
         return f"http://127.0.0.1:{self.server_address[1]}"
 
+    def remember_project(self, agent: str, session: str, project: str) -> None:
+        """A hook named the folder a session works in."""
+        self._projects[(agent, session)] = project
+
+    def project_for(self, agent: str, session: str) -> str | None:
+        """The project a coding-agent session works in: from its hooks, else its logs."""
+        project = self._projects.get((agent, session))
+        if project is None and self.coding_tools is not None:
+            try:
+                project = self.coding_tools.project_for(agent, session)
+            except Exception:
+                logger.debug("project lookup failed", exc_info=True)
+            if project:
+                self._projects[(agent, session)] = project
+        return project
+
     def router_state(self) -> dict[str, Any]:
         """``/v1/router``: each CLI's routing switch, the request rules, and the hooks switch."""
         assert self.tool_routing is not None and self.router is not None
-        from .router import BACKGROUND_KINDS, KINDS
+        from .router import KINDS
+        from .routing_policy import BACKGROUND_KINDS, NATIVE_ONLY_KINDS, PRESETS
 
         return {
             **self.tool_routing.status(self.url),
             "routes": self.router.routes.data(),
             "kinds": list(KINDS),
-            "background_kinds": sorted(BACKGROUND_KINDS),
+            "background_kinds": sorted(BACKGROUND_KINDS - NATIVE_ONLY_KINDS),
+            "presets": {name: dict(kinds) for name, kinds in PRESETS.items()},
+            "settings": self.router.policy.settings(),
         }
 
     def rows(self, period: str, *, api_only: bool = False, offset_minutes: int = 0) -> list[UsageRow]:
