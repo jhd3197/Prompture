@@ -19,6 +19,7 @@ from ..agents.live_events import (
     ToolUseStart,
     ToolUseStop,
 )
+from ._ollama_options import apply_sampling
 from ._prompted_tool_stream import PromptedToolStreamMixin
 from .async_base import AsyncDriver
 
@@ -84,12 +85,7 @@ class AsyncOllamaDriver(PromptedToolStreamMixin, AsyncDriver):
             "stream": False,
         }
 
-        if "temperature" in merged_options:
-            payload["temperature"] = merged_options["temperature"]
-        if "top_p" in merged_options:
-            payload["top_p"] = merged_options["top_p"]
-        if "top_k" in merged_options:
-            payload["top_k"] = merged_options["top_k"]
+        apply_sampling(payload, merged_options)
 
         async with httpx.AsyncClient() as client:
             try:
@@ -189,12 +185,7 @@ class AsyncOllamaDriver(PromptedToolStreamMixin, AsyncDriver):
         elif merged_options.get("json_mode"):
             payload["format"] = "json"
 
-        if "temperature" in merged_options:
-            payload["temperature"] = merged_options["temperature"]
-        if "top_p" in merged_options:
-            payload["top_p"] = merged_options["top_p"]
-        if "top_k" in merged_options:
-            payload["top_k"] = merged_options["top_k"]
+        apply_sampling(payload, merged_options)
 
         async with httpx.AsyncClient() as client:
             try:
@@ -258,9 +249,7 @@ class AsyncOllamaDriver(PromptedToolStreamMixin, AsyncDriver):
             payload["format"] = json_schema
         elif merged.get("json_mode"):
             payload["format"] = "json"
-        for key in ("temperature", "top_p", "top_k"):
-            if key in merged:
-                payload[key] = merged[key]
+        apply_sampling(payload, merged)
 
         full_text = ""
         full_reasoning = ""
@@ -355,9 +344,7 @@ class AsyncOllamaDriver(PromptedToolStreamMixin, AsyncDriver):
             "tools": tools,
             "stream": True,
         }
-        for key in ("temperature", "top_p", "top_k"):
-            if key in merged:
-                payload[key] = merged[key]
+        apply_sampling(payload, merged)
 
         prompt_tokens = 0
         completion_tokens = 0

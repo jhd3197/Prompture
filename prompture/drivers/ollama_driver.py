@@ -15,6 +15,7 @@ from ..agents.live_events import (
     ToolUseStart,
     ToolUseStop,
 )
+from ._ollama_options import apply_sampling
 from ._prompted_tool_stream import PromptedToolStreamMixin
 from .base import Driver
 
@@ -127,12 +128,7 @@ class OllamaDriver(PromptedToolStreamMixin, Driver):
             "stream": False,
         }
 
-        if "temperature" in merged_options:
-            payload["temperature"] = merged_options["temperature"]
-        if "top_p" in merged_options:
-            payload["top_p"] = merged_options["top_p"]
-        if "top_k" in merged_options:
-            payload["top_k"] = merged_options["top_k"]
+        apply_sampling(payload, merged_options)
 
         try:
             logger.debug(f"Sending tool use request to Ollama endpoint: {chat_endpoint}")
@@ -276,9 +272,7 @@ class OllamaDriver(PromptedToolStreamMixin, Driver):
             "tools": tools,
             "stream": True,
         }
-        for key in ("temperature", "top_p", "top_k"):
-            if key in merged:
-                payload[key] = merged[key]
+        apply_sampling(payload, merged)
 
         prompt_tokens = 0
         completion_tokens = 0
@@ -378,12 +372,7 @@ class OllamaDriver(PromptedToolStreamMixin, Driver):
             payload["format"] = json_schema
         elif merged_options.get("json_mode"):
             payload["format"] = "json"
-        if "temperature" in merged_options:
-            payload["temperature"] = merged_options["temperature"]
-        if "top_p" in merged_options:
-            payload["top_p"] = merged_options["top_p"]
-        if "top_k" in merged_options:
-            payload["top_k"] = merged_options["top_k"]
+        apply_sampling(payload, merged_options)
 
         full_text = ""
         full_reasoning = ""
@@ -453,12 +442,7 @@ class OllamaDriver(PromptedToolStreamMixin, Driver):
         elif merged_options.get("json_mode"):
             payload["format"] = "json"
 
-        if "temperature" in merged_options:
-            payload["temperature"] = merged_options["temperature"]
-        if "top_p" in merged_options:
-            payload["top_p"] = merged_options["top_p"]
-        if "top_k" in merged_options:
-            payload["top_k"] = merged_options["top_k"]
+        apply_sampling(payload, merged_options)
 
         try:
             logger.debug(f"Sending chat request to Ollama endpoint: {chat_endpoint}")
