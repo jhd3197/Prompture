@@ -20,6 +20,7 @@ from . import (
     rag,
     workflow,
 )
+from .capabilities import BackendChain, HealthStatus, normalize_public_http_url, probe_command, safe_get
 from .checkpoints import (
     Checkpoint,
     CheckpointManager,
@@ -80,7 +81,10 @@ from .extraction import *
 from .groups import *
 from .imaging import *
 from .infra import *
+from .infra.credentials import CredentialStore, CredentialStoreError, get_config_value
+from .infra.environment import EnvironmentInfo, detect_environment
 from .infra.media_pricing import estimate_media_cost, get_media_rate, register_media_rate
+from .infra.updates import UpdateInfo, check_for_update
 from .ingestion import *
 from .integrations import *
 from .jobs import JobHandle, JobResult, JobStatus, MediaAsset
@@ -95,6 +99,7 @@ from .kg import (
     extract_entities,
     extract_relations,
 )
+from .mcp.hub import MCPHub, MCPServerConfig, load_mcp_registry_by_name, resolve_mcp_tools
 from .media import *
 from .media.agent_tools import media_tool_definitions, register_media_tools
 from .persistence import *
@@ -131,6 +136,8 @@ from .security import (
     RedactionResult,
     is_prompt_injection,
     redact_pii,
+    scrub_secrets,
+    scrub_url_credentials,
 )
 from .session_memory import (
     InMemorySessionStore,
@@ -161,11 +168,25 @@ from .swarm import (
     SwarmStep,
 )
 from .tools import (
+    CLITool,
     PythonSandboxTool,
     SearchResult,
+    ToolPack,
     WebSearchTool,
     python_execute_tool,
+    register_pack,
     web_search_tool,
+)
+from .tools.named import register_tool_namespace, resolve_tool_spec
+from .tools.web import (
+    FetchResult,
+    ReadResult,
+    SearchResponse,
+    WebToolkit,
+    read_url,
+    register_reader,
+    search_platform,
+    web_fetch,
 )
 from .workflow import (
     ArchitectResult,
@@ -178,6 +199,25 @@ from .workflow import (
     compile_graph,
     run_graph,
 )
+
+
+def __getattr__(name: str):
+    """Lazy exports for heavier capability modules (doctor, research)."""
+    lazy = {
+        "DoctorReport": ("prompture.doctor", "DoctorReport"),
+        "doctor_check_all": ("prompture.doctor", "check_all"),
+        "ResearchAgent": ("prompture.research", "ResearchAgent"),
+        "ResearchBudget": ("prompture.research", "ResearchBudget"),
+        "ResearchReport": ("prompture.research", "ResearchReport"),
+        "research_tool": ("prompture.research", "research_tool"),
+    }
+    if name in lazy:
+        import importlib
+
+        module, attr = lazy[name]
+        return getattr(importlib.import_module(module), attr)
+    raise AttributeError(f"module 'prompture' has no attribute {name!r}")
+
 
 # Tukuy type re-exports (aliased to avoid collision with Prompture names)
 try:

@@ -18,7 +18,18 @@ The web capability (search, fetch, URL readers, platform search) lives in
 :mod:`prompture.tools.web`; ``WebToolkit().register_on(registry)`` adds it all.
 """
 
+from .cli import (
+    CLIArg,
+    CLICommand,
+    CLITool,
+    builtin_cli_tools,
+    gh_tool,
+    load_cli_tools,
+    resolve_cli_tools,
+    yt_dlp_tool,
+)
 from .code_exec import PythonSandboxTool, python_execute_tool
+from .packs import PackTool, ToolPack, get_pack, list_packs, register_pack, resolve_pack_tools
 from .web import (
     FetchResult,
     ReadResult,
@@ -32,17 +43,31 @@ from .web import (
 from .web_search import SearchResult, WebSearchTool, web_search_tool
 
 __all__ = [
+    "CLIArg",
+    "CLICommand",
+    "CLITool",
     "FetchResult",
+    "PackTool",
     "PythonSandboxTool",
     "ReadResult",
     "SearchResponse",
     "SearchResult",
+    "ToolPack",
     "WebSearchTool",
     "WebToolkit",
+    "builtin_cli_tools",
+    "get_pack",
+    "gh_tool",
+    "list_packs",
+    "load_cli_tools",
     "python_execute_tool",
     "read_url",
+    "register_pack",
     "register_reader",
+    "resolve_cli_tools",
+    "resolve_pack_tools",
     "search_platform",
     "web_fetch",
     "web_search_tool",
+    "yt_dlp_tool",
 ]
