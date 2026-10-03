@@ -14,7 +14,8 @@ Usage::
 
     registry = register_media_tools(ToolRegistry())
     # registry now exposes: generate_image, edit_image, generate_video,
-    #                       resume_media_job, list_media_models
+    #                       generate_music, resume_media_job, list_media_models,
+    #                       transcribe_media, summarize_media
 """
 
 from __future__ import annotations
@@ -32,6 +33,8 @@ __all__ = [
     "media_tool_definitions",
     "register_media_tools",
     "resume_media_job",
+    "summarize_media",
+    "transcribe_media",
 ]
 
 
@@ -174,7 +177,54 @@ def list_media_models(modality: str) -> dict[str, Any]:
     return {"models": get_models_by_modality(modality)}
 
 
-_TOOL_FNS = (generate_image, edit_image, generate_video, generate_music, resume_media_job, list_media_models)
+def transcribe_media(source: str, language: str = "", timestamps: bool = True, max_chars: int = 20000) -> str:
+    """Transcribe a video, podcast or audio file (URL or local path) into timestamped text.
+
+    Works with direct audio/video links, local files, and video/podcast pages
+    such as YouTube when yt-dlp is installed. Long media is split and stitched
+    automatically.
+
+    Args:
+        source: URL or local file path of the media.
+        language: Optional ISO language code hint such as "en" or "es".
+        timestamps: Prefix each line with its [HH:MM:SS] timestamp.
+        max_chars: Maximum characters of transcript to return.
+
+    Returns:
+        The transcript as Markdown, or a line starting with "Error:".
+    """
+    from .understand.tools import transcribe_media as _transcribe_media
+
+    return _transcribe_media(source, language=language, timestamps=timestamps, max_chars=max_chars)
+
+
+def summarize_media(source: str, focus: str = "") -> str:
+    """Summarize a video, podcast or audio file (URL or local path) with timestamped key points.
+
+    Transcribes the media first, then summarizes the transcript.
+
+    Args:
+        source: URL or local file path of the media.
+        focus: Optional topic to focus the summary on.
+
+    Returns:
+        A Markdown summary with timestamped key points, or a line starting with "Error:".
+    """
+    from .understand.tools import summarize_media as _summarize_media
+
+    return _summarize_media(source, focus=focus)
+
+
+_TOOL_FNS = (
+    generate_image,
+    edit_image,
+    generate_video,
+    generate_music,
+    resume_media_job,
+    list_media_models,
+    transcribe_media,
+    summarize_media,
+)
 
 
 def media_tool_definitions() -> list[ToolDefinition]:
