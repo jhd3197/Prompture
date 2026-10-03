@@ -86,8 +86,11 @@ def default_research_model() -> str | None:
     cheap model of the first configured provider in
     :data:`DEFAULT_MODEL_CANDIDATES`. ``None`` when nothing is configured.
     """
+    from ..infra.credentials import get_config_value
+
     for var in ("PROMPTURE_RESEARCH_MODEL", "PROMPTURE_DEFAULT_MODEL"):
-        value = os.environ.get(var, "").strip()
+        # Env first, then the credential store, where `prompture setup` saves the default model.
+        value = (get_config_value(var) or "").strip()
         if value:
             return value
     try:
@@ -364,6 +367,10 @@ class _ResearchRun:
         self.fetched: dict[str, _Fetched] = {}
         self._lock = threading.Lock()
         self._emit_lock = threading.Lock()
+        # Packs run in parallel, but under a token/cost budget their LLM calls
+        # take turns: checking the budget and recording usage happen under this
+        # lock, so concurrent calls can't all pass the check and overshoot.
+        self._llm_budget_lock = threading.Lock()
         self.search_ok = 0
         self.search_failed = 0
 
@@ -494,18 +501,21 @@ class _ResearchRun:
         )
 
     def _pack_one(self, pack: str) -> None:
-        if not self.tracker.llm_budget_left():
-            return
-        try:
-            text, usage = _call_with_deadline(
-                lambda: self.agent._run_pack(pack, self.question), self.tracker.gather_remaining()
-            )
-        except Exception as exc:
-            with self._lock:
-                self.routes.append({"op": "pack", "target": pack, "ok": False, "error": _short_error(exc)})
-            self.emit("search", f"Pack {pack} unavailable", pack=pack, ok=False)
-            return
-        self.tracker.record_usage(usage)
+        budgeted = self.tracker.budget.max_tokens is not None or self.tracker.budget.max_cost is not None
+        guard = self._llm_budget_lock if budgeted else contextlib.nullcontext()
+        with guard:
+            if not self.tracker.llm_budget_left():
+                return
+            try:
+                text, usage = _call_with_deadline(
+                    lambda: self.agent._run_pack(pack, self.question), self.tracker.gather_remaining()
+                )
+            except Exception as exc:
+                with self._lock:
+                    self.routes.append({"op": "pack", "target": pack, "ok": False, "error": _short_error(exc)})
+                self.emit("search", f"Pack {pack} unavailable", pack=pack, ok=False)
+                return
+            self.tracker.record_usage(usage)
         text = (text or "").strip()
         with self._lock:
             self.routes.append({"op": "pack", "target": pack, "ok": bool(text), "served_by": f"pack:{pack}"})

@@ -836,3 +836,40 @@ def test_default_pack_runner_uses_agent_with_pack_tools():
     pack_src = [s for s in report.opened_sources if s.url == "pack:finance"]
     assert pack_src, report.routes
     assert any("stock_quote" in (o.get("tools") or []) for o in driver.options)
+
+
+# ---------------------------------------------------------------------------
+# Packs take turns under a budget; the setup wizard's model is honored
+# ---------------------------------------------------------------------------
+
+
+def test_concurrent_packs_respect_cost_budget():
+    # The planner keeps at most two packs; they start together in the search fan-out.
+    plan = dict(DEFAULT_PLAN, packs=["finance", "news"])
+    runs: list[str] = []
+    lock = threading.Lock()
+
+    def runner(pack: str, question: str) -> tuple[str, dict[str, Any]]:
+        with lock:
+            runs.append(pack)
+        time.sleep(0.1)  # long enough for an unguarded second worker to pass the budget check
+        return f"{pack} data " * 20, {"total_tokens": 100, "cost": 0.6}
+
+    rec = Recorder()
+    tools = make_tools(rec, enable_packs=True, pack_runner=runner)
+    agent = make_agent(rec, driver=FakeDriver(plan=plan), tools=tools, budget=ResearchBudget(max_cost=0.5))
+    report = agent.run("ACME stock price and news?")
+    # One call spends the whole budget, so the other pack must not start.
+    assert len(runs) == 1, runs
+    assert report.budget_used["cost"] < 0.7  # one pack call plus the tiny planning call
+    assert "max_cost" in report.budget_used["limits_hit"]
+
+
+def test_default_model_reads_the_credential_store(monkeypatch):
+    monkeypatch.delenv("PROMPTURE_RESEARCH_MODEL", raising=False)
+    monkeypatch.delenv("PROMPTURE_DEFAULT_MODEL", raising=False)
+    stored = {"PROMPTURE_DEFAULT_MODEL": "claude/claude-haiku-4-5"}
+    monkeypatch.setattr(
+        "prompture.infra.credentials.get_config_value", lambda name, default=None, **kw: stored.get(name, default)
+    )
+    assert default_research_model() == "claude/claude-haiku-4-5"
