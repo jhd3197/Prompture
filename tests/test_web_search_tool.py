@@ -277,7 +277,7 @@ def test_auto_detect_picks_first_configured(monkeypatch):
     assert tool.provider == "serper"
 
 
-def test_auto_detect_raises_when_nothing_configured(monkeypatch):
+def test_auto_detect_falls_back_to_keyless_when_nothing_configured(monkeypatch):
     monkeypatch.setattr(
         "prompture.tools.web_search.settings",
         type(
@@ -291,8 +291,9 @@ def test_auto_detect_raises_when_nothing_configured(monkeypatch):
             },
         ),
     )
-    with pytest.raises(RuntimeError, match="No web-search provider"):
-        WebSearchTool()
+    # Nothing configured → the keyless Exa MCP endpoint instead of raising.
+    tool = WebSearchTool()
+    assert tool.provider == "exa_mcp"
 
 
 # ---------------------------------------------------------------------------

@@ -13,15 +13,36 @@ Example::
     registry.add(PythonSandboxTool().to_tool_definition())
 
     agent = DeepAgent(model="openai/gpt-4o", tools=registry)
+
+The web capability (search, fetch, URL readers, platform search) lives in
+:mod:`prompture.tools.web`; ``WebToolkit().register_on(registry)`` adds it all.
 """
 
 from .code_exec import PythonSandboxTool, python_execute_tool
+from .web import (
+    FetchResult,
+    ReadResult,
+    SearchResponse,
+    WebToolkit,
+    read_url,
+    register_reader,
+    search_platform,
+    web_fetch,
+)
 from .web_search import SearchResult, WebSearchTool, web_search_tool
 
 __all__ = [
+    "FetchResult",
     "PythonSandboxTool",
+    "ReadResult",
+    "SearchResponse",
     "SearchResult",
     "WebSearchTool",
+    "WebToolkit",
     "python_execute_tool",
+    "read_url",
+    "register_reader",
+    "search_platform",
+    "web_fetch",
     "web_search_tool",
 ]
