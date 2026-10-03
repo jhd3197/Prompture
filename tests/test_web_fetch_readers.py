@@ -39,7 +39,7 @@ from prompture.tools.web.readers import _media, matching_readers, search_anilist
 from prompture.tools.web.readers import github as gh_mod
 from prompture.tools.web.readers import podcasts as pod_mod
 from prompture.tools.web.readers import youtube as yt_mod
-from prompture.tools.web.readers.anilist import anilist_id, clean_description
+from prompture.tools.web.readers.anilist import anilist_id, clean_description, fold_title
 from prompture.tools.web.readers.arxiv import arxiv_id
 from prompture.tools.web.readers.feeds import looks_like_feed_url, parse_feed_stdlib
 from prompture.tools.web.readers.github import parse_github_url
@@ -971,6 +971,23 @@ def test_anilist_character_and_search():
     assert hits[0]["id"] == 123 and hits[0]["title"] == "Harbor Lights" and hits[0]["year"] == 2001
     assert sess.calls[-1][2]["json"]["variables"]["type"] == "ANIME"
 
+
+def test_anilist_search_folds_accents_first():
+    assert fold_title("Minato no Akarī: Kōhen") == "Minato no Akari: Kohen"
+    assert fold_title("がっこう") == "がっこう"  # dakuten on kana stay
+    seen = []
+
+    def answer(method: str, url: str, kw: dict) -> FakeResp:
+        query = kw["json"]["variables"]["search"]
+        seen.append(query)
+        found = [{"id": 5, "title": {"romaji": "Minato no Akari"}}] if query == "Kohen Akari" else []
+        return FakeResp(json_data={"data": {"Page": {"media": found}}})
+
+    sess = FakeSession([("POST", "graphql.anilist.co", answer)])
+    assert search_anilist("Kōhen Akari", session=sess)[0]["id"] == 5  # type: ignore[arg-type]
+    assert seen == ["Kohen Akari"]
+    assert search_anilist("Nothing Here", session=sess) == []  # type: ignore[arg-type]
+    assert seen[1:] == ["Nothing Here"]  # nothing to fold: asked once
 
 def test_anilist_missing_title_falls_back_to_fetch():
     errors = {"errors": [{"message": "Not Found.", "status": 404}], "data": {"Media": None}}

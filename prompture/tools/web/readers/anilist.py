@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import html
 import re
+import unicodedata
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -189,6 +190,20 @@ def _character_lines(c: dict[str, Any], head: str) -> list[str]:
     return lines
 
 
+def fold_title(text: str) -> str:
+    """*text* with accents on Latin letters removed ("Shippūden" → "Shippuden").
+
+    AniList's search matches romanized titles without macrons and misses them
+    with. Marks on other scripts (a kana's dakuten) are kept.
+    """
+    out: list[str] = []
+    for ch in unicodedata.normalize("NFKD", text):
+        if unicodedata.combining(ch) and out and out[-1].isascii():
+            continue
+        out.append(ch)
+    return unicodedata.normalize("NFC", "".join(out))
+
+
 def search_anilist(
     query: str,
     *,
@@ -202,11 +217,19 @@ def search_anilist(
     Each item has ``id``, ``type``, ``format``, ``episodes``, ``year``,
     ``title`` (display), ``titles`` (romaji / english / native), ``synonyms``
     and ``url`` — pass the ``url`` to ``read_url`` for the cast.
+
+    Accented Latin letters are folded first (AniList misses "Shippūden" but
+    finds "Shippuden"); the query as given is tried when that finds nothing.
     """
-    variables: dict[str, Any] = {"search": query, "perPage": max(1, min(max_results, 25))}
+    variables: dict[str, Any] = {"perPage": max(1, min(max_results, 25))}
     if media_type:
         variables["type"] = media_type.upper()
-    data = graphql(_SEARCH_QUERY, variables, session=session, timeout=timeout)
+    media: list[dict[str, Any]] = []
+    for attempt in dict.fromkeys([fold_title(query), query]):
+        data = graphql(_SEARCH_QUERY, {**variables, "search": attempt}, session=session, timeout=timeout)
+        media = (data.get("Page") or {}).get("media") or []
+        if media:
+            break
     return [
         {
             "id": m.get("id"),
@@ -219,7 +242,7 @@ def search_anilist(
             "synonyms": m.get("synonyms") or [],
             "url": m.get("siteUrl"),
         }
-        for m in (data.get("Page") or {}).get("media") or []
+        for m in media
     ]
 
 
