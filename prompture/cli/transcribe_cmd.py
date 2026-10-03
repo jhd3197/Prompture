@@ -1,4 +1,4 @@
-"""``prompture transcribe`` — URL / file → transcript (and optional summary)."""
+"""``prompture transcribe`` - URL / file -> transcript (and optional summary)."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from ..security.redaction import scrub_secrets
     "out_path",
     type=click.Path(dir_okay=False, writable=True),
     default=None,
-    help="Write to this file (.json → full JSON, anything else → Markdown). Default: stdout.",
+    help="Write to this file (.json -> full JSON, anything else -> Markdown). Default: stdout.",
 )
 @click.option(
     "--allow-provider-fallback",
@@ -35,7 +35,7 @@ from ..security.redaction import scrub_secrets
 )
 @click.option("--focus", default=None, help="Topic to focus the --summary on.")
 @click.option("--no-timestamps", is_flag=True, default=False, help="Plain text without [HH:MM:SS] prefixes.")
-@click.option("--max-chunks", type=int, default=None, help="Cap on 10-minute chunks (default 24 ≈ 4 h).")
+@click.option("--max-chunks", type=int, default=None, help="Cap on 10-minute chunks (default 24 ~ 4 h).")
 def transcribe(
     source: str,
     model: str,
