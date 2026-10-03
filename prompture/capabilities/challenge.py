@@ -73,3 +73,32 @@ def is_challenge_page(
     score = challenge_score(text)
     threshold = 2 if status in _CHALLENGE_STATUSES else 3
     return score >= threshold
+
+
+# The first characters of a page rendered without its scripts: an app shell
+# that only says the content needs JavaScript or a newer browser.
+SHELL_SCAN_CHARS = 1000
+
+_SHELL_MARKERS = (
+    "requires a modern browser",
+    "upgrade to a newer web browser",
+    "you need to enable javascript to run this app",
+    "please enable javascript to continue",
+    "this site requires javascript",
+    "this page requires javascript",
+    "javascript is required to view",
+    "javascript is disabled in your browser",
+)
+
+
+def is_js_shell_page(text: str | bytes) -> bool:
+    """Return ``True`` when the start of *text* is a "needs JavaScript" app shell.
+
+    Only the opening :data:`SHELL_SCAN_CHARS` are checked, so a real article
+    that mentions JavaScript further down (a comments widget, say) still counts
+    as content.
+    """
+    if isinstance(text, bytes):
+        text = text[: SHELL_SCAN_CHARS * 4].decode("utf-8", errors="ignore")
+    head = text[:SHELL_SCAN_CHARS].lower()
+    return any(m in head for m in _SHELL_MARKERS)

@@ -5,11 +5,12 @@
 * :mod:`.health` — :class:`HealthStatus` and the capability registry doctor walks.
 * :mod:`.url_safety` — :func:`normalize_public_http_url` public-URL guard.
 * :mod:`.http` — :func:`safe_get` redirect-checked, size-capped GET.
-* :mod:`.challenge` — :func:`is_challenge_page` interstitial detection.
+* :mod:`.challenge` — :func:`is_challenge_page` interstitial detection and
+  :func:`is_js_shell_page` for pages that are only a "needs JavaScript" shell.
 """
 
 from .backends import Backend, BackendChain, BaseBackend, ChainResult, order_backends, parse_override
-from .challenge import is_challenge_page
+from .challenge import is_challenge_page, is_js_shell_page
 from .errors import (
     AllBackendsFailedError,
     BackendUnavailableError,
@@ -52,6 +53,7 @@ __all__ = [
     "check_capabilities",
     "clear_probe_cache",
     "is_challenge_page",
+    "is_js_shell_page",
     "is_public_http_url",
     "is_public_ip",
     "list_capabilities",

@@ -230,6 +230,37 @@ def test_challenge_from_jina_moves_to_direct():
     assert res.route["attempts"][0]["category"] == "challenge_page"
 
 
+SHELL_MD = "Sorry, this site requires a modern browser.\nPlease upgrade to a newer web browser.\n\n[Home](/) [Search](/search)"
+
+
+def test_js_shell_from_jina_moves_to_direct():
+    html = "<html><head><title>Cast</title></head><body><h1>Cast</h1><p>Server-rendered list.</p></body></html>"
+    sess = FakeSession(
+        [
+            ("GET", "r.jina.ai", jina_json(SHELL_MD, title="Some App")),
+            ("GET", "example.com/cast", FakeResp(body=html, content_type="text/html; charset=utf-8")),
+        ]
+    )
+    res = web_fetch("https://example.com/cast", session=sess)  # type: ignore[arg-type]
+    assert res.served_by == "direct"
+    assert "Server-rendered list." in res.content
+    assert res.route["attempts"][0]["backend"] == "jina_reader"
+
+
+def test_js_shell_everywhere_fails_and_is_not_cached():
+    shell_html = "<html><body><p>Sorry, this site requires a modern browser.</p></body></html>"
+    responses = [
+        ("GET", "r.jina.ai", jina_json(SHELL_MD)),
+        ("GET", "example.com/app", FakeResp(body=shell_html, content_type="text/html")),
+    ]
+    sess = FakeSession(list(responses))
+    with pytest.raises(AllBackendsFailedError):
+        web_fetch("https://example.com/app", session=sess)  # type: ignore[arg-type]
+    sess = FakeSession(list(responses))
+    with pytest.raises(AllBackendsFailedError):
+        web_fetch("https://example.com/app", session=sess)  # type: ignore[arg-type]
+    assert sess.calls  # the shell was not served from the cache
+
 def test_override_env_and_direct_challenge_falls_to_jina(monkeypatch):
     monkeypatch.setenv("PROMPTURE_FETCH_BACKENDS", "direct,jina_reader")
     blocked = FakeResp(403, body="<title>Just a moment...</title><div id=cf_chl_opt></div>", content_type="text/html")

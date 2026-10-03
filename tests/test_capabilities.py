@@ -18,6 +18,7 @@ from prompture.capabilities import (
     UnsafeURLError,
     check_capabilities,
     is_challenge_page,
+    is_js_shell_page,
     normalize_public_http_url,
     probe_command,
     register_capability,
@@ -246,6 +247,13 @@ def test_challenge_false_positives():
     # Markers past the first 4 KB are ignored.
     assert not is_challenge_page("x" * 5000 + "cf_chl_opt challenge-platform", status=403)
 
+
+def test_js_shell_detection():
+    assert is_js_shell_page("Sorry, this site requires a modern browser. Please upgrade to a newer web browser.")
+    assert is_js_shell_page(b"<noscript>You need to enable JavaScript to run this app.</noscript>")
+    assert not is_js_shell_page("# Real article\n\nPlenty of content about JavaScript engines.")
+    # A comments widget far down the page does not make it a shell.
+    assert not is_js_shell_page("x" * 2000 + "Please enable JavaScript to continue")
 
 def test_capability_errors_classification():
     assert classify_error(UnsafeURLError("x")).action == ErrorAction.FATAL
