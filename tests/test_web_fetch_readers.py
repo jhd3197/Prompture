@@ -35,10 +35,11 @@ from prompture.tools.web import (
     web_fetch,
 )
 from prompture.tools.web import platform as platform_mod
-from prompture.tools.web.readers import _media, matching_readers
+from prompture.tools.web.readers import _media, matching_readers, search_anilist
 from prompture.tools.web.readers import github as gh_mod
 from prompture.tools.web.readers import podcasts as pod_mod
 from prompture.tools.web.readers import youtube as yt_mod
+from prompture.tools.web.readers.anilist import anilist_id, clean_description, fold_title
 from prompture.tools.web.readers.arxiv import arxiv_id
 from prompture.tools.web.readers.feeds import looks_like_feed_url, parse_feed_stdlib
 from prompture.tools.web.readers.github import parse_github_url
@@ -230,6 +231,37 @@ def test_challenge_from_jina_moves_to_direct():
     assert res.route["attempts"][0]["category"] == "challenge_page"
 
 
+SHELL_MD = "Sorry, this site requires a modern browser.\nPlease upgrade to a newer web browser.\n\n[Home](/) [Search](/search)"
+
+
+def test_js_shell_from_jina_moves_to_direct():
+    html = "<html><head><title>Cast</title></head><body><h1>Cast</h1><p>Server-rendered list.</p></body></html>"
+    sess = FakeSession(
+        [
+            ("GET", "r.jina.ai", jina_json(SHELL_MD, title="Some App")),
+            ("GET", "example.com/cast", FakeResp(body=html, content_type="text/html; charset=utf-8")),
+        ]
+    )
+    res = web_fetch("https://example.com/cast", session=sess)  # type: ignore[arg-type]
+    assert res.served_by == "direct"
+    assert "Server-rendered list." in res.content
+    assert res.route["attempts"][0]["backend"] == "jina_reader"
+
+
+def test_js_shell_everywhere_fails_and_is_not_cached():
+    shell_html = "<html><body><p>Sorry, this site requires a modern browser.</p></body></html>"
+    responses = [
+        ("GET", "r.jina.ai", jina_json(SHELL_MD)),
+        ("GET", "example.com/app", FakeResp(body=shell_html, content_type="text/html")),
+    ]
+    sess = FakeSession(list(responses))
+    with pytest.raises(AllBackendsFailedError):
+        web_fetch("https://example.com/app", session=sess)  # type: ignore[arg-type]
+    sess = FakeSession(list(responses))
+    with pytest.raises(AllBackendsFailedError):
+        web_fetch("https://example.com/app", session=sess)  # type: ignore[arg-type]
+    assert sess.calls  # the shell was not served from the cache
+
 def test_override_env_and_direct_challenge_falls_to_jina(monkeypatch):
     monkeypatch.setenv("PROMPTURE_FETCH_BACKENDS", "direct,jina_reader")
     blocked = FakeResp(403, body="<title>Just a moment...</title><div id=cf_chl_opt></div>", content_type="text/html")
@@ -337,7 +369,8 @@ def test_url_matchers():
 
 def test_reader_routing_order():
     names = [r.name for r in list_readers()]
-    assert names[:7] == ["youtube", "github", "hackernews", "arxiv", "wikipedia", "podcasts", "feeds"]
+    assert names[:8] == ["youtube", "github", "hackernews", "arxiv", "wikipedia", "anilist", "podcasts", "feeds"]
+    assert [r.name for r in matching_readers("https://anilist.co/anime/1/x")] == ["anilist"]
     assert [r.name for r in matching_readers("https://youtu.be/dQw4w9WgXcQ")] == ["youtube"]
     assert matching_readers("https://example.com/") == []
 
@@ -823,6 +856,149 @@ def test_wikipedia_reader_summary_and_article():
     assert sess.calls[0][2]["headers"]["User-Agent"].startswith("prompture-web")
     short = read_url("https://en.wikipedia.org/wiki/Python_(programming_language)", full=False, session=sess)  # type: ignore[arg-type]
     assert "## History" not in short.content
+
+
+def _anilist_edge(cid: int, name: str, role: str, gender: str | None, voice: str) -> dict:
+    return {
+        "role": role,
+        "node": {
+            "id": cid,
+            "siteUrl": f"https://anilist.co/character/{cid}",
+            "gender": gender,
+            "age": None,
+            "name": {"full": name, "native": None, "alternative": []},
+            "image": {"medium": None},
+            "description": f"{name} keeps the lighthouse.~!Secretly a ghost.!~ &quot;Calm&quot;",
+        },
+        "voiceActors": [{"name": {"full": voice, "native": None}, "languageV2": "Japanese"}],
+    }
+
+
+def test_anilist_url_parsing_and_description_cleanup():
+    assert anilist_id("https://anilist.co/anime/123/Harbor-Lights/characters") == ("anime", 123)
+    assert anilist_id("https://anilist.co/character/77") == ("character", 77)
+    assert anilist_id("https://anilist.co/user/someone") is None
+    assert anilist_id("https://example.com/anime/123") is None
+    assert clean_description("A~!hidden!~ B &amp; C") == "A B & C"
+    assert clean_description("A~!shown!~", spoilers=True) == "Ashown"
+
+
+def test_anilist_reader_pages_the_cast():
+    pages = {
+        1: {"hasNextPage": True, "edges": [_anilist_edge(1, "Mira Tavel", "MAIN", "Female", "Voice One")]},
+        2: {"hasNextPage": False, "edges": [_anilist_edge(2, "Oren Pask", "SUPPORTING", None, "Voice Two")]},
+    }
+
+    def answer(method: str, url: str, kw: dict) -> FakeResp:
+        variables = kw["json"]["variables"]
+        assert variables["id"] == 123 and variables["lang"] == "JAPANESE"
+        block = pages[variables["page"]]
+        media = {
+            "id": 123,
+            "type": "ANIME",
+            "format": "TV",
+            "status": "FINISHED",
+            "episodes": 12,
+            "chapters": None,
+            "seasonYear": 2001,
+            "siteUrl": "https://anilist.co/anime/123",
+            "title": {"romaji": "Minato no Akari", "english": "Harbor Lights", "native": None},
+            "description": "A quiet town.<br>By the sea.",
+            "characters": {"pageInfo": {"hasNextPage": block["hasNextPage"]}, "edges": block["edges"]},
+        }
+        return FakeResp(json_data={"data": {"Media": media}})
+
+    sess = FakeSession([("POST", "graphql.anilist.co", answer)])
+    res = read_url("https://anilist.co/anime/123/Harbor-Lights/characters", session=sess)  # type: ignore[arg-type]
+    assert res.reader == "anilist" and res.kind == "cast"
+    assert res.title == "Harbor Lights"
+    assert len(sess.calls) == 2
+    assert [c["name"] for c in res.meta["characters"]] == ["Mira Tavel", "Oren Pask"]
+    first = res.meta["characters"][0]
+    assert first["role"] == "MAIN" and first["gender"] == "Female"
+    assert first["voice_actors"] == [{"name": "Voice One", "native": "", "language": "Japanese"}]
+    assert first["description"] == 'Mira Tavel keeps the lighthouse. "Calm"'
+    assert "### Mira Tavel" in res.content and "Voice: Voice One (Japanese)" in res.content
+    assert "ghost" not in res.content
+    assert res.meta["more_characters"] is False
+
+
+def test_anilist_reader_stops_at_max_characters():
+    edges = [_anilist_edge(i, f"Extra {i}", "BACKGROUND", None, "V") for i in range(25)]
+    media = {"id": 9, "title": {"romaji": "Long Show"}, "characters": {"pageInfo": {"hasNextPage": True}, "edges": edges}}
+    sess = FakeSession([("POST", "graphql.anilist.co", FakeResp(json_data={"data": {"Media": media}}))])
+    res = read_url("https://anilist.co/anime/9", max_characters=10, session=sess)  # type: ignore[arg-type]
+    assert len(res.meta["characters"]) == 10
+    assert len(sess.calls) == 1
+    assert res.meta["more_characters"] is True
+
+
+def test_anilist_character_and_search():
+    character = {
+        "id": 77,
+        "siteUrl": "https://anilist.co/character/77",
+        "gender": "Male",
+        "age": "30s",
+        "name": {"full": "Oren Pask", "native": None, "alternative": []},
+        "image": {"medium": None},
+        "description": "A ferryman.",
+        "media": {
+            "edges": [
+                {
+                    "characterRole": "SUPPORTING",
+                    "node": {"id": 123, "type": "ANIME", "format": "TV", "seasonYear": 2001,
+                             "siteUrl": "https://anilist.co/anime/123", "title": {"english": "Harbor Lights"}},
+                    "voiceActors": [],
+                }
+            ]
+        },
+    }
+    found = {"Page": {"media": [{"id": 123, "type": "ANIME", "format": "TV", "episodes": 12, "seasonYear": 2001,
+                                  "siteUrl": "https://anilist.co/anime/123",
+                                  "title": {"romaji": "Minato no Akari", "english": "Harbor Lights"},
+                                  "synonyms": ["HL"]}]}}
+
+    def answer(method: str, url: str, kw: dict) -> FakeResp:
+        query = kw["json"]["query"]
+        return FakeResp(json_data={"data": {"Character": character} if "Character(" in query else found})
+
+    sess = FakeSession([("POST", "graphql.anilist.co", answer)])
+    res = read_url("https://anilist.co/character/77", session=sess)  # type: ignore[arg-type]
+    assert res.kind == "character" and res.title == "Oren Pask"
+    assert res.meta["appearances"][0]["title"] == "Harbor Lights"
+    assert "- Harbor Lights (TV, 2001, SUPPORTING)" in res.content
+    hits = search_anilist("harbor", session=sess)
+    assert hits[0]["id"] == 123 and hits[0]["title"] == "Harbor Lights" and hits[0]["year"] == 2001
+    assert sess.calls[-1][2]["json"]["variables"]["type"] == "ANIME"
+
+
+def test_anilist_search_folds_accents_first():
+    assert fold_title("Minato no Akarī: Kōhen") == "Minato no Akari: Kohen"
+    assert fold_title("がっこう") == "がっこう"  # dakuten on kana stay
+    seen = []
+
+    def answer(method: str, url: str, kw: dict) -> FakeResp:
+        query = kw["json"]["variables"]["search"]
+        seen.append(query)
+        found = [{"id": 5, "title": {"romaji": "Minato no Akari"}}] if query == "Kohen Akari" else []
+        return FakeResp(json_data={"data": {"Page": {"media": found}}})
+
+    sess = FakeSession([("POST", "graphql.anilist.co", answer)])
+    assert search_anilist("Kōhen Akari", session=sess)[0]["id"] == 5  # type: ignore[arg-type]
+    assert seen == ["Kohen Akari"]
+    assert search_anilist("Nothing Here", session=sess) == []  # type: ignore[arg-type]
+    assert seen[1:] == ["Nothing Here"]  # nothing to fold: asked once
+
+def test_anilist_missing_title_falls_back_to_fetch():
+    errors = {"errors": [{"message": "Not Found.", "status": 404}], "data": {"Media": None}}
+    sess = FakeSession(
+        [
+            ("POST", "graphql.anilist.co", FakeResp(404, json_data=errors)),
+            ("GET", "r.jina.ai", jina_json("plain page")),
+        ]
+    )
+    res = read_url("https://anilist.co/anime/999999", session=sess)  # type: ignore[arg-type]
+    assert res.reader == "web_fetch"
 
 
 # ---------------------------------------------------------------------------

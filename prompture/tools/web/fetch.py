@@ -28,7 +28,7 @@ from typing import Any
 import requests
 
 from ...capabilities.backends import BackendChain, BaseBackend
-from ...capabilities.challenge import is_challenge_page
+from ...capabilities.challenge import is_challenge_page, is_js_shell_page
 from ...capabilities.errors import ChallengePageError, HTTPStatusError
 from ...capabilities.http import safe_get
 from ...capabilities.url_safety import normalize_public_http_url
@@ -174,6 +174,8 @@ class JinaReaderBackend(FetchBackend):
             raise RequestRejectedError(self.name, "empty content")
         if is_challenge_page(content) or title.strip().lower() in _CHALLENGE_TITLES:
             raise ChallengePageError(f"{url} returned a bot challenge via {self.name}")
+        if is_js_shell_page(content):
+            raise RequestRejectedError(self.name, "page is a JavaScript app shell with no content")
         ctype = "application/pdf" if url.lower().split("?", 1)[0].endswith(".pdf") else "text/html"
         return FetchedPage(url=url, final_url=final_url, title=title, content=content.strip(), content_type=ctype)
 
@@ -209,6 +211,8 @@ class DirectBackend(FetchBackend):
             html = resp.text
             info = scan_head(html, resp.url)
             content = html_to_markdown(html, base_url=resp.url)
+            if is_js_shell_page(content):
+                raise RequestRejectedError(self.name, "page is a JavaScript app shell with no content")
             return FetchedPage(url, resp.url, info.title, content, "text/html")
         if ctype == "application/json" or ctype.endswith("+json"):
             try:

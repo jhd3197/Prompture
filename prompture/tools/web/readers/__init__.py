@@ -5,7 +5,7 @@ matches and that has a usable backend reads the URL. When none matches (or
 every matching reader fails), :func:`read_url` falls back to
 :func:`~prompture.tools.web.fetch.web_fetch`.
 
-Built-in order: YouTube, GitHub, Hacker News, arXiv, Wikipedia, Podcasts,
+Built-in order: YouTube, GitHub, Hacker News, arXiv, Wikipedia, AniList, Podcasts,
 Feeds. Add your own with :func:`register_reader` (``first=True`` to take
 precedence over the built-ins).
 """
@@ -25,6 +25,7 @@ from ....resilience.errors import classify_error
 from .. import cache as web_cache
 from .._common import error_text, page
 from ..fetch import web_fetch
+from .anilist import AniListReader, search_anilist
 from .arxiv import ArxivReader
 from .base import BaseReader, Reader, ReadResult, StepBackend
 from .feeds import FeedReader
@@ -270,6 +271,7 @@ def _register_builtins() -> None:
         HackerNewsReader(),
         ArxivReader(),
         WikipediaReader(),
+        AniListReader(),
         PodcastReader(),
         FeedReader(),
     ):
@@ -279,6 +281,7 @@ def _register_builtins() -> None:
 _register_builtins()
 
 __all__ = [
+    "AniListReader",
     "ArxivReader",
     "BaseReader",
     "FeedReader",
@@ -296,5 +299,6 @@ __all__ = [
     "matching_readers",
     "read_url",
     "register_reader",
+    "search_anilist",
     "unregister_reader",
 ]

@@ -126,7 +126,7 @@ def read_ttl(url: str, reader: str, kind: str = "page") -> int:
         return 7 * DAY  # a published video's transcript doesn't change
     if reader == "arxiv":
         return 7 * DAY
-    if reader == "wikipedia":
+    if reader in ("wikipedia", "anilist"):
         return DAY
     if reader == "podcasts":
         return DAY

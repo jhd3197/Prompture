@@ -3,7 +3,8 @@
 * :func:`web_search` — ordered search backends with failover; keyless Exa MCP floor.
 * :func:`web_fetch` — URL → Markdown (Jina reader ▸ direct), paging, 10-minute cache.
 * :func:`read_url` — URL-routed readers (YouTube, GitHub, Hacker News, arXiv,
-  Wikipedia, podcasts, feeds) with ``web_fetch`` fallback.
+  Wikipedia, AniList, podcasts, feeds) with ``web_fetch`` fallback.
+* :func:`search_anilist` — find an anime / manga by title (its URL reads the cast).
 * :func:`search_platform` — YouTube / GitHub / Hacker News / arXiv search.
 * :class:`WebToolkit` — the above as agent tools; ``tools=["web:all"]``.
 
@@ -47,6 +48,7 @@ from .readers import (
     list_readers,
     read_url,
     register_reader,
+    search_anilist,
     unregister_reader,
 )
 from .search import (
@@ -112,6 +114,7 @@ __all__ = [
     "read_url",
     "register_reader",
     "resolve_web_tools",
+    "search_anilist",
     "search_chain",
     "search_platform",
     "unregister_reader",

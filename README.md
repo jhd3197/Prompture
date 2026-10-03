@@ -71,7 +71,7 @@ prompture mcp add --preset exa                 # mount MCP servers by name
 prompture skill install                        # teach your coding agent all of this
 ```
 
-- **Web:** keyless search, fetch and readers for YouTube, GitHub, Hacker News, arXiv, Wikipedia, feeds and podcasts
+- **Web:** keyless search, fetch and readers for YouTube, GitHub, Hacker News, arXiv, Wikipedia, AniList, feeds and podcasts
 - **Fails over instead of failing:** search, fetch and the readers try the next backend on auth, quota or rate-limit errors and tell you which one served the result
 - **Cached locally:** repeat searches and static pages come back instantly; weather, prices and news expire in minutes, papers and transcripts in days
 - **Safe by default:** public URLs only, size caps, secret scrubbing, and audio never goes to a second provider without your consent
@@ -120,7 +120,7 @@ No setup: Desk runs `prompture companion` (Prompture 1.13+) on localhost for you
 - `generate_qa_dataset()` — synthetic JSONL datasets ready for Unsloth, Axolotl, TRL
 
 **Capabilities** — see [Capabilities](#capabilities)
-- Keyless `web_search`, `web_fetch` and `read_url` (YouTube, GitHub, HN, arXiv, Wikipedia, feeds, podcasts), with failover across keyed providers
+- Keyless `web_search`, `web_fetch` and `read_url` (YouTube, GitHub, HN, arXiv, Wikipedia, AniList, feeds, podcasts), with failover across keyed providers
 - Local web cache with content-aware lifetimes: minutes for weather, prices and news, days for papers and transcripts
 - `transcribe` / `summarize_media` for video, podcasts and audio, with timestamped key points
 - `ResearchAgent` / `prompture research` — cited multi-source reports within fetch, token, cost and time budgets
@@ -2015,7 +2015,7 @@ agent = Agent("openai/gpt-4o", tools=["web:all"])
 |---|---|
 | `web_search` | `tavily` ▸ `exa` ▸ `serper` ▸ `brave` ▸ `jina` ▸ `searxng` ▸ `exa_mcp` (keyless) |
 | `web_fetch` | `jina_reader` (keyless) ▸ `direct` (safe GET + HTML to Markdown) |
-| `read_url` | YouTube, GitHub, Hacker News, arXiv, Wikipedia, podcasts, RSS/Atom readers ▸ `web_fetch` |
+| `read_url` | YouTube, GitHub, Hacker News, arXiv, Wikipedia, AniList, podcasts, RSS/Atom readers ▸ `web_fetch` |
 | `search_platform` | YouTube (`yt-dlp`), GitHub, Hacker News (Algolia), arXiv |
 
 - Auth, quota and rate-limit errors fail over immediately; timeouts and 5xx
@@ -2038,7 +2038,7 @@ entry lives as long as that kind of content stays true:
 | Platform search (GitHub, HN, arXiv, YouTube) | 30 min |
 | Ordinary pages / searches within `recency_days <= 7` | 1 h |
 | Other searches | 6 h |
-| Wikipedia, podcast episodes | 1 day |
+| Wikipedia, AniList, podcast episodes | 1 day |
 | Papers, PDFs, DOIs, commit-pinned GitHub files, YouTube transcripts | 7 days |
 
 Cached results say so (`route["cached"]`, `cache_age_s`, and "cached 3 min
