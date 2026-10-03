@@ -21,6 +21,7 @@ Usage::
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 from datetime import datetime, timezone
@@ -43,6 +44,16 @@ class SecretScrubbingFilter(logging.Filter):
         if scrubbed != message:
             record.msg = scrubbed
             record.args = None
+        # Formatters append the traceback after the message, and exception
+        # text often carries the very URL or key we just scrubbed. Render it
+        # now and store the scrubbed copy; formatters reuse ``exc_text``.
+        if record.exc_info and not record.exc_text:
+            with contextlib.suppress(Exception):
+                record.exc_text = logging.Formatter().formatException(record.exc_info)
+        if record.exc_text:
+            record.exc_text = scrub_secrets(record.exc_text)
+        if record.stack_info:
+            record.stack_info = scrub_secrets(record.stack_info)
         return True
 
 
