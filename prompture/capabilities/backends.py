@@ -29,9 +29,15 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Generic, Protocol, TypeVar, runtime_checkable
 
-from ..resilience.errors import ErrorAction, classify_error
+from ..resilience.errors import ErrorAction, ErrorInfo, classify_error
 from ..security.redaction import scrub_secrets
-from .errors import AllBackendsFailedError, BackendUnavailableError
+from .errors import (
+    AllBackendsFailedError,
+    BackendUnavailableError,
+    ChallengePageError,
+    ResponseTooLargeError,
+    UnsafeURLError,
+)
 from .health import HealthStatus
 
 T = TypeVar("T")
@@ -99,7 +105,7 @@ class BaseBackend:
             try:
                 self.live_check()
             except Exception as exc:
-                info = classify_error(exc)
+                info = classify_backend_error(exc)
                 return HealthStatus(
                     self.name,
                     "error",
@@ -237,7 +243,7 @@ class BackendChain(Generic[T]):
                     value = backend.run(*args, **kwargs)
                 except Exception as exc:
                     last_error = exc
-                    info = classify_error(exc)
+                    info = classify_backend_error(exc)
                     attempts.append(_failed(backend, exc, info, start, tries))
                     if info.action == ErrorAction.FATAL:
                         _attach_attempts(exc, attempts)
@@ -271,7 +277,7 @@ class BackendChain(Generic[T]):
                         value = await asyncio.to_thread(backend.run, *args, **kwargs)
                 except Exception as exc:
                     last_error = exc
-                    info = classify_error(exc)
+                    info = classify_backend_error(exc)
                     attempts.append(_failed(backend, exc, info, start, tries))
                     if info.action == ErrorAction.FATAL:
                         _attach_attempts(exc, attempts)
@@ -330,6 +336,23 @@ class BackendChain(Generic[T]):
 
     def __repr__(self) -> str:
         return f"BackendChain({self.name!r}, {[b.name for b in self.backends]})"
+
+
+# Typed capability errors map to fixed actions, independent of the global
+# rule table (which ``reset_error_rules()`` can wipe).
+_TYPED_ACTIONS: tuple[tuple[type[BaseException], str, ErrorAction], ...] = (
+    (UnsafeURLError, "unsafe_url", ErrorAction.FATAL),
+    (ChallengePageError, "challenge_page", ErrorAction.FAILOVER),
+    (ResponseTooLargeError, "response_too_large", ErrorAction.FAILOVER),
+)
+
+
+def classify_backend_error(exc: BaseException) -> ErrorInfo:
+    """``classify_error`` with the capability error types pinned to their actions."""
+    for exc_type, category, action in _TYPED_ACTIONS:
+        if isinstance(exc, exc_type):
+            return ErrorInfo(action, category, message=str(exc))
+    return classify_error(exc)
 
 
 def _available(backend: Any) -> bool:

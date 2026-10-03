@@ -526,3 +526,19 @@ def test_logging_filter_scrubs(caplog):
     record = logging.LogRecord("prompture", logging.INFO, __file__, 1, "fetch %s", ("https://a:b@x.example.com",), None)
     SecretScrubbingFilter().filter(record)
     assert "a:b@" not in record.getMessage()
+
+
+def test_chain_classification_survives_rule_reset():
+    from prompture.capabilities.errors import register_capability_error_rules
+    from prompture.resilience import reset_error_rules
+
+    reset_error_rules()
+    try:
+        second = Ok("second")
+        with pytest.raises(UnsafeURLError):
+            BackendChain([Fails("first", lambda: UnsafeURLError("private")), second]).run()
+        assert second.calls == 0
+        result = BackendChain([Fails("cf", lambda: ChallengePageError("cf")), Ok("next")]).run()
+        assert result.served_by == "next"
+    finally:
+        register_capability_error_rules()
