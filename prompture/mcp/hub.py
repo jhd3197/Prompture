@@ -1214,7 +1214,7 @@ def prefixed_tool_name(server: str, tool: str, taken: set[str] | None = None) ->
     raw = f"{server}{TOOL_PREFIX_SEP}{tool}"
     name = _INVALID_TOOL_CHARS.sub("_", raw)
     if len(name) > 64 or (taken is not None and name in taken):
-        digest = hashlib.sha1(raw.encode("utf-8")).hexdigest()[:6]
+        digest = hashlib.sha1(raw.encode("utf-8"), usedforsecurity=False).hexdigest()[:6]
         name = f"{name[:57]}_{digest}"
     if taken is not None:
         n = 2
