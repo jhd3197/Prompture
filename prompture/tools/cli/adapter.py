@@ -51,6 +51,9 @@ logger = logging.getLogger("prompture.tools.cli")
 OutputFormat = Literal["text", "json", "jsonl", "yaml"]
 ArgType = Literal["string", "integer", "number", "boolean", "array"]
 
+# Module-level so tests can simulate Windows without patching os.name globally.
+_ON_WINDOWS = os.name == "nt"
+
 DEFAULT_TIMEOUT = 60.0
 DEFAULT_MAX_OUTPUT_BYTES = 256_000
 DEFAULT_MAX_VALUE_LENGTH = 2_000
@@ -724,7 +727,7 @@ class CLITool:
 
     @staticmethod
     def _is_batch_launcher(path: str) -> bool:
-        return os.name == "nt" and path.lower().endswith((".bat", ".cmd"))
+        return _ON_WINDOWS and path.lower().endswith((".bat", ".cmd"))
 
     def is_active(self) -> bool:
         """True when the binary exists and its version probe succeeds."""

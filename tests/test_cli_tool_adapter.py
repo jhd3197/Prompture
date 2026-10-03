@@ -225,7 +225,7 @@ class TestRejection:
 
     def test_batch_launcher_refused(self, monkeypatch):
         monkeypatch.setattr(adapter.shutil, "which", lambda cmd: r"C:\tools\demo.cmd")
-        monkeypatch.setattr(adapter.os, "name", "nt")
+        monkeypatch.setattr(adapter, "_ON_WINDOWS", True)
         result = _simple_tool().run("show", target="x")
         assert "batch launcher" in result.error
         assert _simple_tool().check().status == "broken"
