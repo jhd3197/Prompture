@@ -112,6 +112,7 @@ _lock = threading.Lock()
 # modules are skipped so a partial install still produces a report.
 BUILTIN_CAPABILITY_MODULES: list[str] = [
     "prompture.capabilities.builtin_checks",
+    "prompture.doctor.providers",
     "prompture.tools.web.health",
     "prompture.media.understand.health",
     "prompture.mcp.health",

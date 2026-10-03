@@ -127,8 +127,21 @@ def info(
             "router_calls": router,
             "gemini_routing": router,
             "memory": memory,
+            "health": True,
         },
+        # Offline doctor summary (prompture.doctor.summary/1); cached and refreshed
+        # in the background so this public endpoint never waits on probes.
+        "health": _health_summary(),
     }
+
+
+def _health_summary() -> dict[str, Any]:
+    try:
+        from ..doctor import capabilities_summary
+
+        return capabilities_summary(wait=False)
+    except Exception as exc:
+        return {"schema": "prompture.doctor.summary/1", "state": "error", "error": type(exc).__name__}
 
 
 def read_state(path: Path = STATE_FILE) -> dict[str, Any] | None:
