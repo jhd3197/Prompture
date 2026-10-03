@@ -39,7 +39,7 @@ Model strings are `provider/model` (e.g. `openai/gpt-4o-mini`, `claude/claude-ha
 - `prompture.drivers`: one driver per provider; `get_driver_for_model("provider/model")`
 - `prompture.resilience`: `resilient()`, `classify_error`, combos and virtual models
 - `prompture.capabilities`: `BackendChain`, `probe_command`, `HealthStatus`, `safe_get`, `normalize_public_http_url`
-- `prompture.tools.web`: `web_search`, `web_fetch`, `read_url`, `search_platform`, `WebToolkit`
+- `prompture.tools.web`: `web_search`, `web_fetch`, `read_url`, `search_platform`, `WebToolkit`, local cache (`clear_web_cache`, `cache_info`, `PROMPTURE_WEB_CACHE`)
 - `prompture.media.understand`: `transcribe`, `summarize_media`
 - `prompture.mcp`: MCP client/server and `hub` (`MCPHub`, `resolve_mcp_tools`)
 - `prompture.tools.cli`, `prompture.tools.packs`: `CLITool`, domain packs

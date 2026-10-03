@@ -65,6 +65,14 @@ The report only cites pages it actually opened. Model defaults to
 `PROMPTURE_RESEARCH_MODEL`, then the first configured provider's cheap model.
 Other agents can call it as a tool: `tools=[research_tool(depth="quick")]`.
 
+## Cache
+
+Results are cached locally (`~/.prompture/cache/web_cache.db`). Volatile
+searches (weather, prices, scores, news, "today", `recency_days <= 1`) live 10
+minutes; others live hours. A cached result has `route["cached"] is True` and
+`route["cache_age_s"]` — say so when it matters ("from a search 5 min ago").
+For something that must be live right now, pass `use_cache=False`.
+
 ## When search fails
 
 1. `prompture doctor --only tools --json` → look at the `web_search` row.

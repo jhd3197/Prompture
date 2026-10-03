@@ -45,6 +45,37 @@ print(person.name)  # Maria
 > | `ollama/llama3.1:8b`, … (local) | no extra needed | — (set `OLLAMA_HOST` if non-default) |
 > | everything in one go | `pip install "prompture[all]"` | provider-specific |
 
+## Agents That Can Search, Read, Watch and Listen
+
+Prompture also gives agents working capabilities, and **none of them need an
+API key to start**. Keys only raise limits and quality.
+
+```python
+from prompture import Agent
+
+agent = Agent(
+    "openai/gpt-4o-mini",
+    tools=["web:all", "pack:dev", "mcp:exa"],   # search, read any URL, transcribe, GitHub/HN/arXiv, MCP
+    system_prompt="Cite every fact with a URL you opened.",
+)
+print(agent.run("Summarize https://youtu.be/<id> and find related papers").output)
+```
+
+```bash
+prompture doctor                               # what works on this machine and how to fix the rest
+prompture research "What changed in Python 3.13?" --depth quick   # cited multi-source report
+prompture transcribe talk.mp3 --summary        # timestamped transcript + key points
+prompture mcp add --preset exa                 # mount MCP servers by name
+prompture skill install                        # teach your coding agent all of this
+```
+
+- **Web:** keyless search, fetch and readers for YouTube, GitHub, Hacker News, arXiv, Wikipedia, feeds and podcasts
+- **Fails over, never just fails:** every capability tries the next backend on auth, quota or rate-limit errors and tells you which one served the result
+- **Cached locally:** repeat searches and static pages come back instantly; weather, prices and news expire in minutes, papers and transcripts in days
+- **Safe by default:** public URLs only, size caps, secret scrubbing, and audio never goes to a second provider without your consent
+
+Full guide: [Capabilities](#capabilities).
+
 ## Prompture Desk: Usage in Your Tray
 
 **See what your LLM calls cost, live, from your tray.** [Prompture Desk](https://github.com/jhd3197/Prompture-Desk) tracks tokens and spend per provider and project, rate-limit headroom, balances, and your coding tools (Claude Code, Codex, …). Windows, macOS and Linux.
@@ -77,8 +108,7 @@ No setup: Desk runs `prompture companion` (Prompture 1.13+) on localhost for you
 **Agents, tools, RAG**
 - Stateful conversations with sync + async support
 - Function calling and streaming across providers, with prompt-based simulation for models without native tool use
-- Drop-in tools: sandboxed `python_execute` (Tukuy), keyless `web_search` / `web_fetch` / `read_url` (YouTube, GitHub, HN, arXiv, Wikipedia, feeds, podcasts) — see [Capabilities](#capabilities)
-- Mount tools by name: `tools=["web:all", "mcp:exa", "pack:finance", "cli:gh"]`; `ResearchAgent` for cited multi-source research
+- Drop-in tools: sandboxed `python_execute` (Tukuy) plus the [capability layer](#capabilities) below
 - `DeepAgent` with planning, virtual filesystem, sub-agents, and auto-summarization — no LangChain
 - Full RAG stack — loaders, chunkers, vector stores, hybrid dense+BM25 retrieval, end-to-end `RAGPipeline` — see [RAG](#rag)
 
@@ -87,8 +117,16 @@ No setup: Desk runs `prompture companion` (Prompture 1.13+) on localhost for you
 - `RefusalDetector` / `RefusalEvaluator` for cross-provider alignment scoring
 - `generate_qa_dataset()` — synthetic JSONL datasets ready for Unsloth, Axolotl, TRL
 
-**Ops**
+**Capabilities** — see [Capabilities](#capabilities)
+- Keyless `web_search`, `web_fetch` and `read_url` (YouTube, GitHub, HN, arXiv, Wikipedia, feeds, podcasts), with failover across keyed providers
+- Local web cache with content-aware lifetimes: minutes for weather, prices and news, days for papers and transcripts
+- `transcribe` / `summarize_media` for video, podcasts and audio, with timestamped key points
+- `ResearchAgent` / `prompture research` — cited multi-source reports within fetch, token, cost and time budgets
+- MCP hub, wrapped CLI tools (`gh`, `yt-dlp`) and domain packs (finance, news, dev, places), mounted by name: `tools=["mcp:exa", "pack:finance", "cli:gh"]`
 - `prompture doctor` — what works on this machine (providers, tools, media, MCP servers, binaries), which backend is active, and the exact fix for anything that isn't
+- `prompture setup` with an owner-only credential store and profiles; `prompture skill install` teaches coding agents to use all of it
+
+**Ops**
 - Resilient routing — `resilient()` retries transient errors, honors `Retry-After`, rotates API keys, trips circuit breakers and fails over across models; every response records who served it — see [Resilient Routing](#resilient-routing)
 - [Prompture Desk](#prompture-desk-usage-in-your-tray) — desktop tray app: usage per provider and project, rate limits and balances, live calls
 - [prompture-hub](#prompture-hub-gateway--dashboard) — optional companion app: web dashboard, scoped per-app keys, spend caps and per-call metering (`pip install prompture[hub]`)
@@ -1985,6 +2023,27 @@ agent = Agent("openai/gpt-4o", tools=["web:all"])
 - Only public URLs: private, loopback, link-local and metadata addresses are
   refused, redirects are re-checked per hop, bodies are size-capped and
   challenge pages move to the next backend.
+
+**Local cache.** Results are cached in `~/.prompture/cache/web_cache.db`, so a
+repeated search or page comes back instantly, even from another process. Each
+entry lives as long as that kind of content stays true:
+
+| Content | Lifetime |
+|---|---|
+| Searches about weather, prices, scores, news, "today", or `recency_days <= 1` | 10 min |
+| Fast-moving pages (Hacker News, Reddit, X, status pages), GitHub issues/PRs | 10 min |
+| Feeds | 15 min |
+| Platform search (GitHub, HN, arXiv, YouTube) | 30 min |
+| Ordinary pages / searches within `recency_days <= 7` | 1 h |
+| Other searches | 6 h |
+| Wikipedia, podcast episodes | 1 day |
+| Papers, PDFs, DOIs, commit-pinned GitHub files, YouTube transcripts | 7 days |
+
+Cached results say so (`route["cached"]`, `cache_age_s`, and "cached 3 min
+ago" in the Markdown footer). Errors and empty results are never stored. Pass
+`use_cache=False` or `cache_ttl=<seconds>` per call, set
+`PROMPTURE_WEB_CACHE=memory|off` to change the store, and
+`clear_web_cache()` or `prompture reset` to empty it.
 
 ### Media understanding: transcripts and summaries
 

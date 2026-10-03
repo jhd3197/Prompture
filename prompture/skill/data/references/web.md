@@ -41,8 +41,18 @@ if page.truncated:
     more = web_fetch(page.url, start=page.next_start)   # paging
 ```
 
-Long pages end with `[truncated — call again with start=N]`. Results are
-cached for 10 minutes. `compress=True` trims boilerplate for agent loops.
+Long pages end with `[truncated — call again with start=N]`; paging reads
+from the cache, not the network. `compress=True` trims boilerplate for agent
+loops.
+
+## Cache
+
+`web_fetch`, `read_url` and `search_platform` share a local cache whose
+lifetime follows the content: 10 minutes for Hacker News, Reddit, X, status
+pages and GitHub issues/PRs, 1 hour for ordinary pages, 1 day for Wikipedia,
+7 days for papers, PDFs, DOIs and YouTube transcripts. Cached results carry
+`route["cached"]` and `route["cache_age_s"]`. Use `use_cache=False` when the
+user needs the page as it is right now; `PROMPTURE_WEB_CACHE=off` disables it.
 
 ## Safety (don't work around these)
 
