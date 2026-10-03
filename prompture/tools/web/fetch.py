@@ -13,7 +13,8 @@ reader), then runs the fetch chain:
 ``PROMPTURE_FETCH_BACKENDS="direct,jina_reader"`` reorders the chain. A
 challenge/captcha interstitial moves on to the next backend. Long pages are
 returned in slices ending with ``[truncated — call again with start=N]``;
-fetched pages are cached for 10 minutes so paging does not refetch.
+fetched pages go through the local web cache (:mod:`.cache`), so paging and
+repeat reads don't refetch.
 """
 
 from __future__ import annotations
@@ -21,7 +22,7 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import Any
 
 import requests
@@ -31,10 +32,10 @@ from ...capabilities.challenge import is_challenge_page
 from ...capabilities.errors import ChallengePageError, HTTPStatusError
 from ...capabilities.http import safe_get
 from ...capabilities.url_safety import normalize_public_http_url
+from . import cache as web_cache
 from ._common import (
     API_USER_AGENT,
     RequestRejectedError,
-    TTLCache,
     config_value,
     default_session,
     ensure_error_rules,
@@ -45,10 +46,8 @@ from .html2md import html_to_markdown, scan_head
 
 FETCH_OVERRIDE_ENV = "PROMPTURE_FETCH_BACKENDS"
 JINA_READER_URL = "https://r.jina.ai/"
-CACHE_TTL_SECONDS = 600.0
 DEFAULT_MAX_BYTES = 8 * 1024 * 1024
 
-_cache = TTLCache(ttl=CACHE_TTL_SECONDS, maxsize=64)
 
 # Page titles that only interstitials use.
 _CHALLENGE_TITLES = frozenset(
@@ -266,8 +265,8 @@ def _compress(text: str) -> str:
 
 
 def clear_fetch_cache() -> None:
-    """Drop every cached page."""
-    _cache.clear()
+    """Drop the local web cache (pages, searches and reader results)."""
+    web_cache.clear_web_cache()
 
 
 def web_fetch(
@@ -280,6 +279,7 @@ def web_fetch(
     session: requests.Session | None = None,
     timeout: float = 20.0,
     use_cache: bool = True,
+    cache_ttl: float | None = None,
 ) -> FetchResult:
     """Fetch *url* and return its content as Markdown.
 
@@ -293,7 +293,10 @@ def web_fetch(
         backends: Restrict to these backend names, in this order.
         session: Optional ``requests.Session``.
         timeout: Per-request timeout in seconds.
-        use_cache: Reuse a page fetched in the last 10 minutes.
+        use_cache: Reuse a recently fetched copy from the local web cache.
+            Lifetime depends on the URL: 10 minutes for fast-moving sites,
+            1 hour for ordinary pages, days for papers and PDFs.
+        cache_ttl: Override the cache lifetime in seconds (``0`` = don't store).
 
     Raises:
         UnsafeURLError: The URL is not a public http(s) address.
@@ -306,14 +309,19 @@ def web_fetch(
         unknown = [b for b in only if b not in FETCH_BACKENDS]
         if unknown:
             raise ValueError(f"Unknown fetch backend(s) {unknown}. Known: {', '.join(FETCH_BACKENDS)}")
-    key = (safe_url, tuple(only) if only else None)
-    hit = _cache.get(key) if use_cache else None
-    cached = hit is not None
-    if hit is None:
+    key = web_cache.make_key("fetch", safe_url, only)
+    stored = web_cache.get(key) if use_cache else None
+    cached = stored is not None
+    if stored is not None:
+        value, age = stored
+        fetched = FetchedPage(**value["page"])
+        served_by, route = value["served_by"], web_cache.mark_cached(value["route"], age)
+    else:
         res = fetch_chain(session=session, timeout=timeout).run(safe_url, only=only)
-        hit = (res.value, res.served_by, res.route)
-        _cache.set(key, hit)
-    fetched, served_by, route = hit
+        fetched, served_by, route = res.value, res.served_by, res.route
+        if use_cache and fetched.content:
+            ttl = cache_ttl if cache_ttl is not None else web_cache.page_ttl(fetched.final_url or safe_url)
+            web_cache.put(key, {"page": asdict(fetched), "served_by": served_by, "route": route}, ttl)
     content = _compress(fetched.content) if compress else fetched.content
     piece, truncated, next_start, total = page(content, start=start, max_chars=max_chars)
     return FetchResult(

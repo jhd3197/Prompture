@@ -31,7 +31,7 @@ import re
 import threading
 import weakref
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -39,6 +39,7 @@ import requests
 
 from ...capabilities.backends import BackendChain, BaseBackend
 from ...capabilities.http import proxies_for
+from . import cache as web_cache
 from ._common import (
     API_USER_AGENT,
     clean_domain,
@@ -633,6 +634,8 @@ def web_search(
     recency_days: int | None = None,
     session: requests.Session | None = None,
     timeout: float = 10.0,
+    use_cache: bool = True,
+    cache_ttl: float | None = None,
 ) -> SearchResponse:
     """Search the public web through the backend chain.
 
@@ -645,6 +648,10 @@ def web_search(
         recency_days: Prefer / keep results published within this many days.
         session: Optional ``requests.Session`` (connection reuse / tests).
         timeout: Per-request timeout in seconds.
+        use_cache: Serve a recent identical search from the local web cache.
+            Volatile topics (weather, prices, news, ``recency_days <= 1``)
+            live 10 minutes, others hours — see :mod:`prompture.tools.web.cache`.
+        cache_ttl: Override the cache lifetime in seconds (``0`` = don't store).
 
     Raises:
         ValueError: Empty query or unknown provider name.
@@ -663,7 +670,35 @@ def web_search(
         unknown = [p for p in only if p not in SEARCH_BACKENDS]
         if unknown:
             raise ValueError(f"Unknown search provider(s) {unknown}. Known: {', '.join(SEARCH_BACKENDS)}")
-    return run_search(search_chain(session=session, timeout=timeout), request, only=only)
+    key = web_cache.make_key(
+        "search",
+        request.query,
+        request.max_results,
+        sorted(request.include_domains or []),
+        sorted(request.exclude_domains or []),
+        request.recency_days,
+        only,
+    )
+    if use_cache:
+        hit = web_cache.get(key)
+        if hit is not None:
+            value, age = hit
+            return _response_from_dict(value, age)
+    response = run_search(search_chain(session=session, timeout=timeout), request, only=only)
+    if use_cache and response.results:
+        ttl = cache_ttl if cache_ttl is not None else web_cache.search_ttl(request.query, request.recency_days)
+        web_cache.put(key, asdict(response), ttl)
+    return response
+
+
+def _response_from_dict(value: dict[str, Any], age: float) -> SearchResponse:
+    return SearchResponse(
+        query=value.get("query", ""),
+        results=[SearchResult(**r) for r in value.get("results", [])],
+        served_by=value.get("served_by", ""),
+        route=web_cache.mark_cached(value.get("route"), age),
+        answer=value.get("answer"),
+    )
 
 
 async def asearch(
@@ -676,6 +711,8 @@ async def asearch(
     recency_days: int | None = None,
     session: requests.Session | None = None,
     timeout: float = 10.0,
+    use_cache: bool = True,
+    cache_ttl: float | None = None,
 ) -> SearchResponse:
     """Async :func:`web_search` (runs the blocking chain in a worker thread)."""
     return await asyncio.to_thread(
@@ -688,4 +725,6 @@ async def asearch(
         recency_days=recency_days,
         session=session,
         timeout=timeout,
+        use_cache=use_cache,
+        cache_ttl=cache_ttl,
     )

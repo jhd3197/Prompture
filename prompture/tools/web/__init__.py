@@ -22,6 +22,7 @@ from __future__ import annotations
 
 from ._mcp_http import MCPError, MCPHttpClient
 from ._types import SearchResponse, SearchResult
+from .cache import cache_info, clear_web_cache
 from .fetch import (
     FETCH_BACKENDS,
     FETCH_OVERRIDE_ENV,
@@ -99,7 +100,9 @@ __all__ = [
     "afetch",
     "aread_url",
     "asearch",
+    "cache_info",
     "clear_fetch_cache",
+    "clear_web_cache",
     "fetch_chain",
     "find_feed_links",
     "get_reader",

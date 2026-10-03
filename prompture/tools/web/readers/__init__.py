@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import threading
 import time
+from dataclasses import asdict
 from typing import Any
 
 import requests
@@ -21,6 +22,7 @@ import requests
 from ....capabilities.errors import UnsafeURLError
 from ....capabilities.url_safety import normalize_public_http_url
 from ....resilience.errors import classify_error
+from .. import cache as web_cache
 from .._common import error_text, page
 from ..fetch import web_fetch
 from .arxiv import ArxivReader
@@ -109,6 +111,8 @@ def read_url(
     start: int = 0,
     fallback: bool = True,
     session: requests.Session | None = None,
+    use_cache: bool = True,
+    cache_ttl: float | None = None,
     **kwargs: Any,
 ) -> ReadResult:
     """Read *url* with the best matching reader, falling back to :func:`web_fetch`.
@@ -120,6 +124,10 @@ def read_url(
         start: Offset for paging through long content.
         fallback: Fall back to :func:`web_fetch` when no reader succeeds.
         session: Optional ``requests.Session``.
+        use_cache: Serve a recent read of the same URL from the local web cache.
+            Lifetime depends on the reader: days for YouTube transcripts and
+            papers, minutes for issues, HN threads and feeds.
+        cache_ttl: Override the cache lifetime in seconds (``0`` = don't store).
         **kwargs: Reader options (``languages``, ``timestamps``, ``max_comments``,
             ``full_text``, ``full``, ``episode``, ``max_items``, ...).
 
@@ -128,6 +136,32 @@ def read_url(
         ValueError: Unknown reader name.
     """
     safe_url = normalize_public_http_url(url)
+    key = web_cache.make_key("read", safe_url, reader, fallback, kwargs)
+    stored = web_cache.get(key) if use_cache else None
+    if stored is not None:
+        value, age = stored
+        full = ReadResult(**value)
+        full.route = web_cache.mark_cached(full.route, age)
+    else:
+        full = _read_url_live(safe_url, reader=reader, fallback=fallback, session=session, **kwargs)
+        if use_cache and full.content:
+            ttl = cache_ttl if cache_ttl is not None else web_cache.read_ttl(safe_url, full.reader, full.kind)
+            web_cache.put(key, asdict(full), ttl)
+    piece, truncated, next_start, total = page(full.content, start=start, max_chars=max_chars)
+    full.content, full.truncated, full.next_start, full.total_chars = piece, truncated, next_start, total
+    return full
+
+
+def _read_url_live(
+    safe_url: str,
+    *,
+    reader: str | None,
+    fallback: bool,
+    session: requests.Session | None,
+    **kwargs: Any,
+) -> ReadResult:
+    """Run the readers for *safe_url* and return the full (unpaged) result."""
+    max_chars, start = 0, 0
     if reader:
         forced = get_reader(reader)
         if forced is None:
@@ -178,7 +212,7 @@ def read_url(
             raise last_error
         raise ValueError(f"No reader handles {safe_url}")
 
-    fr = web_fetch(safe_url, max_chars=max_chars, start=start, session=session)
+    fr = web_fetch(safe_url, max_chars=max_chars, start=start, session=session, use_cache=False)
     feeds = get_reader("feeds")
     if feeds is not None and not reader and _looks_like_feed(fr):
         # No URL pattern matched, but the body is a feed — let the feed reader render it.

@@ -30,7 +30,23 @@ def _route_footer(served_by: str, route: dict[str, Any], verb: str = "served by"
     failed = [a.get("backend") for a in route.get("attempts", []) if a.get("status") == "error"]
     if route.get("fallback") and failed:
         footer += f" (fallback after {', '.join(dict.fromkeys(str(f) for f in failed))} failed)"
+    if route.get("cached"):
+        footer += f", cached {_age_text(route.get('cache_age_s'))}"
     return footer + "_"
+
+
+def _age_text(age: Any) -> str:
+    try:
+        seconds = float(age)
+    except (TypeError, ValueError):
+        return "earlier"
+    if seconds < 60:
+        return "just now"
+    if seconds < 3600:
+        return f"{int(seconds // 60)} min ago"
+    if seconds < 86400:
+        return f"{int(seconds // 3600)} h ago"
+    return f"{int(seconds // 86400)} d ago"
 
 
 @dataclass

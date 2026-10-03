@@ -550,7 +550,7 @@ _STATE_DESCRIPTIONS = {
     "credentials.yaml": "stored credentials and settings",
     "mcp.json": "named MCP servers",
     "usage": "usage ledger databases",
-    "cache": "model-rate, response and plan-usage caches",
+    "cache": "model-rate, response, web and plan-usage caches",
     "update_check.json": "update-check state",
     "companion.json": "local companion address and token",
     "companion-prefs.json": "companion preferences",

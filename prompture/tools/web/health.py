@@ -47,8 +47,35 @@ def _platform_check(name: str):  # type: ignore[no-untyped-def]
     return check
 
 
+def check_web_cache(live: bool = False) -> HealthStatus:
+    """Where search / fetch / reader results are cached, and how many are stored."""
+    from . import cache as web_cache
+
+    info = web_cache.cache_info()
+    if info["mode"] == "off":
+        return HealthStatus(
+            "web_cache",
+            "skipped",
+            category="tools",
+            message="web cache disabled (PROMPTURE_WEB_CACHE=off)",
+            details=info,
+        )
+    entries = info["entries"]
+    where = info["path"] or "this process only"
+    count = f", {entries} entries" if entries is not None else ""
+    return HealthStatus(
+        "web_cache",
+        "ok",
+        category="tools",
+        active_backend=info["mode"],
+        message=f"{where}{count}",
+        details=info,
+    )
+
+
 def register_web_capabilities() -> None:
     """(Re-)register every web tool health row."""
+    register_capability("web_cache", "tools", check_web_cache, description="Local cache for web results")
     register_capability("web_search", "tools", check_web_search, description="Web search backend chain")
     register_capability("web_fetch", "tools", check_web_fetch, description="URL → Markdown fetch chain")
     for reader in list_readers():

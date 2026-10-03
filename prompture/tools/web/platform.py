@@ -16,6 +16,7 @@ arxiv       export.arxiv.org API                                  relevance-sort
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import asdict
 from typing import Any
 
 import requests
@@ -23,6 +24,7 @@ import requests
 from ...capabilities.backends import BackendChain
 from ...capabilities.errors import BackendUnavailableError
 from . import _common
+from . import cache as web_cache
 from ._common import ensure_error_rules, json_lines, run_command
 from ._types import SearchResponse, SearchResult
 from .html2md import html_to_text
@@ -255,12 +257,39 @@ def platform_search(
     max_results: int = 10,
     kind: str | None = None,
     session: requests.Session | None = None,
+    use_cache: bool = True,
+    cache_ttl: float | None = None,
 ) -> SearchResponse:
     """Like :func:`search_platform` but returns a :class:`SearchResponse` with the route."""
     if not isinstance(query, str) or not query.strip():
         raise ValueError("query must be a non-empty string")
     max_results = max(1, min(int(max_results or 10), 50))
     chain = platform_chain(platform)
+    key = web_cache.make_key("platform", chain.name, query.strip(), max_results, kind)
+    stored = web_cache.get(key) if use_cache else None
+    if stored is not None:
+        value, age = stored
+        return SearchResponse(
+            query=value.get("query", ""),
+            results=[SearchResult(**r) for r in value.get("results", [])],
+            served_by=value.get("served_by", ""),
+            route=web_cache.mark_cached(value.get("route"), age),
+        )
+    response = _platform_search_live(chain, query, max_results=max_results, kind=kind, session=session)
+    if use_cache and response.results:
+        ttl = cache_ttl if cache_ttl is not None else web_cache.ttl_for("platform")
+        web_cache.put(key, asdict(response), ttl)
+    return response
+
+
+def _platform_search_live(
+    chain: Any,
+    query: str,
+    *,
+    max_results: int,
+    kind: str | None,
+    session: requests.Session | None,
+) -> SearchResponse:
     kwargs: dict[str, Any] = {"max_results": max_results, "session": session}
     if kind:
         kwargs["kind"] = kind
@@ -283,6 +312,7 @@ def search_platform(
     max_results: int = 10,
     kind: str | None = None,
     session: requests.Session | None = None,
+    use_cache: bool = True,
 ) -> list[SearchResult]:
     """Search inside a platform.
 
@@ -294,4 +324,6 @@ def search_platform(
             Hacker News: ``story`` (default), ``comment`` or ``all``.
         session: Optional ``requests.Session``.
     """
-    return platform_search(platform, query, max_results=max_results, kind=kind, session=session).results
+    return platform_search(
+        platform, query, max_results=max_results, kind=kind, session=session, use_cache=use_cache
+    ).results
