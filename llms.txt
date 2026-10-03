@@ -1,0 +1,55 @@
+# Prompture
+
+> Python library and CLI that gives agents working capabilities: call and compare LLMs with structured (JSON / Pydantic) output, search and read the web with zero keys, transcribe and summarize video/audio, research with citations, mount MCP servers and CLI tools, and report exactly what works on this machine and how to fix what doesn't. Install with `pip install prompture`.
+
+Model strings are `provider/model` (e.g. `openai/gpt-4o-mini`, `claude/claude-haiku-4-5`, `ollama/llama3.1:8b`). Every capability has a keyless default, fails over across backends, and reports which backend served it (`route["served_by"]`, `route["fallback"]`). Agents accept tool specs such as `tools=["web:all", "mcp:exa", "pack:finance", "cli:gh"]`.
+
+## Start here
+
+- [Agent install guide](docs/agent-install.md): install, run doctor, offer extras, configure only what the user picks
+- [Agent update guide](docs/agent-update.md): check-update, upgrade, re-run doctor
+- [Agent skill](prompture/skill/data/SKILL.md): standing rules and routing table (`prompture skill install`)
+- [README](README.md): full feature tour
+
+## CLI
+
+- `prompture doctor [--live] [--json] [--only providers|tools|media|mcp|binaries]`: health, active backend and exact fix per capability (schema `prompture.doctor/1`)
+- `prompture research "question" [--depth quick|standard|deep] [--json]`: cited multi-source report
+- `prompture transcribe <url|file> [--summary] [--out file]`: timestamped transcript
+- `prompture mcp add|list|remove|test|import|enable|disable`: named MCP servers
+- `prompture setup`, `prompture configure KEY [VALUE]`, `prompture reset`: credentials and profiles (all take `--dry-run`)
+- `prompture check-update`, `prompture watch`: update awareness and scheduled health
+- `prompture skill install|uninstall|show`: the bundled agent skill
+- `prompture serve`: OpenAI-compatible server
+
+## Capability references
+
+- [Web search and research](prompture/skill/data/references/search.md): `web_search`, `search_platform`, `ResearchAgent`
+- [Reading URLs](prompture/skill/data/references/web.md): `read_url` readers, `web_fetch`, URL safety
+- [Media](prompture/skill/data/references/media.md): `transcribe`, `summarize_media`, STT provider privacy
+- [Models](prompture/skill/data/references/models.md): `extract_with_model`, `Agent`, `Conversation`, `resilient`
+- [MCP](prompture/skill/data/references/mcp.md): presets, registry, `${ENV}` secrets
+- [Finance, news, places packs](prompture/skill/data/references/finance.md)
+- [Developer sources and CLI tools](prompture/skill/data/references/dev.md): GitHub, HN, arXiv, PyPI, npm, `gh`, `yt-dlp`
+
+## Modules
+
+- `prompture.extraction`: `ask_for_json`, `extract_and_jsonify`, `extract_with_model`, `stepwise_extract_with_model`
+- `prompture.agents`: `Agent`, `Conversation`, `DeepAgent`, `ToolRegistry`
+- `prompture.drivers`: one driver per provider; `get_driver_for_model("provider/model")`
+- `prompture.resilience`: `resilient()`, `classify_error`, combos and virtual models
+- `prompture.capabilities`: `BackendChain`, `probe_command`, `HealthStatus`, `safe_get`, `normalize_public_http_url`
+- `prompture.tools.web`: `web_search`, `web_fetch`, `read_url`, `search_platform`, `WebToolkit`
+- `prompture.media.understand`: `transcribe`, `summarize_media`
+- `prompture.mcp`: MCP client/server and `hub` (`MCPHub`, `resolve_mcp_tools`)
+- `prompture.tools.cli`, `prompture.tools.packs`: `CLITool`, domain packs
+- `prompture.research`: `ResearchAgent`, `research_tool`
+- `prompture.doctor`: `check_all()` → `DoctorReport`
+- `prompture.infra`: settings, credentials store, environment detection, updates, discovery
+- `prompture.gateway`: OpenAI / Anthropic / Responses wire formats
+
+## Optional
+
+- [Multimodal drivers](docs/MULTIMODAL.md): image, video, TTS, STT, embeddings
+- [Integrations](docs/INTEGRATIONS.md)
+- [Breaking changes](BREAKING_CHANGES.md)
