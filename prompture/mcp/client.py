@@ -15,10 +15,15 @@ from ..agents.tools_schema import ToolDefinition, ToolRegistry
 
 __all__ = [
     "fetch_mcp_tool_definitions",
+    "http_session",
     "load_mcp_registry",
     "mcp_tool_to_definition",
     "stdio_session",
 ]
+
+#: Default seconds for HTTP connect/write; long-lived SSE reads get ``sse_read_timeout``.
+DEFAULT_HTTP_TIMEOUT = 30.0
+DEFAULT_SSE_READ_TIMEOUT = 300.0
 
 
 def _extract_content(result: Any) -> Any:
@@ -89,5 +94,78 @@ async def stdio_session(command: str, args: list[str] | None = None, env: dict[s
     ClientSession, StdioServerParameters, stdio_client = _require_client()
     params = StdioServerParameters(command=command, args=args or [], env=env)
     async with stdio_client(params) as (read, write), ClientSession(read, write) as session:
+        await session.initialize()
+        yield session
+
+
+def _require_http_client() -> tuple[Any, Any]:
+    """Return ``(ClientSession, streamable_http module)`` or raise with an install hint."""
+    try:
+        from mcp import ClientSession
+        from mcp.client import streamable_http
+    except ImportError as exc:  # pragma: no cover - optional dep
+        raise RuntimeError(
+            "The MCP HTTP client requires the 'mcp' package. Install it with: pip install prompture[mcp]"
+        ) from exc
+    return ClientSession, streamable_http
+
+
+@asynccontextmanager
+async def _http_transport(
+    module: Any,
+    url: str,
+    headers: dict[str, str] | None,
+    timeout: float,
+    sse_read_timeout: float,
+):
+    """Open a streamable-HTTP transport across ``mcp`` SDK generations.
+
+    Newer SDKs expose ``streamable_http_client(url, http_client=...)`` and take
+    headers/timeouts from a pre-built HTTP client; older ones expose
+    ``streamablehttp_client(url, headers=..., timeout=...)``. Both yield a tuple
+    whose first two items are the read and write streams.
+    """
+    new_style = getattr(module, "streamable_http_client", None)
+    if new_style is not None:
+        from mcp.shared import _httpx_utils as http_utils
+
+        http_lib = getattr(http_utils, "httpx2", None) or getattr(http_utils, "httpx", None)
+        client_timeout = http_lib.Timeout(timeout, read=sse_read_timeout) if http_lib is not None else None
+        client = http_utils.create_mcp_http_client(headers=headers or None, timeout=client_timeout)
+        async with client, new_style(url, http_client=client) as streams:
+            yield streams[0], streams[1]
+        return
+    legacy = module.streamablehttp_client
+    async with legacy(url, headers=headers or None, timeout=timeout, sse_read_timeout=sse_read_timeout) as streams:
+        yield streams[0], streams[1]
+
+
+@asynccontextmanager
+async def http_session(
+    url: str,
+    headers: dict[str, str] | None = None,
+    timeout: float = DEFAULT_HTTP_TIMEOUT,
+    *,
+    sse_read_timeout: float = DEFAULT_SSE_READ_TIMEOUT,
+):
+    """Async context manager yielding an initialized MCP ``ClientSession`` over streamable HTTP.
+
+    Args:
+        url: The server's MCP endpoint (e.g. ``https://mcp.example.com/mcp``).
+        headers: Extra request headers (``Authorization`` etc.). Resolve any
+            secrets before calling; values are sent as given.
+        timeout: Seconds for connect/write operations.
+        sse_read_timeout: Seconds a server-sent event stream may stay idle.
+
+    Example::
+
+        async with http_session("https://mcp.example.com/mcp") as session:
+            reg = await load_mcp_registry(session)
+    """
+    ClientSession, module = _require_http_client()
+    async with (
+        _http_transport(module, url, headers, timeout, sse_read_timeout) as (read, write),
+        ClientSession(read, write) as session,
+    ):
         await session.initialize()
         yield session
