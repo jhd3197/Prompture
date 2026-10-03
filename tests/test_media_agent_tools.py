@@ -121,11 +121,13 @@ class TestRegistration:
             "generate_music",
             "resume_media_job",
             "list_media_models",
+            "transcribe_media",
+            "summarize_media",
         }
 
     def test_register_into_registry(self):
         reg = register_media_tools(ToolRegistry())
-        assert len(reg) == 6
+        assert len(reg) == 8
         td = reg.get("generate_image")
         assert td.parameters["required"] == ["model", "prompt"]
         assert "aspect_ratio" in td.parameters["properties"]

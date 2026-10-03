@@ -45,6 +45,39 @@ print(person.name)  # Maria
 > | `ollama/llama3.1:8b`, … (local) | no extra needed | — (set `OLLAMA_HOST` if non-default) |
 > | everything in one go | `pip install "prompture[all]"` | provider-specific |
 
+## Agents That Can Search, Read, Watch and Listen
+
+Prompture also gives agents working capabilities. **Web search and reading
+need no API key at all**; keys only raise their limits and quality. Model
+calls, transcription and some packs use the keys you already have, and
+`prompture doctor` tells you exactly what's missing.
+
+```python
+from prompture import Agent
+
+agent = Agent(
+    "openai/gpt-4o-mini",
+    tools=["web:all", "pack:dev", "mcp:exa"],   # search, read any URL, transcribe, GitHub/HN/arXiv, MCP
+    system_prompt="Cite every fact with a URL you opened.",
+)
+print(agent.run("Summarize https://youtu.be/<id> and find related papers").output)
+```
+
+```bash
+prompture doctor                               # what works on this machine and how to fix the rest
+prompture research "What changed in Python 3.13?" --depth quick   # cited multi-source report
+prompture transcribe talk.mp3 --summary        # timestamped transcript + key points
+prompture mcp add --preset exa                 # mount MCP servers by name
+prompture skill install                        # teach your coding agent all of this
+```
+
+- **Web:** keyless search, fetch and readers for YouTube, GitHub, Hacker News, arXiv, Wikipedia, feeds and podcasts
+- **Fails over instead of failing:** search, fetch and the readers try the next backend on auth, quota or rate-limit errors and tell you which one served the result
+- **Cached locally:** repeat searches and static pages come back instantly; weather, prices and news expire in minutes, papers and transcripts in days
+- **Safe by default:** public URLs only, size caps, secret scrubbing, and audio never goes to a second provider without your consent
+
+Full guide: [Capabilities](#capabilities).
+
 ## Prompture Desk: Usage in Your Tray
 
 **See what your LLM calls cost, live, from your tray.** [Prompture Desk](https://github.com/jhd3197/Prompture-Desk) tracks tokens and spend per provider and project, rate-limit headroom, balances, and your coding tools (Claude Code, Codex, …). Windows, macOS and Linux.
@@ -77,7 +110,7 @@ No setup: Desk runs `prompture companion` (Prompture 1.13+) on localhost for you
 **Agents, tools, RAG**
 - Stateful conversations with sync + async support
 - Function calling and streaming across providers, with prompt-based simulation for models without native tool use
-- Drop-in tools: sandboxed `python_execute` (Tukuy), `web_search` (Tavily / Serper / Brave / SearXNG)
+- Drop-in tools: sandboxed `python_execute` (Tukuy) plus the [capability layer](#capabilities) below
 - `DeepAgent` with planning, virtual filesystem, sub-agents, and auto-summarization — no LangChain
 - Full RAG stack — loaders, chunkers, vector stores, hybrid dense+BM25 retrieval, end-to-end `RAGPipeline` — see [RAG](#rag)
 
@@ -85,6 +118,15 @@ No setup: Desk runs `prompture companion` (Prompture 1.13+) on localhost for you
 - `PromptInjectionDetector` + `PIIRedactor` for input-side defense
 - `RefusalDetector` / `RefusalEvaluator` for cross-provider alignment scoring
 - `generate_qa_dataset()` — synthetic JSONL datasets ready for Unsloth, Axolotl, TRL
+
+**Capabilities** — see [Capabilities](#capabilities)
+- Keyless `web_search`, `web_fetch` and `read_url` (YouTube, GitHub, HN, arXiv, Wikipedia, feeds, podcasts), with failover across keyed providers
+- Local web cache with content-aware lifetimes: minutes for weather, prices and news, days for papers and transcripts
+- `transcribe` / `summarize_media` for video, podcasts and audio, with timestamped key points
+- `ResearchAgent` / `prompture research` — cited multi-source reports within fetch, token, cost and time budgets
+- MCP hub, wrapped CLI tools (`gh`, `yt-dlp`) and domain packs (finance, news, dev, places), mounted by name: `tools=["mcp:exa", "pack:finance", "cli:gh"]`
+- `prompture doctor` — what works on this machine (providers, tools, media, MCP servers, binaries), which backend is active, and the exact fix for anything that isn't
+- `prompture setup` with an owner-only credential store and profiles; `prompture skill install` teaches coding agents to use all of it
 
 **Ops**
 - Resilient routing — `resilient()` retries transient errors, honors `Retry-After`, rotates API keys, trips circuit breakers and fails over across models; every response records who served it — see [Resilient Routing](#resilient-routing)
@@ -127,6 +169,9 @@ use.
 | `airllm` | AirLLM local inference | `pip install prompture[airllm]` |
 | `bedrock` | AWS Bedrock driver (`boto3`) | `pip install prompture[bedrock]` |
 | `sandbox` | Sandboxed Python execution tool (`tukuy`) | `pip install prompture[sandbox]` |
+| `web` | Feed reader, YouTube transcripts, article extraction for the [web tools](#web-tools-zero-keys-required) | `pip install prompture[web]` |
+| `media` | `yt-dlp` for video/podcast [transcription](#media-understanding-transcripts-and-summaries) | `pip install prompture[media]` |
+| `mcp` | [MCP hub](#mcp-hub) client and server | `pip install prompture[mcp]` |
 
 ### RAG — the easy path
 
@@ -1357,21 +1402,14 @@ Runnable example: `python examples/python_sandbox_example.py`.
 
 ### Web search
 
-`WebSearchTool` ships a ready-to-register `web_search` tool with four
-interchangeable backends:
-
-| Provider   | Env var                | Notes                                    |
-|------------|------------------------|------------------------------------------|
-| `tavily`   | `TAVILY_API_KEY`       | Default. AI-friendly snippets + answer.  |
-| `serper`   | `SERPER_API_KEY`       | Google Search API wrapper.               |
-| `brave`    | `BRAVE_SEARCH_API_KEY` | Independent index.                       |
-| `searxng`  | `SEARXNG_ENDPOINT`     | Self-hosted metasearch, no key required. |
+Web search works with no keys. See [Web tools](#web-tools-zero-keys-required)
+for the full set (fetch, URL readers, platform search) and the fallback order.
 
 ```python
 from prompture import Agent, ToolRegistry, WebSearchTool
 
 registry = ToolRegistry()
-WebSearchTool().register_on(registry)   # auto-pick from env
+WebSearchTool().register_on(registry)   # keyed providers first, keyless Exa last
 
 agent = Agent(
     "openai/gpt-4o",
@@ -1381,12 +1419,9 @@ agent = Agent(
 print(agent.run("What's new in LangChain this month?").output)
 ```
 
-Override the backend per call site by passing `provider="serper"` (or
-`brave`/`searxng`).  Results come back as Markdown so the LLM can cite
-each hit inline; Tavily's synthesised answer (when available) is
-prepended.
-
-Runnable example: `python examples/web_search_agent_example.py`.
+`WebSearchTool(provider="serper")` pins a single provider (`tavily`, `exa`,
+`serper`, `brave`, `jina`, `searxng`, `exa_mcp`). Runnable example:
+`python examples/web_search_agent_example.py`.
 
 ### Deep Agents
 
@@ -1941,13 +1976,182 @@ All extraction functions return a consistent structure:
 }
 ```
 
+## Capabilities
+
+Prompture also gives agents working capabilities — search, read, watch,
+listen, call external tools — and tells you what works on this machine. Each
+one works with nothing configured, improves as keys are added, fails over
+instead of failing, and reports its own health.
+
+### Doctor
+
+```bash
+prompture doctor                       # table: capability, status, active backend, message, fix
+prompture doctor --only providers -v   # every provider, including unconfigured ones
+prompture doctor --live                # cheap real calls (model lists), never a paid generation
+prompture doctor --json                # stable "prompture.doctor/1" schema for agents
+```
+
+Offline by default: no network, no writes. Binary checks actually run the
+binary, so a stale `yt-dlp` shim left by a Python upgrade shows as `broken`
+with a reinstall hint. Python: `from prompture.doctor import check_all`.
+
+### Web tools (zero keys required)
+
+```python
+from prompture import Agent
+from prompture.tools.web import web_search, web_fetch, read_url, search_platform
+
+resp = web_search("latest CPython release", max_results=3)
+print(resp.to_markdown())                                # ... served by exa_mcp
+page = web_fetch("https://example.com", max_chars=20000) # Jina reader, then direct; page with start=
+video = read_url("https://youtu.be/<id>")                # transcript
+repos = search_platform("github", "web scraping", kind="repositories")
+
+agent = Agent("openai/gpt-4o", tools=["web:all"])
+```
+
+| Capability | Chain (first available wins, failures move on) |
+|---|---|
+| `web_search` | `tavily` ▸ `exa` ▸ `serper` ▸ `brave` ▸ `jina` ▸ `searxng` ▸ `exa_mcp` (keyless) |
+| `web_fetch` | `jina_reader` (keyless) ▸ `direct` (safe GET + HTML to Markdown) |
+| `read_url` | YouTube, GitHub, Hacker News, arXiv, Wikipedia, podcasts, RSS/Atom readers ▸ `web_fetch` |
+| `search_platform` | YouTube (`yt-dlp`), GitHub, Hacker News (Algolia), arXiv |
+
+- Auth, quota and rate-limit errors fail over immediately; timeouts and 5xx
+  retry once. Every result reports `route["served_by"]` and `route["fallback"]`.
+- Reorder with `PROMPTURE_SEARCH_PROVIDERS` / `PROMPTURE_FETCH_BACKENDS`
+  (unknown names are ignored; unlisted backends keep their place).
+- Only public URLs: private, loopback, link-local and metadata addresses are
+  refused, redirects are re-checked per hop, bodies are size-capped and
+  challenge pages move to the next backend.
+
+**Local cache.** Results are cached in `~/.prompture/cache/web_cache.db`, so a
+repeated search or page comes back instantly, even from another process. Each
+entry lives as long as that kind of content stays true:
+
+| Content | Lifetime |
+|---|---|
+| Searches about weather, prices, scores, news, "today", or `recency_days <= 1` | 10 min |
+| Fast-moving pages (Hacker News, Reddit, X, status pages), GitHub issues/PRs | 10 min |
+| Feeds | 15 min |
+| Platform search (GitHub, HN, arXiv, YouTube) | 30 min |
+| Ordinary pages / searches within `recency_days <= 7` | 1 h |
+| Other searches | 6 h |
+| Wikipedia, podcast episodes | 1 day |
+| Papers, PDFs, DOIs, commit-pinned GitHub files, YouTube transcripts | 7 days |
+
+Cached results say so (`route["cached"]`, `cache_age_s`, and "cached 3 min
+ago" in the Markdown footer). Errors and empty results are never stored. Pass
+`use_cache=False` or `cache_ttl=<seconds>` per call, set
+`PROMPTURE_WEB_CACHE=memory|off` to change the store, and
+`clear_web_cache()` or `prompture reset` to empty it.
+
+### Media understanding: transcripts and summaries
+
+```python
+from prompture.media.understand import transcribe, summarize_media
+
+t = transcribe("https://example.com/episode.mp3")   # URL or local file
+print(t.to_markdown())                              # [00:01:05] ...
+s = summarize_media(t, model="openai/gpt-4o-mini")
+```
+
+`auto` uses the first configured STT key (Groq ▸ OpenAI ▸ ElevenLabs). Audio
+never goes to a second provider unless you pass
+`allow_provider_fallback=True`. Long media is downmixed and split into
+10-minute chunks with `ffmpeg`; video/podcast pages need `yt-dlp`. CLI:
+`prompture transcribe <url|file> [--summary] [--out x.json]`.
+
+### Research agent
+
+```bash
+prompture research "What changed in Python 3.13?" --depth quick --json
+```
+
+```python
+from prompture.research import ResearchAgent, ResearchBudget
+report = ResearchAgent("openai/gpt-4o-mini", budget=ResearchBudget(max_fetches=6, max_cost=0.05)).run("...")
+print(report.to_markdown())
+```
+
+Plans sub-questions, searches the web plus GitHub/HN/arXiv/YouTube in
+parallel, reads the top pages and writes an answer whose citations point only
+at pages it actually opened, with coverage gaps and conflicting claims.
+Fetch, token, cost and wall-clock budgets are enforced. Other agents can use
+it as a tool: `tools=[research_tool(depth="quick")]`.
+
+### MCP hub
+
+```bash
+prompture mcp add --preset exa         # keyless web search server
+prompture mcp add search --url https://host/mcp --header 'Authorization=Bearer ${SEARCH_TOKEN}'
+prompture mcp list | test | remove | import --from cursor
+```
+
+```python
+agent = Agent("openai/gpt-4o-mini", tools=["mcp:exa"])
+```
+
+Servers live in `~/.prompture/mcp.json` and `./.prompture/mcp.json` (project
+wins). Secrets are stored only as `${ENV}` references. Sessions are pooled,
+tools are prefixed `<server>__<tool>`, and each call lands in the usage
+ledger.
+
+### CLI tools and domain packs
+
+```python
+agent = Agent("openai/gpt-4o", tools=["cli:gh", "pack:finance", "pack:dev"])
+```
+
+- `cli:gh` (repo/issue/PR read + search, `gh api` GET-only), `cli:yt-dlp`, or
+  your own read-only commands in `.prompture/tools.yaml`. No shell, only
+  declared subcommands, flag-injection guards, timeouts and output caps.
+- Packs: `finance` (Finnhub, CoinGecko), `news` (NewsAPI, feeds), `dev`
+  (GitHub, HN, arXiv, PyPI, npm), `places` (Google Maps, OpenCage, country
+  data). Tools without their key are left out; doctor shows which env var to set.
+
+### Setup and credentials
+
+```bash
+prompture setup                          # wizard: providers, keys (validated live), default model, proxy
+prompture configure OPENAI_API_KEY       # prompted, hidden
+prompture configure --list               # names + masked values
+prompture reset --dry-run
+```
+
+Keys live in `~/.prompture/credentials.yaml` (owner-only, created on first
+write); environment variables and `.env` always win. Profiles via
+`--profile` / `PROMPTURE_PROFILE`. Proxies: `PROMPTURE_PROXY` or
+`PROMPTURE_<BACKEND>_PROXY`. Every mutating command takes `--dry-run`.
+
+### Agent skill and updates
+
+```bash
+prompture skill install --target claude    # or --target project / --target path --path DIR
+prompture check-update                     # one PyPI call, cached 24 h
+prompture watch                            # offline doctor + update check for cron (exit 1 = broken)
+```
+
+The skill teaches coding agents the standing rules (run doctor first,
+announce the backend, follow the fallback chain) and routes them to
+per-capability references. For agents setting Prompture up from scratch, see
+[docs/agent-install.md](docs/agent-install.md); [llms.txt](llms.txt) maps
+the library for LLMs.
+
 ## CLI
 
 ```bash
-prompture run <spec-file>
+prompture doctor | setup | configure | reset          # health and credentials
+prompture research | transcribe                       # capabilities
+prompture mcp add|list|test|remove|import             # MCP hub
+prompture skill install | check-update | watch        # agents and updates
+prompture serve | hub | companion                     # servers
+prompture run <spec-file>                             # spec-driven cross-model suites
 ```
 
-Run spec-driven extraction suites for cross-model comparison.
+`prompture --help` lists every command; `python -m prompture` works when the
+script isn't on PATH.
 
 ## OpenAI-Compatible Server
 

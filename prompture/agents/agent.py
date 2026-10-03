@@ -263,7 +263,7 @@ class Agent(Generic[DepsType]):
         model: str = "",
         *,
         driver: Driver | None = None,
-        tools: list[Callable[..., Any]] | ToolRegistry | None = None,
+        tools: list[Callable[..., Any] | ToolDefinition | str] | ToolRegistry | None = None,
         system_prompt: str | Persona | Callable[..., str] | None = None,
         output_type: type[BaseModel] | None = None,
         max_iterations: int = 10,
@@ -329,8 +329,13 @@ class Agent(Generic[DepsType]):
         if isinstance(tools, ToolRegistry):
             self._tools = tools
         elif tools is not None:
-            for fn in tools:
-                self._tools.register(fn)
+            from ..tools.named import expand_tool_specs
+
+            for fn in expand_tool_specs(tools):
+                if isinstance(fn, ToolDefinition):
+                    self._tools.add(fn)
+                else:
+                    self._tools.register(fn)
 
         self._lifecycle = AgentState.idle
         self._stop_requested = False

@@ -1,12 +1,28 @@
 import contextlib
 import json
 import shlex
+import sys
 
 import click
 
 from ..drivers import OllamaDriver, get_driver
 from .formatters import format_table
 from .runner import run_suite_from_spec
+
+
+def _tolerate_unencodable_output() -> None:
+    """Replace characters the console can't encode instead of crashing.
+
+    Piped output on Windows defaults to cp1252, which has no ``→`` or ``✓``.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None and getattr(stream, "errors", "strict") in ("strict", "surrogateescape"):
+            with contextlib.suppress(Exception):
+                reconfigure(errors="replace")
+
+
+_tolerate_unencodable_output()
 
 
 @click.group()
@@ -569,3 +585,33 @@ def memory_rm(note_id: str, project: str | None) -> None:
         raise click.ClickException(f"{len(matches)} notes match {note_id!r} in {name}.")
     store.delete(name, matches[0].id)
     click.echo(f"Deleted {matches[0].id[:8]}.")
+
+
+# Capability-layer commands live in their own modules so the CLI stays
+# importable when an optional piece is missing; each exposes ``COMMANDS``.
+_COMMAND_MODULES = (
+    "doctor_cmd",
+    "setup_cmd",
+    "mcp_cmd",
+    "transcribe_cmd",
+    "research_cmd",
+    "skill_cmd",
+)
+
+
+def _register_command_modules() -> None:
+    import importlib
+
+    for name in _COMMAND_MODULES:
+        qualified = f"{__package__}.{name}"
+        try:
+            module = importlib.import_module(qualified)
+        except ModuleNotFoundError as exc:
+            if exc.name != qualified:  # a real import bug inside the module
+                raise
+            continue
+        for command in getattr(module, "COMMANDS", ()):
+            cli.add_command(command)
+
+
+_register_command_modules()

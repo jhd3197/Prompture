@@ -17,12 +17,17 @@ __all__ = ["build_mcp_server", "register_tools", "serve"]
 
 
 def _require_fastmcp() -> Any:
+    # mcp 1.x ships FastMCP; mcp 2.x renamed it MCPServer with the same
+    # constructor name argument, add_tool() and run(transport=...).
     try:
         from mcp.server.fastmcp import FastMCP
-    except ImportError as exc:  # pragma: no cover - optional dep
-        raise RuntimeError(
-            "The MCP server requires the 'mcp' package. Install it with: pip install prompture[mcp]"
-        ) from exc
+    except ImportError:
+        try:
+            from mcp.server.mcpserver import MCPServer as FastMCP
+        except ImportError as exc:  # pragma: no cover - optional dep
+            raise RuntimeError(
+                "The MCP server requires the 'mcp' package. Install it with: pip install prompture[mcp]"
+            ) from exc
     return FastMCP
 
 

@@ -501,6 +501,39 @@ class TestGetModelConfig:
         assert config["context_window"] is None
         assert config["max_output_tokens"] is None
 
+    @pytest.mark.parametrize(
+        ("provider", "model", "expected"),
+        [
+            # GPT-6 family rejects max_tokens with a 400 (Unsupported parameter).
+            ("openai", "gpt-6-astra", "max_completion_tokens"),
+            ("openai", "gpt-6-luna", "max_completion_tokens"),
+            ("openai", "gpt-6.1-sol", "max_completion_tokens"),
+            ("openai", "openai/gpt-6-astra", "max_completion_tokens"),
+            ("openai", "gpt-5.5-mini", "max_completion_tokens"),
+            ("openai", "gpt-10", "max_completion_tokens"),
+            ("openai", "o1", "max_completion_tokens"),
+            ("openai", "o3-mini", "max_completion_tokens"),
+            # Azure serves the same models under the same rule.
+            ("azure", "gpt-6-astra", "max_completion_tokens"),
+            ("azure", "gpt-5.5", "max_completion_tokens"),
+            # Older models and other providers keep the legacy parameter.
+            ("openai", "gpt-4o", "max_tokens"),
+            ("openai", "gpt-4.1-mini", "max_tokens"),
+            ("openai", "omni-moderation-latest", "max_tokens"),
+            ("azure", "gpt-4o", "max_tokens"),
+            ("openrouter", "openai/gpt-6-astra", "max_tokens"),
+            ("groq", "gpt-6-astra", "max_tokens"),
+        ],
+    )
+    def test_default_tokens_param_by_generation(self, provider, model, expected):
+        """Without a KB entry, the output-tokens parameter is picked by model generation."""
+        from prompture.infra.cost_mixin import CostMixin
+
+        with patch("prompture.infra.model_rates.get_model_capabilities", return_value=None):
+            config = CostMixin()._get_model_config(provider, model)
+
+        assert config["tokens_param"] == expected
+
     def test_unknown_model_defaults(self):
         """Unknown model gets default values."""
         from prompture.infra.cost_mixin import CostMixin

@@ -42,6 +42,8 @@ from .redaction import (
     PIIRedactor,
     RedactionResult,
     redact_pii,
+    scrub_secrets,
+    scrub_url_credentials,
 )
 
 __all__ = [
@@ -54,4 +56,6 @@ __all__ = [
     "RedactionResult",
     "is_prompt_injection",
     "redact_pii",
+    "scrub_secrets",
+    "scrub_url_credentials",
 ]

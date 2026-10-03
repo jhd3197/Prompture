@@ -932,6 +932,7 @@ class Router:
             conn = http.client.HTTPConnection(url.hostname or "", url.port, timeout=UPSTREAM_TIMEOUT)
         error: str | None = None
         handed_off = False
+        stored = False
         try:
             target = url.path + (f"?{query}" if query else "")
             conn.request(method, target, body=raw or None, headers=headers)
@@ -960,8 +961,11 @@ class Router:
             if not _streams(resp):
                 data = resp.read()
                 sniffer.feed(data, stream=False)
-                if capture is not None:
-                    capture.extend(data)
+                if capture is not None and req is not None and error is None and resp.status == 200:
+                    # Store before the client has the body: it may send the next,
+                    # near-identical request the moment it reads the last byte.
+                    self._store_answer(tool, req, resp.status, content_type, data, sniffer.finish())
+                    stored = True
                 handler.send_header("Content-Length", str(len(data)))
                 handler.end_headers()
                 handler.wfile.write(data)
@@ -1003,23 +1007,28 @@ class Router:
                     )
                 usage = sniffer.finish()
                 self._finish(req, usage, error)
-                if capture and not error and status_code == 200:
-                    self.answers.store(
-                        tool.id,
-                        tool.dialect,
-                        req.kind,
-                        req.body,
-                        status=status_code,
-                        content_type=content_type,
-                        data=bytes(capture),
-                        usage={
-                            "input_tokens": usage.input_tokens,
-                            "output_tokens": usage.output_tokens,
-                            "cache_read_tokens": usage.cache_read_tokens,
-                            "cache_write_tokens": usage.cache_write_tokens,
-                        },
-                        model=usage.model,
-                    )
+                if capture and not error and status_code == 200 and not stored:
+                    self._store_answer(tool, req, status_code, content_type, bytes(capture), usage)
+
+    def _store_answer(
+        self, tool: Tool, req: _Request, status: int, content_type: str, data: bytes, usage: Usage
+    ) -> None:
+        self.answers.store(
+            tool.id,
+            tool.dialect,
+            req.kind,
+            req.body,
+            status=status,
+            content_type=content_type,
+            data=data,
+            usage={
+                "input_tokens": usage.input_tokens,
+                "output_tokens": usage.output_tokens,
+                "cache_read_tokens": usage.cache_read_tokens,
+                "cache_write_tokens": usage.cache_write_tokens,
+            },
+            model=usage.model,
+        )
 
     # -- route to a Prompture model -------------------------------------------
 

@@ -27,6 +27,22 @@ def pytest_addoption(parser):
 
 
 @pytest.fixture(autouse=True)
+def _isolated_web_cache(tmp_path, monkeypatch):
+    """Keep the web cache per-test and in memory.
+
+    It defaults to a SQLite file in the developer's REAL ``~/.prompture``,
+    and a result cached by one test would answer the next test's request.
+    """
+    from prompture.tools.web import cache as web_cache
+
+    monkeypatch.setenv("PROMPTURE_WEB_CACHE", "memory")
+    monkeypatch.setenv("PROMPTURE_WEB_CACHE_PATH", str(tmp_path / "web_cache.db"))
+    web_cache._reset_for_tests()
+    yield
+    web_cache._reset_for_tests()
+
+
+@pytest.fixture(autouse=True)
 def _isolated_usage_tracking(tmp_path, monkeypatch):
     """Point usage tracking at a per-test temp dir.
 

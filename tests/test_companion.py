@@ -143,6 +143,30 @@ class TestServer:
         assert set(body["features"]) == {"live", "limits", "spend", "alerts", "tools", "activity", "recent", "shutdown"}
         assert body["capabilities"]["coding_tools"] is False and body["capabilities"]["activity"] is True
 
+    def test_info_carries_the_cached_doctor_summary(self, server, monkeypatch):
+        import prompture.doctor as doctor
+
+        fake = {
+            "schema": "prompture.doctor.summary/1",
+            "state": "ready",
+            "worst": "missing",
+            "ok": True,
+            "counts": {"ok": 3, "missing": 1},
+            "by_category": {"binaries": "missing", "providers": "ok"},
+        }
+        calls = []
+
+        def summary(**kwargs):
+            calls.append(kwargs)
+            return fake
+
+        monkeypatch.setattr(doctor, "capabilities_summary", summary)
+        srv, _ = server
+        _, body = _get(f"{srv.url}/v1/companion/info", token=None)
+        assert body["capabilities"]["health"] is True
+        assert body["health"] == fake
+        assert calls == [{"wait": False}]  # the public endpoint never blocks on probes
+
     def test_activity_merges_ledger_and_coding_tools_by_local_day(self, tmp_path):
         from prompture.companion import CodingToolSource
         from prompture.infra.coding_agent_readers import ContinueReader
