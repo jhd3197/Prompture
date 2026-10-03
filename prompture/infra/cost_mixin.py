@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import re
 from typing import Any
 
 
@@ -294,18 +295,30 @@ def _default_tokens_param(provider: str, model: str) -> str:
     """Pick the per-call output-tokens parameter when the capabilities KB
     has no entry for ``model``.
 
-    OpenAI's GPT-5 family and the o-series reasoning models (o1, o3, o4)
-    only accept ``max_completion_tokens`` — sending ``max_tokens`` 400s
-    with ``Unsupported parameter``. We name-detect those so brand-new
-    model IDs (e.g. ``gpt-5.4-mini``) work without waiting for a KB
-    update. Everything else stays on the legacy ``max_tokens`` default.
+    OpenAI's GPT-5 and later families (``gpt-5.5``, ``gpt-6-astra``,
+    ``gpt-6.1-sol``, …) and the o-series reasoning models only accept
+    ``max_completion_tokens`` — sending ``max_tokens`` 400s with
+    ``Unsupported parameter``. We name-detect them by generation rather
+    than by prefix so the next family works without a KB update. Azure
+    serves the same models under the same rule. Everything else stays on
+    the legacy ``max_tokens`` default.
     """
-    if provider != "openai":
+    if provider not in _COMPLETION_TOKENS_PROVIDERS:
         return "max_tokens"
     name = (model or "").split("/")[-1].lower()
-    if name.startswith("gpt-5") or name.startswith("o1") or name.startswith("o3") or name.startswith("o4"):
+    if _REASONING_MODEL_RE.match(name):
+        return "max_completion_tokens"
+    gpt = _GPT_GENERATION_RE.match(name)
+    if gpt and int(gpt.group(1)) >= 5:
         return "max_completion_tokens"
     return "max_tokens"
+
+
+_COMPLETION_TOKENS_PROVIDERS = frozenset({"openai", "azure"})
+# "gpt-5", "gpt-5.5-mini", "gpt-6-astra", "gpt-6.1-sol", "gpt-10" → generation number.
+_GPT_GENERATION_RE = re.compile(r"^gpt-(\d+)(?![\d])")
+# o-series reasoning models: o1, o3-mini, o4-mini, …
+_REASONING_MODEL_RE = re.compile(r"^o\d+(?:$|[-.])")
 
 
 class AudioCostMixin:
