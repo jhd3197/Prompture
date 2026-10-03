@@ -24,7 +24,6 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import inspect
-import os
 import time
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
@@ -198,7 +197,11 @@ class BackendChain(Generic[T]):
             names = [n.lower() for n in only]
             by_name = {b.name.lower(): b for b in self.backends}
             return [by_name[n] for n in names if n in by_name]
-        preferred = parse_override(os.environ.get(self.override_env)) if self.override_env else []
+        preferred: list[str] = []
+        if self.override_env:
+            from ..infra.credentials import get_config_value
+
+            preferred = parse_override(get_config_value(self.override_env))
         return order_backends(self.backends, preferred)
 
     def get(self, name: str) -> Any | None:

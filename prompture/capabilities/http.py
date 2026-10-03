@@ -9,7 +9,6 @@ or ``PROMPTURE_PROXY``.
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import urljoin
@@ -34,13 +33,19 @@ _REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
 
 
 def resolve_proxy(backend: str | None = None) -> str | None:
-    """Return the proxy URL for *backend*: ``PROMPTURE_<BACKEND>_PROXY`` then ``PROMPTURE_PROXY``."""
+    """Return the proxy URL for *backend*: ``PROMPTURE_<BACKEND>_PROXY`` then ``PROMPTURE_PROXY``.
+
+    Each name is looked up in the environment first, then in the credential
+    store (``prompture configure PROMPTURE_PROXY ...``).
+    """
+    from ..infra.credentials import get_config_value
+
     if backend:
-        specific = os.environ.get(f"PROMPTURE_{backend.upper().replace('-', '_')}_PROXY")
-        if specific:
+        specific = get_config_value(f"PROMPTURE_{backend.upper().replace('-', '_')}_PROXY")
+        if specific and specific.strip():
             return specific.strip()
-    general = os.environ.get("PROMPTURE_PROXY")
-    return general.strip() if general else None
+    general = get_config_value("PROMPTURE_PROXY")
+    return general.strip() if general and general.strip() else None
 
 
 def proxies_for(backend: str | None = None) -> dict[str, str] | None:

@@ -1,5 +1,49 @@
+import logging
+from typing import Any
+
 from pydantic import SecretStr
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic.fields import FieldInfo
+from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
+
+logger = logging.getLogger("prompture.settings")
+
+
+class CredentialStoreSettingsSource(PydanticBaseSettingsSource):
+    """Settings source backed by ``~/.prompture/credentials.yaml``.
+
+    Values come from the active profile (``PROMPTURE_PROFILE``, falling back to
+    ``default``) and are matched to fields case-insensitively, like env vars.
+    A missing, unreadable or malformed store contributes nothing — it never
+    breaks ``Settings()``.
+    """
+
+    def __init__(self, settings_cls: type[BaseSettings]) -> None:
+        super().__init__(settings_cls)
+        self._values = self._load()
+
+    @staticmethod
+    def _load() -> dict[str, str]:
+        try:
+            from .credentials import CredentialStore
+
+            return {k.lower(): v for k, v in CredentialStore().effective().items()}
+        except Exception as exc:
+            logger.warning("Ignoring credential store while loading settings: %s", exc)
+            return {}
+
+    def get_field_value(self, field: FieldInfo, field_name: str) -> tuple[Any, str, bool]:
+        value = self._values.get(field_name.lower())
+        return value, field_name, False
+
+    def __call__(self) -> dict[str, Any]:
+        data: dict[str, Any] = {}
+        if not self._values:
+            return data
+        for field_name, field in self.settings_cls.model_fields.items():
+            value, key, _ = self.get_field_value(field, field_name)
+            if value is not None:
+                data[key] = value
+        return data
 
 
 class Settings(BaseSettings):
@@ -223,8 +267,8 @@ class Settings(BaseSettings):
     mxbai_embedding_model: str = "mxbai-embed-large-v1"
     mxbai_rerank_model: str = "mxbai-rerank-large-v1"
 
-    # GitHub Models — used through the openai_compatible driver
-    # (profile=github_models). A GitHub Personal Access Token.
+    # GitHub Personal Access Token — GitHub Models (openai_compatible
+    # driver, profile=github_models) and the web GitHub reader / search.
     github_token: str | None = None  # nosec B105
 
     # Model rates cache
@@ -238,6 +282,9 @@ class Settings(BaseSettings):
     #   "local_only"       — only the local KB; missing models report no cost
     #   "models_dev_only"  — only models.dev (legacy behaviour)
     pricing_source: str = "local_first"
+
+    # Default model chosen by ``prompture setup`` ("provider/model").
+    prompture_default_model: str | None = None
 
     # Usage tracking
     usage_tracking_enabled: bool = False
@@ -258,9 +305,6 @@ class Settings(BaseSettings):
     brave_search_api_key: str | None = None
     searxng_endpoint: str | None = None
     exa_api_key: str | None = None  # nosec B105
-
-    # Readers / platform search (prompture.tools.web)
-    github_token: str | None = None  # nosec B105
 
     # Coding-agent CLI binary overrides (env var: CODING_AGENT_BIN_<UPPER>)
     coding_agent_bin_claude: str | None = None
@@ -284,6 +328,24 @@ class Settings(BaseSettings):
         env_prefix="",
         protected_namespaces=(),  # Allow model_* field names (e.g., model_rates_ttl_days)
     )
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        """Precedence: init kwargs > env vars > ``.env`` > secrets dir > credential store > defaults."""
+        return (
+            init_settings,
+            env_settings,
+            dotenv_settings,
+            file_secret_settings,
+            CredentialStoreSettingsSource(settings_cls),
+        )
 
 
 settings = Settings()
