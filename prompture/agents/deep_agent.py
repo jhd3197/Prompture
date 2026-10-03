@@ -351,8 +351,10 @@ def _normalise_user_tools(
         return []
     if isinstance(tools, ToolRegistry):
         return list(tools.definitions)
+    from ..tools.named import expand_tool_specs
+
     out: list[ToolDefinition] = []
-    for item in tools:
+    for item in expand_tool_specs(tools):
         if isinstance(item, ToolDefinition):
             out.append(item)
         elif callable(item):

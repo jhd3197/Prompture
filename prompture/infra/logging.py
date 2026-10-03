@@ -29,6 +29,23 @@ from typing import Any
 from .._internal.json_encoder import PromptureJSONEncoder
 
 
+class SecretScrubbingFilter(logging.Filter):
+    """Scrub URL credentials, API keys and bearer tokens from log messages."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        from ..security.redaction import scrub_secrets
+
+        try:
+            message = record.getMessage()
+        except Exception:  # malformed %-args: leave the record alone
+            return True
+        scrubbed = scrub_secrets(message)
+        if scrubbed != message:
+            record.msg = scrubbed
+            record.args = None
+        return True
+
+
 class JSONFormatter(logging.Formatter):
     """Emit each log record as a single JSON line.
 
@@ -76,6 +93,8 @@ def configure_logging(
         handler.setFormatter(logging.Formatter("%(asctime)s %(name)s %(levelname)s %(message)s"))
 
     handler.setLevel(level)
+    if not any(isinstance(f, SecretScrubbingFilter) for f in handler.filters):
+        handler.addFilter(SecretScrubbingFilter())
 
     # Avoid adding duplicate handlers when called multiple times.
     logger.handlers = [h for h in logger.handlers if h is not handler]

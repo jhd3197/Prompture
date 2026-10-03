@@ -257,6 +257,10 @@ class Settings(BaseSettings):
     serper_api_key: str | None = None
     brave_search_api_key: str | None = None
     searxng_endpoint: str | None = None
+    exa_api_key: str | None = None  # nosec B105
+
+    # Readers / platform search (prompture.tools.web)
+    github_token: str | None = None  # nosec B105
 
     # Coding-agent CLI binary overrides (env var: CODING_AGENT_BIN_<UPPER>)
     coding_agent_bin_claude: str | None = None

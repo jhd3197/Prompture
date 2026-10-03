@@ -371,3 +371,89 @@ def redact_pii(text: str) -> str:
     if _default_redactor is None:
         _default_redactor = PIIRedactor()
     return _default_redactor.redact(text).text
+
+
+# ---------------------------------------------------------------------------
+# Credential scrubbing for logs, errors and tool output
+# ---------------------------------------------------------------------------
+
+# Query / fragment parameter names whose values are secrets.
+_SECRET_PARAM_NAMES = (
+    "token",
+    "access_token",
+    "refresh_token",
+    "id_token",
+    "auth",
+    "authorization",
+    "api_key",
+    "apikey",
+    "api-key",
+    "key",
+    "secret",
+    "client_secret",
+    "password",
+    "passwd",
+    "pwd",
+    "sig",
+    "signature",
+    "session",
+    "sessionid",
+    "session_id",
+    "sid",
+    "cookie",
+    "code",
+    "x-amz-signature",
+    "x-amz-credential",
+    "x-amz-security-token",
+    "x-goog-signature",
+    "x-goog-credential",
+)
+
+# scheme://user[:pass]@host — keep the scheme and host, drop the userinfo.
+_URL_USERINFO_RE = re.compile(r"(?P<scheme>\b[a-z][a-z0-9+.\-]{1,15}://)(?P<userinfo>[^\s/@?#]+)@", re.IGNORECASE)
+
+# Bare user:pass@host (no scheme), e.g. a proxy spec in an error message.
+_BARE_USERINFO_RE = re.compile(
+    r"(?<![\w/:@.\-])(?P<userinfo>[A-Za-z0-9._%+\-]+:[^\s/@]+)@(?P<host>[A-Za-z0-9.\-]+\.[A-Za-z0-9\-]+|\d{1,3}(?:\.\d{1,3}){3})"
+)
+
+_SECRET_PARAM_RE = re.compile(
+    r"(?P<sep>[?&#;])(?P<name>" + "|".join(re.escape(n) for n in _SECRET_PARAM_NAMES) + r")=(?P<value>[^&#\s\"'<>]+)",
+    re.IGNORECASE,
+)
+
+_BEARER_RE = re.compile(r"\b(Bearer|Basic|Token)\s+[A-Za-z0-9._~+/\-]{8,}=*", re.IGNORECASE)
+
+_SCRUBBED = "***"
+
+
+def scrub_url_credentials(text: str) -> str:
+    """Remove credentials embedded in URLs from *text*.
+
+    Scrubs URL userinfo (``https://user:pass@host`` → ``https://***@host``),
+    bare ``user:pass@host`` specs, and the values of secret-looking query or
+    fragment parameters (``?token=…``, ``&api_key=…``, ``#access_token=…``,
+    signed-URL signatures, session ids). Everything else is left intact so
+    the message stays useful for debugging.
+    """
+    if not text:
+        return text
+    out = _URL_USERINFO_RE.sub(lambda m: f"{m.group('scheme')}{_SCRUBBED}@", text)
+    out = _BARE_USERINFO_RE.sub(lambda m: f"{_SCRUBBED}@{m.group('host')}", out)
+    out = _SECRET_PARAM_RE.sub(lambda m: f"{m.group('sep')}{m.group('name')}={_SCRUBBED}", out)
+    return out
+
+
+def scrub_secrets(text: str) -> str:
+    """Scrub URL credentials, well-known API key shapes and bearer tokens.
+
+    Use this on anything that may reach a log line, an exception message or
+    a tool result shown to a model.
+    """
+    if not text:
+        return text
+    out = scrub_url_credentials(text)
+    for _, pat in _API_KEY_PATTERNS:
+        out = pat.sub(_SCRUBBED, out)
+    out = _BEARER_RE.sub(lambda m: f"{m.group(1)} {_SCRUBBED}", out)
+    return out

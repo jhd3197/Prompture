@@ -49,7 +49,9 @@ class DriverHTTPError(_DriverError):
         provider: str | None = None,
         retryable: bool | None = None,
     ) -> None:
-        super().__init__(message)
+        from ..security.redaction import scrub_secrets
+
+        super().__init__(scrub_secrets(message))
         self.status_code = status_code
         self.provider = provider
         if retryable is None:
