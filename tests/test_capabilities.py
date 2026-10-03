@@ -542,3 +542,92 @@ def test_chain_classification_survives_rule_reset():
         assert result.served_by == "next"
     finally:
         register_capability_error_rules()
+
+
+# ---------------------------------------------------------------------------
+# DNS rebinding: the connected address is checked, not just the resolved one
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def loopback_server():
+    import http.server
+    import threading
+
+    hits: list[str] = []
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            hits.append(self.path)
+            body = b"internal secret"
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args):
+            pass
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    yield server.server_address[1], hits
+    server.shutdown()
+    server.server_close()
+
+
+def _rebinding_dns(monkeypatch):
+    """Validation sees a public address; the actual connection resolves to loopback."""
+    import socket
+
+    real_getaddrinfo = socket.getaddrinfo
+
+    def fake_getaddrinfo(host, port, *args, **kwargs):
+        if host == "rebind.example.com":
+            host = "127.0.0.1"
+        return real_getaddrinfo(host, port, *args, **kwargs)
+
+    monkeypatch.setattr("prompture.capabilities.url_safety.resolve_host", lambda host, port=None: [PUBLIC_IP])
+    monkeypatch.setattr(socket, "getaddrinfo", fake_getaddrinfo)
+
+
+def test_dns_rebinding_to_loopback_is_refused_before_sending(monkeypatch, loopback_server):
+    port, hits = loopback_server
+    _rebinding_dns(monkeypatch)
+    monkeypatch.delenv("PROMPTURE_WEB_ALLOW_PRIVATE", raising=False)
+    with pytest.raises(UnsafeURLError, match="non-public address 127.0.0.1"):
+        safe_get(f"http://rebind.example.com:{port}/admin")
+    assert hits == []  # no request bytes reached the internal service
+
+
+def test_dns_rebinding_guard_applies_to_caller_sessions(monkeypatch, loopback_server):
+    import requests
+
+    port, hits = loopback_server
+    _rebinding_dns(monkeypatch)
+    with pytest.raises(UnsafeURLError):
+        safe_get(f"http://rebind.example.com:{port}/", session=requests.Session())
+    assert hits == []
+
+
+def test_allow_private_still_reaches_local_services(monkeypatch, loopback_server):
+    port, hits = loopback_server
+    _rebinding_dns(monkeypatch)
+    resp = safe_get(f"http://rebind.example.com:{port}/ok", allow_private=True)
+    assert resp.text == "internal secret" and hits == ["/ok"]
+
+
+def test_logging_filter_scrubs_tracebacks():
+    import logging
+    import sys
+
+    from prompture.infra.logging import SecretScrubbingFilter
+
+    try:
+        raise RuntimeError("upstream failed: https://bob:hunter2@api.example.com/?api_key=sekrit")
+    except RuntimeError:
+        record = logging.LogRecord("prompture", logging.ERROR, __file__, 1, "call failed", None, sys.exc_info())
+    SecretScrubbingFilter().filter(record)
+    rendered = logging.Formatter("%(message)s").format(record)
+    assert "Traceback" in rendered
+    assert "hunter2" not in rendered and "sekrit" not in rendered

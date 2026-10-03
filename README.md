@@ -47,8 +47,10 @@ print(person.name)  # Maria
 
 ## Agents That Can Search, Read, Watch and Listen
 
-Prompture also gives agents working capabilities, and **none of them need an
-API key to start**. Keys only raise limits and quality.
+Prompture also gives agents working capabilities. **Web search and reading
+need no API key at all**; keys only raise their limits and quality. Model
+calls, transcription and some packs use the keys you already have, and
+`prompture doctor` tells you exactly what's missing.
 
 ```python
 from prompture import Agent
@@ -70,7 +72,7 @@ prompture skill install                        # teach your coding agent all of 
 ```
 
 - **Web:** keyless search, fetch and readers for YouTube, GitHub, Hacker News, arXiv, Wikipedia, feeds and podcasts
-- **Fails over, never just fails:** every capability tries the next backend on auth, quota or rate-limit errors and tells you which one served the result
+- **Fails over instead of failing:** search, fetch and the readers try the next backend on auth, quota or rate-limit errors and tell you which one served the result
 - **Cached locally:** repeat searches and static pages come back instantly; weather, prices and news expire in minutes, papers and transcripts in days
 - **Safe by default:** public URLs only, size caps, secret scrubbing, and audio never goes to a second provider without your consent
 

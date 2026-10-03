@@ -7,9 +7,12 @@ description: Use when you need to search the web, read a URL (pages, PDFs, YouTu
 
 Prompture gives agents working capabilities — search, read, watch, listen,
 call models and external tools — and tells you exactly what works on this
-machine and how to fix what doesn't. Everything has a keyless default; keys
-only raise limits or quality. Every capability fails over to the next backend
-instead of failing, and says which backend served it.
+machine and how to fix what doesn't. Web search and URL reading have keyless
+defaults; keys only raise their limits or quality. Model calls, transcription,
+packs and MCP servers need the provider, key, package or binary that doctor
+names. Where a capability has more than one permitted backend, it fails over
+and reports which one served the request and whether a fallback happened.
+Transcription never moves audio to a second provider without explicit consent.
 
 Install: `pip install prompture` (extras: `prompture[web]`, `prompture[media]`,
 `prompture[mcp]`, `prompture[all]`).
