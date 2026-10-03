@@ -580,6 +580,10 @@ class CLITool:
             secrets never have to live in a config file. Values are never logged.
         install_hint: Fix hint when the binary is missing.
         prefix: Tool-name prefix (defaults to *name* with ``-`` → ``_``).
+        trusted: Whether health checks may execute the binary. Tools from a
+            project's ``.prompture/tools.*`` are untrusted: a repository could
+            point ``command`` / ``version_args`` at arbitrary code, so doctor
+            and ``cli:all`` only locate their executable and never run it.
     """
 
     name: str
@@ -593,6 +597,7 @@ class CLITool:
     env: dict[str, str] = field(default_factory=dict)
     install_hint: str | None = None
     prefix: str | None = None
+    trusted: bool = True
 
     def __post_init__(self) -> None:
         if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,40}", self.name or ""):
@@ -730,10 +735,16 @@ class CLITool:
         return _ON_WINDOWS and path.lower().endswith((".bat", ".cmd"))
 
     def is_active(self) -> bool:
-        """True when the binary exists and its version probe succeeds."""
+        """True when the binary exists and (for trusted tools) its version probe succeeds.
+
+        Untrusted, project-defined tools are never executed here; finding the
+        executable is enough.
+        """
         path = self._resolve()
         if path is None or self._is_batch_launcher(path):
             return False
+        if not self.trusted:
+            return True
         return cached_probe(self.command, self.version_args, hint=self.install_hint).ok
 
     def check(self, live: bool = False) -> HealthStatus:
@@ -750,6 +761,8 @@ class CLITool:
                 fix_hint=f"Point `command` at the real executable for {self.name}.",
                 details={**details, "path": path},
             )
+        if not self.trusted:
+            return self._untrusted_check(row_name, path, details)
         probe = cached_probe(self.command, self.version_args, hint=self.install_hint or install_hint(self.command))
         details.update(path=probe.path, version=probe.version if probe.ok else None, exit_code=probe.exit_code)
         if not probe.ok:
@@ -788,6 +801,35 @@ class CLITool:
             fix_hint=fix,
             details=details,
         )  # type: ignore[arg-type]
+
+    def _untrusted_check(self, row_name: str, path: str | None, details: dict[str, Any]) -> HealthStatus:
+        """Health row for a project-defined tool: locate the executable, never run it."""
+        details.update(path=path, trusted=False)
+        if path is None:
+            return HealthStatus(
+                row_name,
+                "missing",
+                category="tools",
+                message=f"`{self.command}` not found on PATH",
+                fix_hint=self.install_hint or install_hint(self.command),
+                details=details,
+            )
+        _, missing = self._injected_env()
+        fix = None
+        status = "ok"
+        if missing:
+            status = "degraded"
+            fix = "Set " + ", ".join(sorted(set(missing))) + f" (referenced by {self.name} env)."
+            details["missing_env"] = sorted(set(missing))
+        return HealthStatus(
+            row_name,
+            status,  # type: ignore[arg-type]
+            category="tools",
+            active_backend=path,
+            message=f"found at {path}; project-defined, so not executed by health checks",
+            fix_hint=fix,
+            details=details,
+        )
 
     # -- execution ------------------------------------------------------
 

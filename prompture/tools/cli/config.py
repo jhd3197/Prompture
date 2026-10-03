@@ -133,7 +133,9 @@ def load_cli_tools(
 
     Returns:
         Valid tools, earlier files winning on name collisions. Problems are
-        logged and kept for :func:`config_errors`; this never raises.
+        logged and kept for :func:`config_errors`; this never raises. Tools
+        found by the default search outside ``~/.prompture`` (i.e. in a
+        project) are marked untrusted, so health checks never execute them.
     """
     if paths is None:
         files = config_paths(cwd, include_home=include_home)
@@ -155,13 +157,24 @@ def load_cli_tools(
             continue
         parsed, errs = parse_cli_tools(data, source=str(path))
         errors.extend(errs)
+        trusted = paths is not None or _is_user_config(path)
         for tool in parsed:
+            tool.trusted = trusted
             tools.setdefault(tool.name, tool)
     for err in errors:
         logger.warning("CLI tool config: %s", err)
     with _errors_lock:
         _errors[:] = errors
     return list(tools.values())
+
+
+def _is_user_config(path: Path) -> bool:
+    """True for files under the user's own ``~/.prompture`` directory."""
+    try:
+        user_dir = (Path.home() / ".prompture").resolve()
+        return path.resolve().is_relative_to(user_dir)
+    except (OSError, ValueError):
+        return False
 
 
 def config_errors() -> list[str]:
