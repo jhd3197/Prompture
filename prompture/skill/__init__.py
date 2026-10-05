@@ -5,6 +5,8 @@ servers through Prompture.
 :func:`install_skill` copies the bundled skill into an explicit target only:
 
 * ``claude`` — ``~/.claude/skills/prompture/``
+* ``kimi`` — ``~/.kimi-code/skills/prompture/``
+* ``agents`` — ``~/.agents/skills/prompture/`` (shared agent-skills convention)
 * ``project`` — ``./.claude/skills/prompture/`` (current directory)
 * ``path`` — ``<path>/prompture/``
 
@@ -21,7 +23,7 @@ from pathlib import Path
 
 SKILL_NAME = "prompture"
 MARKER_FILE = ".prompture-skill"
-TARGETS = ("claude", "project", "path")
+TARGETS = ("claude", "kimi", "agents", "project", "path")
 
 
 def skill_source_dir() -> Path:
@@ -39,6 +41,10 @@ def resolve_target(target: str = "claude", path: str | os.PathLike[str] | None =
     """Return the skill directory for *target*."""
     if target == "claude":
         return Path.home() / ".claude" / "skills" / SKILL_NAME
+    if target == "kimi":
+        return Path.home() / ".kimi-code" / "skills" / SKILL_NAME
+    if target == "agents":
+        return Path.home() / ".agents" / "skills" / SKILL_NAME
     if target == "project":
         return Path.cwd() / ".claude" / "skills" / SKILL_NAME
     if target == "path":
