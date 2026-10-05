@@ -262,7 +262,9 @@ def delegate(
             "This companion was started with automations off. Restart it with `prompture companion` (they're on by default)."
         )
     if status == 409:
-        raise click.ClickException("The companion is already running a queue — see `prompture delegate-status`.")
+        raise click.ClickException(
+            "The companion is already running a queue — see `prompture delegate-status`, or stop it with `prompture delegate-stop`."
+        )
     if status != 200:
         raise click.ClickException(_detail(run))
     if not wait and not as_json:
@@ -310,6 +312,21 @@ def delegate_resume(wait: bool, timeout: float, as_json: bool) -> None:
         raise SystemExit(code)
 
 
+@click.command("delegate-stop")
+def delegate_stop() -> None:
+    """Stop the queue the companion is running now.
+
+    The running step is cancelled and the run is kept in history as stopped.
+    Use this to abandon a queue that is stuck or no longer wanted, so a new
+    `prompture delegate` can start.
+    """
+    client = _ensure_companion()
+    status, run = client.post("/v1/automations/current/stop")
+    if status != 200:
+        raise click.ClickException(_detail(run))
+    click.echo(f"Stopped run {run.get('id')} ({run.get('project', '')}).")
+
+
 @click.command("delegate-status")
 @click.option("--json", "as_json", is_flag=True, help="Print the queue state as JSON.")
 def delegate_status(as_json: bool) -> None:
@@ -347,4 +364,4 @@ def delegate_status(as_json: bool) -> None:
     click.echo(f"Cost so far: ${run.get('cost_usd') or 0:.4f}")
 
 
-COMMANDS = (delegate, delegate_answer, delegate_resume, delegate_status)
+COMMANDS = (delegate, delegate_answer, delegate_resume, delegate_stop, delegate_status)
