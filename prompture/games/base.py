@@ -209,7 +209,7 @@ class GameHarness:
         self.max_retries = max_retries
         self.system_prompt = system_prompt
         self.options = options or {}
-        self._rng = random.Random(seed)
+        self._rng = random.Random(seed)  # nosec B311 - fallback move choice, not crypto
 
     def __enter__(self) -> GameHarness:
         return self

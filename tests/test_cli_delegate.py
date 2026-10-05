@@ -214,3 +214,11 @@ def test_ensure_companion_reports_a_failed_start():
         pytest.raises(click.ClickException, match="starting one failed"),
     ):
         delegate_cmd._ensure_companion()
+
+
+def test_client_refuses_non_loopback_urls():
+    import click
+
+    with pytest.raises(click.ClickException, match="non-loopback"):
+        delegate_cmd._Companion("http://example.com:8000", "t0ken")
+    assert delegate_cmd._Companion("http://localhost:47811/", "t0ken").url == "http://localhost:47811"

@@ -35,6 +35,8 @@ class _Companion:
     """Tiny stdlib client for the companion's loopback API."""
 
     def __init__(self, url: str, token: str) -> None:
+        if not url.startswith(("http://127.0.0.1:", "http://localhost:")):
+            raise click.ClickException(f"Refusing to send the companion token to a non-loopback URL: {url}")
         self.url = url.rstrip("/")
         self.token = token
 
@@ -50,7 +52,7 @@ class _Companion:
             },
         )
         try:
-            with urllib.request.urlopen(request, timeout=30) as resp:
+            with urllib.request.urlopen(request, timeout=30) as resp:  # nosec B310 - loopback http only, checked in __init__
                 return resp.status, json.loads(resp.read())
         except urllib.error.HTTPError as exc:
             try:

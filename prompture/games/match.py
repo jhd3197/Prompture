@@ -50,7 +50,7 @@ class RandomPlayer:
 
     def __init__(self, game: Game, seed: int | None = None) -> None:
         self.game = game
-        self._rng = random.Random(seed)
+        self._rng = random.Random(seed)  # nosec B311 - random opponent for games, not crypto
 
     def choose(self, state: Any) -> MoveDecision:
         move = self._rng.choice(self.game.legal_moves(state))
