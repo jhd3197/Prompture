@@ -62,6 +62,17 @@ def test_claude_target_uses_home(tmp_path, monkeypatch):
     assert (tmp_path / ".claude" / "skills" / "prompture" / "SKILL.md").exists()
 
 
+def test_kimi_and_agents_targets_use_home(tmp_path, monkeypatch):
+    monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+    install_skill("kimi")
+    assert (tmp_path / ".kimi-code" / "skills" / "prompture" / "SKILL.md").exists()
+    install_skill("agents")
+    assert (tmp_path / ".agents" / "skills" / "prompture" / "SKILL.md").exists()
+    plan = uninstall_skill("agents")
+    assert not (tmp_path / ".agents" / "skills" / "prompture").exists()
+    assert "SKILL.md" in plan.files
+
+
 def test_cli_install_and_show(tmp_path):
     runner = CliRunner()
     result = runner.invoke(skill, ["install", "--target", "path", "--path", str(tmp_path), "--dry-run"])

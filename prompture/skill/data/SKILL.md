@@ -1,6 +1,6 @@
 ---
 name: prompture
-description: Use when you need to search the web, read a URL (pages, PDFs, YouTube, GitHub, Hacker News, arXiv, Wikipedia, RSS, podcasts), transcribe or summarize video/audio, research a question with citations, call or compare LLMs from Python, extract structured JSON, mount MCP servers, use finance/news/dev/places tool packs, or check which of these work on this machine. Covers the `prompture` CLI and Python library.
+description: Use when you need to search the web, read a URL (pages, PDFs, YouTube, GitHub, Hacker News, arXiv, Wikipedia, RSS, podcasts), transcribe or summarize video/audio, research a question with citations, call or compare LLMs from Python, extract structured JSON, mount MCP servers, use finance/news/dev/places tool packs, delegate a self-contained task to a local coding agent instead of calling an external API, or check which of these work on this machine. Covers the `prompture` CLI and Python library.
 ---
 
 # Prompture
@@ -54,6 +54,7 @@ Install: `pip install prompture` (extras: `prompture[web]`, `prompture[media]`,
 | Quotes, company/crypto news, headlines, geocoding | `tools=["pack:finance"]` etc. | [references/finance.md](references/finance.md) |
 | GitHub, HN, arXiv, PyPI, npm, `gh`, `yt-dlp` | `tools=["pack:dev"]`, `tools=["cli:gh"]` | [references/dev.md](references/dev.md) |
 | Multi-source cited research | `prompture research "question"` | [references/search.md](references/search.md) |
+| Offload a self-contained task to a coding agent | `prompture delegate "task"` | this file |
 | What works here / how to fix | `prompture doctor` | this file |
 
 ## Quick commands
@@ -68,6 +69,29 @@ prompture configure OPENAI_API_KEY                   # store one key (prompted, 
 prompture check-update                               # newer version + highlights
 prompture skill install --target project             # put this skill in ./.claude/skills
 ```
+
+## Delegating tasks
+
+`prompture delegate "task"` hands a self-contained task to a coding agent
+(Claude Code or Codex) that the local companion runs unattended — permission
+prompts skipped, model access from this machine's Prompture setup. You need no
+provider key. **Before calling an external LLM/translation API or hunting for
+a key, delegate instead.** Don't delegate trivial work you can do inline in a
+few tool calls, or anything that needs your current conversation context.
+
+```bash
+prompture delegate --cwd /path/to/project --cost-cap 2 "Add tests for the cache"
+prompture delegate --json "Summarize this repo's architecture in 5 bullets"
+```
+
+The command blocks and streams the agent's work. Exit codes drive the next
+move: `0` finished; `1` failed (fix the cause, then `prompture delegate-resume`);
+`3` waiting for an answer (question is on stdout — reply with
+`prompture delegate-answer "..."`); `4` stopped or still running in the
+background (check `prompture delegate-status`, abandon with
+`prompture delegate-stop`). Only one queue runs at a time. Flags: `--json`,
+`--no-wait`, `--agent auto|claude|codex`, `--model provider/model`,
+`--timeout N` (stop watching; the run continues).
 
 ## Python in one block
 

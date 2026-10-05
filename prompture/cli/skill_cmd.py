@@ -6,10 +6,10 @@ import click
 
 _TARGET = click.option(
     "--target",
-    type=click.Choice(["claude", "project", "path"]),
+    type=click.Choice(["claude", "kimi", "agents", "project", "path"]),
     default="claude",
     show_default=True,
-    help="claude = ~/.claude/skills, project = ./.claude/skills, path = --path DIR.",
+    help="claude = ~/.claude/skills, kimi = ~/.kimi-code/skills, agents = ~/.agents/skills, project = ./.claude/skills, path = --path DIR.",
 )
 _PATH = click.option(
     "--path", "path", default=None, type=click.Path(file_okay=False), help="Directory for --target path."

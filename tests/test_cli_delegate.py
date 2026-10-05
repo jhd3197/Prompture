@@ -171,6 +171,32 @@ def test_delegate_status_shows_the_queue(comp, agent, tmp_path):
     agent.gate.set()
 
 
+def test_delegate_stop_abandons_a_queue(comp, agent, tmp_path):
+    agent.gate.clear()
+    invoke("delegate", "--cwd", str(tmp_path), "--no-wait", "stuck", "task")
+
+    stopped = invoke("delegate-stop")
+    assert stopped.exit_code == 0, stopped.output
+    assert "Stopped run" in stopped.output
+
+    shown = invoke("delegate-status", "--json")
+    import json
+
+    state = json.loads(shown.output)
+    assert state["current"] is None or state["current"]["status"] == "stopped"
+
+    # a new queue can start right away
+    agent.gate.set()
+    again = invoke("delegate", "--cwd", str(tmp_path), "fresh", "task")
+    assert again.exit_code == 0, again.output
+
+
+def test_delegate_stop_without_a_queue(comp, agent, tmp_path):
+    result = invoke("delegate-stop")
+    assert result.exit_code != 0
+    assert "No queue is running" in result.output
+
+
 def test_delegate_answer_without_a_question(comp, agent, tmp_path):
     result = invoke("delegate-answer", "hello")
 

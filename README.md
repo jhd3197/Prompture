@@ -1959,6 +1959,7 @@ prompture delegate --agent codex --cost-cap 2 "Add tests for the pricing cache"
 prompture delegate-status                  # what's the queue doing now
 prompture delegate-answer "Use SQLite"     # reply when a run ends on a question
 prompture delegate-resume                  # carry on after a failure or cost cap
+prompture delegate-stop                    # abandon the queue so a new one can start
 ```
 
 Exit codes: `0` finished, `1` failed, `3` waiting for an answer, `4` stopped
