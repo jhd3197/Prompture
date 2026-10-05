@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from ..._internal.json_encoder import PromptureJSONEncoder
 from ...drivers import get_driver_for_model
@@ -32,6 +32,78 @@ if TYPE_CHECKING:
     from ..conversation import Conversation
 
 logger = logging.getLogger("prompture.agents.deep.summarizer")
+
+#: Upper bound for the ``"auto"`` threshold.  Large windows still summarise
+#: here, so a long run does not pay for a nearly full window on every call.
+DEFAULT_SUMMARIZE_CEILING = 80_000
+_SUMMARIZE_FLOOR = 2_000
+_WINDOW_RATIO = 0.75
+
+
+def resolve_summarize_threshold(
+    model: str,
+    *,
+    max_output_tokens: int | None = None,
+    ceiling: int = DEFAULT_SUMMARIZE_CEILING,
+) -> int:
+    """Prompt size at which to summarise, from the model's context window.
+
+    The smallest of ``ceiling``, three quarters of the window, and the window minus the
+    output reservation (``max_output_tokens`` when given, else the model's own
+    output limit).  An unknown window, or an output reservation that leaves
+    no room, falls back to ``ceiling`` rather than summarising every turn.
+    """
+    if "/" not in model:
+        return ceiling
+    provider, model_id = model.split("/", 1)
+    try:
+        from ...infra.model_rates import get_model_capabilities
+
+        caps = get_model_capabilities(provider, model_id)
+    except Exception:  # pragma: no cover - capability lookup is best-effort
+        logger.debug("summarizer: capability lookup failed for %s", model, exc_info=True)
+        caps = None
+    window = getattr(caps, "context_window", None)
+    if not window:
+        return ceiling
+    candidates = [ceiling, int(window * _WINDOW_RATIO)]
+    reserve = max_output_tokens if max_output_tokens is not None else getattr(caps, "max_output_tokens", None)
+    if reserve is not None and 0 <= reserve < window:
+        candidates.append(window - reserve)
+    return max(_SUMMARIZE_FLOOR, min(candidates))
+
+
+def max_output_option(options: dict[str, Any] | None) -> int | None:
+    """The output-token reservation set in driver options, if any."""
+    for key in ("max_completion_tokens", "max_tokens", "max_output_tokens"):
+        value = (options or {}).get(key)
+        if isinstance(value, int) and value >= 0:
+            return value
+    return None
+
+
+class _Threshold:
+    """Lazily resolved summarisation threshold shared by both middlewares."""
+
+    def _init_threshold(
+        self, threshold_tokens: int | Literal["auto"], model: str, max_output_tokens: int | None
+    ) -> None:
+        self._threshold: int | None = None if threshold_tokens == "auto" else int(threshold_tokens)
+        self._threshold_model = model
+        self._threshold_max_output = max_output_tokens
+
+    @property
+    def threshold_tokens(self) -> int:
+        if self._threshold is None:
+            self._threshold = resolve_summarize_threshold(
+                self._threshold_model, max_output_tokens=self._threshold_max_output
+            )
+            logger.debug("summarizer: auto threshold for %r is %d tokens", self._threshold_model, self._threshold)
+        return self._threshold
+
+    @threshold_tokens.setter
+    def threshold_tokens(self, value: int) -> None:
+        self._threshold = int(value)
 
 
 def _stringify_message(msg: dict[str, Any]) -> str:
@@ -68,13 +140,15 @@ def _stringify_message(msg: dict[str, Any]) -> str:
     return f"[{role}]\n{content}"
 
 
-class SummarizationMiddleware:
+class SummarizationMiddleware(_Threshold):
     """Hooked into ``Conversation._before_turn``.
 
     Attributes:
         threshold_tokens: Fire when the last prompt's token count exceeds
             this value. Counted using the last driver response's
-            ``prompt_tokens``.
+            ``prompt_tokens``. ``"auto"`` derives it from the model's
+            context window on first use (see
+            :func:`resolve_summarize_threshold`).
         keep_last_n: Number of most-recent messages preserved verbatim.
         state: Shared :class:`DeepAgentState` for recording events.
         summariser: Driver used to perform the summarisation call.
@@ -82,12 +156,15 @@ class SummarizationMiddleware:
 
     def __init__(
         self,
-        threshold_tokens: int,
+        threshold_tokens: int | Literal["auto"],
         keep_last_n: int,
         state: DeepAgentState,
         summariser: Driver | str,
+        *,
+        model: str = "",
+        max_output_tokens: int | None = None,
     ) -> None:
-        self.threshold_tokens = int(threshold_tokens)
+        self._init_threshold(threshold_tokens, model, max_output_tokens)
         self.keep_last_n = max(2, int(keep_last_n))
         self.state = state
         if isinstance(summariser, str):
@@ -201,17 +278,20 @@ class SummarizationMiddleware:
         return text.strip(), dict(meta)
 
 
-class AsyncSummarizationMiddleware:
+class AsyncSummarizationMiddleware(_Threshold):
     """Async counterpart of :class:`SummarizationMiddleware`."""
 
     def __init__(
         self,
-        threshold_tokens: int,
+        threshold_tokens: int | Literal["auto"],
         keep_last_n: int,
         state: DeepAgentState,
         summariser: Any,  # AsyncDriver or str
+        *,
+        model: str = "",
+        max_output_tokens: int | None = None,
     ) -> None:
-        self.threshold_tokens = int(threshold_tokens)
+        self._init_threshold(threshold_tokens, model, max_output_tokens)
         self.keep_last_n = max(2, int(keep_last_n))
         self.state = state
         if isinstance(summariser, str):

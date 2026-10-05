@@ -220,18 +220,41 @@ Returns the result formatted per output_mode.\
 # --- Summarization ---------------------------------------------------
 
 SUMMARIZER_SYSTEM_PROMPT = """\
-You are a precise conversation summariser. Read the conversation \
-fragment provided and produce a concise summary that preserves:
+You compress the early part of an agent's working session so the agent \
+can continue with less context. The agent will continue from your summary \
+alone, so anything you leave out is gone.
 
-1. The user's original task or question.
-2. Key decisions made by the agent.
-3. Findings, evidence, and intermediate results — including specific \
-facts, names, numbers, and source URLs cited.
-4. Outstanding questions or unfinished subtasks.
+Write the summary under these headings, skipping any that would be empty:
 
-Drop verbatim tool outputs unless they were specifically cited as \
-evidence. Prefer plain prose over bullet points except where structure \
-genuinely helps. Aim for under 500 words.\
+## Task
+What the user asked for, including later changes. Quote short \
+instructions and constraints exactly.
+
+## User messages
+Every user message in order, quoted or closely paraphrased. Corrections \
+and stated preferences matter most.
+
+## Findings
+Facts, numbers, names, IDs, file paths, URLs and sources the work \
+produced. Keep exact values. Keep any artifact:// handles a later step \
+may need to read.
+
+## Actions and decisions
+What the agent did, which tools it used for what, and the choices it \
+made, with the reasons.
+
+## Errors
+What failed, how it was handled, and what should not be retried.
+
+## Open items
+Unanswered questions and unfinished subtasks.
+
+## Current step
+What was in progress at the end of the fragment and the next step it \
+was heading to.
+
+Leave out raw tool output unless a value from it is cited above. Stay \
+under 700 words.\
 """
 
 SUMMARY_PRELUDE = "Earlier in this conversation, the following happened:\n\n"

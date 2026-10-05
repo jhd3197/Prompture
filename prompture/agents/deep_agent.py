@@ -35,7 +35,7 @@ from __future__ import annotations
 import logging
 import warnings
 from collections.abc import Callable, Generator
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel
 
@@ -45,7 +45,7 @@ from ..infra.callbacks import DriverCallbacks
 from .agent import Agent, AgentIterator, LiveAgentResult, StreamedAgentResult
 from .deep.planner import make_write_todos_tool
 from .deep.subagents import make_task_tool
-from .deep.summarizer import SummarizationMiddleware
+from .deep.summarizer import SummarizationMiddleware, max_output_option
 from .deep.vfs import VFS_TOOL_NAMES, make_vfs_tools
 from .deep_prompts import assemble_system_prompt, format_subagent_section
 from .deep_state import DeepAgentResult, DeepAgentState, SubAgentSpec, Todo
@@ -73,7 +73,7 @@ class DeepAgent(Agent):
         enable_planning: bool = True,
         enable_vfs: bool = True,
         enable_summarization: bool = True,
-        summarize_at_tokens: int = 80_000,
+        summarize_at_tokens: int | Literal["auto"] = "auto",
         summarize_keep_last_n: int = 6,
         summarizer_model: str | Driver | None = None,
         initial_files: dict[str, str] | None = None,
@@ -164,6 +164,8 @@ class DeepAgent(Agent):
                 threshold_tokens=summarize_at_tokens,
                 keep_last_n=summarize_keep_last_n,
                 state=self.deep_state,
+                model=model,
+                max_output_tokens=max_output_option(options),
                 summariser=summariser_driver,
             )
             self._before_turn_hook: Callable[..., Any] | None = self._summarizer
@@ -297,7 +299,7 @@ def create_deep_agent(
     enable_planning: bool = True,
     enable_vfs: bool = True,
     enable_summarization: bool = True,
-    summarize_at_tokens: int = 80_000,
+    summarize_at_tokens: int | Literal["auto"] = "auto",
     summarize_keep_last_n: int = 6,
     summarizer_model: str | Driver | None = None,
     initial_files: dict[str, str] | None = None,

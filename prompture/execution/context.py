@@ -740,6 +740,25 @@ class ArtifactStore:
             raise PermissionError(f"Artifact {handle!r} belongs to scope {owner!r} and is not readable from {scope!r}.")
         return value
 
+    def text(self, handle: str, *, scope: str) -> str:
+        """The stored value rendered as text, with the same scope check as :meth:`get`."""
+        with self._lock:
+            entry = self._values.get(handle)
+        if entry is None:
+            raise KeyError(f"Unknown artifact handle {handle!r}")
+        owner, _value, text = entry
+        if owner != scope:
+            raise PermissionError(f"Artifact {handle!r} belongs to scope {owner!r} and is not readable from {scope!r}.")
+        return text
+
+    def clear(self, *, scope: str | None = None) -> None:
+        """Drop every artifact, or only those created under *scope*."""
+        with self._lock:
+            doomed = [h for h, (owner, _v, _t) in self._values.items() if scope is None or owner == scope]
+            for handle in doomed:
+                self._values.pop(handle, None)
+                self._refs.pop(handle, None)
+
     def excerpt(
         self,
         handle: str,
