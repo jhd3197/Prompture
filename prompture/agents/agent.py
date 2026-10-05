@@ -35,7 +35,7 @@ import logging
 import time
 import typing
 from collections.abc import Callable, Generator
-from typing import Any, Generic
+from typing import Any, Generic, Literal
 
 from pydantic import BaseModel
 
@@ -47,6 +47,7 @@ from ..infra.provider_env import ProviderEnvironment
 from ..infra.session import UsageSession
 from .conversation import Conversation
 from .persona import Persona
+from .tool_context import ToolResultPolicy
 from .tools_schema import ToolDefinition, ToolRegistry
 from .types import (
     AgentCallbacks,
@@ -256,6 +257,14 @@ class Agent(Generic[DepsType]):
             instead of wedging the run forever.  ``None`` (default) means
             no timeout.  Can be overridden per call via
             ``options={"tool_timeout": ...}``.
+        tool_result_policy: When a tool result is moved out of context
+            instead of inlined (see :class:`ToolResultPolicy`).  Defaults
+            to offloading results over ~4k tokens, or ~12k per round.
+        defer_tools: Send tool schemas on demand via ``search_tools`` /
+            ``load_tools``.  ``"auto"`` (default) defers once the full
+            schemas would cost more than ~8k tokens.
+        preload_tools: Tools whose schemas are always sent, even when
+            deferring.
     """
 
     def __init__(
@@ -286,6 +295,9 @@ class Agent(Generic[DepsType]):
         skill_config: dict[str, Any] | None = None,
         max_tool_result_length: int | None = None,
         tool_timeout: float | None = None,
+        tool_result_policy: ToolResultPolicy | None = None,
+        defer_tools: bool | Literal["auto"] = "auto",
+        preload_tools: list[str] | None = None,
         max_depth: int = _DEFAULT_MAX_AGENT_DEPTH,
         env: ProviderEnvironment | None = None,
     ) -> None:
@@ -317,6 +329,9 @@ class Agent(Generic[DepsType]):
         self._auto_approve_safe_only = auto_approve_safe_only
         self._skill_config = skill_config
         self._max_tool_result_length = max_tool_result_length
+        self._tool_result_policy = tool_result_policy
+        self._defer_tools = defer_tools
+        self._preload_tools = list(preload_tools) if preload_tools else None
         self._tool_timeout = tool_timeout
         self._conversation: Conversation | None = None
         # The conversation driving the current run.  Tracked separately from
@@ -965,6 +980,11 @@ class Agent(Generic[DepsType]):
             kwargs["before_turn"] = hook
         if self._max_tool_result_length is not None:
             kwargs["max_tool_result_length"] = self._max_tool_result_length
+        if self._tool_result_policy is not None:
+            kwargs["tool_result_policy"] = self._tool_result_policy
+        kwargs["defer_tools"] = self._defer_tools
+        if self._preload_tools:
+            kwargs["preload_tools"] = self._preload_tools
         if self._tool_timeout is not None:
             kwargs["tool_timeout"] = self._tool_timeout
         if self._options:

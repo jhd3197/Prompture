@@ -590,6 +590,7 @@ def memory_rm(note_id: str, project: str | None) -> None:
 # Capability-layer commands live in their own modules so the CLI stays
 # importable when an optional piece is missing; each exposes ``COMMANDS``.
 _COMMAND_MODULES = (
+    "delegate_cmd",
     "doctor_cmd",
     "setup_cmd",
     "mcp_cmd",

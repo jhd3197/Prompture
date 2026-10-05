@@ -39,8 +39,10 @@ mcp = ["mcp>=1.0"]
 # extraction) and video/podcast audio download for transcription.
 web = ["feedparser>=6.0", "youtube-transcript-api>=1.0", "trafilatura>=1.8"]
 media = ["yt-dlp>=2024.8.6"]
+# Chess harness (prompture.games.chess): legal-move menus and motif tags.
+chess = ["chess>=1.10"]
 all = [
-    "prompture[openai,anthropic,google,groq,toon,pandas,sandbox,mcp,web,media]",
+    "prompture[openai,anthropic,google,groq,toon,pandas,sandbox,mcp,web,media,chess]",
 ]
 test = ["pytest>=7.0", "pytest-asyncio>=0.23.0", "prompture[all]"]
 dev = ["pytest>=7.0", "pytest-asyncio>=0.23.0", "ruff>=0.8.0", "prompture[all]"]

@@ -1300,6 +1300,28 @@ conv = Conversation("openai/gpt-4", tools=registry, simulated_tools=False)
 
 The simulation loop describes tools in the system prompt, asks the model to respond with JSON (`tool_call` or `final_answer`), executes tools, and feeds results back — all transparent to the caller.
 
+#### Keeping tools from filling the context window
+
+Two defaults keep large tool setups cheap, in both `Conversation` and `Agent`:
+
+- **Large results are stored, not cut.** A result over ~4k tokens, or a round of parallel results over ~12k tokens together (largest first), is stored and replaced by a short preview and an `artifact://` handle. The model reads what it needs with the built-in `read_tool_result(handle, query=..., offset=...)` tool, which is only offered once something has been stored. Error results are never stored.
+- **Tool schemas load on demand.** When the full schemas would cost more than ~8k tokens, the model gets `search_tools` and `load_tools` instead; loaded tools stay available for the rest of the conversation.
+
+```python
+from prompture import Conversation
+from prompture.agents.tool_context import ToolResultPolicy
+
+conv = Conversation(
+    "openai/gpt-4o",
+    tools=registry,
+    tool_result_policy=ToolResultPolicy(per_call_tokens=4000, batch_tokens=8000),
+    defer_tools="auto",            # True / False to force
+    preload_tools=["get_weather"], # always sent, even when deferring
+)
+```
+
+`max_tool_result_length=None` keeps results whole, and `ToolResultPolicy(offload=False)` restores plain truncation. Stored results live in memory and do not survive `save()` / `load()`. A tool call left without a result (for example a live stream closed mid-round) gets a placeholder result on the next call, so the provider does not reject the history.
+
 ### Live Streaming Tool Calls (any model, including local Ollama)
 
 `Conversation.ask_live` / `Agent.run_live` yields an interleaved event stream — text deltas, tool calls, tool results — *as the model produces them*. This is the "Claude Code feel" where the model narrates between actions instead of buffering everything into one chunk per turn.
@@ -1475,7 +1497,7 @@ agent = create_deep_agent(
     model="openai/gpt-4o",
     tools=[...],
     enable_summarization=True,          # default
-    summarize_at_tokens=80_000,         # default
+    summarize_at_tokens="auto",         # default: min(80k, 75% of window, window - max output)
     summarize_keep_last_n=6,            # default
     summarizer_model="openai/gpt-4o-mini",  # optional, falls back to main model
 )
@@ -1918,6 +1940,31 @@ prompture code-agent claude --auto-approve "Review this package for release bloc
 prompture code-agent codex  --auto-approve "Add tests for the pricing cache"
 prompture code-agent aider  --auto-approve --model gpt-4o "Rename foo to bar across the package"
 ```
+
+#### Delegating a task
+
+`prompture delegate` hands a task to the companion's automation queue instead
+of running the agent in your terminal: the companion (`prompture companion`,
+started for you if it's not running) drives Claude Code or Codex unattended —
+permission prompts skipped, model access from this machine's Prompture setup,
+so the caller needs no provider key. The agent's work streams to stdout, and
+the queue keeps going in the background if you stop watching. This is the
+entry point to give other agents: a delegating LLM can run
+`prompture delegate "…"` and read the result, instead of reaching for its own
+API keys.
+
+```bash
+prompture delegate "Translate docs/guide.md to Spanish"
+prompture delegate --agent codex --cost-cap 2 "Add tests for the pricing cache"
+prompture delegate-status                  # what's the queue doing now
+prompture delegate-answer "Use SQLite"     # reply when a run ends on a question
+prompture delegate-resume                  # carry on after a failure or cost cap
+```
+
+Exit codes: `0` finished, `1` failed, `3` waiting for an answer, `4` stopped
+or still running in the background. `--json` prints the final run as JSON,
+`--no-wait` returns at once, and companion apps (like Prompture Desk) show the
+same queue live.
 
 #### From the server
 

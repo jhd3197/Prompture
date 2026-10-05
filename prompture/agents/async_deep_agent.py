@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 import warnings
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel
 
@@ -20,7 +20,7 @@ from ..infra.callbacks import DriverCallbacks
 from .async_agent import AsyncAgent
 from .deep.planner import make_write_todos_tool
 from .deep.subagents import make_async_task_tool
-from .deep.summarizer import AsyncSummarizationMiddleware
+from .deep.summarizer import AsyncSummarizationMiddleware, max_output_option
 from .deep.vfs import VFS_TOOL_NAMES, make_vfs_tools
 from .deep_agent import _normalise_user_tools, _resolve_persona_text, _upgrade_result
 from .deep_prompts import assemble_system_prompt, format_subagent_section
@@ -47,7 +47,7 @@ class AsyncDeepAgent(AsyncAgent):
         enable_planning: bool = True,
         enable_vfs: bool = True,
         enable_summarization: bool = True,
-        summarize_at_tokens: int = 80_000,
+        summarize_at_tokens: int | Literal["auto"] = "auto",
         summarize_keep_last_n: int = 6,
         summarizer_model: str | AsyncDriver | None = None,
         initial_files: dict[str, str] | None = None,
@@ -126,6 +126,8 @@ class AsyncDeepAgent(AsyncAgent):
                 threshold_tokens=summarize_at_tokens,
                 keep_last_n=summarize_keep_last_n,
                 state=self.deep_state,
+                model=model,
+                max_output_tokens=max_output_option(options),
                 summariser=summariser,
             )
             self._before_turn_hook: Callable[..., Any] | None = self._summarizer
@@ -223,7 +225,7 @@ def create_async_deep_agent(
     enable_planning: bool = True,
     enable_vfs: bool = True,
     enable_summarization: bool = True,
-    summarize_at_tokens: int = 80_000,
+    summarize_at_tokens: int | Literal["auto"] = "auto",
     summarize_keep_last_n: int = 6,
     summarizer_model: str | AsyncDriver | None = None,
     initial_files: dict[str, str] | None = None,

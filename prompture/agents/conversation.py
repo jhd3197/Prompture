@@ -33,12 +33,13 @@ from ..media.image import ImageInput, make_image
 from ..persistence.serialization import export_conversation, import_conversation
 from ..persistence.store import load_from_file, save_to_file
 from .persona import Persona, get_persona
+from .tool_context import ToolContextMixin, ToolResultPolicy, repair_tool_pairs
 from .tools_schema import ToolRegistry
 
 logger = logging.getLogger("prompture.conversation")
 
 
-class Conversation:
+class Conversation(ToolContextMixin):
     """Stateful multi-turn conversation with an LLM.
 
     Maintains a message history across calls so the model can reference
@@ -76,6 +77,9 @@ class Conversation:
         on_model_fallback: Callable[[str, str, Any], None] | None = None,
         env: ProviderEnvironment | None = None,
         before_turn: Callable[[Conversation, int], None] | None = None,
+        tool_result_policy: ToolResultPolicy | None = None,
+        defer_tools: bool | Literal["auto"] = "auto",
+        preload_tools: list[str] | None = None,
     ) -> None:
         if system_prompt is not None and persona is not None:
             raise ValueError("Cannot provide both 'system_prompt' and 'persona'. Use one or the other.")
@@ -130,6 +134,12 @@ class Conversation:
         self._tools = tools or ToolRegistry()
         self._max_tool_rounds = max_tool_rounds
         self._max_tool_result_length = max_tool_result_length
+        self._init_tool_context(
+            max_tool_result_length=max_tool_result_length,
+            tool_result_policy=tool_result_policy,
+            defer_tools=defer_tools,
+            preload_tools=preload_tools,
+        )
         self._simulated_tools = simulated_tools
         self._max_history_messages = max_history_messages
         self._tool_timeout = tool_timeout
@@ -216,6 +226,7 @@ class Conversation:
         """Reset message history (keeps system_prompt and driver)."""
         self._messages.clear()
         self._full_tool_results.clear()
+        self._reset_tool_context()
 
     def request_stop(self) -> None:
         """Request a cooperative stop of the tool loop.
@@ -448,26 +459,6 @@ class Conversation:
             blocks.append({"type": "image", "source": ic})
         return blocks
 
-    def _truncate_tool_result(self, result_str: str) -> str:
-        """Truncate a tool result string if it exceeds the configured limit.
-
-        Returns the original string when no limit is set or the string is
-        within bounds.  Otherwise returns a truncated version with a note
-        indicating the original length.
-        """
-        if self._max_tool_result_length is None:
-            return result_str
-        if len(result_str) <= self._max_tool_result_length:
-            return result_str
-        logger.debug(
-            "Truncating tool result from %d to %d chars",
-            len(result_str),
-            self._max_tool_result_length,
-        )
-        return (
-            result_str[: self._max_tool_result_length] + f"\n\n[... result truncated ({len(result_str):,} chars total)]"
-        )
-
     def _trim_history(self) -> None:
         """Trim history to the sliding window without orphaning tool pairs.
 
@@ -507,11 +498,12 @@ class Conversation:
         timed-out worker thread cannot be killed in Python; it is detached
         (``shutdown(wait=False)``) so the loop moves on.
         """
+        registry = self._dispatch_registry(name)
         if timeout is None:
-            return self._tools.execute(name, arguments)
+            return registry.execute(name, arguments)
         pool = ThreadPoolExecutor(max_workers=1)
         try:
-            future = pool.submit(self._tools.execute, name, arguments)
+            future = pool.submit(registry.execute, name, arguments)
             return future.result(timeout=timeout)
         finally:
             pool.shutdown(wait=False)
@@ -592,6 +584,7 @@ class Conversation:
 
     def _build_messages(self, user_content: str, images: list[ImageInput] | None = None) -> list[dict[str, Any]]:
         """Build the full messages array for an API call."""
+        repair_tool_pairs(self._messages)
         msgs: list[dict[str, Any]] = []
         if self._system_prompt:
             msgs.append({"role": "system", "content": self._system_prompt})
@@ -687,7 +680,6 @@ class Conversation:
         self._stop_requested = False
         self._max_rounds_reached = False
         merged = {**self._options, **(options or {})}
-        tool_defs = self._tools.to_openai_format()
 
         # Build messages including user content
         user_content = self._build_content_with_images(content, images)
@@ -701,6 +693,7 @@ class Conversation:
             self._check_budget()
             if self._run_before_turn():
                 msgs = self._build_messages_raw()
+            tool_defs = self._active_tools().to_openai_format()
             resp = self._driver.generate_messages_with_tools_with_hooks(msgs, tool_defs, merged)
 
             meta = resp.get("meta", {})
@@ -741,17 +734,16 @@ class Conversation:
 
             # Execute each tool call and append results
             timeout = merged.get("tool_timeout", self._tool_timeout)
+            batch: list[tuple[str, str, bool]] = []
             for tc in tool_calls:
-                result_str, _is_error = self._execute_tool_call(tc, timeout)
+                result_str, is_error = self._execute_tool_call(tc, timeout)
 
-                # Preserve full result for step extraction before truncating
+                # Preserve full result for step extraction before shaping
                 self._full_tool_results[tc["id"]] = result_str
+                batch.append((tc["name"], result_str, is_error))
 
-                tool_result_msg: dict[str, Any] = {
-                    "role": "tool",
-                    "tool_call_id": tc["id"],
-                    "content": self._truncate_tool_result(result_str),
-                }
+            for tc, content in zip(tool_calls, self._shape_tool_results(batch), strict=True):
+                tool_result_msg: dict[str, Any] = {"role": "tool", "tool_call_id": tc["id"], "content": content}
                 self._messages.append(tool_result_msg)
                 msgs.append(tool_result_msg)
 
@@ -798,7 +790,6 @@ class Conversation:
         self._stop_requested = False
         self._max_rounds_reached = False
         merged = {**self._options, **(options or {})}
-        tool_defs = self._tools.to_openai_format()
 
         user_content = self._build_content_with_images(content, images)
         self._messages.append({"role": "user", "content": user_content})
@@ -813,6 +804,7 @@ class Conversation:
             self._check_budget()
             if self._run_before_turn():
                 msgs = self._build_messages_raw()
+            tool_defs = self._active_tools().to_openai_format()
             resp = self._driver.generate_messages_with_tools_with_hooks(msgs, tool_defs, merged)
 
             meta = resp.get("meta", {})
@@ -853,6 +845,7 @@ class Conversation:
 
             # Execute each tool and yield events
             timeout = merged.get("tool_timeout", self._tool_timeout)
+            batch: list[tuple[str, str, bool]] = []
             for tc in tool_calls:
                 yield {
                     "type": "tool_call",
@@ -860,10 +853,11 @@ class Conversation:
                     "arguments": tc["arguments"],
                     "id": tc["id"],
                 }
-                result_str, _is_error = self._execute_tool_call(tc, timeout)
+                result_str, is_error = self._execute_tool_call(tc, timeout)
 
                 # Preserve full result for step extraction (parity with _ask_with_tools)
                 self._full_tool_results[tc["id"]] = result_str
+                batch.append((tc["name"], result_str, is_error))
 
                 # Yield the FULL result for UI consumers
                 yield {
@@ -873,12 +867,9 @@ class Conversation:
                     "id": tc["id"],
                 }
 
-                # Truncate before adding to conversation to avoid token overflow
-                tool_result_msg: dict[str, Any] = {
-                    "role": "tool",
-                    "tool_call_id": tc["id"],
-                    "content": self._truncate_tool_result(result_str),
-                }
+            # Shape the round as a whole before it enters history
+            for tc, content in zip(tool_calls, self._shape_tool_results(batch), strict=True):
+                tool_result_msg: dict[str, Any] = {"role": "tool", "tool_call_id": tc["id"], "content": content}
                 self._messages.append(tool_result_msg)
                 msgs.append(tool_result_msg)
 
@@ -960,7 +951,6 @@ class Conversation:
         self._stop_requested = False
         self._max_rounds_reached = False
         merged = {**self._options, **(options or {})}
-        tool_defs = self._tools.to_openai_format()
 
         user_content = self._build_content_with_images(content, images)
         self._messages.append({"role": "user", "content": user_content})
@@ -986,6 +976,7 @@ class Conversation:
             turn_usage: dict[str, Any] = {}
             stop_reason: str = "end_turn"
 
+            tool_defs = self._active_tools().to_openai_format()
             stream = self._driver.generate_messages_with_tools_stream(msgs, tool_defs, merged)
             stream_started = time.perf_counter()
             recorded = False
@@ -1074,18 +1065,16 @@ class Conversation:
                 return
 
             timeout = merged.get("tool_timeout", self._tool_timeout)
+            batch: list[tuple[str, str, bool]] = []
             for tc in pending_tools:
                 result_str, is_error = self._execute_tool_call(tc, timeout)
 
                 self._full_tool_results[tc["id"]] = result_str
+                batch.append((tc["name"], result_str, is_error))
                 yield ToolResult(id=tc["id"], name=tc["name"], output=result_str, is_error=is_error)
 
-                truncated_result = self._truncate_tool_result(result_str)
-                tool_result_msg: dict[str, Any] = {
-                    "role": "tool",
-                    "tool_call_id": tc["id"],
-                    "content": truncated_result,
-                }
+            for tc, content in zip(pending_tools, self._shape_tool_results(batch), strict=True):
+                tool_result_msg: dict[str, Any] = {"role": "tool", "tool_call_id": tc["id"], "content": content}
                 self._messages.append(tool_result_msg)
                 msgs.append(tool_result_msg)
 
@@ -1110,16 +1099,12 @@ class Conversation:
         images: list[ImageInput] | None = None,
     ) -> Iterator[dict[str, Any]]:
         """Simulated tool calling with event emission."""
-        from .simulated_tools import build_tool_prompt, format_tool_result, parse_simulated_response
+        from .simulated_tools import format_tool_result, parse_simulated_response
 
         self._stop_requested = False
         self._max_rounds_reached = False
         merged = {**self._options, **(options or {})}
-        tool_prompt = build_tool_prompt(self._tools)
-
-        augmented_system = tool_prompt
-        if self._system_prompt:
-            augmented_system = f"{self._system_prompt}\n\n{tool_prompt}"
+        augmented_system = self._simulated_system_prompt()
 
         user_content = self._build_content_with_images(content, images)
         self._messages.append({"role": "user", "content": user_content})
@@ -1132,6 +1117,7 @@ class Conversation:
                 return
             self._check_budget()
             self._run_before_turn()
+            augmented_system = self._simulated_system_prompt()
             msgs: list[dict[str, Any]] = []
             msgs.append({"role": "system", "content": augmented_system})
             msgs.extend(self._messages)
@@ -1141,7 +1127,7 @@ class Conversation:
             meta = resp.get("meta", {})
             self._accumulate_usage(meta)
 
-            parsed = parse_simulated_response(text, self._tools)
+            parsed = parse_simulated_response(text, self._all_callable_tools())
 
             if parsed["type"] == "final_answer":
                 answer = parsed["content"]
@@ -1172,7 +1158,8 @@ class Conversation:
 
             yield {"type": "tool_result", "name": tool_name, "result": result_msg, "id": ""}
 
-            self._messages.append({"role": "user", "content": self._truncate_tool_result(result_msg)})
+            (shaped,) = self._shape_tool_results([(tool_name, result_msg, False)])
+            self._messages.append({"role": "user", "content": shaped})
 
         # Max rounds exhausted — graceful final answer without tools (C4).
         logger.warning(
@@ -1190,17 +1177,12 @@ class Conversation:
         images: list[ImageInput] | None = None,
     ) -> str:
         """Prompt-based tool calling for drivers without native tool use."""
-        from .simulated_tools import build_tool_prompt, format_tool_result, parse_simulated_response
+        from .simulated_tools import format_tool_result, parse_simulated_response
 
         self._stop_requested = False
         self._max_rounds_reached = False
         merged = {**self._options, **(options or {})}
-        tool_prompt = build_tool_prompt(self._tools)
-
-        # Augment system prompt with tool descriptions
-        augmented_system = tool_prompt
-        if self._system_prompt:
-            augmented_system = f"{self._system_prompt}\n\n{tool_prompt}"
+        augmented_system = self._simulated_system_prompt()
 
         # Record user message in history
         user_content = self._build_content_with_images(content, images)
@@ -1212,7 +1194,7 @@ class Conversation:
                 return self._final_answer_simulated(augmented_system, merged)
             self._check_budget()
             self._run_before_turn()
-            # Build messages with the augmented system prompt
+            augmented_system = self._simulated_system_prompt()
             msgs: list[dict[str, Any]] = []
             msgs.append({"role": "system", "content": augmented_system})
             msgs.extend(self._messages)
@@ -1222,7 +1204,7 @@ class Conversation:
             meta = resp.get("meta", {})
             self._accumulate_usage(meta)
 
-            parsed = parse_simulated_response(text, self._tools)
+            parsed = parse_simulated_response(text, self._all_callable_tools())
 
             if parsed["type"] == "final_answer":
                 answer: str = parsed["content"]
@@ -1245,8 +1227,9 @@ class Conversation:
             except Exception as exc:
                 result_msg = format_tool_result(tool_name, f"Error: {exc}")
 
-            # Record tool result as a user message (truncated for the LLM)
-            self._messages.append({"role": "user", "content": self._truncate_tool_result(result_msg)})
+            # Record tool result as a user message (shaped for the LLM)
+            (shaped,) = self._shape_tool_results([(tool_name, result_msg, False)])
+            self._messages.append({"role": "user", "content": shaped})
 
         # Max rounds exhausted — graceful final answer without tools (C4).
         logger.warning(
@@ -1258,6 +1241,7 @@ class Conversation:
 
     def _build_messages_raw(self) -> list[dict[str, Any]]:
         """Build messages array from system prompt + full history (including tool messages)."""
+        repair_tool_pairs(self._messages)
         msgs: list[dict[str, Any]] = []
         if self._system_prompt:
             msgs.append({"role": "system", "content": self._system_prompt})

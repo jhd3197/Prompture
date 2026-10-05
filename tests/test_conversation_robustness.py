@@ -226,9 +226,9 @@ class TestToolResultTruncation:
 
         assert result == "Done."
         tool_msg = _tool_messages(conv)[0]
-        # History sees the truncated version
-        assert len(tool_msg["content"]) < 200
-        assert "result truncated" in tool_msg["content"]
+        # History sees a stub with a handle, not the payload
+        assert big not in tool_msg["content"]
+        assert "artifact://" in tool_msg["content"]
         # The full result is preserved for step extraction
         assert conv._full_tool_results["call_1"] == big
 
