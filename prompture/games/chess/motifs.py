@@ -24,9 +24,10 @@ skewers, since a "fork" by a piece that is simply captured is no fork.
 from __future__ import annotations
 
 from collections.abc import Iterable, Iterator
-from dataclasses import dataclass
 
 import chess
+
+from ..base import Motif
 
 FACTS = ("check", "capture", "promotion", "castle")
 CONCEPTS = (
@@ -50,18 +51,6 @@ VALUES = {
 }
 _DIAGONALS = ((1, 1), (1, -1), (-1, 1), (-1, -1))
 _LINES = ((1, 0), (-1, 0), (0, 1), (0, -1))
-
-
-@dataclass(frozen=True)
-class Motif:
-    """One tag on a move: its kind (a fact or concept name) and a sentence."""
-
-    kind: str
-    text: str
-    squares: tuple[str, ...] = ()
-
-    def __str__(self) -> str:
-        return self.text
 
 
 def piece_label(board: chess.Board, square: chess.Square) -> str:

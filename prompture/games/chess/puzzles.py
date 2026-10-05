@@ -24,7 +24,8 @@ from typing import Any
 
 import chess
 
-from .harness import ChessHarness, MoveDecision
+from ..base import MoveDecision
+from .harness import ChessHarness
 
 
 @dataclass

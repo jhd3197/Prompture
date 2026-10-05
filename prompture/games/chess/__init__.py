@@ -14,8 +14,9 @@ try:
 except ImportError as exc:  # pragma: no cover - depends on the environment
     raise ImportError('prompture.games.chess needs python-chess: pip install "prompture[chess]"') from exc
 
-from .harness import LEVELS, Attempt, Candidate, ChessHarness, MoveDecision, winning_chances
-from .motifs import CONCEPTS, FACTS, Motif, describe_move, losing_capture
+from ..base import LEVELS, Attempt, Candidate, Motif, MoveDecision
+from .harness import ChessEngine, ChessGame, ChessHarness, winning_chances
+from .motifs import CONCEPTS, FACTS, describe_move, losing_capture
 from .puzzles import PuzzleReport, PuzzleResult, load_puzzles, play_puzzle, run_puzzles
 
 __all__ = [
@@ -24,6 +25,8 @@ __all__ = [
     "LEVELS",
     "Attempt",
     "Candidate",
+    "ChessEngine",
+    "ChessGame",
     "ChessHarness",
     "Motif",
     "MoveDecision",
