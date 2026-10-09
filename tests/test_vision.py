@@ -405,3 +405,111 @@ class TestBackwardCompatibility:
         conv = Conversation(driver=mock_driver)
         conv.add_context("user", "old message")
         assert conv.messages[0]["content"] == "old message"
+
+
+# ---------------------------------------------------------------------------
+# Tool streaming and Claude's other paths prepare image blocks too
+# ---------------------------------------------------------------------------
+
+
+class _Stop(Exception):
+    """Raised by a stand-in to end a driver call once the messages are seen."""
+
+
+class TestPrepareMessagesClaudeTwice:
+    def test_already_prepared_block_passes_through(self):
+        from prompture.drivers.vision_helpers import _prepare_claude_vision_messages
+
+        once = _prepare_claude_vision_messages(_universal_msgs())
+        twice = _prepare_claude_vision_messages(once)
+        assert twice[0]["content"][1] == once[0]["content"][1]
+
+
+class TestToolStreamsPrepareImages:
+    """Every messages path converts universal image blocks before the SDK
+    sees them; an ImageContent left in place cannot be serialised."""
+
+    async def test_async_openai_tool_stream(self, monkeypatch):
+        from prompture.drivers import _openai_compat_stream
+        from prompture.drivers.async_openai_driver import AsyncOpenAIDriver
+
+        seen: dict[str, Any] = {}
+
+        async def fake(driver, messages, tools, options, provider):
+            seen["messages"] = messages
+            if False:
+                yield None
+
+        monkeypatch.setattr(_openai_compat_stream, "astream_openai_compat_tool_call", fake)
+        driver = AsyncOpenAIDriver(api_key="sk-test", model="gpt-4o-mini")
+        async for _ in driver.generate_messages_with_tools_stream(_universal_msgs(), [], {}):
+            pass
+        assert seen["messages"][0]["content"][1]["type"] == "image_url"
+
+    def test_sync_openai_tool_stream(self, monkeypatch):
+        from prompture.drivers import _openai_compat_stream
+        from prompture.drivers.openai_driver import OpenAIDriver
+
+        seen: dict[str, Any] = {}
+
+        def fake(driver, messages, tools, options, provider):
+            seen["messages"] = messages
+            return iter(())
+
+        monkeypatch.setattr(_openai_compat_stream, "stream_openai_compat_tool_call", fake)
+        driver = OpenAIDriver(api_key="sk-test", model="gpt-4o-mini")
+        list(driver.generate_messages_with_tools_stream(_universal_msgs(), [], {}))
+        assert seen["messages"][0]["content"][1]["type"] == "image_url"
+
+    @pytest.mark.parametrize("method", ["generate_messages_with_tools_stream", "generate_messages_stream"])
+    async def test_async_claude_streams(self, monkeypatch, method):
+        pytest.importorskip("anthropic")
+        from prompture.drivers import async_claude_driver
+
+        seen: dict[str, Any] = {}
+
+        def fake(messages):
+            seen["messages"] = messages
+            raise _Stop
+
+        monkeypatch.setattr(async_claude_driver, "_extract_anthropic_system_and_messages", fake)
+        driver = async_claude_driver.AsyncClaudeDriver(api_key="sk-test")
+        args = (_universal_msgs(), [], {}) if method.endswith("tools_stream") else (_universal_msgs(), {})
+        with pytest.raises(_Stop):
+            async for _ in getattr(driver, method)(*args):
+                pass
+        assert seen["messages"][0]["content"][1]["source"]["type"] == "base64"
+
+    async def test_async_claude_tools(self, monkeypatch):
+        pytest.importorskip("anthropic")
+        from prompture.drivers import async_claude_driver
+
+        seen: dict[str, Any] = {}
+
+        def fake(messages):
+            seen["messages"] = messages
+            raise _Stop
+
+        monkeypatch.setattr(async_claude_driver, "_extract_anthropic_system_and_messages", fake)
+        driver = async_claude_driver.AsyncClaudeDriver(api_key="sk-test")
+        with pytest.raises(_Stop):
+            await driver.generate_messages_with_tools(_universal_msgs(), [], {})
+        assert seen["messages"][0]["content"][1]["source"]["type"] == "base64"
+
+    @pytest.mark.parametrize("method", ["generate_messages_with_tools_stream", "generate_messages_stream"])
+    def test_sync_claude_streams(self, monkeypatch, method):
+        pytest.importorskip("anthropic")
+        from prompture.drivers import claude_driver
+
+        seen: dict[str, Any] = {}
+
+        def fake(messages):
+            seen["messages"] = messages
+            raise _Stop
+
+        monkeypatch.setattr(claude_driver, "_extract_anthropic_system_and_messages", fake)
+        driver = claude_driver.ClaudeDriver(api_key="sk-test")
+        args = (_universal_msgs(), [], {}) if method.endswith("tools_stream") else (_universal_msgs(), {})
+        with pytest.raises(_Stop):
+            list(getattr(driver, method)(*args))
+        assert seen["messages"][0]["content"][1]["source"]["type"] == "base64"
