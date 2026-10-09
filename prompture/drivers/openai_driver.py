@@ -469,4 +469,6 @@ class OpenAIDriver(CostMixin, Driver):
 
         from ._openai_compat_stream import stream_openai_compat_tool_call
 
-        yield from stream_openai_compat_tool_call(self, messages, tools, options, provider="openai")
+        yield from stream_openai_compat_tool_call(
+            self, self._prepare_messages(messages), tools, options, provider="openai"
+        )

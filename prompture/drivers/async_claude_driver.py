@@ -111,7 +111,7 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
 
         client = self.client
 
-        system_content, api_messages = _extract_anthropic_system_and_messages(messages)
+        system_content, api_messages = _extract_anthropic_system_and_messages(self._prepare_messages(messages))
 
         cache_kwargs = _cache_opts(opts, model)
         wrapped_system = _apply_cache_control_to_system(system_content, **cache_kwargs)
@@ -229,7 +229,7 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
 
         client = self.client
 
-        system_content, api_messages = _extract_anthropic_system_and_messages(messages)
+        system_content, api_messages = _extract_anthropic_system_and_messages(self._prepare_messages(messages))
         cache_kwargs = _cache_opts(opts, model)
         anthropic_tools = _apply_cache_control_to_tools(_convert_tools_to_anthropic(tools), **cache_kwargs)
         wrapped_system = _apply_cache_control_to_system(system_content, **cache_kwargs)
@@ -299,7 +299,7 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
         supports_temperature = self._get_model_config("claude", model)["supports_temperature"]
         client = self.client
 
-        system_content, api_messages = _extract_anthropic_system_and_messages(messages)
+        system_content, api_messages = _extract_anthropic_system_and_messages(self._prepare_messages(messages))
         cache_kwargs = _cache_opts(opts, model)
         wrapped_system = _apply_cache_control_to_system(system_content, **cache_kwargs)
         api_messages = _apply_cache_control_to_messages(
@@ -398,7 +398,7 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
         supports_temperature = self._get_model_config("claude", model)["supports_temperature"]
         client = self.client
 
-        system_content, api_messages = _extract_anthropic_system_and_messages(messages)
+        system_content, api_messages = _extract_anthropic_system_and_messages(self._prepare_messages(messages))
         cache_kwargs = _cache_opts(opts, model)
         anthropic_tools = _apply_cache_control_to_tools(_convert_tools_to_anthropic(tools), **cache_kwargs)
         wrapped_system = _apply_cache_control_to_system(system_content, **cache_kwargs)

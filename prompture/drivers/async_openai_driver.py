@@ -318,5 +318,7 @@ class AsyncOpenAIDriver(CostMixin, AsyncDriver):
 
         from ._openai_compat_stream import astream_openai_compat_tool_call
 
-        async for ev in astream_openai_compat_tool_call(self, messages, tools, options, provider="openai"):
+        async for ev in astream_openai_compat_tool_call(
+            self, self._prepare_messages(messages), tools, options, provider="openai"
+        ):
             yield ev

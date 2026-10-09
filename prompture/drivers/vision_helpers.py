@@ -59,7 +59,9 @@ def _prepare_claude_vision_messages(messages: list[dict[str, Any]]) -> list[dict
             continue
         new_blocks: list[dict[str, Any]] = []
         for block in content:
-            if isinstance(block, dict) and block.get("type") == "image":
+            # A block already in Anthropic's shape (its source a plain dict)
+            # passes through, so preparing twice is harmless.
+            if isinstance(block, dict) and block.get("type") == "image" and not isinstance(block.get("source"), dict):
                 source = block["source"]
                 if source.source_type == "url" and source.url:
                     new_blocks.append(
