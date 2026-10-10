@@ -71,8 +71,8 @@ class VideoGenDriver:
         logger.debug(
             "[video_gen] generate driver=%s videos=%d cost=%.6f elapsed=%.0fms",
             driver_name,
-            meta.get("video_count", 0),
-            meta.get("cost", 0.0),
+            (meta.get("video_count") or 0),
+            (meta.get("cost") or 0.0),
             elapsed_ms,
         )
         self._fire_callback(

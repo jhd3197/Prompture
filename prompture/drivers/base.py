@@ -576,10 +576,10 @@ class Driver(ABC):
         logger.debug(
             "[driver] generate driver=%s tokens=%d (prompt=%d completion=%d) cost=%.6f elapsed=%.0fms",
             driver_name,
-            meta.get("total_tokens", 0),
-            meta.get("prompt_tokens", 0),
-            meta.get("completion_tokens", 0),
-            meta.get("cost", 0.0),
+            (meta.get("total_tokens") or 0),
+            (meta.get("prompt_tokens") or 0),
+            (meta.get("completion_tokens") or 0),
+            (meta.get("cost") or 0.0),
             elapsed_ms,
         )
         self._fire_callback(
@@ -617,10 +617,10 @@ class Driver(ABC):
         logger.debug(
             "[driver] generate_messages driver=%s tokens=%d (prompt=%d completion=%d) cost=%.6f elapsed=%.0fms",
             driver_name,
-            meta.get("total_tokens", 0),
-            meta.get("prompt_tokens", 0),
-            meta.get("completion_tokens", 0),
-            meta.get("cost", 0.0),
+            (meta.get("total_tokens") or 0),
+            (meta.get("prompt_tokens") or 0),
+            (meta.get("completion_tokens") or 0),
+            (meta.get("cost") or 0.0),
             elapsed_ms,
         )
         self._fire_callback(
@@ -664,10 +664,10 @@ class Driver(ABC):
             "[driver] generate_messages_with_tools driver=%s tokens=%d "
             "(prompt=%d completion=%d) cost=%.6f elapsed=%.0fms",
             driver_name,
-            meta.get("total_tokens", 0),
-            meta.get("prompt_tokens", 0),
-            meta.get("completion_tokens", 0),
-            meta.get("cost", 0.0),
+            (meta.get("total_tokens") or 0),
+            (meta.get("prompt_tokens") or 0),
+            (meta.get("completion_tokens") or 0),
+            (meta.get("cost") or 0.0),
             elapsed_ms,
         )
         self._fire_callback(

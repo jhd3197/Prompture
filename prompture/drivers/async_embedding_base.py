@@ -66,8 +66,8 @@ class AsyncEmbeddingDriver:
             "[embedding] async embed driver=%s texts=%d dims=%d cost=%.6f elapsed=%.0fms",
             driver_name,
             len(texts),
-            meta.get("dimensions", 0),
-            meta.get("cost", 0.0),
+            (meta.get("dimensions") or 0),
+            (meta.get("cost") or 0.0),
             elapsed_ms,
         )
         self._fire_callback(
