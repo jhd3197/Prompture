@@ -40,6 +40,7 @@ from .claude_driver import (
     _extract_anthropic_system_and_messages,
     _extract_anthropic_text_and_tool_calls,
     _json_mode_input,
+    env_api_key,
 )
 
 logger = logging.getLogger(__name__)
@@ -56,7 +57,7 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
     MODEL_PRICING = ClaudeDriver.MODEL_PRICING
 
     def __init__(self, api_key: str | None = None, model: str = "claude-haiku-4-5-20251001"):
-        self.api_key = api_key or os.getenv("CLAUDE_API_KEY")
+        self.api_key = api_key or env_api_key()
         self.model = model or os.getenv("CLAUDE_MODEL_NAME", "claude-haiku-4-5-20251001")
         if anthropic is None:
             self.client = None
@@ -65,8 +66,8 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
             from ..exceptions import ConfigurationError
 
             raise ConfigurationError(
-                "CLAUDE_API_KEY is not set. Provide api_key=... or set the "
-                "CLAUDE_API_KEY environment variable. "
+                "No Claude API key. Provide api_key=... or set the "
+                "CLAUDE_API_KEY or ANTHROPIC_API_KEY environment variable. "
                 "See https://github.com/jhd3197/prompture#configuration"
             )
         # Cache one AsyncAnthropic client for the lifetime of this driver so

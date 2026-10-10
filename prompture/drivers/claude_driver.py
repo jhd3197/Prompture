@@ -361,6 +361,12 @@ def _build_anthropic_stream_done(
     return done_chunk
 
 
+def env_api_key() -> str | None:
+    """The Claude key from the environment: CLAUDE_API_KEY, or ANTHROPIC_API_KEY,
+    the name Anthropic's own SDK and tools use."""
+    return os.getenv("CLAUDE_API_KEY") or os.getenv("ANTHROPIC_API_KEY")
+
+
 class ClaudeDriver(CostMixin, Driver):
     supports_json_mode = True
     supports_json_schema = True
@@ -374,7 +380,7 @@ class ClaudeDriver(CostMixin, Driver):
     MODEL_PRICING: dict[str, dict[str, Any]] = {}
 
     def __init__(self, api_key: str | None = None, model: str = "claude-haiku-4-5-20251001"):
-        self.api_key = api_key or os.getenv("CLAUDE_API_KEY")
+        self.api_key = api_key or env_api_key()
         self.model = model or os.getenv("CLAUDE_MODEL_NAME", "claude-haiku-4-5-20251001")
         # Only validate when the SDK is installed — when anthropic is missing we
         # surface that at call time so plain import-and-discover still works.
@@ -382,8 +388,8 @@ class ClaudeDriver(CostMixin, Driver):
             from ..exceptions import ConfigurationError
 
             raise ConfigurationError(
-                "CLAUDE_API_KEY is not set. Provide api_key=... or set the "
-                "CLAUDE_API_KEY environment variable. "
+                "No Claude API key. Provide api_key=... or set the "
+                "CLAUDE_API_KEY or ANTHROPIC_API_KEY environment variable. "
                 "See https://github.com/jhd3197/prompture#configuration"
             )
 
@@ -394,7 +400,7 @@ class ClaudeDriver(CostMixin, Driver):
         Anthropic uses ``x-api-key`` header (not Bearer token) and requires
         an ``anthropic-version`` header.
         """
-        key = api_key or os.getenv("CLAUDE_API_KEY")
+        key = api_key or env_api_key()
         if not key:
             return None
         try:
