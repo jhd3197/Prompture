@@ -669,6 +669,7 @@ def extract_and_jsonify(
     images: list[ImageInput] | None = None,
     reasoning_strategy: str | ReasoningStrategyProtocol | None = None,
     strategy: str | StructuredOutputStrategy | None = None,
+    api_key: str | None = None,
 ) -> dict[str, Any]:
     """Extracts structured information using automatic driver selection or an explicit driver.
 
@@ -686,6 +687,9 @@ def extract_and_jsonify(
             best approach based on driver capabilities.  Can be ``"provider_native"``,
             ``"tool_call"``, ``"prompted_repair"``, or a
             :class:`~prompture.extraction.strategy.StructuredOutputStrategy` enum.
+        api_key: API key for the driver resolved from ``model_name``, instead of
+            the global settings (one key per caller, e.g. per user). Ignored when
+            ``driver`` is given.
 
     Returns:
         A dictionary containing:
@@ -752,7 +756,7 @@ def extract_and_jsonify(
             raise ValueError("Invalid model string format. Expected format: 'provider/model'")
 
         try:
-            driver = get_driver_for_model(actual_model)  # type: ignore[assignment]
+            driver = get_driver_for_model(actual_model, api_key=api_key)  # type: ignore[assignment]
         except ValueError as e:
             if "Unsupported provider" in str(e):
                 raise ValueError(f"Unsupported provider in model name: {actual_model}") from e
@@ -944,6 +948,7 @@ def extract_with_model(
     strategy: str | StructuredOutputStrategy | None = None,
     examples_store: Any = None,
     examples_k: int = 3,
+    api_key: str | None = None,
 ) -> dict[str, Any]:
     """Extracts structured information into a Pydantic model instance.
 
@@ -987,6 +992,8 @@ def extract_with_model(
             the selected input strings for transparency.
         examples_k: Number of examples to retrieve from ``examples_store``.
             Ignored when ``examples_store`` is ``None``. Defaults to 3.
+        api_key: API key for the model's provider, instead of the global
+            settings (one key per caller, e.g. per user).
 
     Returns:
         A validated instance of the Pydantic model. When routing is used,
@@ -1182,6 +1189,7 @@ def extract_with_model(
                 images=images,
                 reasoning_strategy=reasoning_strategy,
                 strategy=strategy,
+                api_key=api_key,
             )
             logger.debug("[extract] Extraction completed successfully")
 
