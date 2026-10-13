@@ -36,17 +36,22 @@ from .claude_driver import (
     _apply_temperature,
     _build_anthropic_json_mode_tool_def,
     _cache_opts,
+    _ClaudeModelRules,
     _convert_tools_to_anthropic,
     _extract_anthropic_system_and_messages,
     _extract_anthropic_text_and_tool_calls,
+    _first_text,
     _json_mode_input,
+    _output_config,
+    _rejects_forced_tool,
+    _structured_output_format,
     env_api_key,
 )
 
 logger = logging.getLogger(__name__)
 
 
-class AsyncClaudeDriver(CostMixin, AsyncDriver):
+class AsyncClaudeDriver(_ClaudeModelRules, CostMixin, AsyncDriver):
     supports_json_mode = True
     supports_json_schema = True
     supports_tool_use = True
@@ -117,9 +122,11 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
         cache_kwargs = _cache_opts(opts, model)
         wrapped_system = _apply_cache_control_to_system(system_content, **cache_kwargs)
 
-        # Native JSON mode: use tool-use for schema enforcement
+        # Native JSON mode: a forced tool call enforces the schema, or structured output on
+        # the models that reject a forced tool.
         json_mode_tools: list[dict[str, Any]] | None = None
-        if options.get("json_mode") and options.get("json_schema"):
+        structured = bool(options.get("json_mode") and options.get("json_schema") and _rejects_forced_tool(model))
+        if options.get("json_mode") and options.get("json_schema") and not structured:
             json_mode_tools = _apply_cache_control_to_tools(
                 [_build_anthropic_json_mode_tool_def(options["json_schema"])],
                 **cache_kwargs,
@@ -146,6 +153,8 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
             common_kwargs["timeout"] = opts["timeout"]
 
         _apply_anthropic_reporting_options(common_kwargs, opts)
+        if structured:
+            _output_config(common_kwargs)["format"] = _structured_output_format(options["json_schema"])
         with capture_rate_limits() as limits:
             if options.get("json_mode"):
                 if json_mode_tools is not None:
@@ -161,10 +170,10 @@ class AsyncClaudeDriver(CostMixin, AsyncDriver):
                             break
                 else:
                     resp = await client.messages.create(**common_kwargs)
-                    text = resp.content[0].text
+                    text = _first_text(resp.content)
             else:
                 resp = await client.messages.create(**common_kwargs)
-                text = resp.content[0].text
+                text = _first_text(resp.content)
 
         reasoning_content = ClaudeDriver._extract_thinking(resp.content)
         if not text and reasoning_content:
