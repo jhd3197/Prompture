@@ -22,7 +22,9 @@ logger = logging.getLogger(__name__)
 
 
 def _apply_openai_reporting_options(kwargs: dict[str, Any], options: dict[str, Any]) -> None:
-    for key in ("service_tier", "prompt_cache_retention", "reasoning_effort"):
+    # timeout: per request, as the Responses path and the Claude driver already take it. Without
+    # it a call waits the SDK's 10 minutes per try (with retries) on a stalled connection.
+    for key in ("service_tier", "prompt_cache_retention", "reasoning_effort", "timeout"):
         if key in options:
             kwargs[key] = options[key]
 
