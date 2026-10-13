@@ -333,6 +333,8 @@ class GameHarness:
                 system_prompt=self.system_prompt,
             )
         except ExtractionError as exc:
+            for key in _USAGE_KEYS:  # an unparseable reply was still paid for
+                usage[key] += float(exc.usage.get(key) or 0)
             return None, "", f"the reply was not valid JSON ({exc})"
         except Exception as exc:  # a timeout or a dead backend must not abort a whole game
             return None, "", f"the model call failed ({exc})"

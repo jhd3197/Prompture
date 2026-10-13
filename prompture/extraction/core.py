@@ -72,6 +72,30 @@ def _build_usage(resp: dict[str, Any], model_name: str) -> dict[str, Any]:
     }
 
 
+def _stop_reason(resp: dict[str, Any]) -> str | None:
+    """Why the provider stopped writing, from whichever field the driver filled."""
+    meta = resp.get("meta", {})
+    raw = meta.get("raw_response") or {}
+    choices = raw.get("choices") if isinstance(raw, dict) else None
+    finish = choices[0].get("finish_reason") if choices and isinstance(choices[0], dict) else None
+    return (
+        meta.get("raw_stop_reason")
+        or resp.get("stop_reason")
+        or (raw.get("stop_reason") if isinstance(raw, dict) else None)
+        or finish
+    )
+
+
+def _parse_failure(resp: dict[str, Any], raw: str, error: json.JSONDecodeError, usage: dict[str, Any]) -> Exception:
+    """The error for a reply that is not JSON, carrying what the call cost. An empty reply cut
+    off by the token limit says so: the model spent the whole budget reasoning."""
+    from ..exceptions import ExtractionError
+
+    if not raw.strip() and _stop_reason(resp) in ("max_tokens", "length"):
+        return ExtractionError("the reply hit max_tokens before any answer was written", usage=usage)
+    return ExtractionError(f"Failed to parse LLM output as JSON: {error}", usage=usage)
+
+
 def _merge_usage(
     original: dict[str, Any], cleanup: dict[str, Any], model_name: str, resp: dict[str, Any]
 ) -> dict[str, Any]:
@@ -645,13 +669,15 @@ def ask_for_json(
 
                 return result
             except json.JSONDecodeError:
-                from ..exceptions import ExtractionError
-
-                raise ExtractionError(f"Failed to parse LLM output as JSON: {e}") from e
+                usage = _merge_usage(
+                    resp.get("meta", {}),
+                    cleanup_meta,
+                    model_name or options.get("model", getattr(driver, "model", "")),
+                    resp,
+                )
+                raise _parse_failure(resp, raw, e, usage) from e
         else:
-            from ..exceptions import ExtractionError
-
-            raise ExtractionError(f"Failed to parse LLM output as JSON: {e}") from e
+            raise _parse_failure(resp, raw, e, _build_usage(resp, model_name or getattr(driver, "model", ""))) from e
 
 
 def extract_and_jsonify(

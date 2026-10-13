@@ -228,6 +228,20 @@ class TestGenericHarness:
         assert decision.rescued
         assert decision.attempts[0].error == "the model call failed (Ollama chat request failed: read timed out)"
 
+    def test_a_reply_cut_off_by_max_tokens_is_paid_for_and_named(self):
+        class SpentDriver(ScriptedDriver):
+            def generate(self, prompt, options):
+                meta = {"prompt_tokens": 900, "completion_tokens": 16000, "total_tokens": 16900, "cost": 0.8}
+                return {"text": "", "meta": {**meta, "raw_stop_reason": "max_tokens"}}
+
+        decision = GameHarness(Connect4(), driver=SpentDriver([""]), max_retries=1, seed=0).choose(Connect4Board())
+        assert decision.rescued
+        assert decision.attempts[0].error == (
+            "the reply was not valid JSON (the reply hit max_tokens before any answer was written)"
+        )
+        assert decision.usage["cost"] == pytest.approx(1.6)
+        assert decision.usage["total_tokens"] == 33800
+
     def test_all_concepts_and_unknown_ones(self):
         harness = GameHarness(Othello(), driver=ScriptedDriver([reply("d3")]), concepts="all")
         assert harness.concepts == frozenset(Othello.concepts)

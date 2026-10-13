@@ -588,6 +588,7 @@ class ClaudeDriver(_ClaudeModelRules, CostMixin, Driver):
         meta = usage_meta(self, "claude", model, resp.usage, response=resp, options=opts)
         meta["raw_response"] = as_dict(resp)
         add_rate_limits(meta, limits.snapshot)
+        meta["raw_stop_reason"] = resp.stop_reason
 
         result: dict[str, Any] = {"text": text, "meta": meta}
         if reasoning_content is not None:
