@@ -949,6 +949,7 @@ def extract_with_model(
     examples_store: Any = None,
     examples_k: int = 3,
     api_key: str | None = None,
+    brand: Any = None,
 ) -> dict[str, Any]:
     """Extracts structured information into a Pydantic model instance.
 
@@ -994,6 +995,8 @@ def extract_with_model(
             Ignored when ``examples_store`` is ``None``. Defaults to 3.
         api_key: API key for the model's provider, instead of the global
             settings (one key per caller, e.g. per user).
+        brand: A :class:`~prompture.marketing.BrandContext` (or dict / brand
+            file path) whose block is prepended to ``system_prompt``.
 
     Returns:
         A validated instance of the Pydantic model. When routing is used,
@@ -1007,6 +1010,11 @@ def extract_with_model(
     """
     # Import routing types (avoid circular import)
     from ..pipeline.routing import ModelRouter, RoutingConfig, RoutingResult
+
+    if brand is not None:
+        from ..marketing.context import merge_brand_system_prompt
+
+        system_prompt = merge_brand_system_prompt(system_prompt, brand)
 
     # Handle legacy format where first arg is model class
     if options is None:
