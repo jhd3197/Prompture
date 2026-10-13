@@ -113,6 +113,13 @@ No setup: Desk runs `prompture companion` (Prompture 1.13+) on localhost for you
 - Drop-in tools: sandboxed `python_execute` (Tukuy) plus the [capability layer](#capabilities) below
 - `DeepAgent` with planning, virtual filesystem, sub-agents, and auto-summarization — no LangChain
 - Full RAG stack — loaders, chunkers, vector stores, hybrid dense+BM25 retrieval, end-to-end `RAGPipeline` — see [RAG](#rag)
+- `Assistant.from_file()` — define an assistant in YAML/JSON/Markdown with instructions, knowledge documents, conversation starters, tools and a brand
+- `FeedbackLoop` — turn user corrections into instruction rules, test them on held-out prompts with an LLM judge, and promote or roll back
+
+**Marketing** (`prompture.marketing`)
+- `BrandContext` — customer, messaging, voice, offers and verified proof in one object, loaded from YAML or a fill-in Markdown file and passed as `brand=` to `Agent`, `Assistant` and `extract_with_model`
+- `ClaimsChecker` — flags invented URLs, emails, phone numbers and claims the brand's proof points don't back up
+- Output models with their limits enforced: `SocialPostSet` (5-word image hooks, no text in image prompts), `ShotList` (voiceover fits the runtime), `EmailSequence`, `CoreMessaging`, `IdealCustomer`, `TopTens`, `LeadMagnetIdeas`, `OfferStack`, `ScorecardAnalysis`
 
 **Safety & evaluation**
 - `PromptInjectionDetector` + `PIIRedactor` for input-side defense
