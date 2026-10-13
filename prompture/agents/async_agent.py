@@ -202,6 +202,9 @@ class AsyncAgent(Generic[DepsType]):
             schemas would cost more than ~8k tokens.
         preload_tools: Tools whose schemas are always sent, even when
             deferring.
+        brand: A :class:`~prompture.marketing.BrandContext` (or dict /
+            brand file path).  Its block is added to the system prompt
+            right after the persona on every run.
     """
 
     def __init__(
@@ -237,6 +240,7 @@ class AsyncAgent(Generic[DepsType]):
         preload_tools: list[str] | None = None,
         max_depth: int = _DEFAULT_MAX_AGENT_DEPTH,
         env: ProviderEnvironment | None = None,
+        brand: Any = None,
     ) -> None:
         if not model and driver is None:
             raise ValueError("Either model or driver must be provided")
@@ -244,6 +248,11 @@ class AsyncAgent(Generic[DepsType]):
         self._model = model
         self._driver = driver
         self._env = env
+        if brand is not None:
+            from ..marketing.context import load_brand
+
+            brand = load_brand(brand)
+        self._brand = brand
         self._max_depth = max_depth
         self._system_prompt = system_prompt
         self._output_type = output_type
@@ -939,6 +948,9 @@ class AsyncAgent(Generic[DepsType]):
                     parts.append(self._system_prompt(None))
             else:
                 parts.append(str(self._system_prompt))
+
+        if self._brand is not None:
+            parts.append(self._brand.render())
 
         if self._output_type is not None:
             schema = self._output_type.model_json_schema()

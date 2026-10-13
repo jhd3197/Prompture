@@ -15,7 +15,7 @@ try:
 except ImportError:
     anthropic = None  # type: ignore[assignment]
 
-from ..infra.cost_mixin import CostMixin
+from ..infra.cost_mixin import CostMixin, prepare_strict_schema
 from ..infra.rate_limits import add_rate_limits, attach_rate_limit_hook, capture_rate_limits, limits_from_response
 from ._prompt_cache import (
     CACHE_PROMPT_MIN_CHARS,
@@ -43,6 +43,62 @@ def _apply_anthropic_reporting_options(kwargs: dict[str, Any], options: dict[str
     for key in ("service_tier", "inference_geo"):
         if key in options:
             kwargs[key] = options[key]
+    # Thinking depth on the adaptive-thinking models (low/medium/high/xhigh/max).
+    if options.get("effort"):
+        _output_config(kwargs)["effort"] = options["effort"]
+
+
+def _output_config(kwargs: dict[str, Any]) -> dict[str, Any]:
+    """The request's ``output_config``, carried in ``extra_body`` like the temperature (see
+    _apply_temperature) so it reaches the API whichever ``anthropic`` major is installed."""
+    extra_body = kwargs.get("extra_body")
+    if not isinstance(extra_body, dict):
+        extra_body = kwargs["extra_body"] = {}
+    return extra_body.setdefault("output_config", {})
+
+
+# Model families that reject a forced ``tool_choice`` ("any"/"tool") with a 400: JSON mode
+# on them asks for structured output (``output_config.format``) instead of a forced tool.
+_NO_FORCED_TOOL = ("claude-fable-5-1", "claude-mythos-5-1", "claude-opus-5-5", "claude-sonnet-5-5")
+# ...and families that 400 on any explicit sampling setting (temperature/top_p/top_k).
+# Prefixes: "claude-opus-5" covers Opus 5 and 5.5, "claude-fable-5" Fable 5 and 5.1.
+_NO_SAMPLING = (
+    "claude-fable-5",
+    "claude-mythos-5",
+    "claude-opus-5",
+    "claude-opus-4-8",
+    "claude-opus-4-7",
+    "claude-sonnet-5",
+    "claude-haiku-5-5",
+)
+
+
+def _rejects_forced_tool(model: str) -> bool:
+    return model.startswith(_NO_FORCED_TOOL)
+
+
+def _structured_output_format(json_schema: dict[str, Any]) -> dict[str, Any]:
+    return {"type": "json_schema", "schema": prepare_strict_schema(json_schema)}
+
+
+def _first_text(content: list[Any]) -> str:
+    """The first text block's text; thinking blocks come before it on thinking models.
+    Without a typed text block, the first block's text, as before."""
+    for block in content:
+        if getattr(block, "type", None) == "text":
+            return block.text
+    first = content[0] if content else None
+    return "" if first is None or getattr(first, "type", None) == "thinking" else getattr(first, "text", "")
+
+
+class _ClaudeModelRules:
+    """Model rules the capabilities KB may not know yet (new models arrive before models.dev has them)."""
+
+    def _get_model_config(self, provider: str, model: str) -> dict[str, Any]:
+        config = super()._get_model_config(provider, model)  # type: ignore[misc]
+        if model.startswith(_NO_SAMPLING):
+            config = {**config, "supports_temperature": False}
+        return config
 
 
 # Re-exported for backwards compatibility: callers and tests have long
@@ -361,7 +417,13 @@ def _build_anthropic_stream_done(
     return done_chunk
 
 
-class ClaudeDriver(CostMixin, Driver):
+def env_api_key() -> str | None:
+    """The Claude key from the environment: CLAUDE_API_KEY, or ANTHROPIC_API_KEY,
+    the name Anthropic's own SDK and tools use."""
+    return os.getenv("CLAUDE_API_KEY") or os.getenv("ANTHROPIC_API_KEY")
+
+
+class ClaudeDriver(_ClaudeModelRules, CostMixin, Driver):
     supports_json_mode = True
     supports_json_schema = True
     supports_tool_use = True
@@ -374,7 +436,7 @@ class ClaudeDriver(CostMixin, Driver):
     MODEL_PRICING: dict[str, dict[str, Any]] = {}
 
     def __init__(self, api_key: str | None = None, model: str = "claude-haiku-4-5-20251001"):
-        self.api_key = api_key or os.getenv("CLAUDE_API_KEY")
+        self.api_key = api_key or env_api_key()
         self.model = model or os.getenv("CLAUDE_MODEL_NAME", "claude-haiku-4-5-20251001")
         # Only validate when the SDK is installed — when anthropic is missing we
         # surface that at call time so plain import-and-discover still works.
@@ -382,8 +444,8 @@ class ClaudeDriver(CostMixin, Driver):
             from ..exceptions import ConfigurationError
 
             raise ConfigurationError(
-                "CLAUDE_API_KEY is not set. Provide api_key=... or set the "
-                "CLAUDE_API_KEY environment variable. "
+                "No Claude API key. Provide api_key=... or set the "
+                "CLAUDE_API_KEY or ANTHROPIC_API_KEY environment variable. "
                 "See https://github.com/jhd3197/prompture#configuration"
             )
 
@@ -394,7 +456,7 @@ class ClaudeDriver(CostMixin, Driver):
         Anthropic uses ``x-api-key`` header (not Bearer token) and requires
         an ``anthropic-version`` header.
         """
-        key = api_key or os.getenv("CLAUDE_API_KEY")
+        key = api_key or env_api_key()
         if not key:
             return None
         try:
@@ -466,9 +528,11 @@ class ClaudeDriver(CostMixin, Driver):
         cache_kwargs = _cache_opts(opts, model)
         wrapped_system = _apply_cache_control_to_system(system_content, **cache_kwargs)
 
-        # Native JSON mode: use tool-use for schema enforcement
+        # Native JSON mode: a forced tool call enforces the schema, or structured output on
+        # the models that reject a forced tool.
         json_mode_tools: list[dict[str, Any]] | None = None
-        if options.get("json_mode") and options.get("json_schema"):
+        structured = bool(options.get("json_mode") and options.get("json_schema") and _rejects_forced_tool(model))
+        if options.get("json_mode") and options.get("json_schema") and not structured:
             json_mode_tools = _apply_cache_control_to_tools(
                 [_build_anthropic_json_mode_tool_def(options["json_schema"])],
                 **cache_kwargs,
@@ -495,6 +559,8 @@ class ClaudeDriver(CostMixin, Driver):
             common_kwargs["timeout"] = opts["timeout"]
 
         _apply_anthropic_reporting_options(common_kwargs, opts)
+        if structured:
+            _output_config(common_kwargs)["format"] = _structured_output_format(options["json_schema"])
         with capture_rate_limits() as limits:
             if options.get("json_mode"):
                 if json_mode_tools is not None:
@@ -510,10 +576,10 @@ class ClaudeDriver(CostMixin, Driver):
                             break
                 else:
                     resp = client.messages.create(**common_kwargs)
-                    text = resp.content[0].text
+                    text = _first_text(resp.content)
             else:
                 resp = client.messages.create(**common_kwargs)
-                text = resp.content[0].text
+                text = _first_text(resp.content)
 
         reasoning_content = self._extract_thinking(resp.content)
         if not text and reasoning_content:

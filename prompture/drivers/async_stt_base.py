@@ -59,8 +59,8 @@ class AsyncSTTDriver:
         logger.debug(
             "[stt] async transcribe driver=%s duration=%.1fs cost=%.6f elapsed=%.0fms",
             driver_name,
-            meta.get("duration_seconds", 0),
-            meta.get("cost", 0.0),
+            (meta.get("duration_seconds") or 0),
+            (meta.get("cost") or 0.0),
             elapsed_ms,
         )
         self._fire_callback(

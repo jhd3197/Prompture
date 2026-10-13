@@ -4,6 +4,7 @@ from .agent import Agent, AgentIterator, LiveAgentResult, StreamedAgentResult
 from .assistant import (
     Assistant,
     AssistantResult,
+    KnowledgeDoc,
     clear_assistant_registry,
     get_assistant,
     get_assistant_names,
@@ -116,6 +117,7 @@ __all__ = [
     "DeepAgentResult",
     "DeepAgentState",
     "GuardrailError",
+    "KnowledgeDoc",
     "LiveAgentResult",
     "LiveEvent",
     "MessageStop",

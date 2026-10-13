@@ -274,7 +274,7 @@ class TestIntegration:
         # Patch get_driver_for_model to return our mock
         from prompture.extraction import core as core_mod
 
-        monkeypatch.setattr(core_mod, "get_driver_for_model", lambda model_name: MockDriver())
+        monkeypatch.setattr(core_mod, "get_driver_for_model", lambda model_name, **kw: MockDriver())
 
         from prompture.extraction.core import extract_and_jsonify
 
@@ -325,7 +325,7 @@ class TestIntegration:
 
         from prompture.extraction import core as core_mod
 
-        monkeypatch.setattr(core_mod, "get_driver_for_model", lambda model_name: MockDriver())
+        monkeypatch.setattr(core_mod, "get_driver_for_model", lambda model_name, **kw: MockDriver())
 
         from prompture.extraction.core import extract_and_jsonify
 
@@ -467,7 +467,7 @@ class TestAutoIntegration:
 
         from prompture.extraction import core as core_mod
 
-        monkeypatch.setattr(core_mod, "get_driver_for_model", lambda model_name: MockDriver())
+        monkeypatch.setattr(core_mod, "get_driver_for_model", lambda model_name, **kw: MockDriver())
 
         from prompture.extraction.core import extract_and_jsonify
 

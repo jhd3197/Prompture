@@ -46,6 +46,14 @@ Registry usage::
     Assistant.register(web_dev)
     same = Assistant.from_registry("web-developer")
 
+From a file (instructions, knowledge documents, starters, tools)::
+
+    copywriter = Assistant.from_file("assistants/linkedin-copywriter.yaml")
+    print(copywriter.conversation_starters)
+    result = copywriter.run(copywriter.conversation_starters[0])
+
+See :meth:`Assistant.from_file` for the file format.
+
 Coding-agent backend (delegate to an installed CLI)::
 
     cli_dev = Assistant(
@@ -60,9 +68,12 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+import json
 import logging
+import re
 import threading
 from collections.abc import AsyncIterator
+from pathlib import Path
 from typing import Any
 
 from .persona import Persona
@@ -106,6 +117,40 @@ class AssistantResult:
         if isinstance(ok_attr, bool):
             return ok_attr
         return bool(self.output)
+
+
+@dataclasses.dataclass(frozen=True)
+class KnowledgeDoc:
+    """A reference document an :class:`Assistant` reads before every answer."""
+
+    name: str
+    text: str
+
+    @classmethod
+    def from_path(cls, path: str | Path) -> KnowledgeDoc:
+        """Read a document.  Plain-text formats are read directly; PDF, DOCX
+        and the other formats :mod:`prompture.ingestion` supports go through it."""
+        path = Path(path)
+        if path.suffix.lower() in _TEXT_SUFFIXES:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        else:
+            from ..ingestion import ingest
+
+            text = ingest(path).text
+        return cls(name=path.stem, text=text.strip())
+
+
+_TEXT_SUFFIXES = {".md", ".markdown", ".txt", ".csv", ".tsv", ".json", ".yaml", ".yml", ".html", ".htm", ".xml", ".rst"}
+
+#: Default cap on inlined knowledge (~50k tokens).  Larger sets belong in a
+#: retriever (:mod:`prompture.rag`), not in every system prompt.
+DEFAULT_KNOWLEDGE_MAX_CHARS = 200_000
+
+_KNOWLEDGE_HEADER = (
+    "## Knowledge\n"
+    "Read these documents before every answer and keep your answer consistent with them. "
+    "If they do not cover something, say so instead of guessing."
+)
 
 
 # ---------------------------------------------------------------------------
@@ -164,6 +209,14 @@ class Assistant:
             ``AsyncDeepAgent.__init__`` when ``enable_planning=True``
             (e.g. ``{"enable_vfs": False, "enable_summarization": False,
             "max_iterations": 30}``).
+        brand: Optional :class:`~prompture.marketing.BrandContext` (or dict /
+            brand file path).  Its block follows the persona in the system
+            prompt.
+        knowledge: :class:`KnowledgeDoc` entries inlined into the system
+            prompt under ``## Knowledge`` so the model reads them before
+            every answer.
+        conversation_starters: Suggested first messages to show users.
+            Not sent to the model.
     """
 
     name: str
@@ -190,6 +243,9 @@ class Assistant:
     # Extra kwargs forwarded to AsyncDeepAgent when enable_planning=True
     # (e.g. {"enable_vfs": False, "enable_summarization": False}).
     deep_agent_options: dict[str, Any] = dataclasses.field(default_factory=dict)
+    brand: Any = None
+    knowledge: tuple[KnowledgeDoc, ...] = ()
+    conversation_starters: tuple[str, ...] = ()
 
     # ----- construction --------------------------------------------------
 
@@ -201,6 +257,14 @@ class Assistant:
             object.__setattr__(self, "skills", tuple(self.skills))
         if isinstance(self.tools, (list, set)):
             object.__setattr__(self, "tools", tuple(self.tools))
+        if not isinstance(self.knowledge, tuple):
+            object.__setattr__(self, "knowledge", tuple(self.knowledge))
+        if not isinstance(self.conversation_starters, tuple):
+            object.__setattr__(self, "conversation_starters", tuple(self.conversation_starters))
+        if self.brand is not None:
+            from ..marketing.context import load_brand
+
+            object.__setattr__(self, "brand", load_brand(self.brand))
 
         if bool(self.model) == bool(self.coding_agent):
             raise ValueError(
@@ -224,10 +288,31 @@ class Assistant:
         """Return a new Assistant with additional skills appended."""
         return dataclasses.replace(self, skills=self.skills + tuple(skills))
 
+    @property
+    def instructions(self) -> str:
+        """The persona's system prompt template (before brand, knowledge and skills)."""
+        return self.persona.system_prompt
+
+    def with_instructions(self, instructions: str) -> Assistant:
+        """Return a new Assistant whose persona uses ``instructions``.
+
+        Pairs with :class:`~prompture.execution.improve.FeedbackLoop`: apply the
+        promoted version with
+        ``assistant.with_instructions(ledger.active_content(assistant.name))``.
+        """
+        return dataclasses.replace(self, persona=dataclasses.replace(self.persona, system_prompt=instructions))
+
     def _composed_persona(self, call_vars: dict[str, Any]) -> Persona:
-        """Persona + skill instructions, with all template vars applied."""
+        """Persona + brand + knowledge + skill instructions, with all template vars applied."""
         merged_vars = {**self.persona.variables, **self.variables, **call_vars}
         persona = self.persona
+
+        if self.brand is not None:
+            persona = self.brand.apply_to(persona)
+            merged_vars = {**persona.variables, **merged_vars}
+        if self.knowledge:
+            docs = "\n\n".join(f"### {doc.name}\n{doc.text}" for doc in self.knowledge)
+            persona = persona.extend(f"{_KNOWLEDGE_HEADER}\n\n{docs}")
 
         for skill in self.skills:
             block = f"## Skill: {skill.name}\n{skill.description}\n\n{skill.instructions}".rstrip()
@@ -238,6 +323,125 @@ class Assistant:
         if merged_vars and merged_vars != dict(persona.variables):
             persona = dataclasses.replace(persona, variables=dict(merged_vars))
         return persona
+
+    # ----- loading -------------------------------------------------------
+
+    @classmethod
+    def from_file(
+        cls,
+        path: str | Path,
+        *,
+        tools: Any = None,
+        model: str | None = None,
+        brand: Any = None,
+    ) -> Assistant:
+        """Load an assistant definition from YAML, JSON or Markdown.
+
+        YAML / JSON keys (only ``name``, ``instructions`` and one of
+        ``model`` / ``coding_agent`` are required)::
+
+            name: linkedin-copywriter
+            description: Writes LinkedIn posts in the founder's voice
+            model: openai/gpt-4o
+            instructions: |
+              You write LinkedIn posts for {{brand_name}}...
+            instructions_file: instructions.md   # alternative to `instructions`
+            constraints: ["Short sentences.", "No hashtags."]
+            knowledge: [docs/customer.md, docs/messaging.docx, docs/case-studies/]
+            knowledge_max_chars: 200000
+            conversation_starters: ["Write this week's post about..."]
+            tools: ["web:search"]                # named tool specs
+            brand: brand.md                      # path, or an inline mapping
+            skills: [skills/hooks/SKILL.md]
+            variables: {audience: founders}
+            options: {temperature: 0.7}
+            agent_options: {max_iterations: 5}
+            enable_planning: false
+
+        Markdown files use YAML front matter for the keys above and the body
+        as ``instructions``.  Relative paths resolve against the file's folder;
+        a knowledge entry that is a folder loads every file in it.
+
+        Args:
+            path: The definition file.
+            tools: Python callables added to the named tools from the file,
+                or a ``ToolRegistry`` when the file names none.
+            model: Overrides the file's ``model`` (and ``coding_agent``).
+            brand: Overrides the file's ``brand``.
+
+        Raises:
+            ValueError: When required keys are missing or the knowledge
+                documents exceed ``knowledge_max_chars``.
+            FileNotFoundError: When a knowledge, skill or instructions file is missing.
+        """
+        path = Path(path)
+        data = _read_definition(path)
+        base = path.parent
+
+        name = str(data.get("name") or "").strip()
+        if not name:
+            raise ValueError(f"{path}: an assistant definition needs a 'name'.")
+
+        instructions = data.get("instructions") or data.get("system_prompt") or ""
+        if data.get("instructions_file"):
+            instructions = (base / data["instructions_file"]).read_text(encoding="utf-8")
+        if not str(instructions).strip():
+            raise ValueError(f"{path}: an assistant definition needs 'instructions'.")
+
+        persona = Persona(
+            name=name,
+            system_prompt=str(instructions).strip(),
+            description=str(data.get("description") or ""),
+            variables=dict(data.get("variables") or {}),
+            constraints=list(data.get("constraints") or []),
+            model_hint=data.get("model"),
+        )
+
+        knowledge = _load_knowledge(base, data.get("knowledge") or [])
+        limit = int(data.get("knowledge_max_chars") or DEFAULT_KNOWLEDGE_MAX_CHARS)
+        total = sum(len(doc.text) for doc in knowledge)
+        if total > limit:
+            raise ValueError(
+                f"{path}: knowledge documents total {total:,} characters, over the {limit:,} limit. "
+                "Raise knowledge_max_chars, trim the documents, or serve them through a retriever (prompture.rag)."
+            )
+
+        from .skills import load_skill
+
+        skills = tuple(load_skill(base / entry) for entry in data.get("skills") or [])
+
+        named_tools = list(data.get("tools") or [])
+        if tools is None:
+            tool_arg: Any = tuple(named_tools)
+        elif isinstance(tools, (list, tuple, set)):
+            tool_arg = (*named_tools, *tools)
+        elif named_tools:
+            raise ValueError(f"{path}: pass extra tools as a list when the file also names tools.")
+        else:
+            tool_arg = tools
+
+        brand_source = brand if brand is not None else data.get("brand")
+        if isinstance(brand_source, str):
+            brand_source = base / brand_source
+
+        return cls(
+            name=name,
+            persona=persona,
+            skills=skills,
+            tools=tool_arg,
+            model=model or data.get("model"),
+            coding_agent=None if model else data.get("coding_agent"),
+            description=str(data.get("description") or ""),
+            enable_planning=bool(data.get("enable_planning", False)),
+            output_key=data.get("output_key"),
+            options=dict(data.get("options") or {}),
+            agent_options=dict(data.get("agent_options") or {}),
+            coding_agent_options=dict(data.get("coding_agent_options") or {}),
+            deep_agent_options=dict(data.get("deep_agent_options") or {}),
+            brand=brand_source,
+            knowledge=knowledge,
+            conversation_starters=tuple(str(s) for s in data.get("conversation_starters") or ()),
+        )
 
     # ----- execution -----------------------------------------------------
 
@@ -527,6 +731,51 @@ class Assistant:
 
 
 # ---------------------------------------------------------------------------
+# Definition files
+# ---------------------------------------------------------------------------
+
+_FRONT_MATTER_RE = re.compile(r"\A---\s*\n(.*?)\n---\s*(?:\n|\Z)(.*)\Z", re.DOTALL)
+
+
+def _read_definition(path: Path) -> dict[str, Any]:
+    import yaml
+
+    text = path.read_text(encoding="utf-8")
+    suffix = path.suffix.lower()
+    if suffix == ".json":
+        data = json.loads(text)
+    elif suffix in (".yaml", ".yml"):
+        data = yaml.safe_load(text) or {}
+    elif suffix in (".md", ".markdown"):
+        match = _FRONT_MATTER_RE.match(text)
+        if not match:
+            raise ValueError(f"{path}: a Markdown assistant needs YAML front matter between '---' lines.")
+        data = yaml.safe_load(match.group(1)) or {}
+        body = match.group(2).strip()
+        if body and isinstance(data, dict) and not data.get("instructions"):
+            data["instructions"] = body
+    else:
+        raise ValueError(f"{path}: unsupported assistant file type {suffix!r}; use .yaml, .json or .md")
+    if not isinstance(data, dict):
+        raise ValueError(f"{path}: expected a mapping at the top level.")
+    return data
+
+
+def _load_knowledge(base: Path, entries: list[Any]) -> tuple[KnowledgeDoc, ...]:
+    docs: list[KnowledgeDoc] = []
+    for entry in entries:
+        target = base / str(entry)
+        if target.is_dir():
+            files = sorted(p for p in target.rglob("*") if p.is_file() and not p.name.startswith("."))
+        elif target.is_file():
+            files = [target]
+        else:
+            raise FileNotFoundError(f"Knowledge file not found: {target}")
+        docs.extend(KnowledgeDoc.from_path(file) for file in files)
+    return tuple(docs)
+
+
+# ---------------------------------------------------------------------------
 # Registry
 # ---------------------------------------------------------------------------
 
@@ -583,8 +832,10 @@ Assistant.register = _register  # type: ignore[attr-defined]
 
 
 __all__ = [
+    "DEFAULT_KNOWLEDGE_MAX_CHARS",
     "Assistant",
     "AssistantResult",
+    "KnowledgeDoc",
     "clear_assistant_registry",
     "get_assistant",
     "get_assistant_names",

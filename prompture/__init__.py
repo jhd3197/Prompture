@@ -15,6 +15,7 @@ from . import eval as eval
 from . import (
     execution,
     jobs,
+    marketing,
     mcp,
     plugins,
     rag,
@@ -99,6 +100,7 @@ from .kg import (
     extract_entities,
     extract_relations,
 )
+from .marketing import BrandContext, ClaimsChecker, ClaimsReport
 from .mcp.hub import MCPHub, MCPServerConfig, load_mcp_registry_by_name, resolve_mcp_tools
 from .media import *
 from .media.agent_tools import media_tool_definitions, register_media_tools

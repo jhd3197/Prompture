@@ -58,6 +58,20 @@ from .candidates import (
     candidate_from_skill_proposal,
     content_version,
 )
+from .feedback import (
+    FEEDBACK_HEADING,
+    FeedbackEntry,
+    FeedbackLog,
+    FeedbackLoop,
+    FeedbackOutcome,
+    apply_feedback_rules,
+    driver_runner,
+    feedback_judge,
+    feedback_rules,
+    propose_from_feedback,
+    score_instructions,
+    summarize_feedback,
+)
 from .optimizer import (
     CandidateSearchOptimizer,
     GEPAOptimizerAdapter,
@@ -70,12 +84,17 @@ from .promotion import ActiveVersion, PromotionError, PromotionLedger, Promotion
 from .scorecard import Scorecard, SplitResult
 
 __all__ = [
+    "FEEDBACK_HEADING",
     "ActiveVersion",
     "Candidate",
     "CandidateKind",
     "CandidateSearchOptimizer",
     "CandidateStatus",
     "CandidateStore",
+    "FeedbackEntry",
+    "FeedbackLog",
+    "FeedbackLoop",
+    "FeedbackOutcome",
     "GEPAOptimizerAdapter",
     "OptimizationResult",
     "Optimizer",
@@ -85,8 +104,15 @@ __all__ = [
     "PromotionRecord",
     "Scorecard",
     "SplitResult",
+    "apply_feedback_rules",
     "candidate_from_failures",
     "candidate_from_skill_proposal",
     "compare_optimizers",
     "content_version",
+    "driver_runner",
+    "feedback_judge",
+    "feedback_rules",
+    "propose_from_feedback",
+    "score_instructions",
+    "summarize_feedback",
 ]

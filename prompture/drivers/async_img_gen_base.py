@@ -70,8 +70,8 @@ class AsyncImageGenDriver:
         logger.debug(
             "[img_gen] async generate driver=%s images=%d cost=%.6f elapsed=%.0fms",
             driver_name,
-            meta.get("image_count", 0),
-            meta.get("cost", 0.0),
+            (meta.get("image_count") or 0),
+            (meta.get("cost") or 0.0),
             elapsed_ms,
         )
         self._fire_callback(

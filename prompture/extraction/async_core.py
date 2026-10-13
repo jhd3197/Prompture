@@ -579,6 +579,7 @@ async def extract_with_model(
     chunking: Any = None,
     strategy: str | StructuredOutputStrategy | None = None,
     max_retries: int = 1,
+    brand: Any = None,
 ) -> dict[str, Any]:
     """Extract structured information into a Pydantic model instance (async version).
 
@@ -588,9 +589,15 @@ async def extract_with_model(
         chunking: Chunking configuration for large documents.  Pass ``True``
             for auto-chunking with defaults, a ``ChunkingConfig`` for full
             control, or ``None``/``False`` to disable.
+        brand: A :class:`~prompture.marketing.BrandContext` (or dict / brand
+            file path) whose block is prepended to ``system_prompt``.
     """
     if options is None:
         options = {}
+    if brand is not None:
+        from ..marketing.context import merge_brand_system_prompt
+
+        system_prompt = merge_brand_system_prompt(system_prompt, brand)
 
     # --- Document source ingestion (lazy import) ---
     if source is not None:
