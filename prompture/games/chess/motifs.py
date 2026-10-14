@@ -17,7 +17,7 @@ Concept names match the puzzle themes Lichess and Chess Studio use
 can measure whether a concept helps a model.
 
 The detectors are deliberately simple static checks, not engine evaluations:
-``allows`` also checks each legal reply for a fork or winning capture. They
+``allows`` also checks each legal reply for checkmate, a fork or a winning capture. They
 describe a move; they do not prove it is good. Pieces lost on the spot disqualify forks, pins and
 skewers, since a "fork" by a piece that is simply captured is no fork.
 """
@@ -175,6 +175,13 @@ def _fork(after: chess.Board, to: chess.Square) -> Motif | None:
         ):
             targets.append(target)
     if len(targets) < 2 or all(after.piece_type_at(t) == chess.PAWN for t in targets):
+        return None
+    # A forked piece that can take the forker in an even trade answers the fork: Qh4+ "forking"
+    # the king and a queen on e7 is just met by ...Qxh4.
+    if any(
+        reply.to_square == to and _value(after, reply.from_square) <= VALUES[mover.piece_type]
+        for reply in after.legal_moves
+    ):
         return None
     targets.sort(key=lambda s: -_value(after, s))
     named = " and ".join(piece_label(after, t) for t in targets)
@@ -338,6 +345,11 @@ def _allows(board: chess.Board, move: chess.Move, after: chess.Board) -> list[Mo
     for reply in sorted(after.legal_moves, key=lambda m: m.uci()):
         following = after.copy(stack=False)
         following.push(reply)
+        if following.is_checkmate():
+            warnings.append(
+                Motif("allows", f"allows {after.san(reply)}: checkmate", (chess.square_name(reply.to_square),))
+            )
+            continue
         tactics = []
         if losing_capture(following, reply.to_square) is None:
             fork = _fork(following, reply.to_square)

@@ -132,6 +132,16 @@ class TestMotifs:
             for text in tags("3qk2r/p7/8/6N1/8/8/8/4K3 b - - 0 1", "a6", concepts={"allows"})
         )
 
+    def test_allows_a_mate_in_one(self):
+        # Fable vs Astra, 24.h4?? walked into ...Rc1#, a double check the hints did not mention.
+        fen = "2r5/5pp1/p5k1/1p1pPbN1/1n6/8/PPr3PP/1K1R2R1 w - - 6 24"
+        assert "allows Rc1#: checkmate" in tags(fen, "h4", concepts={"allows"})
+
+    def test_a_fork_answered_by_an_even_trade_is_no_fork(self):
+        # 19.Qh4+ "forked" the king on h7 and the queen on e7, which simply took it: ...Qxh4.
+        fen = "2r2r2/3bqppk/p7/1p1pP3/1n3Q2/5N2/PPP3PP/1K1R3R w - - 0 19"
+        assert "fork" not in kinds(fen, "Qh4+")
+
     def test_mate_has_no_allows_warnings(self):
         assert "allows" not in kinds("6k1/5ppp/8/8/8/8/8/R5K1 w - - 0 1", "Ra8#", concepts={"allows"})
 
