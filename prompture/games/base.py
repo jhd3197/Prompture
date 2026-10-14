@@ -102,13 +102,25 @@ PROMPT_VERSION = "1"  # bump when the harness's prompt wording or schema changes
 FAILURE_POLICIES = ("rescue", "forfeit", "stop")
 
 
+SEVERITIES = ("urgent", "warning", "info")
+
+
 @dataclass(frozen=True)
 class Motif:
-    """One tag on a move: its kind (a fact or concept name) and a sentence."""
+    """One tag on a move: its kind (a fact or concept name) and a sentence.
+
+    ``severity`` (``urgent``, ``warning`` or ``info``) orders what a compact
+    prompt keeps first. ``exact`` is False for heuristics (a local exchange
+    count, a bounded search that ran out of work); ``evidence`` holds a short
+    witness such as the exchange line, kept for traces.
+    """
 
     kind: str
     text: str
     squares: tuple[str, ...] = ()
+    severity: str = "info"
+    exact: bool = True
+    evidence: str = ""
 
     def __str__(self) -> str:
         return self.text

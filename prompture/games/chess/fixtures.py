@@ -198,11 +198,25 @@ CHESS_FIXTURES: list[dict[str, Any]] = [
         "provenance": HAND,
         "initial": "4r1k1/8/8/4r3/8/8/4R3/4R1K1 w - - 0 1",
         "acceptable": ["Rxe5"],
-        "expect": [
-            {"move": "Rxe5", "concepts": ["hanging-piece"], "present": ["hanging-piece"], "gap": "x-ray exchange"}
-        ],
+        "expect": [{"move": "Rxe5", "concepts": ["hanging-piece"], "present": ["hanging-piece"]}],
         "tags": ["exchange", "x-ray"],
         "notes": "Rxe5 Rxe5 Rxe5 nets a rook: the second rook recaptures through the first",
+    },
+    {
+        "id": "exchange-attacked-twice-defended-once",
+        "split": "dev",
+        "provenance": HAND,
+        "initial": "3rk3/8/1b6/8/8/2P2N2/8/4K3 w - - 0 1",
+        "expect": [
+            {
+                "move": "Nd4",
+                "concepts": ["safety"],
+                "present": ["safety: warning: leaves the knight on d4 to be won by the bishop on b6"],
+            },
+            {"move": "Ne5", "concepts": ["safety"], "absent": ["safety"]},
+        ],
+        "tags": ["exchange", "x-ray"],
+        "notes": "Bxd4 cxd4 Rxd4 nets a pawn; a one-recapture count missed it",
     },
     {
         "id": "pinned-defender",
@@ -255,14 +269,14 @@ CHESS_FIXTURES: list[dict[str, Any]] = [
         "initial": "4k3/8/8/8/8/8/1p1K4/8 w - - 0 1",
         "acceptable": ["Kc2"],
         "expect": [
-            {"move": "Ke2", "concepts": ["allows"], "present": ["allows"], "gap": "promotion warnings"},
+            {"move": "Ke2", "concepts": ["allows"], "present": ["allows"]},
             {"move": "Kc2", "concepts": ["allows"], "absent": ["allows"]},
         ],
         "tags": ["promotion", "negative"],
         "notes": "only Kc2 meets b1=Q (with Kxb1); every other move lets the pawn promote safely",
     },
     {
-        "id": "underpromotion",
+        "id": "underpromotion-knight-check",
         "split": "test",
         "provenance": HAND,
         "initial": "8/4P1k1/8/8/8/8/8/4K3 w - - 0 1",
@@ -271,7 +285,6 @@ CHESS_FIXTURES: list[dict[str, Any]] = [
             {
                 "move": "e8=N+",
                 "present": ["promotion: promotes to a knight (an underpromotion)"],
-                "gap": "promotion warnings",
             },
         ],
         "tags": ["promotion"],
