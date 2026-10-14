@@ -12,6 +12,7 @@ from typing import Any
 import requests
 
 from ..infra.cost_mixin import CostMixin, prepare_strict_schema
+from ._effort import apply_effort
 from .base import Driver, _parse_tool_arguments
 
 logger = logging.getLogger(__name__)
@@ -109,6 +110,7 @@ class OpenRouterDriver(CostMixin, Driver):
 
         # Add token limit with correct parameter name
         data[tokens_param] = opts.get("max_tokens", 512)
+        apply_effort(data, opts, "openrouter")
 
         # Only include temperature if model supports it
         if supports_temperature and "temperature" in opts:
@@ -225,6 +227,7 @@ class OpenRouterDriver(CostMixin, Driver):
             "tools": tools,
         }
         data[tokens_param] = opts.get("max_tokens", 4096)
+        apply_effort(data, opts, "openrouter")
 
         if supports_temperature and "temperature" in opts:
             data["temperature"] = opts["temperature"]
@@ -326,6 +329,7 @@ class OpenRouterDriver(CostMixin, Driver):
             "stream_options": {"include_usage": True},
         }
         data[tokens_param] = opts.get("max_tokens", 512)
+        apply_effort(data, opts, "openrouter")
 
         if supports_temperature and "temperature" in opts:
             data["temperature"] = opts["temperature"]

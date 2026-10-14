@@ -9,6 +9,7 @@ from typing import Any
 import httpx
 
 from ..infra.cost_mixin import CostMixin
+from ._effort import apply_effort
 from .async_base import AsyncDriver
 from .base import _parse_tool_arguments
 from .grok_driver import GrokDriver
@@ -61,6 +62,7 @@ class AsyncGrokDriver(CostMixin, AsyncDriver):
             "messages": messages,
         }
         payload[tokens_param] = opts.get("max_tokens", 512)
+        apply_effort(payload, opts, "openai")
 
         if supports_temperature and "temperature" in opts:
             payload["temperature"] = opts["temperature"]
@@ -150,6 +152,7 @@ class AsyncGrokDriver(CostMixin, AsyncDriver):
             "tools": tools,
         }
         payload[tokens_param] = opts.get("max_tokens", 4096)
+        apply_effort(payload, opts, "openai")
 
         if supports_temperature and "temperature" in opts:
             payload["temperature"] = opts["temperature"]

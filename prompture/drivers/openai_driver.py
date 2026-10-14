@@ -14,6 +14,7 @@ except ImportError:
 
 from ..infra.cost_mixin import CostMixin, prepare_strict_schema
 from ..infra.rate_limits import add_rate_limits, attach_rate_limit_hook, capture_rate_limits, limits_from_response
+from ._effort import apply_effort
 from ._prompt_cache import derive_prompt_cache_key
 from ._usage_reporting import usage_meta
 from .base import Driver, _apply_openai_tool_options, _normalize_stop_reason, _tool_call_dict
@@ -22,9 +23,12 @@ logger = logging.getLogger(__name__)
 
 
 def _apply_openai_reporting_options(kwargs: dict[str, Any], options: dict[str, Any]) -> None:
-    for key in ("service_tier", "prompt_cache_retention", "reasoning_effort"):
+    # timeout: per request, as the Responses path and the Claude driver already take it. Without
+    # it a call waits the SDK's 10 minutes per try (with retries) on a stalled connection.
+    for key in ("service_tier", "prompt_cache_retention", "reasoning_effort", "timeout"):
         if key in options:
             kwargs[key] = options[key]
+    apply_effort(kwargs, options, "openai")  # the provider-neutral "effort" (see _effort)
 
 
 # ----------------------------------------------------------------------
@@ -417,20 +421,26 @@ class OpenAIDriver(CostMixin, Driver):
         final_usage = None
         response_info = {}
 
-        for chunk in stream:
-            for key in ("id", "model", "service_tier"):
-                if isinstance(getattr(chunk, key, None), str):
-                    response_info[key] = getattr(chunk, key)
-            # Usage comes in the final chunk
-            if getattr(chunk, "usage", None):
-                final_usage = chunk.usage
+        try:
+            for chunk in stream:
+                for key in ("id", "model", "service_tier"):
+                    if isinstance(getattr(chunk, key, None), str):
+                        response_info[key] = getattr(chunk, key)
+                # Usage comes in the final chunk
+                if getattr(chunk, "usage", None):
+                    final_usage = chunk.usage
 
-            if chunk.choices:
-                delta = chunk.choices[0].delta
-                content = getattr(delta, "content", None) or ""
-                if content:
-                    full_text += content
-                    yield {"type": "delta", "text": content}
+                if chunk.choices:
+                    delta = chunk.choices[0].delta
+                    content = getattr(delta, "content", None) or ""
+                    if content:
+                        full_text += content
+                        yield {"type": "delta", "text": content}
+        finally:
+            # Closing the generator early (a stopped turn) releases the HTTP response now.
+            close = getattr(stream, "close", None)
+            if callable(close):
+                close()
 
         meta = usage_meta(self, "openai", model, final_usage, response=response_info, options=options)
         meta["raw_response"] = {}

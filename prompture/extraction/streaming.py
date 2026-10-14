@@ -22,9 +22,11 @@ Two public entry points:
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
-from collections.abc import AsyncIterator, Iterator
+import time
+from collections.abc import AsyncIterator, Callable, Iterator
 from typing import Any, TypeVar
 
 from pydantic import BaseModel
@@ -32,6 +34,75 @@ from pydantic import BaseModel
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T", bound=BaseModel)
+
+
+class StreamStopped(RuntimeError):
+    """A caller asked a stream to stop before it finished; the stream was closed."""
+
+
+def _collect_stream(
+    driver: Any,
+    messages: list[dict[str, Any]],
+    options: dict[str, Any],
+    *,
+    on_delta: Callable[[str], None] | None = None,
+    should_stop: Callable[[], bool] | None = None,
+) -> dict[str, Any]:
+    """Collect a completed driver stream without losing callbacks or usage tracking.
+
+    A stream that ends without its terminal summary is a failed call, even if
+    some of its text parses as JSON. Thinking deltas are never part of the JSON.
+    ``on_delta`` sees each public text delta; ``should_stop`` is checked between
+    chunks and closes the stream early. A failure carries the text received so
+    far as ``partial_text`` on the raised exception.
+    """
+    driver_name = getattr(driver, "model", driver.__class__.__name__)
+    request = {"prompt": None, "messages": messages, "options": options, "driver": driver_name}
+    driver._fire_callback("on_request", request)
+    started = time.perf_counter()
+    chunks = None
+    parts = []
+    try:
+        chunks = driver.generate_messages_stream(messages, options)
+        for chunk in chunks:
+            if should_stop is not None and should_stop():
+                raise StreamStopped("the stream was stopped before it finished")
+            if chunk.get("type") == "delta":
+                parts.append(chunk.get("text") or "")
+                driver._fire_callback("on_stream_delta", {"text": chunk.get("text") or "", "driver": driver_name})
+                if on_delta is not None:
+                    try:
+                        on_delta(chunk.get("text") or "")
+                    except Exception:
+                        logger.exception("on_delta raised an exception")
+            elif chunk.get("type") == "done":
+                response = {**chunk, "text": chunk.get("text") or "".join(parts), "meta": chunk.get("meta") or {}}
+                elapsed = (time.perf_counter() - started) * 1000
+                driver._fire_callback("on_response", {**response, "driver": driver_name, "elapsed_ms": elapsed})
+                driver._auto_record_usage(response, elapsed)
+                return response
+        raise RuntimeError("the model stream ended without a completion summary")
+    except Exception as exc:
+        with contextlib.suppress(Exception):  # exceptions without a __dict__
+            exc.partial_text = "".join(parts)  # type: ignore[attr-defined]
+        driver._fire_callback("on_error", {**request, "error": exc})
+        driver._auto_record_usage(
+            {
+                "meta": {
+                    "usage_complete": False,
+                    "cost_status": "unknown",
+                    "requested_model": options.get("model", driver_name),
+                }
+            },
+            (time.perf_counter() - started) * 1000,
+            status="error",
+            error=exc,
+        )
+        raise
+    finally:
+        close = getattr(chunks, "close", None)
+        if close is not None:
+            close()
 
 
 # ---------------------------------------------------------------------------

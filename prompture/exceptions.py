@@ -19,7 +19,24 @@ class DriverError(PromptureError, NotImplementedError):
 
 
 class ExtractionError(PromptureError, ValueError):
-    """Raised when JSON extraction or parsing fails."""
+    """Raised when JSON extraction or parsing fails.
+
+    ``usage`` is what the failed call cost, when a call was made: the reply was paid for
+    even though it could not be parsed. ``raw_text`` and ``stop_reason`` keep the
+    public reply that failed to parse, when there was one.
+    """
+
+    def __init__(
+        self,
+        *args: Any,
+        usage: dict[str, Any] | None = None,
+        raw_text: str | None = None,
+        stop_reason: str | None = None,
+    ) -> None:
+        super().__init__(*args)
+        self.usage = usage or {}
+        self.raw_text = raw_text
+        self.stop_reason = stop_reason
 
 
 class ConfigurationError(PromptureError, ValueError):

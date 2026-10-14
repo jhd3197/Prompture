@@ -8,17 +8,27 @@
 * **Concepts** (:data:`CONCEPTS`) are ideas a player has to know to see:
   checkmate, back-rank mate, forks, pins, skewers, discovered attacks, winning
   hanging pieces, and the ``safety`` warning that a move leaves a piece en
-  prise. Each one can be switched on or off, so a harness can model a player
+  prise, and ``allows`` warnings about an opponent's next-move tactics.
+  Each one can be switched on or off, so a harness can model a player
   who has never heard of a skewer.
 
 Concept names match the puzzle themes Lichess and Chess Studio use
 (``fork``, ``pin``, ``discovered-attack`` ...), so puzzle packs of one theme
 can measure whether a concept helps a model.
 
-The detectors are deliberately simple static checks, not search: they look
-one move deep and use attacker/defender counts. They describe a move; they
-do not prove it is good. Pieces lost on the spot disqualify forks, pins and
-skewers, since a "fork" by a piece that is simply captured is no fork.
+The detectors are deliberately simple static checks, not engine evaluations:
+``allows`` also checks each legal reply for checkmate, a fork, a winning capture or a
+promotion. They describe a move; they do not prove it is good. Pieces lost on the spot
+disqualify forks, pins and skewers, since a "fork" by a piece that is simply captured is no fork.
+
+Material is counted with :func:`~prompture.games.chess.exchange.exchange`: legal
+recaptures only (pinned defenders cannot take back), x-rays included, promotions
+valued, at most ``MAX_EXCHANGE_PLIES`` captures. That is a local count on one square,
+so tags built on it are marked ``exact=False`` and carry the counted line as evidence.
+``allows`` examines at most ``MAX_REPLIES`` replies and says so when it stops early.
+
+Each tag has a ``severity``: ``urgent`` for mates and mate threats, ``warning`` for
+material the move gives away, ``info`` for facts and opportunities.
 """
 
 from __future__ import annotations
@@ -28,7 +38,10 @@ from collections.abc import Iterable, Iterator
 import chess
 
 from ..base import Motif
+from .exchange import best_capture, exchange
 
+HINTS_VERSION = "3"  # bump when a detector's wording or logic changes
+MAX_REPLIES = 128  # replies examined by ``allows``
 FACTS = ("check", "capture", "promotion", "castle")
 CONCEPTS = (
     "mate",
@@ -39,6 +52,7 @@ CONCEPTS = (
     "discovered-attack",
     "hanging-piece",
     "safety",
+    "allows",
 )
 
 VALUES = {
@@ -83,18 +97,16 @@ def losing_capture(board: chess.Board, square: chess.Square) -> chess.Move | Non
     """A capture of the piece on ``square`` that wins material for the side to move.
 
     ``board`` has the capturing side to move. A capture wins material when the
-    attacker is worth less than the victim, or when the victim's side has no
-    legal recapture.
+    attacker is worth less than the victim, or when the local exchange of legal
+    captures on the square (x-rays included, pinned defenders excluded) nets a gain.
     """
     victim = _value(board, square)
-    for capture in board.legal_moves:
+    for capture in sorted(board.legal_moves, key=lambda m: m.uci()):
         if capture.to_square != square:
             continue
         if _value(board, capture.from_square) < victim:
             return capture
-        reply = board.copy(stack=False)
-        reply.push(capture)
-        if not any(move.to_square == square for move in reply.legal_moves):
+        if exchange(board, capture).gain > 0:
             return capture
     return None
 
@@ -132,7 +144,8 @@ def _facts(board: chess.Board, move: chess.Move, after: chess.Board) -> list[Mot
         else:
             facts.append(Motif("capture", f"captures {piece_label(board, move.to_square)}"))
     if move.promotion:
-        facts.append(Motif("promotion", f"promotes to a {chess.piece_name(move.promotion)}"))
+        under = " (an underpromotion)" if move.promotion != chess.QUEEN else ""
+        facts.append(Motif("promotion", f"promotes to a {chess.piece_name(move.promotion)}{under}"))
     if after.is_check():
         facts.append(Motif("check", "gives check"))
     return facts
@@ -143,7 +156,7 @@ def _mates(after: chess.Board, wanted: set[str]) -> list[Motif]:
         return []
     found = []
     if "mate" in wanted:
-        found.append(Motif("mate", "checkmate"))
+        found.append(Motif("mate", "checkmate", severity="urgent"))
     if "back-rank-mate" in wanted:
         king = after.king(after.turn)
         back_rank = 0 if after.turn == chess.WHITE else 7
@@ -153,7 +166,13 @@ def _mates(after: chess.Board, wanted: set[str]) -> list[Motif]:
                     _piece(after, checker).piece_type in (chess.ROOK, chess.QUEEN)
                     and chess.square_rank(checker) == back_rank
                 ):
-                    found.append(Motif("back-rank-mate", "back-rank mate: the king is trapped behind its own pieces"))
+                    found.append(
+                        Motif(
+                            "back-rank-mate",
+                            "back-rank mate: the king is trapped behind its own pieces",
+                            severity="urgent",
+                        )
+                    )
                     break
     return found
 
@@ -173,6 +192,13 @@ def _fork(after: chess.Board, to: chess.Square) -> Motif | None:
         ):
             targets.append(target)
     if len(targets) < 2 or all(after.piece_type_at(t) == chess.PAWN for t in targets):
+        return None
+    # A forked piece that can take the forker in an even trade answers the fork: Qh4+ "forking"
+    # the king and a queen on e7 is just met by ...Qxh4.
+    if any(
+        reply.to_square == to and _value(after, reply.from_square) <= VALUES[mover.piece_type]
+        for reply in after.legal_moves
+    ):
         return None
     targets.sort(key=lambda s: -_value(after, s))
     named = " and ".join(piece_label(after, t) for t in targets)
@@ -273,15 +299,21 @@ def _wins_material(board: chess.Board, move: chess.Move, after: chess.Board) -> 
         return None
     captured = _value(board, move.to_square)
     victim = piece_label(board, move.to_square)
+    square = chess.square_name(move.to_square)
     recaptures = any(reply.to_square == move.to_square for reply in after.legal_moves)
     if not recaptures:
-        return Motif("hanging-piece", f"wins {victim}, which was undefended", (chess.square_name(move.to_square),))
+        return Motif("hanging-piece", f"wins {victim}, which was undefended", (square,))
     mover = _piece(board, move.from_square).piece_type
     if captured > VALUES[mover]:
+        return Motif("hanging-piece", f"wins material: {victim} for a {chess.piece_name(mover)}", (square,))
+    counted = exchange(board, move)
+    if counted.gain > 0:
         return Motif(
             "hanging-piece",
-            f"wins material: {victim} for a {chess.piece_name(mover)}",
-            (chess.square_name(move.to_square),),
+            f"wins material in the exchange on {square}: net +{counted.gain} by a local count of the captures there",
+            (square,),
+            exact=False,
+            evidence=counted.evidence,
         )
     return None
 
@@ -308,13 +340,98 @@ def _safety(board: chess.Board, move: chess.Move, after: chess.Board) -> list[Mo
             continue
         capture = losing_capture(after, square)
         if capture:
+            counted = exchange(after, capture)
             warnings.append(
                 Motif(
                     "safety",
                     f"warning: leaves {piece_label(after, square)} to be won by {piece_label(after, capture.from_square)}",
                     (chess.square_name(square),),
+                    severity="warning",
+                    exact=counted.complete and counted.line == (after.san(capture),),
+                    evidence=counted.evidence,
                 )
             )
+    return warnings
+
+
+def _capture_value(board: chess.Board, move: chess.Move) -> int:
+    return VALUES[chess.PAWN] if board.is_en_passant(move) else _value(board, move.to_square)
+
+
+def _allows(board: chess.Board, move: chess.Move, after: chess.Board) -> list[Motif]:
+    """One legal reply deep, using the same conservative static motif checks.
+
+    These are tactical possibilities, not proof of a forced loss. Count material
+    already taken by the candidate so ordinary exchanges do not look like blunders.
+    Do not call describe_move recursively: reply hints must stay bounded.
+    """
+    gained = _capture_value(board, move)
+    if move.promotion:
+        gained += VALUES[move.promotion] - VALUES[chess.PAWN]
+    warnings = []
+    replies = sorted(after.legal_moves, key=lambda m: m.uci())
+    promoted: set[chess.Square] = set()
+    for reply in replies[:MAX_REPLIES]:
+        following = after.copy(stack=False)
+        following.push(reply)
+        if following.is_checkmate():
+            warnings.append(
+                Motif(
+                    "allows",
+                    f"allows {after.san(reply)}: checkmate",
+                    (chess.square_name(reply.to_square),),
+                    severity="urgent",
+                    evidence=after.san(reply),
+                )
+            )
+            continue
+        tactics: list[tuple[Motif, bool, str]] = []
+        if losing_capture(following, reply.to_square) is None:
+            fork = _fork(following, reply.to_square)
+            if fork:
+                tactics.append((fork, True, after.san(reply)))
+        if after.is_capture(reply):
+            counted = exchange(after, reply)
+            if counted.gain > gained:
+                victim_square = reply.to_square
+                if after.is_en_passant(reply):
+                    victim_square += -8 if after.turn else 8
+                tactic = Motif(
+                    "hanging-piece",
+                    f"winning capture of {piece_label(after, victim_square)}",
+                    (chess.square_name(victim_square),),
+                )
+                tactics.append((tactic, counted.complete and len(counted.line) <= 2, counted.evidence))
+        elif reply.promotion == chess.QUEEN and reply.to_square not in promoted:
+            # A new queen the mover cannot win back is a material swing of a queen less the pawn.
+            regain = best_capture(following, reply.to_square)
+            profit = VALUES[chess.QUEEN] - VALUES[chess.PAWN] - (regain.gain if regain else 0)
+            if profit > gained:
+                promoted.add(reply.to_square)
+                text = f"promotes to a queen on {chess.square_name(reply.to_square)}"
+                tactics.append(
+                    (Motif("promotion", text, (chess.square_name(reply.to_square),)), regain is None, after.san(reply))
+                )
+        for tactic, exact, evidence in tactics:
+            warnings.append(
+                Motif(
+                    "allows",
+                    f"allows {after.san(reply)}: {tactic.text}",
+                    tactic.squares,
+                    severity="warning",
+                    exact=exact,
+                    evidence=evidence,
+                )
+            )
+    if len(replies) > MAX_REPLIES:
+        warnings.append(
+            Motif(
+                "allows",
+                f"reply check stopped after {MAX_REPLIES} of {len(replies)} replies; the rest were not examined",
+                severity="info",
+                exact=False,
+            )
+        )
     return warnings
 
 
@@ -353,4 +470,6 @@ def describe_move(
             motifs.append(won)
     if "safety" in wanted:
         motifs += _safety(board, move, after)
+    if "allows" in wanted:
+        motifs += _allows(board, move, after)
     return motifs

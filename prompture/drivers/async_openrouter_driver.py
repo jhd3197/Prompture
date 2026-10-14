@@ -11,6 +11,7 @@ from typing import Any
 import httpx
 
 from ..infra.cost_mixin import CostMixin, prepare_strict_schema
+from ._effort import apply_effort
 from .async_base import AsyncDriver
 from .base import _parse_tool_arguments
 from .openrouter_driver import OpenRouterDriver
@@ -76,6 +77,7 @@ class AsyncOpenRouterDriver(CostMixin, AsyncDriver):
             "messages": messages,
         }
         data[tokens_param] = opts.get("max_tokens", 512)
+        apply_effort(data, opts, "openrouter")
 
         if supports_temperature and "temperature" in opts:
             data["temperature"] = opts["temperature"]
@@ -176,6 +178,7 @@ class AsyncOpenRouterDriver(CostMixin, AsyncDriver):
             "tools": tools,
         }
         data[tokens_param] = opts.get("max_tokens", 4096)
+        apply_effort(data, opts, "openrouter")
 
         if supports_temperature and "temperature" in opts:
             data["temperature"] = opts["temperature"]
@@ -276,6 +279,7 @@ class AsyncOpenRouterDriver(CostMixin, AsyncDriver):
             "stream_options": {"include_usage": True},
         }
         data[tokens_param] = opts.get("max_tokens", 512)
+        apply_effort(data, opts, "openrouter")
 
         if supports_temperature and "temperature" in opts:
             data["temperature"] = opts["temperature"]

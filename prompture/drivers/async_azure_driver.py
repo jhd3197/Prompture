@@ -22,6 +22,7 @@ except ImportError:
 
 from ..infra.cost_mixin import CostMixin, prepare_strict_schema
 from ..infra.rate_limits import add_rate_limits, attach_rate_limit_hook, capture_rate_limits
+from ._effort import apply_effort
 from .async_base import AsyncDriver
 from .azure_config import classify_backend, resolve_config
 from .azure_driver import AzureDriver
@@ -166,6 +167,7 @@ class AsyncAzureDriver(CostMixin, AsyncDriver):
             "messages": messages,
         }
         kwargs[tokens_param] = opts.get("max_tokens", 512)
+        apply_effort(kwargs, opts, "openai")
 
         if supports_temperature and "temperature" in opts:
             kwargs["temperature"] = opts["temperature"]
@@ -328,6 +330,7 @@ class AsyncAzureDriver(CostMixin, AsyncDriver):
             "tools": tools,
         }
         kwargs[tokens_param] = opts.get("max_tokens", 4096)
+        apply_effort(kwargs, opts, "openai")
 
         if supports_temperature and "temperature" in opts:
             kwargs["temperature"] = opts["temperature"]

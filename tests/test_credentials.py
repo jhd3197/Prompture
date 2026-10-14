@@ -446,3 +446,58 @@ class TestFoundationHooks:
         assert [b.name for b in chain.ordered()] == ["c", "a", "b"]
         monkeypatch.setenv("PROMPTURE_TEST_ORDER", "b")
         assert [b.name for b in chain.ordered()] == ["b", "a", "c"]
+
+
+# ---------------------------------------------------------------------------
+# Keys saved while running, and the vendors' own key names
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def clean_keys(home, monkeypatch):
+    """No provider keys from the environment, and settings restored after the test."""
+    monkeypatch.chdir(home)  # no .env from the working copy
+    import importlib
+
+    settings_mod = importlib.import_module("prompture.infra.settings")
+
+    for var in (
+        "CLAUDE_API_KEY",
+        "ANTHROPIC_API_KEY",
+        "GOOGLE_API_KEY",
+        "GEMINI_API_KEY",
+        "GROK_API_KEY",
+        "XAI_API_KEY",
+    ):
+        monkeypatch.delenv(var, raising=False)
+    saved = {name: getattr(settings_mod.settings, name) for name in settings_mod.Settings.model_fields}
+    yield settings_mod
+    for name, value in saved.items():
+        object.__setattr__(settings_mod.settings, name, value)
+
+
+def test_vendor_key_names_fill_prompture_keys(clean_keys, monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-env")
+    monkeypatch.setenv("GEMINI_API_KEY", "gem-env")
+    CredentialStore().set("XAI_API_KEY", "xai-store")
+    fresh = clean_keys.Settings(_env_file=None)
+    assert (fresh.claude_api_key, fresh.google_api_key, fresh.grok_api_key) == ("sk-ant-env", "gem-env", "xai-store")
+    monkeypatch.setenv("CLAUDE_API_KEY", "sk-ant-own")
+    assert clean_keys.Settings(_env_file=None).claude_api_key == "sk-ant-own"  # Prompture's own name wins
+
+
+def test_a_key_saved_while_running_reaches_settings(clean_keys):
+    settings = clean_keys.settings
+    object.__setattr__(settings, "claude_api_key", None)
+    object.__setattr__(settings, "openai_model", "set-by-the-program")
+    CredentialStore().set("ANTHROPIC_API_KEY", "sk-ant-saved")
+    assert settings.claude_api_key == "sk-ant-saved"
+    assert settings.openai_model == "set-by-the-program"  # untouched: only changed names refresh
+    CredentialStore().unset("ANTHROPIC_API_KEY")
+    assert settings.claude_api_key is None
+
+
+def test_a_store_elsewhere_leaves_settings_alone(clean_keys, tmp_path):
+    object.__setattr__(clean_keys.settings, "claude_api_key", None)
+    CredentialStore(tmp_path / "other.yaml").set("CLAUDE_API_KEY", "sk-elsewhere")
+    assert clean_keys.settings.claude_api_key is None

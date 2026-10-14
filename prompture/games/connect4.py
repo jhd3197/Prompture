@@ -33,7 +33,7 @@ import math
 from collections.abc import Iterable
 from typing import Any
 
-from .base import Engine, Motif, Score, check_concepts
+from .base import Engine, GameLine, Motif, Score, check_concepts
 
 ROWS, COLS = 6, 7
 RED, YELLOW = 1, 2
@@ -150,10 +150,10 @@ def describe_move(
             motifs.append(Motif("full", f"fills column {col + 1}"))
     if after.won:
         if "win" in wanted:
-            motifs.append(Motif("win", "wins: connects four"))
+            motifs.append(Motif("win", "wins: connects four", severity="urgent"))
         return motifs
     if "block" in wanted and col in board.immediate_wins(opponent):
-        motifs.append(Motif("block", f"blocks {NAMES[opponent]}'s four in column {col + 1}"))
+        motifs.append(Motif("block", f"blocks {NAMES[opponent]}'s four in column {col + 1}", severity="urgent"))
     opponent_wins = after.immediate_wins(opponent)
     mine_after = after.winning_cells(me)
     playable = sorted(c for r, c in mine_after if after.heights[c] == r)
@@ -161,7 +161,11 @@ def describe_move(
     if double:
         columns = " and ".join(str(c + 1) for c in playable)
         motifs.append(
-            Motif("double-threat", f"double threat: wins next move in columns {columns}; only one can be blocked")
+            Motif(
+                "double-threat",
+                f"double threat: wins next move in columns {columns}; only one can be blocked",
+                severity="urgent",
+            )
         )
     if "threat" in wanted and not double:
         for r, c in sorted(mine_after - board.winning_cells(me)):
@@ -169,7 +173,9 @@ def describe_move(
             motifs.append(Motif("threat", f"threat: four would connect at {cell_name(r, c)}{now}"))
     if "safety" in wanted and opponent_wins:
         columns = ", ".join(str(c + 1) for c in sorted(opponent_wins))
-        motifs.append(Motif("safety", f"warning: lets {NAMES[opponent]} win next move in column {columns}"))
+        motifs.append(
+            Motif("safety", f"warning: lets {NAMES[opponent]} win next move in column {columns}", severity="urgent")
+        )
     if "center" in wanted and col == CENTER:
         motifs.append(Motif("center", "takes the center column, part of the most lines"))
     return motifs
@@ -179,6 +185,7 @@ class Connect4:
     """Connect Four rules and notation for the harness."""
 
     title = "Connect Four"
+    sides = ("Red", "Yellow")
     concepts: tuple[str, ...] = CONCEPTS
     rules = (
         "Rules: drop a disc into a column (1-7, left to right); it falls to the lowest empty row "
@@ -236,6 +243,30 @@ class Connect4:
 
     def default_engine(self) -> Engine:
         return Connect4Engine()
+
+    def history(self, board: Connect4Board) -> GameLine:
+        """The game line from the empty board. A board whose cells do not match its moves is its own root."""
+        replay = Connect4Board(board.moves)
+        if replay.cells != board.cells:
+            return GameLine("cells:" + "".join(map(str, board.cells)) + f":{board.turn}")
+        return GameLine(
+            "start", tuple((NAMES[RED if i % 2 == 0 else YELLOW], str(c + 1)) for i, c in enumerate(board.moves))
+        )
+
+    def dump_state(self, board: Connect4Board) -> dict[str, Any]:
+        return {"game": self.title, "initial": None, "moves": [str(c + 1) for c in board.moves]}
+
+    def load_state(self, data: dict[str, Any]) -> Connect4Board:
+        """Replay ``{"initial": None, "moves": [...]}``; an illegal move raises ``ValueError``."""
+        if data.get("initial") not in (None, "", "start"):
+            raise ValueError("Connect Four states start from the empty board")
+        board = Connect4Board()
+        for name in data.get("moves", []):
+            col = self.parse_move(board, str(name))
+            if col is None or str(col + 1) != str(name).strip():
+                raise ValueError(f"illegal Connect Four move {name!r} after {len(board.moves)} moves")
+            board.play(col)
+        return board
 
 
 class Connect4Engine:

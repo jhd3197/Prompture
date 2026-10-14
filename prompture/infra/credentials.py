@@ -147,7 +147,14 @@ def _is_link(path: Path) -> bool:
     if path.is_symlink():
         return True
     isjunction = getattr(os.path, "isjunction", None)
-    return bool(isjunction and isjunction(path))
+    if isjunction is not None:
+        return bool(isjunction(path))
+    # os.path.isjunction was added in Python 3.12; older supported versions
+    # expose the junction's reparse tag through lstat instead.
+    if os.name == "nt":
+        with contextlib.suppress(OSError):
+            return path.lstat().st_reparse_tag == stat.IO_REPARSE_TAG_MOUNT_POINT
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -535,6 +542,36 @@ class CredentialStore:
         return _dump_minimal(data)
 
     def _write(self, data: Mapping[str, Mapping[str, str]]) -> None:
+        try:
+            before = self.load()
+        except (CredentialStoreError, OSError):
+            before = {}
+        self._write_file(data)
+        self._announce(before, data)
+
+    def _announce(self, before: Mapping[str, Mapping[str, str]], after: Mapping[str, Mapping[str, str]]) -> None:
+        """After a write to the default store, refresh the names that changed in ``settings``
+        and forget discovery's cached model lists, so the running process sees the new keys."""
+        if self.path != credentials_path():
+            return
+        changed = {
+            name
+            for profile in set(before) | set(after)
+            for name in set(before.get(profile, {})) | set(after.get(profile, {}))
+            if before.get(profile, {}).get(name) != after.get(profile, {}).get(name)
+        }
+        if not changed:
+            return
+        try:
+            from .discovery import clear_discovery_cache
+            from .settings import refresh_settings
+
+            refresh_settings(changed)
+            clear_discovery_cache()
+        except Exception as exc:  # the write itself succeeded; a stale cache is not worth failing it
+            logger.warning("Saved credentials, but could not refresh settings: %s", exc)
+
+    def _write_file(self, data: Mapping[str, Mapping[str, str]]) -> None:
         self._check_paths()
         payload = self._serialize(data).encode("utf-8")
         if len(payload) > MAX_STORE_BYTES:

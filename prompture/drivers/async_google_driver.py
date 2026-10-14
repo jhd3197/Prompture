@@ -18,6 +18,7 @@ except ImportError:
     types = None  # type: ignore[assignment]
 
 from ..infra.cost_mixin import CostMixin
+from ._effort import apply_effort
 from .async_base import AsyncDriver
 from .base import DriverHTTPError, _normalize_stop_reason, _translate_tool_choice
 from .google_driver import GoogleDriver
@@ -147,6 +148,7 @@ class AsyncGoogleDriver(CostMixin, AsyncDriver):
             config_dict.setdefault("top_p", merged_options["top_p"])
         if "top_k" in merged_options:
             config_dict.setdefault("top_k", merged_options["top_k"])
+        apply_effort(config_dict, merged_options, "google")  # Gemini's thinking level (see _effort)
 
         # Forward explicit generation_config entries
         for k, v in merged_options.get("generation_config", {}).items():

@@ -28,7 +28,7 @@ import re
 from collections.abc import Iterable
 from typing import Any
 
-from .base import Engine, Motif, Score, check_concepts
+from .base import Engine, GameLine, Motif, Score, check_concepts
 
 SIZE = 8
 BLACK, WHITE = 1, 2
@@ -157,7 +157,12 @@ def describe_move(
     if "x-square" in wanted and index in X_SQUARES and not board.cells[X_SQUARES[index]]:
         corner = square_name(X_SQUARES[index])
         motifs.append(
-            Motif("x-square", f"warning: X-square next to the empty corner {corner}, which it can give away", (corner,))
+            Motif(
+                "x-square",
+                f"warning: X-square next to the empty corner {corner}, which it can give away",
+                (corner,),
+                severity="warning",
+            )
         )
     if "edge" in wanted and _is_edge(index) and index not in CORNERS:
         motifs.append(Motif("edge", "takes an edge square"))
@@ -177,6 +182,7 @@ def describe_move(
                     "safety",
                     f"warning: gives {NAMES[opponent]} the corner {square_name(gift)}",
                     (square_name(gift),),
+                    severity="warning",
                 )
             )
     return motifs
@@ -186,6 +192,7 @@ class Othello:
     """Othello rules and notation for the harness."""
 
     title = "Othello"
+    sides = ("Black", "White")
     concepts: tuple[str, ...] = CONCEPTS
     rules = (
         "Rules: place a disc so that it brackets one or more of the opponent's discs in a straight line "
@@ -248,6 +255,36 @@ class Othello:
 
     def default_engine(self) -> Engine:
         return OthelloEngine()
+
+    def history(self, board: OthelloBoard) -> GameLine:
+        """The game line from the standard start, passes included. A set-up board is its own root."""
+        replay = OthelloBoard()
+        plies = []
+        try:
+            for move in board.moves:
+                plies.append((NAMES[replay.turn], square_name(move)))
+                replay.play(move)
+        except ValueError:
+            replay = None  # type: ignore[assignment]
+        if replay is None or replay.cells != board.cells or replay.turn != board.turn:
+            cells = "".join(map(str, board.cells))
+            return GameLine(f"cells:{cells}:{board.turn}")
+        return GameLine("start", tuple(plies))
+
+    def dump_state(self, board: OthelloBoard) -> dict[str, Any]:
+        return {"game": self.title, "initial": None, "moves": [square_name(m) for m in board.moves]}
+
+    def load_state(self, data: dict[str, Any]) -> OthelloBoard:
+        """Replay ``{"initial": None, "moves": [...]}`` (``"pass"`` included); illegal moves raise."""
+        if data.get("initial") not in (None, "", "start"):
+            raise ValueError("Othello states start from the standard position")
+        board = OthelloBoard()
+        for name in data.get("moves", []):
+            move = self.parse_move(board, str(name))
+            if move is None:
+                raise ValueError(f"illegal Othello move {name!r} after {len(board.moves)} moves")
+            board.play(move)
+        return board
 
 
 class OthelloEngine:

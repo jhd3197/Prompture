@@ -6,6 +6,7 @@ from ..base import ProviderPlugin
 from .anthropic_plugin import AnthropicPlugin
 from .audio_plugin import AudioPlugin
 from .cloud_plugin import CloudPlugin
+from .coding_agent_plugin import CodingAgentPlugin
 from .decision_plugin import DecisionPlugin
 from .embedding_rerank_plugin import EmbeddingRerankPlugin
 from .extras_plugin import ExtrasPlugin
@@ -29,6 +30,7 @@ BUILTIN_PLUGINS: list[ProviderPlugin] = [
     EmbeddingRerankPlugin(),
     DecisionPlugin(),
     ExtrasPlugin(),
+    CodingAgentPlugin(),
 ]
 
 __all__ = [
@@ -36,6 +38,7 @@ __all__ = [
     "AnthropicPlugin",
     "AudioPlugin",
     "CloudPlugin",
+    "CodingAgentPlugin",
     "DecisionPlugin",
     "EmbeddingRerankPlugin",
     "ExtrasPlugin",

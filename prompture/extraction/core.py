@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import warnings
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, Literal
 
 from .._internal.json_encoder import PromptureJSONEncoder
@@ -70,6 +71,33 @@ def _build_usage(resp: dict[str, Any], model_name: str) -> dict[str, Any]:
         "cost": meta.get("cost", 0.0),
         "model_name": model_name,
     }
+
+
+def _stop_reason(resp: dict[str, Any]) -> str | None:
+    """Why the provider stopped writing, from whichever field the driver filled."""
+    meta = resp.get("meta", {})
+    raw = meta.get("raw_response") or {}
+    choices = raw.get("choices") if isinstance(raw, dict) else None
+    finish = choices[0].get("finish_reason") if choices and isinstance(choices[0], dict) else None
+    return (
+        meta.get("raw_stop_reason")
+        or resp.get("stop_reason")
+        or (raw.get("stop_reason") if isinstance(raw, dict) else None)
+        or finish
+    )
+
+
+def _parse_failure(resp: dict[str, Any], raw: str, error: json.JSONDecodeError, usage: dict[str, Any]) -> Exception:
+    """The error for a reply that is not JSON, carrying what the call cost. An empty reply cut
+    off by the token limit says so: the model spent the whole budget reasoning."""
+    from ..exceptions import ExtractionError
+
+    stop = _stop_reason(resp)
+    if not raw.strip() and stop in ("max_tokens", "length"):
+        return ExtractionError(
+            "the reply hit max_tokens before any answer was written", usage=usage, raw_text=raw, stop_reason=stop
+        )
+    return ExtractionError(f"Failed to parse LLM output as JSON: {error}", usage=usage, raw_text=raw, stop_reason=stop)
 
 
 def _merge_usage(
@@ -451,6 +479,9 @@ def ask_for_json(
     system_prompt: str | None = None,
     images: list[ImageInput] | None = None,
     strategy: str | StructuredOutputStrategy | None = None,
+    stream: bool = False,
+    on_delta: Callable[[str], None] | None = None,
+    should_stop: Callable[[], bool] | None = None,
 ) -> dict[str, Any]:
     """Sends a prompt to the driver and returns structured output plus usage metadata.
 
@@ -467,6 +498,12 @@ def ask_for_json(
         output_format: Response serialization format ("json" or "toon").
         cache: Override for response caching.  ``True`` forces caching on,
             ``False`` forces it off, ``None`` defers to the global setting.
+        stream: Consume streamed model output when the driver supports it,
+            returning the same complete result. Unsupported drivers use normal calls.
+            Automatic tool-call extraction uses prompted JSON while streaming.
+        on_delta: Streaming only: called with each public text delta (never thinking).
+        should_stop: Streaming only: checked between chunks; when it returns True the
+            stream is closed (releasing the request) and ``StreamStopped`` is raised.
 
     Returns:
         A dictionary containing:
@@ -513,6 +550,12 @@ def ask_for_json(
 
     # --- Resolve structured-output strategy ---
     resolved_strategy = resolve_strategy(strategy, model_name or getattr(driver, "model", ""), driver=driver)
+    use_stream = stream and getattr(driver, "supports_streaming", False)
+    if use_stream and resolved_strategy == StructuredOutputStrategy.TOOL_CALL:
+        if strategy is None or strategy == "auto":
+            resolved_strategy = StructuredOutputStrategy.PROMPTED_REPAIR
+        else:
+            use_stream = False  # preserve an explicitly requested tool-call strategy
     logger.debug("[ask_for_json] strategy=%s model=%s", resolved_strategy.value, model_name)
 
     # --- TOOL_CALL strategy: try extracting via function calling ---
@@ -580,11 +623,16 @@ def ask_for_json(
 
     # Use generate_messages when system_prompt or images are provided
     user_content = _build_content_with_images(full_prompt, images)
-    if system_prompt is not None or images:
+    if system_prompt is not None or images or use_stream:
         messages = [{"role": "user", "content": user_content}]
         if system_prompt is not None:
             messages.insert(0, {"role": "system", "content": system_prompt})
-        resp = driver.generate_messages_with_hooks(messages, options)
+        if use_stream:
+            from .streaming import _collect_stream
+
+            resp = _collect_stream(driver, messages, options, on_delta=on_delta, should_stop=should_stop)
+        else:
+            resp = driver.generate_messages_with_hooks(messages, options)
     else:
         resp = driver.generate_with_hooks(full_prompt, options)
     raw = resp.get("text", "")
@@ -645,13 +693,15 @@ def ask_for_json(
 
                 return result
             except json.JSONDecodeError:
-                from ..exceptions import ExtractionError
-
-                raise ExtractionError(f"Failed to parse LLM output as JSON: {e}") from e
+                usage = _merge_usage(
+                    resp.get("meta", {}),
+                    cleanup_meta,
+                    model_name or options.get("model", getattr(driver, "model", "")),
+                    resp,
+                )
+                raise _parse_failure(resp, raw, e, usage) from e
         else:
-            from ..exceptions import ExtractionError
-
-            raise ExtractionError(f"Failed to parse LLM output as JSON: {e}") from e
+            raise _parse_failure(resp, raw, e, _build_usage(resp, model_name or getattr(driver, "model", ""))) from e
 
 
 def extract_and_jsonify(

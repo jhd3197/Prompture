@@ -8,6 +8,7 @@ from typing import Any
 
 from ..infra.cost_mixin import prepare_strict_schema
 from ..infra.rate_limits import LimitSnapshot, add_rate_limits, capture_rate_limits, limits_from_response
+from ._effort import requested_effort
 from ._usage_reporting import as_dict, text_value, usage_meta, value
 from .base import _normalize_stop_reason, _tool_call_dict
 
@@ -98,8 +99,9 @@ def build_request(
     for key in ("instructions", "previous_response_id", "reasoning", "text", "truncation"):
         if key in options:
             request[key] = options[key]
-    if "reasoning_effort" in options and "reasoning" not in request:
-        request["reasoning"] = {"effort": options["reasoning_effort"]}
+    effort = requested_effort(options)
+    if effort and "reasoning" not in request:
+        request["reasoning"] = {"effort": effort}
     if counting:
         return request
     request["max_output_tokens"] = options.get("max_output_tokens", options.get("max_tokens", 4096 if tools else 512))
