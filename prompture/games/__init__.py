@@ -7,6 +7,8 @@
   accounting, configuration fingerprints and trace sinks (JSONL, in-memory).
 * :mod:`.control` — turn deadlines, cancellation, transient retry policy,
   shared budgets and bounded progress events.
+* :mod:`.evaluation` / :mod:`.fixtures` — fixtures, deterministic hint checks,
+  seeded evaluation runs, scorecards and preregistered paired comparisons.
 * :mod:`.match` — :func:`play_match` between models, engines and random movers.
 * :mod:`.connect4` and :mod:`.othello` — pure-Python games with built-in engines.
 * :mod:`.chess` — chess with motif detectors and puzzle runs (needs python-chess,
@@ -29,6 +31,16 @@ from .base import (
 )
 from .connect4 import Connect4, Connect4Board, Connect4Engine
 from .control import CancelToken, EventBuffer, GameBudget, RetryPolicy, TurnEvent
+from .evaluation import (
+    EvaluationRun,
+    Fixture,
+    Preregistration,
+    check_hints,
+    compare,
+    evaluate,
+    scorecard,
+    summary_text,
+)
 from .match import EnginePlayer, MatchResult, Player, RandomPlayer, play_match
 from .othello import Othello, OthelloBoard, OthelloEngine
 from .records import (
@@ -58,10 +70,12 @@ __all__ = [
     "Connect4Engine",
     "Engine",
     "EnginePlayer",
+    "EvaluationRun",
     "EventBuffer",
     "FailureInfo",
     "FailureKind",
     "Fingerprint",
+    "Fixture",
     "Game",
     "GameBudget",
     "GameHarness",
@@ -76,6 +90,7 @@ __all__ = [
     "OthelloBoard",
     "OthelloEngine",
     "Player",
+    "Preregistration",
     "RandomPlayer",
     "RetryPolicy",
     "Score",
@@ -86,9 +101,14 @@ __all__ = [
     "TurnEvent",
     "TurnFailed",
     "TurnRecord",
+    "check_hints",
     "classify_failure",
+    "compare",
+    "evaluate",
     "fingerprint",
     "game_line",
     "play_match",
     "read_jsonl_trace",
+    "scorecard",
+    "summary_text",
 ]

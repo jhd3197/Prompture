@@ -212,7 +212,11 @@ class ChessHarness(GameHarness):
         options: dict[str, Any] | None = None,
         seed: int | None = None,
         stream: bool = True,
+        **harness_options: Any,
     ) -> None:
+        """``harness_options`` are passed to :class:`~prompture.games.base.GameHarness`
+        (``failure_policy``, ``trace``, ``deadline``, ``cancel``, ``retry``, ``budget``,
+        ``on_event`` ...)."""
         if level >= 2 and engine is None:
             raise ValueError(f"level {level} needs an engine, e.g. engine='stockfish'")
         super().__init__(
@@ -229,6 +233,7 @@ class ChessHarness(GameHarness):
             options=options,
             seed=seed,
             stream=stream,
+            **harness_options,
         )
         self._previous: dict[chess.Color, tuple[chess.Board, MoveDecision]] = {}
 

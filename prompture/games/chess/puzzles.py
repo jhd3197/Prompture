@@ -58,6 +58,12 @@ class PuzzleReport:
     def rescues(self) -> int:
         return sum(r.rescues for r in self.results)
 
+    def scorecard(self) -> dict[str, Any]:
+        """The shared strength/reliability/efficiency scorecard, one sample per puzzle."""
+        from ..evaluation import decisions_sample, scorecard
+
+        return scorecard(decisions_sample(r.id, r.decisions, r.solved, order=i) for i, r in enumerate(self.results))
+
 
 def load_puzzles(path: str | Path) -> list[dict[str, Any]]:
     """Puzzles from a pack file: ``{"puzzles": [...]}`` or a bare list."""
