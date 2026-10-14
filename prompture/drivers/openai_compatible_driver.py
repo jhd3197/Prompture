@@ -36,6 +36,7 @@ import requests
 
 from ..infra.cost_mixin import CostMixin, prepare_strict_schema
 from ..infra.rate_limits import add_rate_limits, limits_from_response
+from ._effort import apply_effort
 from .base import Driver, _apply_openai_tool_options, _tool_call_dict
 
 logger = logging.getLogger(__name__)
@@ -200,6 +201,7 @@ class OpenAICompatibleDriver(CostMixin, Driver):
         opts = {"temperature": 0.7, "max_tokens": 4096 if tools is not None else 512, **options}
         data: dict[str, Any] = {"model": model, "messages": messages}
         data[tokens_param] = opts["max_tokens"]
+        apply_effort(data, opts, "openai")
         if supports_temperature and "temperature" in opts:
             data["temperature"] = opts["temperature"]
 

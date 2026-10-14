@@ -13,6 +13,7 @@ except ImportError:
 
 from ..infra.cost_mixin import CostMixin
 from ..infra.rate_limits import add_rate_limits, attach_rate_limit_hook, capture_rate_limits
+from ._effort import apply_effort
 from .base import Driver, _apply_openai_tool_options, _normalize_stop_reason, _tool_call_dict
 
 logger = logging.getLogger(__name__)
@@ -99,6 +100,7 @@ class GroqDriver(CostMixin, Driver):
 
         # Set token limit with correct parameter name
         kwargs[tokens_param] = opts.get("max_tokens", 512)
+        apply_effort(kwargs, opts, "openai")
 
         # Only include temperature if model supports it
         if supports_temperature and "temperature" in opts:
@@ -188,6 +190,7 @@ class GroqDriver(CostMixin, Driver):
             "tools": tools,
         }
         kwargs[tokens_param] = opts.get("max_tokens", 4096)
+        apply_effort(kwargs, opts, "openai")
 
         if supports_temperature and "temperature" in opts:
             kwargs["temperature"] = opts["temperature"]

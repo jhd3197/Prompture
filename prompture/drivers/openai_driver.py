@@ -14,6 +14,7 @@ except ImportError:
 
 from ..infra.cost_mixin import CostMixin, prepare_strict_schema
 from ..infra.rate_limits import add_rate_limits, attach_rate_limit_hook, capture_rate_limits, limits_from_response
+from ._effort import apply_effort
 from ._prompt_cache import derive_prompt_cache_key
 from ._usage_reporting import usage_meta
 from .base import Driver, _apply_openai_tool_options, _normalize_stop_reason, _tool_call_dict
@@ -27,6 +28,7 @@ def _apply_openai_reporting_options(kwargs: dict[str, Any], options: dict[str, A
     for key in ("service_tier", "prompt_cache_retention", "reasoning_effort", "timeout"):
         if key in options:
             kwargs[key] = options[key]
+    apply_effort(kwargs, options, "openai")  # the provider-neutral "effort" (see _effort)
 
 
 # ----------------------------------------------------------------------

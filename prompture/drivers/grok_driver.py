@@ -9,6 +9,7 @@ from typing import Any
 import requests
 
 from ..infra.cost_mixin import CostMixin
+from ._effort import apply_effort
 from .base import Driver, _parse_tool_arguments
 
 logger = logging.getLogger(__name__)
@@ -82,6 +83,7 @@ class GrokDriver(CostMixin, Driver):
 
         # Add token limit with correct parameter name
         payload[tokens_param] = opts.get("max_tokens", 512)
+        apply_effort(payload, opts, "openai")
 
         # Add temperature if supported
         if supports_temperature and "temperature" in opts:
@@ -170,6 +172,7 @@ class GrokDriver(CostMixin, Driver):
             "tools": tools,
         }
         payload[tokens_param] = opts.get("max_tokens", 4096)
+        apply_effort(payload, opts, "openai")
 
         if supports_temperature and "temperature" in opts:
             payload["temperature"] = opts["temperature"]

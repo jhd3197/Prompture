@@ -18,6 +18,7 @@ except ImportError:
 
 from ..infra.cost_mixin import CostMixin, prepare_strict_schema
 from ..infra.rate_limits import add_rate_limits, attach_rate_limit_hook, capture_rate_limits, limits_from_response
+from ._effort import requested_effort
 from ._prompt_cache import (
     CACHE_PROMPT_MIN_CHARS,
     MAX_CACHE_BREAKPOINTS,
@@ -44,9 +45,11 @@ def _apply_anthropic_reporting_options(kwargs: dict[str, Any], options: dict[str
     for key in ("service_tier", "inference_geo"):
         if key in options:
             kwargs[key] = options[key]
-    # Thinking depth on the adaptive-thinking models (low/medium/high/xhigh/max).
-    if options.get("effort"):
-        _output_config(kwargs)["effort"] = options["effort"]
+    # Thinking depth on the adaptive-thinking models (low/medium/high/xhigh/max); "reasoning_effort",
+    # OpenAI's name for it, means the same (see _effort).
+    effort = requested_effort(options)
+    if effort:
+        _output_config(kwargs)["effort"] = effort
 
 
 def _output_config(kwargs: dict[str, Any]) -> dict[str, Any]:

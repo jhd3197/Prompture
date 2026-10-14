@@ -1,4 +1,6 @@
 import logging
+import os
+from collections.abc import Iterable
 from typing import Any
 
 from pydantic import SecretStr
@@ -329,6 +331,15 @@ class Settings(BaseSettings):
         protected_namespaces=(),  # Allow model_* field names (e.g., model_rates_ttl_days)
     )
 
+    def model_post_init(self, __context: Any) -> None:
+        """Fill a provider key left unset from the vendor's own name for it (see ``KEY_ALIASES``)."""
+        for field_name, names in KEY_ALIASES.items():
+            if getattr(self, field_name, None):
+                continue
+            value = next((v for v in (_alias_value(self, n) for n in names) if v), None)
+            if value:
+                object.__setattr__(self, field_name, value)
+
     @classmethod
     def settings_customise_sources(
         cls,
@@ -346,6 +357,46 @@ class Settings(BaseSettings):
             file_secret_settings,
             CredentialStoreSettingsSource(settings_cls),
         )
+
+
+# Provider keys that also go by the vendor's own name: Anthropic's SDK reads ANTHROPIC_API_KEY,
+# Google's GEMINI_API_KEY and xAI's XAI_API_KEY. Prompture's name wins when both are set.
+KEY_ALIASES: dict[str, tuple[str, ...]] = {
+    "claude_api_key": ("ANTHROPIC_API_KEY",),
+    "google_api_key": ("GEMINI_API_KEY",),
+    "grok_api_key": ("XAI_API_KEY",),
+}
+
+
+def _alias_value(current: "Settings", name: str) -> str | None:
+    """An alias's value: a settings field of that name, the environment, then the credential store."""
+    field_value = getattr(current, name.lower(), None)
+    if isinstance(field_value, str) and field_value:
+        return field_value
+    env_value = os.environ.get(name)
+    if env_value and env_value.strip():
+        return env_value
+    try:
+        from .credentials import CredentialStore
+
+        return CredentialStore().get(name)
+    except Exception:  # an unreadable store never breaks settings
+        return None
+
+
+def refresh_settings(names: Iterable[str] | None = None) -> "Settings":
+    """Re-read settings in place, so a key saved while the process runs takes effect without a
+    restart. ``names`` limits the refresh to those fields (matched case-insensitively, aliases
+    included); other fields keep any value the program set on ``settings`` itself."""
+    fresh = Settings()
+    wanted = None
+    if names is not None:
+        wanted = {n.lower() for n in names}
+        wanted |= {field for field, aliases in KEY_ALIASES.items() if any(a.lower() in wanted for a in aliases)}
+    for field_name in Settings.model_fields:
+        if wanted is None or field_name in wanted:
+            object.__setattr__(settings, field_name, getattr(fresh, field_name))
+    return settings
 
 
 settings = Settings()
