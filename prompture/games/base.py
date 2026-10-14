@@ -34,6 +34,12 @@ A game plugs in by implementing :class:`Game`; an engine by implementing
 Optional capabilities (:class:`GameHistory`, ``dump_state``/``load_state``)
 unlock replay identity, memory and checkpoints; a game without them still plays.
 
+Turns can be bounded: ``deadline`` (seconds, covering every request, retry
+and backoff), ``cancel`` (a :class:`~prompture.games.control.CancelToken`),
+``retry`` (a separate transient-failure allowance with backoff) and ``budget``
+(calls, tokens, cost, time). ``on_event`` receives sequenced progress events.
+See :mod:`prompture.games.control` for what cancellation can and cannot stop.
+
 Every turn produces a :class:`~prompture.games.records.TurnRecord` on
 ``decision.record``: each model call with its prompt, public response,
 validation result, timing, finish reason, classified failure and usage, plus
@@ -45,8 +51,12 @@ budget exhaustion and fatal configuration errors never become a played move.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
+import itertools
+import logging
 import random
+import threading
 import time
 import uuid
 from collections.abc import Callable, Iterable
@@ -54,6 +64,7 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
 from ..exceptions import ExtractionError
+from .control import CancelToken, EventHandler, GameBudget, Reservation, RetryPolicy, TurnEvent
 from .records import (
     Accounting,
     FailureInfo,
@@ -73,6 +84,8 @@ from .records import (
     usage_status,
 )
 from .trace import TraceSink, TraceWriter
+
+logger = logging.getLogger("prompture.games")
 
 LEVELS = {
     0: "every legal move",
@@ -327,11 +340,40 @@ class MoveDecision:
 
 @dataclass
 class _Turn:
-    """Per-turn working state."""
+    """Per-turn working state: identity, candidates, cancellation and deadline."""
 
     record: TurnRecord
     started: float
     candidates: list[Candidate] = field(default_factory=list)
+    cancel: CancelToken | None = None
+    deadline: float | None = None  # time.monotonic() value
+
+    @property
+    def controlled(self) -> bool:
+        return self.cancel is not None or self.deadline is not None
+
+    def cancelled(self) -> bool:
+        return self.cancel is not None and self.cancel.cancelled
+
+    def remaining(self) -> float | None:
+        return None if self.deadline is None else self.deadline - time.monotonic()
+
+    def expired(self) -> bool:
+        remaining = self.remaining()
+        return remaining is not None and remaining <= 0
+
+    def sleep(self, seconds: float) -> None:
+        """Wait, but never past the deadline and never through a cancellation."""
+        remaining = self.remaining()
+        if remaining is not None:
+            seconds = min(seconds, max(0.0, remaining))
+        if self.cancel is not None:
+            self.cancel.wait(seconds)
+        elif seconds > 0:
+            time.sleep(seconds)
+
+
+_DEADLINE = "turn_deadline"
 
 
 class GameHarness:
@@ -346,6 +388,18 @@ class GameHarness:
     ``trace`` receives turn records (see :mod:`prompture.games.trace`);
     ``trace_errors`` is ``"warn"`` or ``"raise"``; ``trace_prompts=False`` keeps
     rendered prompts out of traces. ``run_id`` groups records from one run.
+
+    ``deadline`` is a total per-turn limit in seconds over every request, retry
+    and backoff (distinct from a driver's own connect/read timeouts); an
+    expired turn is handled by ``failure_policy``. ``cancel`` is a default
+    :class:`~prompture.games.control.CancelToken` (``choose`` also takes one).
+    With either set, each request runs on a worker thread so the turn can stop
+    waiting; ``cleanup_timeout`` bounds how long it waits for a stopped request
+    to wind down. ``retry`` gives transient failures their own allowance with
+    backoff (without it they share ``max_retries`` and retry immediately, as
+    before). ``budget`` is checked and reserved before every request.
+    ``on_event`` gets :class:`~prompture.games.control.TurnEvent` objects, possibly
+    from a worker thread; exceptions it raises are logged and ignored.
     """
 
     def __init__(
@@ -370,6 +424,12 @@ class GameHarness:
         trace_prompts: bool = True,
         max_trace_chars: int = 20_000,
         run_id: str | None = None,
+        deadline: float | None = None,
+        cancel: CancelToken | None = None,
+        retry: RetryPolicy | None = None,
+        budget: GameBudget | None = None,
+        on_event: EventHandler | None = None,
+        cleanup_timeout: float = 0.25,
     ) -> None:
         if level not in LEVELS:
             raise ValueError(f"level must be one of {sorted(LEVELS)}, got {level!r}")
@@ -404,8 +464,17 @@ class GameHarness:
         self.max_trace_chars = max_trace_chars
         self.run_id = run_id or uuid.uuid4().hex[:12]
         self.game_id = uuid.uuid4().hex[:12]
+        self.deadline = deadline
+        self.cancel = cancel
+        self.retry = retry
+        self.budget = budget
+        self.on_event = on_event
+        self.cleanup_timeout = cleanup_timeout
         self._run_announced = False
+        self._seq = itertools.count(1)
+        self._seq_lock = threading.Lock()
         self._rng = random.Random(seed)  # nosec B311 - fallback move choice, not crypto
+        self._jitter = random.Random(seed)  # nosec B311 - backoff jitter, not crypto
 
     def __enter__(self) -> GameHarness:
         return self
@@ -447,6 +516,8 @@ class GameHarness:
             "assistance": "engine-menu" if self.level >= 2 else None,
             "max_retries": self.max_retries,
             "failure_policy": self.failure_policy,
+            "retry": self.retry.to_dict() if self.retry else None,
+            "deadline_s": self.deadline,
             "options": safe_options(self.options),
             "system_prompt": text_digest(self.system_prompt),
         }
@@ -524,29 +595,51 @@ class GameHarness:
 
     # -- choosing -----------------------------------------------------------
 
-    def choose(self, state: Any) -> MoveDecision:
+    def choose(self, state: Any, *, cancel: CancelToken | None = None) -> MoveDecision:
         """Ask the model for a move in ``state``.
 
         Returns a legal move: the model's, or a marked rescue under the default
         policy. Raises :class:`~prompture.games.records.TurnFailed` (forfeit/stop
-        policies, fatal configuration errors) or
+        policies, fatal configuration errors, budget) or
         :class:`~prompture.games.records.TurnCancelled`; no move may be played then.
+        ``cancel`` overrides the harness's default token for this turn.
         """
         if self.game.is_over(state):
             raise ValueError("The game is over; there is no move to choose.")
-        turn = self._begin(state)
+        turn = self._begin(state, cancel or self.cancel)
         try:
+            if turn.cancelled():
+                raise TurnCancelled("the turn was cancelled before it started", record=turn.record)
             turn.candidates = self.candidates(state)
-            chosen, reason, plan = self._select(turn, state, turn.candidates)
-            if chosen is None:
-                decision = self._exhausted(turn, turn.candidates)
-            else:
-                decision = self._accepted(turn, chosen, reason, plan)
+            decision = self._decide(turn, state)
+            if turn.cancelled():  # a completion racing a cancellation is not applied
+                raise TurnCancelled("the turn was cancelled before its move was returned", record=turn.record)
         except TurnError as exc:
             self._finish(turn, exc)
             raise
         self._finish(turn, None, decision)
         return decision
+
+    async def achoose(self, state: Any) -> MoveDecision:
+        """:meth:`choose` for asyncio callers.
+
+        The turn runs on a worker thread. Cancelling the awaiting task cancels
+        the turn's token: a streaming request is closed between chunks, a
+        blocking one is abandoned (see :mod:`prompture.games.control`).
+        """
+        token = CancelToken(self.cancel)
+        try:
+            return await asyncio.to_thread(self.choose, state, cancel=token)
+        except asyncio.CancelledError:
+            token.cancel("the awaiting task was cancelled")
+            raise
+
+    def _decide(self, turn: _Turn, state: Any) -> MoveDecision:
+        """One decision from the candidates: the model's, or the failure policy's."""
+        chosen, reason, plan = self._select(turn, state, turn.candidates)
+        if chosen is None:
+            return self._exhausted(turn, turn.candidates)
+        return self._accepted(turn, chosen, reason, plan)
 
     def _accepted(self, turn: _Turn, chosen: Candidate, reason: str, plan: str) -> MoveDecision:
         turn.record.outcome = "accepted"
@@ -581,7 +674,10 @@ class GameHarness:
                 matched.append(chosen)
             return error
 
+        transient = 0
         while True:
+            if not self._may_dispatch(turn):
+                return None, "", ""
             prompt = self.prompt(state, candidates, feedback)
             matched.clear()
             _answer, attempt = self._call(turn, prompt, schema, purpose, check)
@@ -589,6 +685,10 @@ class GameHarness:
                 return matched[0], attempt.reason, attempt.plan
             failure = attempt.failure or FailureInfo(FailureKind.INVALID_OUTPUT, "invalid", attempt.error or "")
             turn.record.failure = failure
+            if failure.kind is FailureKind.CANCELLED:
+                raise TurnCancelled(self._cancel_message(turn), record=turn.record)
+            if failure.category == _DEADLINE:
+                return None, "", ""
             if failure.kind.fatal:
                 raise TurnFailed(
                     f"{failure.kind.value} failure: {attempt.error}",
@@ -596,10 +696,29 @@ class GameHarness:
                     record=turn.record,
                     forfeit=self.failure_policy == "forfeit",
                 )
+            if failure.kind.transient and self.retry is not None:
+                transient += 1
+                if transient > self.retry.transient_retries:
+                    return None, "", ""
+                delay = self.retry.delay(transient, failure.retry_after, self._jitter)
+                self._emit("retry_scheduled", turn, delay_s=round(delay, 3), failure=failure.kind.value)
+                turn.sleep(delay)
+                continue  # the request did not reach the model: no feedback to give
             failures += 1
             if failures > self.max_retries:
                 return None, "", ""
             feedback = attempt.error
+
+    def _may_dispatch(self, turn: _Turn) -> bool:
+        """Whether another request may start; raises on cancellation, False when out of time."""
+        if turn.cancelled():
+            raise TurnCancelled(self._cancel_message(turn), record=turn.record)
+        if turn.expired():
+            turn.record.failure = FailureInfo(
+                FailureKind.TIMEOUT, _DEADLINE, f"the {self.deadline:g}s turn deadline expired"
+            )
+            return False
+        return True
 
     def _call(
         self,
@@ -608,45 +727,42 @@ class GameHarness:
         schema: dict[str, Any],
         purpose: str,
         check: Callable[[dict[str, Any]], str | None] | None = None,
+        images: list[Any] | None = None,
     ) -> tuple[dict[str, Any] | None, Attempt]:
         """Send one request and record it as an :class:`Attempt`.
 
         ``check`` validates a parsed answer (returning an error or ``None``)
         before the attempt is recorded and traced. Returns the parsed answer
         object (or ``None``) and the attempt, whose ``error``/``failure`` are set
-        when the call, its JSON or the check failed.
+        when the call, its JSON or the check failed. The budget is reserved
+        first (raising :class:`~prompture.games.records.BudgetExhausted`).
         """
-        from ..extraction.core import _stop_reason, ask_for_json
+        from ..extraction.core import _stop_reason
 
-        attempt = self._new_attempt(turn, prompt, schema, purpose)
+        attempt = self._new_attempt(turn, prompt, schema, purpose, images)
+        reservation = self._reserve(turn, prompt)
+        self._emit("attempt_started", turn, attempt_id=attempt.attempt_id, purpose=purpose, index=attempt.index)
         started = time.perf_counter()
+        status, outcome = self._dispatch(turn, attempt, prompt, schema, images)
         meta: dict[str, Any] | None = None
         answer: dict[str, Any] | None = None
-        try:
-            result = ask_for_json(
-                self.driver,
-                prompt,
-                schema,
-                ai_cleanup=False,
-                model_name=self.model,
-                options=self.options,
-                system_prompt=self.system_prompt,
-                stream=self.stream,
-            )
-        except ExtractionError as exc:  # an unparseable reply was still paid for
-            meta = source_meta(exc.usage)
-            attempt.response_text = exc.raw_text
-            attempt.finish_reason = exc.stop_reason
-            attempt.error = f"the reply was not valid JSON ({exc})"
-            attempt.failure = FailureInfo(FailureKind.INVALID_OUTPUT, "unparseable", str(exc))
-        except Exception as exc:  # a timeout or a dead backend must not abort a whole game
-            attempt.response_text = getattr(exc, "partial_text", None) or None
-            attempt.error = f"the model call failed ({exc})"
-            attempt.failure = classify_failure(exc)
+        if status == "abandoned":
+            attempt.abandoned = True
+            self._stopped(turn, attempt, "abandoned while still running; the provider may still finish and bill it")
+        elif isinstance(outcome, ExtractionError):  # an unparseable reply was still paid for
+            meta = source_meta(outcome.usage)
+            attempt.response_text = outcome.raw_text
+            attempt.finish_reason = outcome.stop_reason
+            attempt.error = f"the reply was not valid JSON ({outcome})"
+            attempt.failure = FailureInfo(FailureKind.INVALID_OUTPUT, "unparseable", str(outcome))
+        elif isinstance(outcome, BaseException):  # a timeout or a dead backend must not abort a whole game
+            attempt.response_text = getattr(outcome, "partial_text", None) or None
+            attempt.error = f"the model call failed ({outcome})"
+            attempt.failure = classify_failure(outcome)
         else:
-            usage = result.get("usage") or {}
+            usage = outcome.get("usage") or {}
             meta = source_meta(usage)
-            answer = self._read_answer(attempt, result)
+            answer = self._read_answer(attempt, outcome)
             raw = usage.get("raw_response")
             attempt.finish_reason = _stop_reason(raw) if isinstance(raw, dict) else None
             if answer is not None and check is not None:
@@ -654,11 +770,112 @@ class GameHarness:
                 if error is not None:
                     attempt.error = error
                     attempt.failure = FailureInfo(FailureKind.INVALID_OUTPUT, "illegal_choice", error)
+        if status == "stopped":  # finished while the turn was stopping: never applied
+            answer = None
+            self._stopped(turn, attempt, "stopped; any response was discarded")
         attempt.elapsed_ms = (time.perf_counter() - started) * 1000
-        self._account(turn, attempt, meta)
+        self._account(turn, attempt, meta, reservation)
         return answer, attempt
 
-    def _new_attempt(self, turn: _Turn, prompt: str, schema: dict[str, Any], purpose: str) -> Attempt:
+    @staticmethod
+    def _cancel_message(turn: _Turn) -> str:
+        reason = turn.cancel.reason if turn.cancel is not None else ""
+        return f"the turn was cancelled ({reason})" if reason else "the turn was cancelled"
+
+    def _stopped(self, turn: _Turn, attempt: Attempt, what: str) -> None:
+        if turn.cancelled():
+            attempt.error = f"the turn was cancelled; the request was {what}"
+            attempt.failure = FailureInfo(FailureKind.CANCELLED, "cancelled", attempt.error)
+        else:
+            attempt.error = f"the {self.deadline:g}s turn deadline expired; the request was {what}"
+            attempt.failure = FailureInfo(FailureKind.TIMEOUT, _DEADLINE, attempt.error)
+
+    def _reserve(self, turn: _Turn, prompt: str) -> Reservation | None:
+        if self.budget is None:
+            return None
+        output = self.options.get("max_tokens") or self.options.get("max_output_tokens") or self.budget.output_reserve
+        try:
+            return self.budget.reserve(len(prompt) / 4 + float(output))  # chars/4: a labeled estimate
+        except TurnError as exc:
+            exc.record = turn.record
+            raise
+
+    def _dispatch(
+        self, turn: _Turn, attempt: Attempt, prompt: str, schema: dict[str, Any], images: list[Any] | None
+    ) -> tuple[str, Any]:
+        """Run the request. Returns ``(status, result or exception)``.
+
+        ``status`` is ``"done"``; ``"stopped"`` (it ended while the turn was
+        stopping, so its result must not be used); or ``"abandoned"`` (still
+        running after ``cleanup_timeout``; a late result is only logged).
+        """
+        from ..extraction.core import ask_for_json
+
+        def on_delta(text: str) -> None:
+            self._emit("output_delta", turn, attempt_id=attempt.attempt_id, text=text)
+
+        stop = threading.Event()
+        kwargs: dict[str, Any] = {
+            "ai_cleanup": False,
+            "model_name": self.model,
+            "options": self.options,
+            "system_prompt": self.system_prompt,
+            "stream": self.stream,
+            "on_delta": on_delta if self.on_event is not None else None,
+            "should_stop": stop.is_set if turn.controlled else None,
+        }
+        if images:
+            kwargs["images"] = images
+
+        def run() -> Any:
+            try:
+                return ask_for_json(self.driver, prompt, schema, **kwargs)
+            except Exception as exc:
+                return exc
+
+        if not turn.controlled:
+            return "done", run()
+
+        box: dict[str, Any] = {"closed": False}
+        done = threading.Event()
+        lock = threading.Lock()
+
+        def work() -> None:
+            outcome = run()
+            with lock:
+                box["outcome"] = outcome
+                late = box["closed"]
+            done.set()
+            if late:
+                self._late(turn, attempt, outcome)
+
+        threading.Thread(target=work, name=f"game-request-{attempt.attempt_id}", daemon=True).start()
+        while not done.wait(0.02):
+            if turn.cancelled() or turn.expired():
+                break
+        else:
+            return "done", box["outcome"]
+        stop.set()  # a stream closes at its next chunk
+        done.wait(self.cleanup_timeout)
+        with lock:
+            if "outcome" not in box:
+                box["closed"] = True
+                return "abandoned", None
+            return "stopped", box["outcome"]
+
+    def _late(self, turn: _Turn, attempt: Attempt, outcome: Any) -> None:
+        """A response that arrived after its turn stopped waiting: log it, never apply it."""
+        attempt.late = True
+        usage = None
+        if isinstance(outcome, dict):
+            meta = source_meta(outcome.get("usage")) or {}
+            usage = {key: meta.get(key) for key in _USAGE_KEYS}
+        self._emit("late_response", turn, attempt_id=attempt.attempt_id, usage=usage)
+        self._trace("late_response", turn, attempt_id=attempt.attempt_id, usage=usage)
+
+    def _new_attempt(
+        self, turn: _Turn, prompt: str, schema: dict[str, Any], purpose: str, images: list[Any] | None = None
+    ) -> Attempt:
         index = len(turn.record.attempts)
         return Attempt(
             None,
@@ -684,18 +901,36 @@ class GameHarness:
         attempt.plan = str(parsed.get("plan") or "")
         return parsed
 
-    def _account(self, turn: _Turn, attempt: Attempt, meta: dict[str, Any] | None) -> None:
-        """Record ``attempt``'s usage exactly once, with its completeness, and trace it."""
+    def _account(
+        self, turn: _Turn, attempt: Attempt, meta: dict[str, Any] | None, reservation: Reservation | None = None
+    ) -> None:
+        """Record ``attempt``'s usage exactly once, with its completeness, settle the budget and trace it."""
         attempt.usage = {key: float((meta or {}).get(key) or 0) for key in _USAGE_KEYS}
         attempt.usage_status, attempt.cost_status = usage_status(meta)
         turn.record.attempts.append(attempt)
         turn.record.accounting.add(
             attempt.usage, attempt.usage_status, attempt.cost_status, abandoned=attempt.abandoned
         )
+        if self.budget is not None and reservation is not None:
+            self.budget.settle(reservation, attempt.usage, attempt.cost_status)
         self._trace(
             "attempt",
             turn,
             attempt=attempt.to_dict(include_prompt=self.trace_prompts, max_field_chars=self.max_trace_chars),
+        )
+        self._emit(
+            "attempt_finished",
+            turn,
+            attempt_id=attempt.attempt_id,
+            purpose=attempt.purpose,
+            valid=attempt.valid,
+            error=attempt.error,
+            failure=attempt.failure.kind.value if attempt.failure else None,
+            elapsed_ms=round(attempt.elapsed_ms, 3),
+            usage=dict(attempt.usage),
+            usage_status=attempt.usage_status,
+            cost_status=attempt.cost_status,
+            abandoned=attempt.abandoned,
         )
 
     def _exhausted(self, turn: _Turn, candidates: list[Candidate]) -> MoveDecision:
@@ -725,7 +960,7 @@ class GameHarness:
 
     # -- records ---------------------------------------------------------------
 
-    def _begin(self, state: Any) -> _Turn:
+    def _begin(self, state: Any, cancel: CancelToken | None = None) -> _Turn:
         line = game_line(self.game, state)
         record = TurnRecord(
             run_id=self.run_id,
@@ -750,8 +985,16 @@ class GameHarness:
                     "model": self.model,
                 }
             )
-        turn = _Turn(record, time.perf_counter())
+        now = time.monotonic()
+        turn = _Turn(record, time.perf_counter(), cancel=cancel)
+        if self.deadline is not None:
+            turn.deadline = now + self.deadline
+            record.deadline_s = self.deadline
+        sdk_retries = getattr(getattr(self.driver, "client", None), "max_retries", None)
+        if isinstance(sdk_retries, int):
+            record.context["sdk_max_retries"] = sdk_retries  # SDK retries happen inside one attempt
         self._trace("turn_started", turn, fingerprint=record.fingerprint, model=self.model)
+        self._emit("turn_started", turn, ply=record.ply, state_id=record.state_id, deadline_s=self.deadline)
         return turn
 
     def _finish(self, turn: _Turn, error: TurnError | None, decision: MoveDecision | None = None) -> None:
@@ -765,7 +1008,30 @@ class GameHarness:
         elif decision is not None:
             record.move = decision.name
         self._trace("turn_finished", turn, record=record.to_dict(include_prompts=False))
+        kind = {"cancelled": "turn_cancelled", "failed": "turn_failed"}.get(record.outcome, "turn_completed")
+        self._emit(
+            kind,
+            turn,
+            outcome=record.outcome,
+            move=record.move,
+            failure=record.failure.kind.value if record.failure else None,
+            attempts=len(record.attempts),
+            elapsed_ms=round(record.elapsed_ms, 3),
+            accounting=record.accounting.to_dict(),
+        )
         self.trace.raise_pending()
+
+    def _emit(self, kind: str, turn: _Turn, **data: Any) -> None:
+        if self.on_event is None:
+            return
+        with self._seq_lock:
+            seq = next(self._seq)
+        record = turn.record
+        event = TurnEvent(seq, kind, record.run_id, record.game_id, record.turn_id, record.side, time.time(), data)
+        try:
+            self.on_event(event)
+        except Exception:
+            logger.exception("on_event handler raised for %s", kind)
 
     def _trace(self, kind: str, turn: _Turn, **data: Any) -> None:
         record = turn.record

@@ -380,24 +380,26 @@ class OllamaDriver(PromptedToolStreamMixin, Driver):
         completion_tokens = 0
 
         r = requests.post(chat_endpoint, json=payload, timeout=merged_options.get("timeout", 300), stream=True)  # nosec B113
-        r.raise_for_status()
-
-        for line in r.iter_lines():
-            if not line:
-                continue
-            chunk = json.loads(line)
-            if chunk.get("done"):
-                prompt_tokens = chunk.get("prompt_eval_count", 0)
-                completion_tokens = chunk.get("eval_count", 0)
-            else:
-                msg = chunk.get("message", {})
-                thinking = msg.get("thinking", "")
-                if thinking:
-                    full_reasoning += thinking
-                content = msg.get("content", "")
-                if content:
-                    full_text += content
-                    yield {"type": "delta", "text": content}
+        try:
+            r.raise_for_status()
+            for line in r.iter_lines():
+                if not line:
+                    continue
+                chunk = json.loads(line)
+                if chunk.get("done"):
+                    prompt_tokens = chunk.get("prompt_eval_count", 0)
+                    completion_tokens = chunk.get("eval_count", 0)
+                else:
+                    msg = chunk.get("message", {})
+                    thinking = msg.get("thinking", "")
+                    if thinking:
+                        full_reasoning += thinking
+                    content = msg.get("content", "")
+                    if content:
+                        full_text += content
+                        yield {"type": "delta", "text": content}
+        finally:
+            r.close()  # a stream closed early (a stopped turn) releases its connection now
 
         total_tokens = prompt_tokens + completion_tokens
         done_chunk: dict[str, Any] = {

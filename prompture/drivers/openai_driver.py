@@ -421,20 +421,26 @@ class OpenAIDriver(CostMixin, Driver):
         final_usage = None
         response_info = {}
 
-        for chunk in stream:
-            for key in ("id", "model", "service_tier"):
-                if isinstance(getattr(chunk, key, None), str):
-                    response_info[key] = getattr(chunk, key)
-            # Usage comes in the final chunk
-            if getattr(chunk, "usage", None):
-                final_usage = chunk.usage
+        try:
+            for chunk in stream:
+                for key in ("id", "model", "service_tier"):
+                    if isinstance(getattr(chunk, key, None), str):
+                        response_info[key] = getattr(chunk, key)
+                # Usage comes in the final chunk
+                if getattr(chunk, "usage", None):
+                    final_usage = chunk.usage
 
-            if chunk.choices:
-                delta = chunk.choices[0].delta
-                content = getattr(delta, "content", None) or ""
-                if content:
-                    full_text += content
-                    yield {"type": "delta", "text": content}
+                if chunk.choices:
+                    delta = chunk.choices[0].delta
+                    content = getattr(delta, "content", None) or ""
+                    if content:
+                        full_text += content
+                        yield {"type": "delta", "text": content}
+        finally:
+            # Closing the generator early (a stopped turn) releases the HTTP response now.
+            close = getattr(stream, "close", None)
+            if callable(close):
+                close()
 
         meta = usage_meta(self, "openai", model, final_usage, response=response_info, options=options)
         meta["raw_response"] = {}
