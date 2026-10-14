@@ -157,7 +157,12 @@ def describe_move(
     if "x-square" in wanted and index in X_SQUARES and not board.cells[X_SQUARES[index]]:
         corner = square_name(X_SQUARES[index])
         motifs.append(
-            Motif("x-square", f"warning: X-square next to the empty corner {corner}, which it can give away", (corner,))
+            Motif(
+                "x-square",
+                f"warning: X-square next to the empty corner {corner}, which it can give away",
+                (corner,),
+                severity="warning",
+            )
         )
     if "edge" in wanted and _is_edge(index) and index not in CORNERS:
         motifs.append(Motif("edge", "takes an edge square"))
@@ -177,6 +182,7 @@ def describe_move(
                     "safety",
                     f"warning: gives {NAMES[opponent]} the corner {square_name(gift)}",
                     (square_name(gift),),
+                    severity="warning",
                 )
             )
     return motifs

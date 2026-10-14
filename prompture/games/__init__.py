@@ -9,6 +9,8 @@
   shared budgets and bounded progress events.
 * :mod:`.evaluation` / :mod:`.fixtures` — fixtures, deterministic hint checks,
   seeded evaluation runs, scorecards and preregistered paired comparisons.
+* :mod:`.memory` — bounded memory of a side's own accepted decisions, tied to
+  the game line, with validated checkpoints.
 * :mod:`.match` — :func:`play_match` between models, engines and random movers.
 * :mod:`.connect4` and :mod:`.othello` — pure-Python games with built-in engines.
 * :mod:`.chess` — chess with motif detectors and puzzle runs (needs python-chess,
@@ -42,6 +44,7 @@ from .evaluation import (
     summary_text,
 )
 from .match import EnginePlayer, MatchResult, Player, RandomPlayer, play_match
+from .memory import CheckpointError, DecisionMemory, MemoryEntry
 from .othello import Othello, OthelloBoard, OthelloEngine
 from .records import (
     Accounting,
@@ -65,9 +68,11 @@ __all__ = [
     "BudgetExhausted",
     "CancelToken",
     "Candidate",
+    "CheckpointError",
     "Connect4",
     "Connect4Board",
     "Connect4Engine",
+    "DecisionMemory",
     "Engine",
     "EnginePlayer",
     "EvaluationRun",
@@ -83,6 +88,7 @@ __all__ = [
     "GameLine",
     "JsonlTraceSink",
     "MatchResult",
+    "MemoryEntry",
     "MemoryTraceSink",
     "Motif",
     "MoveDecision",

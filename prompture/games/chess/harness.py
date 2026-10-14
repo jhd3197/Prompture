@@ -26,7 +26,7 @@ from typing import Any
 import chess
 import chess.engine
 
-from ..base import BLUNDER_DROP, Candidate, Engine, GameHarness, GameLine, Motif, MoveDecision, Score
+from ..base import BLUNDER_DROP, Candidate, Engine, GameHarness, GameLine, Motif, Score
 from .motifs import CONCEPTS, HINTS_VERSION, VALUES, describe_move
 
 _PIECE_ORDER = (chess.KING, chess.QUEEN, chess.ROOK, chess.BISHOP, chess.KNIGHT, chess.PAWN)
@@ -190,10 +190,12 @@ class ChessHarness(GameHarness):
 
     Prompts include a board diagram and material totals. At level 1 and above,
     the move menu also identifies repetitions using the board's move stack.
-    The last accepted reason/plan is included on that side's next turn on the
-    same line; call :meth:`reset` when starting a new game. Keep the board's
-    history (rather than rebuilding from FEN) for repetition and move memory.
-    Calls stream by default where supported; pass ``stream=False`` to opt out.
+    ``memory="previous"`` (the default) shows the last accepted reason/plan on
+    that side's next turn on the same line; ``"none"`` or a window size (``4``,
+    ``8``) change that (see :mod:`prompture.games.memory`). Call :meth:`reset`
+    when starting a new game. Keep the board's history (rather than rebuilding
+    from FEN) for repetition and move memory. Calls stream by default where
+    supported; pass ``stream=False`` to opt out.
     """
 
     def __init__(
@@ -212,6 +214,7 @@ class ChessHarness(GameHarness):
         options: dict[str, Any] | None = None,
         seed: int | None = None,
         stream: bool = True,
+        memory: str | int | None = "previous",
         **harness_options: Any,
     ) -> None:
         """``harness_options`` are passed to :class:`~prompture.games.base.GameHarness`
@@ -233,13 +236,13 @@ class ChessHarness(GameHarness):
             options=options,
             seed=seed,
             stream=stream,
+            memory=memory,
             **harness_options,
         )
-        self._previous: dict[chess.Color, tuple[chess.Board, MoveDecision]] = {}
 
     def reset(self) -> None:
         """Forget both sides' previous reasons/plans before starting another game."""
-        self._previous.clear()
+        self.memory.clear()
 
     def candidates(self, board: chess.Board) -> list[Candidate]:
         candidates = super().candidates(board)
@@ -252,31 +255,6 @@ class ChessHarness(GameHarness):
             elif after.is_repetition(2):
                 candidate.motifs.append(Motif("repetition", "repeats the position: a third time allows a draw claim"))
         return candidates
-
-    def prompt(self, board: chess.Board, candidates: list[Candidate], feedback: str | None = None) -> str:
-        prompt = super().prompt(board, candidates, feedback)
-        previous = self._previous.get(board.turn)
-        if previous is not None and board.move_stack:
-            position, decision = previous
-            before_reply = board.copy()
-            before_reply.pop()
-            # Only the next own turn on the same line. FEN alone loses repetition
-            # history and could leak a plan from a different game or analysis branch.
-            if before_reply.fen() == position.fen() and before_reply.move_stack == position.move_stack:
-                prompt += (
-                    f"\n\nYour previous move: {decision.name}\nYour previous reason: {decision.reason}"
-                    f"\nYour previous plan: {decision.plan or '(none given)'}"
-                    "\nReassess this plan after the opponent's reply; keep it if it still fits."
-                )
-        return prompt
-
-    def choose(self, board: chess.Board) -> MoveDecision:
-        decision = super().choose(board)
-        if decision.rescued:
-            self._previous.pop(board.turn, None)
-        else:
-            self._previous[board.turn] = (self.game.apply(board, decision.move), decision)
-        return decision
 
 
 def _history(board: chess.Board, plies: int = 40) -> str:

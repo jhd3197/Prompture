@@ -40,6 +40,12 @@ and backoff), ``cancel`` (a :class:`~prompture.games.control.CancelToken`),
 (calls, tokens, cost, time). ``on_event`` receives sequenced progress events.
 See :mod:`prompture.games.control` for what cancellation can and cannot stop.
 
+``memory`` (``"none"``, ``"previous"`` or a window size) carries the side's
+own accepted reasons and plans forward on the same game line (see
+:mod:`prompture.games.memory`). ``context_budget`` caps the prompt's estimated
+tokens: the position, legal menu and instructions always stay, and optional
+hints and memory are added urgent-first until the budget is used.
+
 Every turn produces a :class:`~prompture.games.records.TurnRecord` on
 ``decision.record``: each model call with its prompt, public response,
 validation result, timing, finish reason, classified failure and usage, plus
@@ -386,6 +392,13 @@ class _Turn:
 
 
 _DEADLINE = "turn_deadline"
+_SEVERITY_RANK = {"urgent": 0, "warning": 1, "info": 2}
+_OMITTED = "(Some lower-priority hints were left out to fit the context budget.)"
+
+
+def _estimate(text: str) -> int:
+    """A labeled token estimate: characters / 4, rounded up."""
+    return -(-len(text) // 4)
 
 
 class GameHarness:
@@ -442,6 +455,8 @@ class GameHarness:
         budget: GameBudget | None = None,
         on_event: EventHandler | None = None,
         cleanup_timeout: float = 0.25,
+        memory: str | int | None = "none",
+        context_budget: int | None = None,
     ) -> None:
         if level not in LEVELS:
             raise ValueError(f"level must be one of {sorted(LEVELS)}, got {level!r}")
@@ -476,6 +491,10 @@ class GameHarness:
         self.max_trace_chars = max_trace_chars
         self.run_id = run_id or uuid.uuid4().hex[:12]
         self.game_id = uuid.uuid4().hex[:12]
+        from .memory import DecisionMemory
+
+        self.memory = DecisionMemory(game, memory)
+        self.context_budget = context_budget
         self.deadline = deadline
         self.cancel = cancel
         self.retry = retry
@@ -505,6 +524,14 @@ class GameHarness:
         self.game_id = game_id or uuid.uuid4().hex[:12]
         return self.game_id
 
+    def commit(self, state: Any, decision: MoveDecision) -> None:
+        """Tell the harness ``decision`` (chosen in ``state``) was applied.
+
+        Optional: memory also notices applied moves from the game line. Hosts
+        that keep states without history should call this.
+        """
+        self.memory.commit(state, decision)
+
     # -- identity -------------------------------------------------------------
 
     def behavior(self) -> dict[str, Any]:
@@ -530,6 +557,9 @@ class GameHarness:
             "failure_policy": self.failure_policy,
             "retry": self.retry.to_dict() if self.retry else None,
             "deadline_s": self.deadline,
+            "memory": self.memory.policy,
+            "memory_version": "1" if self.memory.enabled else None,
+            "context_budget": self.context_budget,
             "options": safe_options(self.options),
             "system_prompt": text_digest(self.system_prompt),
         }
@@ -573,24 +603,110 @@ class GameHarness:
     # -- prompt -------------------------------------------------------------
 
     def prompt(self, state: Any, candidates: list[Candidate], feedback: str | None = None) -> str:
-        """The turn's prompt: rules, the position as the game renders it, and the menu."""
-        lines = [f"You are playing {self.game.title} as {self.game.player(state)}."]
+        """The turn's prompt: rules, the position as the game renders it, the menu and any memory."""
+        return self._compose(state, candidates, feedback)[0]
+
+    def _compose(
+        self, state: Any, candidates: list[Candidate], feedback: str | None = None
+    ) -> tuple[str, dict[str, Any]]:
+        """The prompt and how it was fitted: ``(text, info)``.
+
+        Required: the side, rules, the rendered position, every candidate name,
+        engine evaluations at level 4+, rejection feedback and the instruction.
+        Optional (only trimmed under ``context_budget``): hint notes by
+        severity (urgent, then warnings), then memory, then informational notes.
+        Token counts are estimates (characters / 4).
+        """
+        head = [f"You are playing {self.game.title} as {self.game.player(state)}."]
         if self.game.rules:
-            lines.append(self.game.rules)
-        lines += self.game.render(state)
-        lines.append("")
-        lines.append("Your moves (pick exactly one, written as shown):")
+            head.append(self.game.rules)
+        head += self.game.render(state)
+        head += ["", "Your moves (pick exactly one, written as shown):"]
+        required: list[list[str]] = []
+        optional: list[list[tuple[int, str]]] = []
         for candidate in candidates:
-            notes = [m.text for m in candidate.motifs]
-            if self.level >= 4 and candidate.score:
-                notes.insert(0, f"engine: {candidate.score.label}")
-            lines.append(f"- {candidate.name}" + (f": {'; '.join(notes)}" if notes else ""))
-        if feedback:
-            lines.append("")
-            lines.append(f"Your previous answer was rejected: {feedback}")
-        lines.append("")
-        lines.append("Give a short reason and a brief plan for your next turn, then the move you choose.")
-        return "\n".join(lines)
+            fixed = [f"engine: {candidate.score.label}"] if self.level >= 4 and candidate.score else []
+            seen = set(fixed)
+            notes = []
+            for motif in candidate.motifs:
+                if motif.text not in seen:
+                    seen.add(motif.text)
+                    notes.append((_SEVERITY_RANK.get(motif.severity, 2), motif.text))
+            required.append(fixed)
+            optional.append(notes)
+        tail = ["", f"Your previous answer was rejected: {feedback}"] if feedback else []
+        tail += ["", "Give a short reason and a brief plan for your next turn, then the move you choose."]
+        recalled = self.memory.recall(state)
+        memory_text = self.memory.render(recalled)
+        keep: list[set[int]] = [set(range(len(notes))) for notes in optional]
+        keep_memory = bool(memory_text)
+        info: dict[str, Any] = {"estimate": "chars/4", "budget": self.context_budget, "memory_entries": len(recalled)}
+        if self.context_budget is not None:
+            keep, keep_memory = self._fit(head, candidates, required, optional, tail, memory_text, info)
+        lines = list(head)
+        for candidate, fixed, notes, kept in zip(candidates, required, optional, keep, strict=True):
+            shown = fixed + [text for index, (_, text) in enumerate(notes) if index in kept]
+            lines.append(f"- {candidate.name}" + (f": {'; '.join(shown)}" if shown else ""))
+        if info.get("omitted_notes") or (memory_text and not keep_memory):
+            lines += ["", _OMITTED]
+        lines += tail
+        text = "\n".join(lines)
+        if memory_text and keep_memory:
+            text += "\n\n" + memory_text
+        info["estimated_tokens"] = _estimate(text)
+        info["memory_shown"] = bool(memory_text and keep_memory)
+        return text, info
+
+    def _fit(
+        self,
+        head: list[str],
+        candidates: list[Candidate],
+        required: list[list[str]],
+        optional: list[list[tuple[int, str]]],
+        tail: list[str],
+        memory_text: str,
+        info: dict[str, Any],
+    ) -> tuple[list[set[int]], bool]:
+        """Choose which optional notes and memory fit ``context_budget`` (urgent first)."""
+        assert self.context_budget is not None
+        menu = [
+            f"- {c.name}" + (f": {'; '.join(fixed)}" if fixed else "")
+            for c, fixed in zip(candidates, required, strict=True)
+        ]
+        base = len("\n".join(head + menu + tail))
+        has_optional = bool(memory_text) or any(optional)
+        budget_chars = self.context_budget * 4 - (len(_OMITTED) + 2 if has_optional else 0)
+        if base > budget_chars:
+            raise TurnFailed(
+                f"the required prompt (position, legal moves, instructions: ~{_estimate(' ' * base)} tokens) "
+                f"does not fit context_budget={self.context_budget}",
+                kind=FailureKind.CONFIGURATION,
+            )
+        used = base
+        keep: list[set[int]] = [set() for _ in optional]
+        items = []
+        for row, notes in enumerate(optional):
+            for index, (rank, text) in enumerate(notes):
+                items.append((rank, row, index, text))
+        items.sort(key=lambda item: (item[0], item[1], item[2]))
+        keep_memory = False
+        for phase in (0, 1, "memory", 2):
+            if phase == "memory":
+                if memory_text and used + len(memory_text) + 2 <= budget_chars:
+                    used += len(memory_text) + 2
+                    keep_memory = True
+                continue
+            for rank, row, index, text in items:
+                if rank != phase:
+                    continue
+                cost = len(text) + 2  # the ": " or "; " separator
+                if used + cost <= budget_chars:
+                    keep[row].add(index)
+                    used += cost
+        omitted = sum(len(notes) for notes in optional) - sum(len(k) for k in keep)
+        info["omitted_notes"] = omitted
+        info["memory_omitted"] = bool(memory_text) and not keep_memory
+        return keep, keep_memory
 
     @staticmethod
     def schema(candidates: list[Candidate]) -> dict[str, Any]:
@@ -650,8 +766,13 @@ class GameHarness:
         """One decision from the candidates: the model's, or the failure policy's."""
         chosen, reason, plan = self._select(turn, state, turn.candidates)
         if chosen is None:
-            return self._exhausted(turn, turn.candidates)
-        return self._accepted(turn, chosen, reason, plan)
+            decision = self._exhausted(turn, turn.candidates)
+        else:
+            decision = self._accepted(turn, chosen, reason, plan)
+        self.memory.propose(state, decision)
+        if self.memory.enabled:
+            turn.record.context["memory"] = {"policy": self.memory.policy, "version": "1"}
+        return decision
 
     def _accepted(self, turn: _Turn, chosen: Candidate, reason: str, plan: str) -> MoveDecision:
         turn.record.outcome = "accepted"
@@ -690,7 +811,8 @@ class GameHarness:
         while True:
             if not self._may_dispatch(turn):
                 return None, "", ""
-            prompt = self.prompt(state, candidates, feedback)
+            prompt, prompt_info = self._compose(state, candidates, feedback)
+            turn.record.context["prompt"] = prompt_info
             matched.clear()
             _answer, attempt = self._call(turn, prompt, schema, purpose, check)
             if attempt.valid and matched:

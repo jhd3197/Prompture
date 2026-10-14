@@ -150,10 +150,10 @@ def describe_move(
             motifs.append(Motif("full", f"fills column {col + 1}"))
     if after.won:
         if "win" in wanted:
-            motifs.append(Motif("win", "wins: connects four"))
+            motifs.append(Motif("win", "wins: connects four", severity="urgent"))
         return motifs
     if "block" in wanted and col in board.immediate_wins(opponent):
-        motifs.append(Motif("block", f"blocks {NAMES[opponent]}'s four in column {col + 1}"))
+        motifs.append(Motif("block", f"blocks {NAMES[opponent]}'s four in column {col + 1}", severity="urgent"))
     opponent_wins = after.immediate_wins(opponent)
     mine_after = after.winning_cells(me)
     playable = sorted(c for r, c in mine_after if after.heights[c] == r)
@@ -161,7 +161,11 @@ def describe_move(
     if double:
         columns = " and ".join(str(c + 1) for c in playable)
         motifs.append(
-            Motif("double-threat", f"double threat: wins next move in columns {columns}; only one can be blocked")
+            Motif(
+                "double-threat",
+                f"double threat: wins next move in columns {columns}; only one can be blocked",
+                severity="urgent",
+            )
         )
     if "threat" in wanted and not double:
         for r, c in sorted(mine_after - board.winning_cells(me)):
@@ -169,7 +173,9 @@ def describe_move(
             motifs.append(Motif("threat", f"threat: four would connect at {cell_name(r, c)}{now}"))
     if "safety" in wanted and opponent_wins:
         columns = ", ".join(str(c + 1) for c in sorted(opponent_wins))
-        motifs.append(Motif("safety", f"warning: lets {NAMES[opponent]} win next move in column {columns}"))
+        motifs.append(
+            Motif("safety", f"warning: lets {NAMES[opponent]} win next move in column {columns}", severity="urgent")
+        )
     if "center" in wanted and col == CENTER:
         motifs.append(Motif("center", "takes the center column, part of the most lines"))
     return motifs
