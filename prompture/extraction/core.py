@@ -475,6 +475,7 @@ def ask_for_json(
     system_prompt: str | None = None,
     images: list[ImageInput] | None = None,
     strategy: str | StructuredOutputStrategy | None = None,
+    stream: bool = False,
 ) -> dict[str, Any]:
     """Sends a prompt to the driver and returns structured output plus usage metadata.
 
@@ -491,6 +492,9 @@ def ask_for_json(
         output_format: Response serialization format ("json" or "toon").
         cache: Override for response caching.  ``True`` forces caching on,
             ``False`` forces it off, ``None`` defers to the global setting.
+        stream: Consume streamed model output when the driver supports it,
+            returning the same complete result. Unsupported drivers use normal calls.
+            Automatic tool-call extraction uses prompted JSON while streaming.
 
     Returns:
         A dictionary containing:
@@ -537,6 +541,12 @@ def ask_for_json(
 
     # --- Resolve structured-output strategy ---
     resolved_strategy = resolve_strategy(strategy, model_name or getattr(driver, "model", ""), driver=driver)
+    use_stream = stream and getattr(driver, "supports_streaming", False)
+    if use_stream and resolved_strategy == StructuredOutputStrategy.TOOL_CALL:
+        if strategy is None or strategy == "auto":
+            resolved_strategy = StructuredOutputStrategy.PROMPTED_REPAIR
+        else:
+            use_stream = False  # preserve an explicitly requested tool-call strategy
     logger.debug("[ask_for_json] strategy=%s model=%s", resolved_strategy.value, model_name)
 
     # --- TOOL_CALL strategy: try extracting via function calling ---
@@ -604,11 +614,16 @@ def ask_for_json(
 
     # Use generate_messages when system_prompt or images are provided
     user_content = _build_content_with_images(full_prompt, images)
-    if system_prompt is not None or images:
+    if system_prompt is not None or images or use_stream:
         messages = [{"role": "user", "content": user_content}]
         if system_prompt is not None:
             messages.insert(0, {"role": "system", "content": system_prompt})
-        resp = driver.generate_messages_with_hooks(messages, options)
+        if use_stream:
+            from .streaming import _collect_stream
+
+            resp = _collect_stream(driver, messages, options)
+        else:
+            resp = driver.generate_messages_with_hooks(messages, options)
     else:
         resp = driver.generate_with_hooks(full_prompt, options)
     raw = resp.get("text", "")

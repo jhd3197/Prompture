@@ -69,6 +69,7 @@ def load_puzzles(path: str | Path) -> list[dict[str, Any]]:
 def play_puzzle(harness: ChessHarness, puzzle: dict[str, Any]) -> PuzzleResult:
     """Play the solver's side of one puzzle; stop at the first wrong move."""
     board = chess.Board(puzzle["fen"])
+    harness.reset()
     line = [chess.Move.from_uci(uci) for uci in puzzle["moves"]]
     board.push(line[0])
     played: list[str] = []

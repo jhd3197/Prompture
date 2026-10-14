@@ -11,7 +11,7 @@ Example::
     import chess
 
     board = chess.Board()
-    with ChessHarness("ollama/llama3.2:3b", level=1, concepts={"fork", "safety"}) as harness:
+    with ChessHarness("ollama/llama3.2:3b", level=1, concepts={"fork", "safety", "allows"}) as harness:
         decision = harness.choose(board)
         board.push(decision.move)
 """
@@ -26,8 +26,8 @@ from typing import Any
 import chess
 import chess.engine
 
-from ..base import BLUNDER_DROP, Engine, GameHarness, Motif, Score
-from .motifs import CONCEPTS, describe_move
+from ..base import BLUNDER_DROP, Candidate, Engine, GameHarness, Motif, MoveDecision, Score
+from .motifs import CONCEPTS, VALUES, describe_move
 
 _PIECE_ORDER = (chess.KING, chess.QUEEN, chess.ROOK, chess.BISHOP, chess.KNIGHT, chess.PAWN)
 
@@ -79,8 +79,25 @@ class ChessGame:
         if history:
             lines.append(f"Moves so far: {history}")
         lines.append(f"Position (FEN): {board.fen()}")
+        lines.append("Board (White uppercase, Black lowercase; . = empty):")
+        lines += [f"{8 - rank} {row}" for rank, row in enumerate(str(board).splitlines())]
+        lines.append("  a b c d e f g h")
         for side in (chess.WHITE, chess.BLACK):
             lines.append(f"{'White' if side else 'Black'} pieces: {_piece_list(board, side)}")
+        material = {
+            side: sum(len(board.pieces(piece, side)) * VALUES[piece] for piece in VALUES if piece != chess.KING)
+            for side in (chess.WHITE, chess.BLACK)
+        }
+        balance = material[chess.WHITE] - material[chess.BLACK]
+        label = "equal" if not balance else f"{'White' if balance > 0 else 'Black'} ahead by {abs(balance)}"
+        lines.append(
+            f"Material (P=1, N=B=3, R=5, Q=9; kings excluded): "
+            f"White {material[chess.WHITE]}, Black {material[chess.BLACK]}; {label}."
+        )
+        if board.is_repetition(3):
+            lines.append("Repetition: this position has occurred at least three times; a draw can be claimed.")
+        elif board.is_repetition(2):
+            lines.append("Repetition: this position has occurred twice; a third time allows a draw claim.")
         lines.append(f"{self.player(board)} to move." + (" You are in check." if board.is_check() else ""))
         return lines
 
@@ -137,7 +154,15 @@ class ChessEngine:
 
 
 class ChessHarness(GameHarness):
-    """A :class:`~prompture.games.base.GameHarness` for chess."""
+    """A :class:`~prompture.games.base.GameHarness` for chess.
+
+    Prompts include a board diagram and material totals. At level 1 and above,
+    the move menu also identifies repetitions using the board's move stack.
+    The last accepted reason/plan is included on that side's next turn on the
+    same line; call :meth:`reset` when starting a new game. Keep the board's
+    history (rather than rebuilding from FEN) for repetition and move memory.
+    Calls stream by default where supported; pass ``stream=False`` to opt out.
+    """
 
     def __init__(
         self,
@@ -154,6 +179,7 @@ class ChessHarness(GameHarness):
         system_prompt: str | None = None,
         options: dict[str, Any] | None = None,
         seed: int | None = None,
+        stream: bool = True,
     ) -> None:
         if level >= 2 and engine is None:
             raise ValueError(f"level {level} needs an engine, e.g. engine='stockfish'")
@@ -170,7 +196,50 @@ class ChessHarness(GameHarness):
             system_prompt=system_prompt,
             options=options,
             seed=seed,
+            stream=stream,
         )
+        self._previous: dict[chess.Color, tuple[chess.Board, MoveDecision]] = {}
+
+    def reset(self) -> None:
+        """Forget both sides' previous reasons/plans before starting another game."""
+        self._previous.clear()
+
+    def candidates(self, board: chess.Board) -> list[Candidate]:
+        candidates = super().candidates(board)
+        if self.level < 1:
+            return candidates
+        for candidate in candidates:
+            after = self.game.apply(board, candidate.move)
+            if after.is_repetition(3):
+                candidate.motifs.append(Motif("repetition", "repeats the position a third time: a draw can be claimed"))
+            elif after.is_repetition(2):
+                candidate.motifs.append(Motif("repetition", "repeats the position: a third time allows a draw claim"))
+        return candidates
+
+    def prompt(self, board: chess.Board, candidates: list[Candidate], feedback: str | None = None) -> str:
+        prompt = super().prompt(board, candidates, feedback)
+        previous = self._previous.get(board.turn)
+        if previous is not None and board.move_stack:
+            position, decision = previous
+            before_reply = board.copy()
+            before_reply.pop()
+            # Only the next own turn on the same line. FEN alone loses repetition
+            # history and could leak a plan from a different game or analysis branch.
+            if before_reply.fen() == position.fen() and before_reply.move_stack == position.move_stack:
+                prompt += (
+                    f"\n\nYour previous move: {decision.name}\nYour previous reason: {decision.reason}"
+                    f"\nYour previous plan: {decision.plan or '(none given)'}"
+                    "\nReassess this plan after the opponent's reply; keep it if it still fits."
+                )
+        return prompt
+
+    def choose(self, board: chess.Board) -> MoveDecision:
+        decision = super().choose(board)
+        if decision.rescued:
+            self._previous.pop(board.turn, None)
+        else:
+            self._previous[board.turn] = (self.game.apply(board, decision.move), decision)
+        return decision
 
 
 def _history(board: chess.Board, plies: int = 40) -> str:

@@ -8,16 +8,17 @@
 * **Concepts** (:data:`CONCEPTS`) are ideas a player has to know to see:
   checkmate, back-rank mate, forks, pins, skewers, discovered attacks, winning
   hanging pieces, and the ``safety`` warning that a move leaves a piece en
-  prise. Each one can be switched on or off, so a harness can model a player
+  prise, and ``allows`` warnings about an opponent's next-move tactics.
+  Each one can be switched on or off, so a harness can model a player
   who has never heard of a skewer.
 
 Concept names match the puzzle themes Lichess and Chess Studio use
 (``fork``, ``pin``, ``discovered-attack`` ...), so puzzle packs of one theme
 can measure whether a concept helps a model.
 
-The detectors are deliberately simple static checks, not search: they look
-one move deep and use attacker/defender counts. They describe a move; they
-do not prove it is good. Pieces lost on the spot disqualify forks, pins and
+The detectors are deliberately simple static checks, not engine evaluations:
+``allows`` also checks each legal reply for a fork or winning capture. They
+describe a move; they do not prove it is good. Pieces lost on the spot disqualify forks, pins and
 skewers, since a "fork" by a piece that is simply captured is no fork.
 """
 
@@ -39,6 +40,7 @@ CONCEPTS = (
     "discovered-attack",
     "hanging-piece",
     "safety",
+    "allows",
 )
 
 VALUES = {
@@ -318,6 +320,51 @@ def _safety(board: chess.Board, move: chess.Move, after: chess.Board) -> list[Mo
     return warnings
 
 
+def _capture_value(board: chess.Board, move: chess.Move) -> int:
+    return VALUES[chess.PAWN] if board.is_en_passant(move) else _value(board, move.to_square)
+
+
+def _allows(board: chess.Board, move: chess.Move, after: chess.Board) -> list[Motif]:
+    """One legal reply deep, using the same conservative static motif checks.
+
+    These are tactical possibilities, not proof of a forced loss. Count material
+    already taken by the candidate so ordinary exchanges do not look like blunders.
+    Do not call describe_move recursively: reply hints must stay bounded.
+    """
+    gained = _capture_value(board, move)
+    if move.promotion:
+        gained += VALUES[move.promotion] - VALUES[chess.PAWN]
+    warnings = []
+    for reply in sorted(after.legal_moves, key=lambda m: m.uci()):
+        following = after.copy(stack=False)
+        following.push(reply)
+        tactics = []
+        if losing_capture(following, reply.to_square) is None:
+            fork = _fork(following, reply.to_square)
+            if fork:
+                tactics.append(fork)
+        if after.is_capture(reply):
+            profit = _capture_value(after, reply)
+            if reply.promotion:
+                profit += VALUES[reply.promotion] - VALUES[chess.PAWN]
+            if any(m.to_square == reply.to_square for m in following.legal_moves):
+                profit -= _value(following, reply.to_square)
+            if profit > gained:
+                victim_square = reply.to_square
+                if after.is_en_passant(reply):
+                    victim_square += -8 if after.turn else 8
+                tactics.append(
+                    Motif(
+                        "hanging-piece",
+                        f"winning capture of {piece_label(after, victim_square)}",
+                        (chess.square_name(victim_square),),
+                    )
+                )
+        for tactic in tactics:
+            warnings.append(Motif("allows", f"allows {after.san(reply)}: {tactic.text}", tactic.squares))
+    return warnings
+
+
 def describe_move(
     board: chess.Board,
     move: chess.Move,
@@ -353,4 +400,6 @@ def describe_move(
             motifs.append(won)
     if "safety" in wanted:
         motifs += _safety(board, move, after)
+    if "allows" in wanted:
+        motifs += _allows(board, move, after)
     return motifs

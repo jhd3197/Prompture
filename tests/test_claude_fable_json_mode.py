@@ -11,6 +11,8 @@ and ``effort`` reaches ``output_config.effort``. Older models keep the forced to
 
 from __future__ import annotations
 
+from contextlib import contextmanager
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -55,6 +57,48 @@ class _Messages:
             return _StubResponse([_Block("tool_use", input={"move": "d4"})])
         # A thinking model puts its (empty, omitted) thinking block before the answer.
         return _StubResponse([_Block("thinking", thinking=""), _Block("text", text='{"move": "e4"}')])
+
+    @contextmanager
+    def stream(self, **kwargs: Any):
+        self.last_kwargs = kwargs
+        events = [
+            SimpleNamespace(type="message_start", message=SimpleNamespace(usage={"input_tokens": 10})),
+            SimpleNamespace(
+                type="content_block_delta",
+                index=0,
+                delta=SimpleNamespace(type="thinking_delta", thinking="Consider the center"),
+            ),
+        ]
+        if "tool_choice" in kwargs:
+            events += [
+                SimpleNamespace(
+                    type="content_block_start",
+                    index=1,
+                    content_block=SimpleNamespace(type="tool_use", name="extract_json"),
+                ),
+                SimpleNamespace(
+                    type="content_block_delta",
+                    index=1,
+                    delta=SimpleNamespace(type="input_json_delta", partial_json='{"move": '),
+                ),
+                SimpleNamespace(
+                    type="content_block_delta",
+                    index=1,
+                    delta=SimpleNamespace(type="input_json_delta", partial_json='"d4"}'),
+                ),
+            ]
+        else:
+            events.append(
+                SimpleNamespace(
+                    type="content_block_delta", index=1, delta=SimpleNamespace(type="text_delta", text='{"move": "e4"}')
+                )
+            )
+        events.append(
+            SimpleNamespace(
+                type="message_delta", usage={"output_tokens": 5}, delta=SimpleNamespace(stop_reason="end_turn")
+            )
+        )
+        yield iter(events)
 
 
 @pytest.fixture
@@ -101,3 +145,48 @@ def test_older_models_keep_the_forced_tool_and_temperature(driver_for) -> None:
     assert kw["extra_body"]["temperature"] == 0.0
     assert "output_config" not in kw["extra_body"]
     assert out["text"] == '{"move": "d4"}'
+
+
+@pytest.mark.parametrize("model", ["claude-fable-5-1", "claude-opus-5-5", "claude-sonnet-5-5"])
+def test_stream_keeps_native_schema_effort_timeout_and_usage(driver_for, model) -> None:
+    driver, messages = driver_for(model)
+    chunks = list(
+        driver.generate_messages_stream(
+            [{"role": "user", "content": "Pick a move"}],
+            {
+                "json_mode": True,
+                "json_schema": SCHEMA,
+                "effort": "high",
+                "timeout": 900,
+            },
+        )
+    )
+    kw = messages.last_kwargs
+    assert "tool_choice" not in kw
+    assert kw["timeout"] == 900
+    assert kw["extra_body"]["output_config"]["effort"] == "high"
+    schema = kw["extra_body"]["output_config"]["format"]["schema"]
+    assert schema["properties"]["move"]["enum"] == ["e4", "d4"]
+    assert schema["additionalProperties"] is False
+    assert chunks[-1]["text"] == '{"move": "e4"}'
+    assert chunks[-1]["meta"]["total_tokens"] == 15
+    assert chunks[-1]["meta"]["raw_stop_reason"] == "end_turn"
+    assert chunks[0]["type"] == "thinking_delta"
+
+
+def test_older_models_stream_forced_tool_arguments_as_json(driver_for) -> None:
+    driver, messages = driver_for("claude-sonnet-4-6")
+    chunks = list(
+        driver.generate_messages_stream(
+            [{"role": "user", "content": "Pick a move"}],
+            {
+                "json_mode": True,
+                "json_schema": SCHEMA,
+            },
+        )
+    )
+    assert messages.last_kwargs["tool_choice"] == {"type": "tool", "name": "extract_json"}
+    assert messages.last_kwargs["tools"][0]["input_schema"] == SCHEMA
+    assert "".join(c["text"] for c in chunks if c["type"] == "delta") == '{"move": "d4"}'
+    assert chunks[-1]["text"] == '{"move": "d4"}'
+    assert chunks[-1]["meta"]["total_tokens"] == 15

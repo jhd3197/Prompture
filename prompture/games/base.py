@@ -161,6 +161,7 @@ class MoveDecision:
     attempts: list[Attempt]
     rescued: bool
     usage: dict[str, float]
+    plan: str = ""
 
     @property
     def san(self) -> str:
@@ -168,7 +169,12 @@ class MoveDecision:
 
 
 class GameHarness:
-    """Chooses moves in ``game`` with a model, constrained to a menu of candidates."""
+    """Chooses moves in ``game`` with a model, constrained to a menu of candidates.
+
+    Streaming is enabled by default for supporting drivers, with the same
+    completed JSON result, retries and usage accounting. ``stream=False`` opts
+    out. Each decision includes a short ``reason`` and ``plan`` for the caller.
+    """
 
     def __init__(
         self,
@@ -185,6 +191,7 @@ class GameHarness:
         system_prompt: str | None = None,
         options: dict[str, Any] | None = None,
         seed: int | None = None,
+        stream: bool = True,
     ) -> None:
         if level not in LEVELS:
             raise ValueError(f"level must be one of {sorted(LEVELS)}, got {level!r}")
@@ -209,6 +216,7 @@ class GameHarness:
         self.max_retries = max_retries
         self.system_prompt = system_prompt
         self.options = options or {}
+        self.stream = stream
         self._rng = random.Random(seed)  # nosec B311 - fallback move choice, not crypto
 
     def __enter__(self) -> GameHarness:
@@ -274,7 +282,7 @@ class GameHarness:
             lines.append("")
             lines.append(f"Your previous answer was rejected: {feedback}")
         lines.append("")
-        lines.append("Give a short reason, then the move you choose.")
+        lines.append("Give a short reason and a brief plan for your next turn, then the move you choose.")
         return "\n".join(lines)
 
     @staticmethod
@@ -284,9 +292,10 @@ class GameHarness:
             "type": "object",
             "properties": {
                 "reason": {"type": "string"},
+                "plan": {"type": "string"},
                 "move": {"type": "string", "enum": [c.name for c in candidates]},
             },
-            "required": ["reason", "move"],
+            "required": ["reason", "plan", "move"],
         }
 
     # -- choosing -----------------------------------------------------------
@@ -301,12 +310,12 @@ class GameHarness:
         usage = dict.fromkeys(_USAGE_KEYS, 0.0)
         feedback = None
         for _ in range(self.max_retries + 1):
-            reply, reason, error = self._ask(state, candidates, schema, feedback, usage)
+            reply, reason, plan, error = self._ask(state, candidates, schema, feedback, usage)
             if error is None:
                 chosen, error = self._match(state, candidates, reply)
                 if chosen is not None:
                     attempts.append(Attempt(reply))
-                    return MoveDecision(chosen.move, chosen.name, reason, candidates, attempts, False, usage)
+                    return MoveDecision(chosen.move, chosen.name, reason, candidates, attempts, False, usage, plan)
             attempts.append(Attempt(reply, error))
             feedback = error
         fallback = self._fallback(candidates)
@@ -319,7 +328,7 @@ class GameHarness:
         schema: dict[str, Any],
         feedback: str | None,
         usage: dict[str, float],
-    ) -> tuple[Any, str, str | None]:
+    ) -> tuple[Any, str, str, str | None]:
         from ..extraction.core import ask_for_json
 
         try:
@@ -331,19 +340,20 @@ class GameHarness:
                 model_name=self.model,
                 options=self.options,
                 system_prompt=self.system_prompt,
+                stream=self.stream,
             )
         except ExtractionError as exc:
             for key in _USAGE_KEYS:  # an unparseable reply was still paid for
                 usage[key] += float(exc.usage.get(key) or 0)
-            return None, "", f"the reply was not valid JSON ({exc})"
+            return None, "", "", f"the reply was not valid JSON ({exc})"
         except Exception as exc:  # a timeout or a dead backend must not abort a whole game
-            return None, "", f"the model call failed ({exc})"
+            return None, "", "", f"the model call failed ({exc})"
         for key in _USAGE_KEYS:
             usage[key] += float(result.get("usage", {}).get(key) or 0)
         answer = result.get("json_object")
         if not isinstance(answer, dict):
-            return answer, "", 'the reply must be a JSON object with "reason" and "move"'
-        return answer.get("move"), str(answer.get("reason") or ""), None
+            return answer, "", "", 'the reply must be a JSON object with "reason", "plan" and "move"'
+        return answer.get("move"), str(answer.get("reason") or ""), str(answer.get("plan") or ""), None
 
     def _match(self, state: Any, candidates: list[Candidate], reply: Any) -> tuple[Candidate | None, str | None]:
         if not isinstance(reply, (str, int)) or not str(reply).strip():

@@ -6,6 +6,7 @@ import json
 import logging
 import os
 from collections.abc import Iterator
+from contextlib import suppress
 from typing import Any
 
 import requests
@@ -732,9 +733,15 @@ class ClaudeDriver(_ClaudeModelRules, CostMixin, Driver):
         system_content, api_messages = _extract_anthropic_system_and_messages(messages)
         cache_kwargs = _cache_opts(opts, model)
         wrapped_system = _apply_cache_control_to_system(system_content, **cache_kwargs)
+        json_mode_tools = None
+        structured = bool(opts.get("json_mode") and opts.get("json_schema") and _rejects_forced_tool(model))
+        if opts.get("json_mode") and opts.get("json_schema") and not structured:
+            json_mode_tools = _apply_cache_control_to_tools(
+                [_build_anthropic_json_mode_tool_def(opts["json_schema"])], **cache_kwargs
+            )
         api_messages = _apply_cache_control_to_messages(
             api_messages,
-            max_breakpoints=_breakpoint_budget(wrapped_system),
+            max_breakpoints=_breakpoint_budget(wrapped_system, json_mode_tools),
             **cache_kwargs,
         )
 
@@ -752,40 +759,62 @@ class ClaudeDriver(_ClaudeModelRules, CostMixin, Driver):
 
         full_text = ""
         full_reasoning = ""
+        json_block_index = None
+        stop_reason = None
         reported_usage = {}
         response_info = {}
         usage_finished = False
 
         _apply_anthropic_reporting_options(kwargs, opts)
+        if structured:
+            _output_config(kwargs)["format"] = _structured_output_format(opts["json_schema"])
+        elif json_mode_tools is not None:
+            kwargs["tools"] = json_mode_tools
+            kwargs["tool_choice"] = {"type": "tool", "name": "extract_json"}
         with client.messages.stream(**kwargs) as stream:
             limits = limits_from_response(getattr(stream, "response", None))
             for event in stream:
                 if hasattr(event, "type"):
-                    if event.type == "content_block_delta" and hasattr(event, "delta"):
+                    if event.type == "content_block_start" and json_mode_tools is not None:
+                        block = getattr(event, "content_block", None)
+                        if getattr(block, "type", "") == "tool_use" and getattr(block, "name", "") == "extract_json":
+                            json_block_index = event.index
+                    elif event.type == "content_block_delta" and hasattr(event, "delta"):
                         delta_type = getattr(event.delta, "type", "")
                         if delta_type == "thinking_delta":
                             thinking_text = getattr(event.delta, "thinking", "")
                             if thinking_text:
                                 full_reasoning += thinking_text
                                 yield {"type": "thinking_delta", "text": thinking_text}
-                        else:
+                        elif delta_type == "input_json_delta" and json_block_index == getattr(event, "index", -1):
+                            fragment = getattr(event.delta, "partial_json", "") or ""
+                            full_text += fragment
+                            yield {"type": "delta", "text": fragment}
+                        elif json_mode_tools is None:
                             delta_text = getattr(event.delta, "text", "")
                             if delta_text:
                                 full_text += delta_text
                                 yield {"type": "delta", "text": delta_text}
-                    elif event.type == "message_delta" and hasattr(event, "usage"):
-                        usage_finished = True
-                        reported_usage.update({k: v for k, v in as_dict(event.usage).items() if v is not None})
+                    elif event.type == "message_delta":
+                        if getattr(event, "usage", None) is not None:
+                            usage_finished = True
+                            reported_usage.update({k: v for k, v in as_dict(event.usage).items() if v is not None})
+                        stop_reason = getattr(getattr(event, "delta", None), "stop_reason", None) or stop_reason
                     elif event.type == "message_start" and hasattr(event, "message"):
                         usage = getattr(event.message, "usage", None)
                         if usage:
                             reported_usage.update(as_dict(usage))
                             response_info.update(as_dict(event.message))
 
+        if json_mode_tools is not None and full_text:
+            # Extraction reports malformed/truncated JSON with the call's usage.
+            with suppress(json.JSONDecodeError):
+                full_text = json.dumps(_json_mode_input(json.loads(full_text), opts["json_schema"]))
         meta = usage_meta(
             self, "claude", model, reported_usage or None, response=response_info, options=opts, complete=usage_finished
         )
         meta["raw_response"] = {}
+        meta["raw_stop_reason"] = stop_reason
         add_rate_limits(meta, limits)
         done = {"type": "done", "text": full_text, "meta": meta}
         if full_reasoning:

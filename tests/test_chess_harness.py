@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import pytest
@@ -13,6 +14,7 @@ import chess.engine
 from prompture.drivers.base import Driver
 from prompture.games.chess import (
     CONCEPTS,
+    ChessGame,
     ChessHarness,
     describe_move,
     play_puzzle,
@@ -59,8 +61,8 @@ class FakeEngine:
         ]
 
 
-def reply(move: str, reason: str = "because") -> str:
-    return f'{{"reason": "{reason}", "move": "{move}"}}'
+def reply(move: str, reason: str = "because", plan: str = "") -> str:
+    return json.dumps({"reason": reason, "plan": plan, "move": move})
 
 
 def tags(fen: str, san: str, concepts=CONCEPTS, **kwargs) -> list[str]:
@@ -77,6 +79,69 @@ def kinds(fen: str, san: str, concepts=CONCEPTS) -> set[str]:
 
 
 class TestMotifs:
+    @pytest.mark.parametrize(
+        ("fen", "san", "expected"),
+        [
+            (
+                "r1b2rk1/2q1bppp/5n2/p1pPp3/PpN1P3/5N1P/1PB2PP1/R2QR1K1 b - - 1 20",
+                "Nd7",
+                "allows d6: fork: attacks the queen on c7 and the bishop on e7",
+            ),
+            (
+                "r1b2rk1/2qnbppp/3P4/p1p1p3/PpN1P3/5N1P/1PB2PP1/R2QR1K1 b - - 0 21",
+                "Qb6",
+                "warning: leaves the queen on b6 to be won by the knight on c4",
+            ),
+            (
+                "7k/6p1/7p/6r1/PrP5/3R1P2/5P1P/5R1K w - - 1 34",
+                "c5",
+                "warning: leaves the pawn on c5 to be won by the rook on g5",
+            ),
+        ],
+    )
+    def test_saved_arena_positions(self, fen, san, expected):
+        """The three actual mistakes from Arena, without an engine or model."""
+        assert expected in tags(fen, san)
+
+    def test_allows_finds_what_safety_misses(self):
+        fen = "r1b2rk1/2q1bppp/5n2/p1pPp3/PpN1P3/5N1P/1PB2PP1/R2QR1K1 b - - 1 20"
+        assert tags(fen, "Nd7", concepts={"safety"}) == []
+        assert tags(fen, "Nd7", concepts={"allows"}, facts=False) == [
+            "allows d6: fork: attacks the queen on c7 and the bishop on e7"
+        ]
+
+    def test_allows_winning_capture_and_even_trade(self):
+        assert "allows exd5: winning capture of the queen on d5" in tags(
+            "4k3/8/4p3/8/8/8/8/3QK3 w - - 0 1", "Qd5", concepts={"allows"}
+        )
+        assert "allows" not in kinds("4k3/8/4p3/3q4/8/8/8/3QK3 w - - 0 1", "Qxd5", concepts={"allows"})
+
+    def test_allows_en_passant(self):
+        assert "allows dxe3: winning capture of the pawn on e4" in tags(
+            "4k3/8/8/8/3p4/8/4P3/4K3 w - - 0 1", "e4", concepts={"allows"}
+        )
+
+    def test_allows_ignores_an_illegal_pinned_capture(self):
+        assert not any(
+            "exd5" in text for text in tags("4k3/8/4p3/8/8/8/8/3QR1K1 w - - 0 1", "Qd5", concepts={"allows"})
+        )
+
+    def test_allows_ignores_a_fork_that_can_be_taken(self):
+        assert not any(
+            text.startswith("allows Nf7:")
+            for text in tags("3qk2r/p7/8/6N1/8/8/8/4K3 b - - 0 1", "a6", concepts={"allows"})
+        )
+
+    def test_mate_has_no_allows_warnings(self):
+        assert "allows" not in kinds("6k1/5ppp/8/8/8/8/8/R5K1 w - - 0 1", "Ra8#", concepts={"allows"})
+
+    def test_hints_do_not_mutate_the_position_or_history(self):
+        board = chess.Board()
+        board.push_san("e4")
+        before, history = board.fen(), list(board.move_stack)
+        describe_move(board, board.parse_san("d5"))
+        assert (board.fen(), board.move_stack) == (before, history)
+
     def test_knight_fork_of_king_and_queen(self):
         assert "fork: attacks the king on g8 and the queen on c8" in tags("2q3k1/8/8/3N4/8/8/8/6K1 w - - 0 1", "Ne7+")
 
@@ -229,6 +294,111 @@ class TestHarness:
 
 
 # -- puzzles -----------------------------------------------------------------
+
+
+class TestPositionContext:
+    """Readable positions and history-aware draw warnings."""
+
+    def test_ascii_board_and_balanced_material(self):
+        text = "\n".join(ChessGame().render(chess.Board()))
+        assert "8 r n b q k b n r" in text
+        assert "1 R N B Q K B N R" in text
+        assert "  a b c d e f g h" in text
+        assert "White 39, Black 39; equal" in text
+
+    @pytest.mark.parametrize(
+        ("fen", "balance"),
+        [
+            ("4k3/8/8/8/8/8/8/Q3K3 w - - 0 1", "White 9, Black 0; White ahead by 9"),
+            ("q3k3/8/8/8/8/8/8/4K3 w - - 0 1", "White 0, Black 9; Black ahead by 9"),
+        ],
+    )
+    def test_material_counts_either_side_without_kings(self, fen, balance):
+        assert balance in "\n".join(ChessGame().render(chess.Board(fen)))
+
+    def test_second_and_third_occurrences_in_move_menu(self):
+        board = chess.Board()
+        harness = ChessHarness(driver=ScriptedDriver([reply("Ng8")]), level=1)
+        for san in ("Nf3", "Nf6", "Ng1"):
+            board.push_san(san)
+
+        def notes():
+            return [m.text for c in harness.candidates(board) if c.name == "Ng8" for m in c.motifs]
+
+        assert "repeats the position: a third time allows a draw claim" in notes()
+        board.push_san("Ng8")
+        assert "occurred twice" in "\n".join(ChessGame().render(board))
+        for san in ("Nf3", "Nf6", "Ng1"):
+            board.push_san(san)
+        assert "repeats the position a third time: a draw can be claimed" in notes()
+        board.push_san("Ng8")
+        assert "at least three times" in "\n".join(ChessGame().render(board))
+
+    def test_fen_without_history_does_not_invent_a_repetition(self):
+        board = chess.Board()
+        for san in ("Nf3", "Nf6", "Ng1", "Ng8"):
+            board.push_san(san)
+        assert "Repetition:" not in "\n".join(ChessGame().render(chess.Board(board.fen())))
+
+
+class TestMoveMemory:
+    """Only the last accepted choice for the same side and line is carried forward."""
+
+    def test_own_reason_and_plan_survive_an_opponent_reply(self):
+        driver = ScriptedDriver([reply("e4", "Claim the center", "Develop Nf3"), reply("Nf3")])
+        harness, board = ChessHarness(driver=driver), chess.Board()
+        board.push(harness.choose(board).move)
+        board.push_san("e5")
+        harness.choose(board)
+        assert "Your previous move: e4" in driver.prompts[1]
+        assert "Your previous reason: Claim the center" in driver.prompts[1]
+        assert "Your previous plan: Develop Nf3" in driver.prompts[1]
+
+    def test_sides_do_not_see_each_others_plans(self):
+        driver = ScriptedDriver([reply("e4", plan="white plan"), reply("e5", plan="black plan"), reply("Nf3")])
+        harness, board = ChessHarness(driver=driver), chess.Board()
+        for _ in range(3):
+            board.push(harness.choose(board).move)
+        assert "white plan" not in driver.prompts[1]
+        assert "white plan" in driver.prompts[2]
+        assert "black plan" not in driver.prompts[2]
+
+    @pytest.mark.parametrize("reset_kind", ["explicit", "new_game", "different_line", "fen_only"])
+    def test_memory_is_not_used_outside_the_next_own_turn(self, reset_kind):
+        driver = ScriptedDriver([reply("e4", plan="old plan"), reply("Nf3")])
+        harness, board = ChessHarness(driver=driver), chess.Board()
+        board.push(harness.choose(board).move)
+        board.push_san("e5")
+        if reset_kind == "explicit":
+            harness.reset()
+        elif reset_kind == "new_game":
+            board = chess.Board()
+        elif reset_kind == "different_line":
+            board = chess.Board()
+            board.push_san("d4")
+            board.push_san("d5")
+        else:
+            board = chess.Board(board.fen())
+        harness.choose(board)
+        assert "old plan" not in driver.prompts[-1]
+
+    def test_rejected_plan_is_not_saved(self):
+        driver = ScriptedDriver([reply("Qh9", plan="rejected plan"), reply("e4", plan="accepted plan"), reply("Nf3")])
+        harness, board = ChessHarness(driver=driver), chess.Board()
+        board.push(harness.choose(board).move)
+        board.push_san("e5")
+        harness.choose(board)
+        assert "accepted plan" in driver.prompts[-1]
+        assert all("rejected plan" not in prompt for prompt in driver.prompts)
+
+    def test_rescued_move_clears_old_memory(self):
+        driver = ScriptedDriver([reply("e4", plan="old plan"), reply("Qh9", plan="bad plan")])
+        harness, board = ChessHarness(driver=driver, max_retries=0), chess.Board()
+        board.push(harness.choose(board).move)
+        board.push_san("e5")
+        assert harness.choose(board).rescued
+        assert "old plan" not in harness.prompt(board, harness.candidates(board))
+
 
 FORK_PUZZLE = {"id": "fork", "fen": "2q2k2/8/8/3N4/8/8/8/6K1 b - - 0 1", "moves": ["f8g8", "d5e7", "g8f7", "e7c8"]}
 MATE_PUZZLE = {"id": "mate", "fen": "7k/5ppp/8/8/8/8/8/RR4K1 b - - 0 1", "moves": ["h8g8", "a1a8"]}
