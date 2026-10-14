@@ -26,8 +26,8 @@ from typing import Any
 import chess
 import chess.engine
 
-from ..base import BLUNDER_DROP, Candidate, Engine, GameHarness, Motif, MoveDecision, Score
-from .motifs import CONCEPTS, VALUES, describe_move
+from ..base import BLUNDER_DROP, Candidate, Engine, GameHarness, GameLine, Motif, MoveDecision, Score
+from .motifs import CONCEPTS, HINTS_VERSION, VALUES, describe_move
 
 _PIECE_ORDER = (chess.KING, chess.QUEEN, chess.ROOK, chess.BISHOP, chess.KNIGHT, chess.PAWN)
 
@@ -46,6 +46,8 @@ class ChessGame:
     title = "chess"
     concepts: tuple[str, ...] = CONCEPTS
     rules = ""
+    version = "1"
+    hints_version = HINTS_VERSION
 
     def new_state(self) -> chess.Board:
         return chess.Board()
@@ -118,6 +120,29 @@ class ChessGame:
     def default_engine(self) -> Engine | None:
         return None
 
+    def history(self, board: chess.Board) -> GameLine:
+        """The line from the board's root position (FEN) through its full move stack, in SAN."""
+        root = board.root()
+        replay = root.copy(stack=False)
+        plies = []
+        for move in board.move_stack:
+            plies.append(("White" if replay.turn == chess.WHITE else "Black", replay.san(move)))
+            replay.push(move)
+        return GameLine(root.fen(), tuple(plies))
+
+    def dump_state(self, board: chess.Board) -> dict[str, Any]:
+        return {"game": self.title, "initial": board.root().fen(), "moves": [m.uci() for m in board.move_stack]}
+
+    def load_state(self, data: dict[str, Any]) -> chess.Board:
+        """Replay ``{"initial": FEN or None, "moves": [UCI or SAN]}``; illegal moves raise ``ValueError``."""
+        board = chess.Board(data["initial"]) if data.get("initial") else chess.Board()
+        for name in data.get("moves", []):
+            move = self.parse_move(board, str(name))
+            if move is None or move not in board.legal_moves:
+                raise ValueError(f"illegal chess move {name!r} at ply {len(board.move_stack)} from {board.fen()}")
+            board.push(move)
+        return board
+
 
 class ChessEngine:
     """A UCI engine (Stockfish ...) as a harness :class:`~prompture.games.base.Engine`."""
@@ -145,6 +170,13 @@ class ChessEngine:
                 label = f"{(cp or 0) / 100:+.2f}"
             scores[info["pv"][0]] = Score(winning_chances(cp, mate), label)
         return scores
+
+    def identity(self) -> str:
+        """Engine name and search limit, for configuration fingerprints."""
+        info = getattr(self.engine, "id", None)
+        name = info.get("name") if isinstance(info, dict) else type(self.engine).__name__
+        limit = {k: v for k, v in vars(self.limit).items() if v is not None} if self.limit else {}
+        return f"uci:{name}:{sorted(limit.items())}"
 
     def close(self) -> None:
         """Quit the engine process if this object started it."""

@@ -30,6 +30,7 @@ import chess
 
 from ..base import Motif
 
+HINTS_VERSION = "2"  # bump when a detector's wording or logic changes
 FACTS = ("check", "capture", "promotion", "castle")
 CONCEPTS = (
     "mate",

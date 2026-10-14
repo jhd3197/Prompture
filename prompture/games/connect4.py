@@ -33,7 +33,7 @@ import math
 from collections.abc import Iterable
 from typing import Any
 
-from .base import Engine, Motif, Score, check_concepts
+from .base import Engine, GameLine, Motif, Score, check_concepts
 
 ROWS, COLS = 6, 7
 RED, YELLOW = 1, 2
@@ -236,6 +236,30 @@ class Connect4:
 
     def default_engine(self) -> Engine:
         return Connect4Engine()
+
+    def history(self, board: Connect4Board) -> GameLine:
+        """The game line from the empty board. A board whose cells do not match its moves is its own root."""
+        replay = Connect4Board(board.moves)
+        if replay.cells != board.cells:
+            return GameLine("cells:" + "".join(map(str, board.cells)) + f":{board.turn}")
+        return GameLine(
+            "start", tuple((NAMES[RED if i % 2 == 0 else YELLOW], str(c + 1)) for i, c in enumerate(board.moves))
+        )
+
+    def dump_state(self, board: Connect4Board) -> dict[str, Any]:
+        return {"game": self.title, "initial": None, "moves": [str(c + 1) for c in board.moves]}
+
+    def load_state(self, data: dict[str, Any]) -> Connect4Board:
+        """Replay ``{"initial": None, "moves": [...]}``; an illegal move raises ``ValueError``."""
+        if data.get("initial") not in (None, "", "start"):
+            raise ValueError("Connect Four states start from the empty board")
+        board = Connect4Board()
+        for name in data.get("moves", []):
+            col = self.parse_move(board, str(name))
+            if col is None or str(col + 1) != str(name).strip():
+                raise ValueError(f"illegal Connect Four move {name!r} after {len(board.moves)} moves")
+            board.play(col)
+        return board
 
 
 class Connect4Engine:

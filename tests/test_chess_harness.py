@@ -430,3 +430,42 @@ class TestPuzzles:
         assert report.solved == 1
         assert report.solve_rate == 1.0
         assert report.rescues == 0
+
+
+class TestRecordsAndIdentity:
+    """Chess decisions carry records; line identity keeps full history."""
+
+    def test_invalid_then_valid_chess_turn(self):
+        board = chess.Board()
+        board.push_san("e4")
+        decision = ChessHarness(driver=ScriptedDriver([reply("Qxh9"), reply("e5")])).choose(board)
+        record = decision.record
+        assert record.outcome == "accepted" and record.move == "e5" and record.side == "Black" and record.ply == 1
+        assert [a.valid for a in decision.attempts] == [False, True]
+        assert record.accounting.calls == 2 and record.accounting.total_tokens == 28
+
+    def test_history_line_and_state_round_trip(self):
+        game = ChessGame()
+        board = chess.Board()
+        for san in ("e4", "e5", "Nf3"):
+            board.push_san(san)
+        line = game.history(board)
+        assert line.root == chess.STARTING_FEN
+        assert line.plies == (("White", "e4"), ("Black", "e5"), ("White", "Nf3"))
+        restored = game.load_state(game.dump_state(board))
+        assert restored.fen() == board.fen() and game.history(restored) == line
+        assert game.history(chess.Board(board.fen())).plies == ()  # FEN alone has no history
+
+    def test_illegal_history_fails_explicitly(self):
+        with pytest.raises(ValueError, match="illegal chess move"):
+            ChessGame().load_state({"initial": None, "moves": ["e2e4", "e2e4"]})
+
+    def test_fingerprint_tracks_concepts_and_engine_but_not_model(self):
+        plain = ChessHarness(driver=ScriptedDriver([reply("e4")])).fingerprint()
+        assert ChessHarness(driver=ScriptedDriver([reply("e4")]), concepts={"fork"}).fingerprint() != plain
+        assert ChessHarness("ollama/other", driver=ScriptedDriver([reply("e4")])).fingerprint() == plain
+        assert plain.config["hints_version"] and plain.config["game"] == "chess"
+        engine = FakeEngine({"e2e4": 30})
+        engine.id = {"name": "FakeFish 1"}
+        assisted = ChessHarness(driver=ScriptedDriver([reply("e4")]), level=2, engine=engine).fingerprint()
+        assert assisted.config["engine"].startswith("uci:FakeFish 1") and assisted.config["assistance"] == "engine-menu"

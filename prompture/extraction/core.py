@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import warnings
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, Literal
 
 from .._internal.json_encoder import PromptureJSONEncoder
@@ -91,9 +92,12 @@ def _parse_failure(resp: dict[str, Any], raw: str, error: json.JSONDecodeError, 
     off by the token limit says so: the model spent the whole budget reasoning."""
     from ..exceptions import ExtractionError
 
-    if not raw.strip() and _stop_reason(resp) in ("max_tokens", "length"):
-        return ExtractionError("the reply hit max_tokens before any answer was written", usage=usage)
-    return ExtractionError(f"Failed to parse LLM output as JSON: {error}", usage=usage)
+    stop = _stop_reason(resp)
+    if not raw.strip() and stop in ("max_tokens", "length"):
+        return ExtractionError(
+            "the reply hit max_tokens before any answer was written", usage=usage, raw_text=raw, stop_reason=stop
+        )
+    return ExtractionError(f"Failed to parse LLM output as JSON: {error}", usage=usage, raw_text=raw, stop_reason=stop)
 
 
 def _merge_usage(
@@ -476,6 +480,8 @@ def ask_for_json(
     images: list[ImageInput] | None = None,
     strategy: str | StructuredOutputStrategy | None = None,
     stream: bool = False,
+    on_delta: Callable[[str], None] | None = None,
+    should_stop: Callable[[], bool] | None = None,
 ) -> dict[str, Any]:
     """Sends a prompt to the driver and returns structured output plus usage metadata.
 
@@ -495,6 +501,9 @@ def ask_for_json(
         stream: Consume streamed model output when the driver supports it,
             returning the same complete result. Unsupported drivers use normal calls.
             Automatic tool-call extraction uses prompted JSON while streaming.
+        on_delta: Streaming only: called with each public text delta (never thinking).
+        should_stop: Streaming only: checked between chunks; when it returns True the
+            stream is closed (releasing the request) and ``StreamStopped`` is raised.
 
     Returns:
         A dictionary containing:
@@ -621,7 +630,7 @@ def ask_for_json(
         if use_stream:
             from .streaming import _collect_stream
 
-            resp = _collect_stream(driver, messages, options)
+            resp = _collect_stream(driver, messages, options, on_delta=on_delta, should_stop=should_stop)
         else:
             resp = driver.generate_messages_with_hooks(messages, options)
     else:
