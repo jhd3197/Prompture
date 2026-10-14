@@ -302,3 +302,22 @@ def test_chess_batch_uses_the_games_side_names_and_starts():
     started = [o for o in report.outcomes if o.pairing.start]
     assert all(o.final_state["moves"][:2] == ["e2e4", "e7e5"] for o in started)
     assert report.standings() == {}  # capped games are not decided results
+
+
+def test_a_game_that_crashes_keeps_the_spend_of_its_completed_turns():
+    class CrashesSecondTurn:
+        def __init__(self, game):
+            self.inner = GameHarness(game, driver=FirstListed())
+            self.turns = 0
+
+        def choose(self, state):
+            self.turns += 1
+            if self.turns == 2:
+                raise RuntimeError("adapter bug")
+            return self.inner.choose(state)
+
+    entrants = [Entrant("flaky", lambda ctx: CrashesSecondTurn(ctx.game)), random_entrant("r", 1)]
+    outcome = run_batch(Connect4, entrants, pair_schedule("flaky", "r", ("Red", "Yellow"), games=1)).outcomes[0]
+    assert outcome.terminal_reason == "error" and outcome.winner is None and len(outcome.moves) == 2
+    assert outcome.accounting["Red"]["calls"] == 1 and outcome.accounting["Red"]["total_tokens"] == 10
+    assert "failing turn's usage is unknown" in outcome.notes[0]

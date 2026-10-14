@@ -26,7 +26,7 @@ from typing import Any
 import chess
 import chess.engine
 
-from ..base import BLUNDER_DROP, Candidate, Engine, GameHarness, GameLine, Motif, Score
+from ..base import BLUNDER_DROP, Candidate, Engine, GameHarness, GameLine, Motif, RenderedImage, Score
 from .motifs import CONCEPTS, HINTS_VERSION, VALUES, describe_move
 
 _PIECE_ORDER = (chess.KING, chess.QUEEN, chess.ROOK, chess.BISHOP, chess.KNIGHT, chess.PAWN)
@@ -120,6 +120,14 @@ class ChessGame:
 
     def default_engine(self) -> Engine | None:
         return None
+
+    image_format = "png"  # "svg" needs no extra package but few vision APIs accept it
+
+    def render_image(self, board: chess.Board) -> RenderedImage:
+        """A deterministic picture of the board (see :mod:`.render`)."""
+        from .render import render_board
+
+        return render_board(board, self.image_format)
 
     def history(self, board: chess.Board) -> GameLine:
         """The line from the board's root position (FEN) through its full move stack, in SAN."""

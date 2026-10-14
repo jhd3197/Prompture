@@ -509,9 +509,12 @@ def _play(
     game = game_factory()
     started = time.monotonic()
     sides = dict(pairing.sides)
+    played: list[tuple[str, MoveDecision]] = []
+    players: dict[str, Any] = {}
     try:
         players = {
-            side: roster[name].make(MatchContext(game, side, game_id, budget, cancel)) for side, name in sides.items()
+            side: _Tap(roster[name].make(MatchContext(game, side, game_id, budget, cancel)), side, played)
+            for side, name in sides.items()
         }
         for side, player in players.items():
             fp = getattr(player, "fingerprint", None)
@@ -523,6 +526,9 @@ def _play(
         state = game.load_state(pairing.start) if pairing.start is not None else None
         result = play_match(game, players, state=state, max_moves=max_moves, game_id=game_id, cancel=cancel)
     except Exception as exc:  # an entrant or engine bug ends this game only
+        accounts = {side: Accounting() for side in sides}
+        for side, decision in played:
+            accounts[side].merge(decision.accounting)
         return GameOutcome(
             game_id,
             pairing,
@@ -530,16 +536,34 @@ def _play(
             "error",
             None,
             sides,
-            [],
-            {},
-            {},
-            {},
-            {},
-            {},
+            [d.name for _, d in played],
+            {side: sum(d.rescued for s, d in played if s == side) for side in sides},
+            {side: sum(d.model_selected for s, d in played if s == side) for side in sides},
+            {side: any(d.rescued or d.assistance is not None for s, d in played if s == side) for side in sides},
+            {side: a.to_dict() for side, a in accounts.items()},
+            {side: _fp(players[side]) if side in players else None for side in sides},
             error=f"{type(exc).__name__}: {exc}",
             elapsed_s=time.monotonic() - started,
+            notes=["accounting covers completed turns only; the failing turn's usage is unknown"],
         )
     return _outcome(game, pairing, game_id, attempt, sides, players, result, time.monotonic() - started)
+
+
+class _Tap:
+    """Records each decision as it is made, so a game that crashes still reports what it spent."""
+
+    def __init__(self, player: Any, side: str, played: list[tuple[str, MoveDecision]]) -> None:
+        self._player = player
+        self._side = side
+        self._played = played
+
+    def choose(self, state: Any) -> MoveDecision:
+        decision = self._player.choose(state)
+        self._played.append((self._side, decision))
+        return decision
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._player, name)
 
 
 def _outcome(

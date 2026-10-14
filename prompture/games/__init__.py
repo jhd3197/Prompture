@@ -12,6 +12,8 @@
 * :mod:`.memory` — bounded memory of a side's own accepted decisions, tied to
   the game line, with validated checkpoints.
 * :mod:`.match` — :func:`play_match` between models, engines and random movers.
+* :mod:`.strategies` — opt-in experiments (one targeted reconsideration,
+  proposals plus a constrained selector); none is known to improve play.
 * :mod:`.tournament` — side-balanced schedules, resumable batches with bounded
   concurrency and shared budgets, and exploratory opponent calibration.
 * :mod:`.connect4` and :mod:`.othello` — pure-Python games with built-in engines.
@@ -30,6 +32,7 @@ from .base import (
     GameLine,
     Motif,
     MoveDecision,
+    RenderedImage,
     Score,
     game_line,
 )
@@ -61,6 +64,7 @@ from .records import (
     classify_failure,
     fingerprint,
 )
+from .strategies import Proposals, Reconsider, experiment_status
 from .tournament import (
     BatchReport,
     BatchStore,
@@ -112,7 +116,10 @@ __all__ = [
     "OthelloEngine",
     "Player",
     "Preregistration",
+    "Proposals",
     "RandomPlayer",
+    "Reconsider",
+    "RenderedImage",
     "RetryPolicy",
     "Score",
     "TraceSink",
@@ -128,6 +135,7 @@ __all__ = [
     "compare",
     "double_round_robin",
     "evaluate",
+    "experiment_status",
     "fingerprint",
     "game_line",
     "pair_schedule",

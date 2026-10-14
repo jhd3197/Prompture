@@ -5,6 +5,7 @@ This script demonstrates:
 2. ``evaluate`` over decision fixtures in a seeded, randomized order with raw per-sample records.
 3. A readable scorecard and a JSON export from the same records.
 4. ``compare`` refusing a quality verdict for scripted evidence.
+5. ``--strategy reconsider|proposals``: opt-in experiments through the same harness path.
 
 The default is a dry run: a local scripted driver picks the first listed move,
 so nothing is billed and the numbers say nothing about any model. A live run
@@ -15,6 +16,7 @@ Run it::
 
     python examples/game_evaluation_example.py
     python examples/game_evaluation_example.py --game connect4
+    python examples/game_evaluation_example.py --strategy reconsider
     python examples/game_evaluation_example.py --model ollama/qwen3:8b --max-calls 40
 """
 
@@ -29,7 +31,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from prompture.drivers.base import Driver
-from prompture.games import Connect4, GameBudget, GameHarness
+from prompture.games import Connect4, GameBudget, GameHarness, Proposals, Reconsider, experiment_status
 from prompture.games.evaluation import Preregistration, check_hints, compare, evaluate, scorecard, select, summary_text
 from prompture.games.fixtures import builtin_fixtures
 
@@ -70,6 +72,7 @@ def main() -> None:
     parser.add_argument("--max-calls", type=int, help="hard cap on model calls for a live run")
     parser.add_argument("--repeats", type=int, default=1)
     parser.add_argument("--out", help="write the run as JSON here")
+    parser.add_argument("--strategy", choices=("none", "reconsider", "proposals"), default="none")
     args = parser.parse_args()
     if args.model and not args.max_calls:
         parser.error("a live run needs --max-calls so spending is capped")
@@ -84,8 +87,12 @@ def main() -> None:
     budget = GameBudget(max_calls=args.max_calls) if args.model else None
     driver = None if args.model else FirstListed()
 
+    strategy = {"none": None, "reconsider": Reconsider(), "proposals": Proposals()}[args.strategy]
+
     def player(concepts):
-        return lambda: make(model=args.model, driver=driver, level=1, concepts=concepts, budget=budget)
+        return lambda: make(
+            model=args.model, driver=driver, level=1, concepts=concepts, budget=budget, strategy=strategy
+        )
 
     evidence = "live" if args.model else "scripted"
     base = evaluate(player(()), pool, game=game, repeats=args.repeats, seed=7, evidence=evidence, label="no concepts")
@@ -96,6 +103,10 @@ def main() -> None:
     print(summary_text(scorecard(base), title=f"{base.label} ({evidence})"))
     print()
     print(summary_text(scorecard(taught), title=f"{taught.label} ({evidence})"))
+    if "experiments" in scorecard(taught):
+        print()
+        print(f"Experiment counts: {scorecard(taught)['experiments']}")
+        print(f"Experiment status: {experiment_status(None)} (no live comparison was run)")
     result = compare(base, taught, Preregistration(factor="concepts", min_pairs=30))
     print(f"\nComparison: {result.verdict}: {'; '.join(result.reasons)}")
     if args.out:

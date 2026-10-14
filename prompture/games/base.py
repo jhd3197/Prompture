@@ -46,6 +46,11 @@ own accepted reasons and plans forward on the same game line (see
 tokens: the position, legal menu and instructions always stay, and optional
 hints and memory are added urgent-first until the budget is used.
 
+Experimental options are off by default: ``strategy`` (see
+:mod:`prompture.games.strategies`) and ``representation="text+image"`` (a
+picture from the game's optional ``render_image`` alongside the unchanged
+text; when no picture can be sent the turn records that it fell back to text).
+
 Every turn produces a :class:`~prompture.games.records.TurnRecord` on
 ``decision.record``: each model call with its prompt, public response,
 validation result, timing, finish reason, classified failure and usage, plus
@@ -58,6 +63,7 @@ budget exhaustion and fatal configuration errors never become a played move.
 from __future__ import annotations
 
 import asyncio
+import base64
 import hashlib
 import itertools
 import logging
@@ -226,6 +232,19 @@ def check_concepts(game: Game, concepts: Iterable[str]) -> set[str]:
     return wanted
 
 
+@dataclass(frozen=True)
+class RenderedImage:
+    """A picture of a state from a game's optional ``render_image(state)``."""
+
+    data: bytes
+    media_type: str
+    renderer: str  # name and version, for fingerprints and records
+
+    @property
+    def digest(self) -> str:
+        return hashlib.sha256(self.data).hexdigest()[:16]
+
+
 @dataclass
 class Candidate:
     """A move offered to the model, with its tags and (if analysed) its score."""
@@ -365,6 +384,7 @@ class _Turn:
     candidates: list[Candidate] = field(default_factory=list)
     cancel: CancelToken | None = None
     deadline: float | None = None  # time.monotonic() value
+    images: list[Any] | None = None
 
     @property
     def controlled(self) -> bool:
@@ -392,6 +412,8 @@ class _Turn:
 
 
 _DEADLINE = "turn_deadline"
+REPRESENTATIONS = ("text", "text+image")
+IMAGE_NOTE = "\n\nA picture of the board is attached. The text above is authoritative if they ever disagree."
 _SEVERITY_RANK = {"urgent": 0, "warning": 1, "info": 2}
 _OMITTED = "(Some lower-priority hints were left out to fit the context budget.)"
 
@@ -457,11 +479,15 @@ class GameHarness:
         cleanup_timeout: float = 0.25,
         memory: str | int | None = "none",
         context_budget: int | None = None,
+        strategy: Any = None,
+        representation: str = "text",
     ) -> None:
         if level not in LEVELS:
             raise ValueError(f"level must be one of {sorted(LEVELS)}, got {level!r}")
         if failure_policy not in FAILURE_POLICIES:
             raise ValueError(f"failure_policy must be one of {FAILURE_POLICIES}, got {failure_policy!r}")
+        if representation not in REPRESENTATIONS:
+            raise ValueError(f"representation must be one of {REPRESENTATIONS}, got {representation!r}")
         if level >= 2 and engine is None:
             engine = game.default_engine()
             if engine is None:
@@ -495,6 +521,8 @@ class GameHarness:
 
         self.memory = DecisionMemory(game, memory)
         self.context_budget = context_budget
+        self.strategy = strategy
+        self.representation = representation
         self.deadline = deadline
         self.cancel = cancel
         self.retry = retry
@@ -560,6 +588,8 @@ class GameHarness:
             "memory": self.memory.policy,
             "memory_version": "1" if self.memory.enabled else None,
             "context_budget": self.context_budget,
+            "strategy": self.strategy.identity() if self.strategy is not None else None,
+            "representation": self.representation,
             "options": safe_options(self.options),
             "system_prompt": text_digest(self.system_prompt),
         }
@@ -739,6 +769,7 @@ class GameHarness:
             if turn.cancelled():
                 raise TurnCancelled("the turn was cancelled before it started", record=turn.record)
             turn.candidates = self.candidates(state)
+            self._prepare_images(turn, state)
             decision = self._decide(turn, state)
             if turn.cancelled():  # a completion racing a cancellation is not applied
                 raise TurnCancelled("the turn was cancelled before its move was returned", record=turn.record)
@@ -763,12 +794,15 @@ class GameHarness:
             raise
 
     def _decide(self, turn: _Turn, state: Any) -> MoveDecision:
-        """One decision from the candidates: the model's, or the failure policy's."""
-        chosen, reason, plan = self._select(turn, state, turn.candidates)
-        if chosen is None:
-            decision = self._exhausted(turn, turn.candidates)
+        """One decision from the candidates: the model's (directly or via a strategy), or the failure policy's."""
+        if self.strategy is not None:
+            decision = self.strategy.decide(self, turn, state)
         else:
-            decision = self._accepted(turn, chosen, reason, plan)
+            chosen, reason, plan = self._select(turn, state, turn.candidates)
+            if chosen is None:
+                decision = self._exhausted(turn, turn.candidates)
+            else:
+                decision = self._accepted(turn, chosen, reason, plan)
         self.memory.propose(state, decision)
         if self.memory.enabled:
             turn.record.context["memory"] = {"policy": self.memory.policy, "version": "1"}
@@ -813,8 +847,10 @@ class GameHarness:
                 return None, "", ""
             prompt, prompt_info = self._compose(state, candidates, feedback)
             turn.record.context["prompt"] = prompt_info
+            if turn.images:
+                prompt += IMAGE_NOTE
             matched.clear()
-            _answer, attempt = self._call(turn, prompt, schema, purpose, check)
+            _answer, attempt = self._call(turn, prompt, schema, purpose, check, images=turn.images)
             if attempt.valid and matched:
                 return matched[0], attempt.reason, attempt.plan
             failure = attempt.failure or FailureInfo(FailureKind.INVALID_OUTPUT, "invalid", attempt.error or "")
@@ -843,6 +879,30 @@ class GameHarness:
                 return None, "", ""
             feedback = attempt.error
 
+    def _prepare_images(self, turn: _Turn, state: Any) -> None:
+        """Render the turn's picture, or record exactly why the turn is text-only."""
+        if self.representation == "text":
+            return
+        info: dict[str, Any] = {"requested": self.representation, "effective": "text"}
+        render = getattr(self.game, "render_image", None)
+        if not callable(render):
+            info["reason"] = f"{self.game.title} has no image renderer"
+        elif not getattr(self.driver, "supports_vision", False):
+            info["reason"] = "the driver does not accept images"
+        else:
+            try:
+                image = render(state)
+            except Exception as exc:  # e.g. an optional rasterizer is not installed
+                info["reason"] = f"rendering failed: {exc}"
+            else:
+                from ..media.image import ImageContent
+
+                turn.images = [ImageContent(base64.b64encode(image.data).decode("ascii"), image.media_type)]
+                info.update(
+                    effective="text+image", renderer=image.renderer, media_type=image.media_type, digest=image.digest
+                )
+        turn.record.context["representation"] = info
+
     def _may_dispatch(self, turn: _Turn) -> bool:
         """Whether another request may start; raises on cancellation, False when out of time."""
         if turn.cancelled():
@@ -862,6 +922,7 @@ class GameHarness:
         purpose: str,
         check: Callable[[dict[str, Any]], str | None] | None = None,
         images: list[Any] | None = None,
+        options: dict[str, Any] | None = None,
     ) -> tuple[dict[str, Any] | None, Attempt]:
         """Send one request and record it as an :class:`Attempt`.
 
@@ -877,7 +938,7 @@ class GameHarness:
         reservation = self._reserve(turn, prompt)
         self._emit("attempt_started", turn, attempt_id=attempt.attempt_id, purpose=purpose, index=attempt.index)
         started = time.perf_counter()
-        status, outcome = self._dispatch(turn, attempt, prompt, schema, images)
+        status, outcome = self._dispatch(turn, attempt, prompt, schema, images, options)
         meta: dict[str, Any] | None = None
         answer: dict[str, Any] | None = None
         if status == "abandoned":
@@ -935,7 +996,13 @@ class GameHarness:
             raise
 
     def _dispatch(
-        self, turn: _Turn, attempt: Attempt, prompt: str, schema: dict[str, Any], images: list[Any] | None
+        self,
+        turn: _Turn,
+        attempt: Attempt,
+        prompt: str,
+        schema: dict[str, Any],
+        images: list[Any] | None,
+        options: dict[str, Any] | None = None,
     ) -> tuple[str, Any]:
         """Run the request. Returns ``(status, result or exception)``.
 
@@ -952,7 +1019,7 @@ class GameHarness:
         kwargs: dict[str, Any] = {
             "ai_cleanup": False,
             "model_name": self.model,
-            "options": self.options,
+            "options": self.options if options is None else options,
             "system_prompt": self.system_prompt,
             "stream": self.stream,
             "on_delta": on_delta if self.on_event is not None else None,

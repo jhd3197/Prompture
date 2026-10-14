@@ -286,6 +286,9 @@ class Sample:
     latency_ms: float
     blunder: bool | None = None
     error: str | None = None
+    strategy: dict[str, Any] | None = None
+    initial_success: bool | None = None
+    representation: str | None = None
 
 
 @dataclass
@@ -424,7 +427,7 @@ def _sample(
             error=str(exc),
         )
     latency = (time.perf_counter() - started) * 1000
-    success, verdict = _verdict(game, fixture, state, decision)
+    success, verdict = _verdict(game, fixture, state, decision.move, decision.name)
     record = decision.record
     attempts = decision.attempts
     return Sample(
@@ -447,16 +450,27 @@ def _sample(
         decision.accounting.to_dict(),
         record.elapsed_ms if record else latency,
         blunder=judge(game, state, decision.move) if judge else None,
+        strategy=dict(record.strategy) if record and record.strategy else None,
+        initial_success=_initial_verdict(game, fixture, state, decision),
+        representation=(record.context.get("representation") or {}).get("effective") if record else None,
     )
 
 
-def _verdict(game: Game, fixture: Fixture, state: Any, decision: Any) -> tuple[bool | None, str | None]:
+def _initial_verdict(game: Game, fixture: Fixture, state: Any, decision: Any) -> bool | None:
+    """For a strategy that may revise its first choice: would the first choice have met the criterion?"""
+    record = decision.record
+    initial = (record.strategy or {}).get("initial") if record else None
+    if initial is None or not fixture.decides:
+        return None
+    first = next((c for c in decision.candidates if c.name == initial), None)
+    return _verdict(game, fixture, state, first.move, first.name)[0] if first is not None else None
+
+
+def _verdict(game: Game, fixture: Fixture, state: Any, move: Any, name: str) -> tuple[bool | None, str | None]:
     if fixture.evaluator:
-        return get_evaluator(game.title, fixture.evaluator)(
-            game, state, decision.move
-        ), f"evaluator:{fixture.evaluator}"
+        return get_evaluator(game.title, fixture.evaluator)(game, state, move), f"evaluator:{fixture.evaluator}"
     if fixture.acceptable:
-        return decision.name in fixture.acceptable, "acceptable"
+        return name in fixture.acceptable, "acceptable"
     return None, None
 
 
@@ -552,12 +566,52 @@ def scorecard(run: EvaluationRun | Iterable[Sample], matches: Iterable[Any] = ()
         },
         "missing": missing,
     }
+    experiments = _experiments(samples)
+    if experiments:
+        card["experiments"] = experiments
     games = list(matches)
     if games:
         clean = sum(1 for m in games if m.terminal_reason == "game_over" and not any(d.rescued for _, d in m.decisions))
         card["reliability"]["clean_completions_per_started_game"] = _metric(clean, len(games))
         card["reliability"]["terminal_reasons"] = _count(m.terminal_reason for m in games)
     return card
+
+
+def _experiments(samples: list[Sample]) -> dict[str, Any]:
+    """Strategy and representation counts, with fixes and harms of revised choices both shown."""
+    out: dict[str, Any] = {}
+    reviewed = [s for s in samples if s.strategy and s.strategy.get("name") == "reconsider"]
+    if reviewed:
+        triggered = [s for s in reviewed if s.strategy.get("reviewed")]
+        changed = [s for s in triggered if s.strategy.get("revised")]
+        judged = [s for s in changed if s.success is not None and s.initial_success is not None]
+        out["reconsider"] = {
+            "turns": len(reviewed),
+            "reviews": len(triggered),
+            "review_failures": sum(1 for s in triggered if s.strategy.get("review_failure")),
+            "revised": _metric(len(changed), len(triggered)),
+            "fixes": sum(1 for s in judged if s.success and not s.initial_success),
+            "harms": sum(1 for s in judged if s.initial_success and not s.success),
+            "revisions_judged": len(judged),
+        }
+    proposed = [s for s in samples if s.strategy and s.strategy.get("name") == "proposals"]
+    if proposed:
+        out["proposals"] = {
+            "turns": len(proposed),
+            "agreement": _metric(sum(1 for s in proposed if s.strategy.get("agreement")), len(proposed)),
+            "selector_used": sum(1 for s in proposed if s.strategy.get("selector")),
+            "partial": sum(1 for s in proposed if s.strategy.get("partial")),
+            "selector_fallbacks": sum(1 for s in proposed if s.strategy.get("fallback")),
+            "note": "agreement between proposals is not evidence of correctness",
+        }
+    shown = [s for s in samples if s.representation]
+    if shown:
+        out["representation"] = {
+            "image_turns": sum(1 for s in shown if s.representation == "text+image"),
+            "text_fallbacks": sum(1 for s in shown if s.representation == "text"),
+            "note": "text fallbacks are not image trials",
+        }
+    return out
 
 
 def _count(items: Iterable[str]) -> dict[str, int]:
