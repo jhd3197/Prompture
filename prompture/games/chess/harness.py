@@ -44,6 +44,7 @@ class ChessGame:
     """Chess rules and notation (SAN) for the harness."""
 
     title = "chess"
+    sides = ("White", "Black")
     concepts: tuple[str, ...] = CONCEPTS
     rules = ""
     version = "1"

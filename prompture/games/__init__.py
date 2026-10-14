@@ -12,6 +12,8 @@
 * :mod:`.memory` — bounded memory of a side's own accepted decisions, tied to
   the game line, with validated checkpoints.
 * :mod:`.match` — :func:`play_match` between models, engines and random movers.
+* :mod:`.tournament` — side-balanced schedules, resumable batches with bounded
+  concurrency and shared budgets, and exploratory opponent calibration.
 * :mod:`.connect4` and :mod:`.othello` — pure-Python games with built-in engines.
 * :mod:`.chess` — chess with motif detectors and puzzle runs (needs python-chess,
   ``pip install "prompture[chess]"``; imported on its own).
@@ -59,12 +61,24 @@ from .records import (
     classify_failure,
     fingerprint,
 )
+from .tournament import (
+    BatchReport,
+    BatchStore,
+    Entrant,
+    calibrate,
+    double_round_robin,
+    pair_schedule,
+    run_batch,
+    standings,
+)
 from .trace import JsonlTraceSink, MemoryTraceSink, TraceSink, TraceWriteError, read_jsonl_trace
 
 __all__ = [
     "LEVELS",
     "Accounting",
     "Attempt",
+    "BatchReport",
+    "BatchStore",
     "BudgetExhausted",
     "CancelToken",
     "Candidate",
@@ -75,6 +89,7 @@ __all__ = [
     "DecisionMemory",
     "Engine",
     "EnginePlayer",
+    "Entrant",
     "EvaluationRun",
     "EventBuffer",
     "FailureInfo",
@@ -107,14 +122,19 @@ __all__ = [
     "TurnEvent",
     "TurnFailed",
     "TurnRecord",
+    "calibrate",
     "check_hints",
     "classify_failure",
     "compare",
+    "double_round_robin",
     "evaluate",
     "fingerprint",
     "game_line",
+    "pair_schedule",
     "play_match",
     "read_jsonl_trace",
+    "run_batch",
     "scorecard",
+    "standings",
     "summary_text",
 ]

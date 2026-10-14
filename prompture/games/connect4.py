@@ -185,6 +185,7 @@ class Connect4:
     """Connect Four rules and notation for the harness."""
 
     title = "Connect Four"
+    sides = ("Red", "Yellow")
     concepts: tuple[str, ...] = CONCEPTS
     rules = (
         "Rules: drop a disc into a column (1-7, left to right); it falls to the lowest empty row "

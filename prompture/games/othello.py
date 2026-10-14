@@ -192,6 +192,7 @@ class Othello:
     """Othello rules and notation for the harness."""
 
     title = "Othello"
+    sides = ("Black", "White")
     concepts: tuple[str, ...] = CONCEPTS
     rules = (
         "Rules: place a disc so that it brackets one or more of the opponent's discs in a straight line "

@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from .base import Engine, Game, MoveDecision
+from .control import CancelToken
 from .records import TurnCancelled, TurnError, TurnFailed
 
 
@@ -103,6 +104,7 @@ def play_match(
     state: Any = None,
     max_moves: int = 400,
     game_id: str | None = None,
+    cancel: CancelToken | None = None,
 ) -> MatchResult:
     """Play ``game`` from ``state`` (the start by default) with ``players`` keyed by side name.
 
@@ -110,7 +112,8 @@ def play_match(
     with ``commit(state, decision)`` are told when their move is applied. A
     :class:`~prompture.games.records.TurnError` ends the game without playing a
     move: a forfeit loses (when there is exactly one other side), anything else
-    stops or cancels the game with no winner.
+    stops or cancels the game with no winner. ``cancel`` is checked before every
+    move (pass the same token to model players to stop a turn in progress).
     """
     state = game.new_state() if state is None else state
     game_id = game_id or uuid.uuid4().hex[:12]
@@ -123,6 +126,9 @@ def play_match(
     while not game.is_over(state):
         if len(moves) >= max_moves:
             return MatchResult(None, moves, state, decisions, False, "move_cap", game_id=game_id)
+        if cancel is not None and cancel.cancelled:
+            stopped = TurnCancelled(f"the match was cancelled ({cancel.reason})")
+            return MatchResult(None, moves, state, decisions, False, "cancelled", error=stopped, game_id=game_id)
         side = game.player(state)
         if side not in players:
             raise ValueError(f"No player for {side}; got {sorted(players)}")
