@@ -265,3 +265,38 @@ def test_arun_returns_same_result_as_streaming_done_event():
     assert via_arun.iterations == 2
     assert via_arun.approved is True
     assert via_arun.output == "v2"
+
+
+# ---------------------------------------------------------------------------
+# Default verdict parsing
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("review", "expected"),
+    [
+        ("Looks fine.\nVERDICT: APPROVED", True),
+        ("**Verdict:** Approved", True),
+        ("Approved earlier, but see below.\nVERDICT: CHANGES REQUESTED", False),
+        ("This is not approved.", False),
+        ("It isn't approved yet.", False),
+        ("Unapproved draft.", False),
+        ("Approved.", True),
+        ("needs work", False),
+    ],
+)
+def test_default_approve_reads_verdict(review, expected):
+    from prompture.agents.review_loop import _default_approve
+
+    assert _default_approve(_StubResult(review)) is expected
+
+
+def test_default_review_prompt_shows_task_and_asks_for_verdict():
+    coder = _ScriptedAgent(["def f(): pass"])
+    reviewer = _ScriptedAgent(["VERDICT: APPROVED"])
+    loop = AsyncReviewLoop(coder=coder, reviewer=reviewer)
+    asyncio.run(loop.arun("Write f"))
+    sent = reviewer.prompts[0]
+    assert "<task>\nWrite f\n</task>" in sent
+    assert "<work>\ndef f(): pass\n</work>" in sent
+    assert "VERDICT: CHANGES REQUESTED" in sent
