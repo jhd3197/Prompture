@@ -50,6 +50,7 @@ class AsyncDeepAgent(AsyncAgent):
         summarize_at_tokens: int | Literal["auto"] = "auto",
         summarize_keep_last_n: int = 6,
         summarizer_model: str | AsyncDriver | None = None,
+        summarizer_prompt: str | None = None,
         initial_files: dict[str, str] | None = None,
         max_iterations: int = 50,
         max_tool_result_length: int | None = 10_000,
@@ -128,6 +129,7 @@ class AsyncDeepAgent(AsyncAgent):
                 state=self.deep_state,
                 model=model,
                 max_output_tokens=max_output_option(options),
+                system_prompt=summarizer_prompt,
                 summariser=summariser,
             )
             self._before_turn_hook: Callable[..., Any] | None = self._summarizer
@@ -228,6 +230,7 @@ def create_async_deep_agent(
     summarize_at_tokens: int | Literal["auto"] = "auto",
     summarize_keep_last_n: int = 6,
     summarizer_model: str | AsyncDriver | None = None,
+    summarizer_prompt: str | None = None,
     initial_files: dict[str, str] | None = None,
     max_iterations: int = 50,
     max_tool_result_length: int | None = 10_000,
@@ -256,6 +259,7 @@ def create_async_deep_agent(
         summarize_at_tokens=summarize_at_tokens,
         summarize_keep_last_n=summarize_keep_last_n,
         summarizer_model=summarizer_model,
+        summarizer_prompt=summarizer_prompt,
         initial_files=initial_files,
         max_iterations=max_iterations,
         max_tool_result_length=max_tool_result_length,

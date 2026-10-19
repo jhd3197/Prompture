@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from ..._internal.json_encoder import PromptureJSONEncoder
 from ...drivers import get_driver_for_model
 from ...drivers.base import Driver
-from ..deep_prompts import SUMMARIZER_SYSTEM_PROMPT, SUMMARY_PRELUDE
+from ..deep_prompts import SUMMARIZER_SYSTEM_PROMPT, SUMMARY_PRELUDE, format_summarizer_input
 from ..deep_state import DeepAgentState, SummaryEvent
 
 if TYPE_CHECKING:
@@ -136,6 +136,8 @@ def _stringify_message(msg: dict[str, Any]) -> str:
     if role == "tool":
         tc_id = msg.get("tool_call_id", "?")
         return f"[tool_result id={tc_id}]\n{content}"
+    if role == "user" and content.startswith(SUMMARY_PRELUDE):
+        return f"[earlier summary]\n{content[len(SUMMARY_PRELUDE) :]}"
 
     return f"[{role}]\n{content}"
 
@@ -152,6 +154,8 @@ class SummarizationMiddleware(_Threshold):
         keep_last_n: Number of most-recent messages preserved verbatim.
         state: Shared :class:`DeepAgentState` for recording events.
         summariser: Driver used to perform the summarisation call.
+        system_prompt: Instructions for the summariser; defaults to
+            :data:`SUMMARIZER_SYSTEM_PROMPT`.
     """
 
     def __init__(
@@ -163,10 +167,12 @@ class SummarizationMiddleware(_Threshold):
         *,
         model: str = "",
         max_output_tokens: int | None = None,
+        system_prompt: str | None = None,
     ) -> None:
         self._init_threshold(threshold_tokens, model, max_output_tokens)
         self.keep_last_n = max(2, int(keep_last_n))
         self.state = state
+        self.system_prompt = system_prompt or SUMMARIZER_SYSTEM_PROMPT
         if isinstance(summariser, str):
             self._summariser: Driver = get_driver_for_model(summariser)  # type: ignore[assignment]
         else:
@@ -260,9 +266,9 @@ class SummarizationMiddleware(_Threshold):
 
     def _call_summariser(self, rendered_history: str) -> tuple[str, dict[str, Any]]:
         """Invoke the summariser driver and return (summary_text, usage)."""
-        prompt = f"Conversation fragment to summarise:\n\n=====\n{rendered_history}\n=====\n\nProduce the summary now."
+        prompt = format_summarizer_input(rendered_history, list(self.state.files), self.state.todos)
         messages = [
-            {"role": "system", "content": SUMMARIZER_SYSTEM_PROMPT},
+            {"role": "system", "content": self.system_prompt},
             {"role": "user", "content": prompt},
         ]
         try:
@@ -270,7 +276,7 @@ class SummarizationMiddleware(_Threshold):
         except AttributeError:
             # Some drivers expose only generate(prompt, options).
             resp = self._summariser.generate(
-                f"{SUMMARIZER_SYSTEM_PROMPT}\n\n{prompt}",
+                f"{self.system_prompt}\n\n{prompt}",
                 {},
             )
         text = (resp.get("text") if isinstance(resp, dict) else "") or ""
@@ -290,10 +296,12 @@ class AsyncSummarizationMiddleware(_Threshold):
         *,
         model: str = "",
         max_output_tokens: int | None = None,
+        system_prompt: str | None = None,
     ) -> None:
         self._init_threshold(threshold_tokens, model, max_output_tokens)
         self.keep_last_n = max(2, int(keep_last_n))
         self.state = state
+        self.system_prompt = system_prompt or SUMMARIZER_SYSTEM_PROMPT
         if isinstance(summariser, str):
             from ...drivers.async_registry import get_async_driver_for_model
 
@@ -346,16 +354,16 @@ class AsyncSummarizationMiddleware(_Threshold):
         )
 
     async def _call_summariser(self, rendered_history: str) -> tuple[str, dict[str, Any]]:
-        prompt = f"Conversation fragment to summarise:\n\n=====\n{rendered_history}\n=====\n\nProduce the summary now."
+        prompt = format_summarizer_input(rendered_history, list(self.state.files), self.state.todos)
         messages = [
-            {"role": "system", "content": SUMMARIZER_SYSTEM_PROMPT},
+            {"role": "system", "content": self.system_prompt},
             {"role": "user", "content": prompt},
         ]
         try:
             resp = await self._summariser.generate_messages(messages, {})
         except AttributeError:
             resp = await self._summariser.generate(
-                f"{SUMMARIZER_SYSTEM_PROMPT}\n\n{prompt}",
+                f"{self.system_prompt}\n\n{prompt}",
                 {},
             )
         text = (resp.get("text") if isinstance(resp, dict) else "") or ""

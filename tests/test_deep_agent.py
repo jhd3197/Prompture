@@ -16,6 +16,7 @@ from prompture.agents.deep_agent import DeepAgent, create_deep_agent
 from prompture.agents.deep_prompts import (
     BASE_DEEP_AGENT_PROMPT,
     PLANNING_PROMPT_FRAGMENT,
+    SUMMARY_PRELUDE,
     VFS_PROMPT_FRAGMENT,
     assemble_system_prompt,
     format_subagent_section,
@@ -111,6 +112,7 @@ class StaticSummariserDriver(Driver):
         self._summary = summary
         self.calls = 0
         self.model = "mock/summariser"
+        self.last_messages: list[dict[str, Any]] = []
 
     def generate(self, prompt, options):
         self.calls += 1
@@ -118,6 +120,7 @@ class StaticSummariserDriver(Driver):
 
     def generate_messages(self, messages, options):
         self.calls += 1
+        self.last_messages = messages
         return self._make()
 
     def _make(self):
@@ -541,6 +544,40 @@ class TestSummarizer:
         mw(conv, last_prompt_tokens=999)
         assert conv._messages == before
         assert sd.calls == 0
+
+    def test_summariser_sees_surviving_state(self):
+        state = DeepAgentState(files={"notes/a.md": "x"}, todos=[Todo(content="Draft intro", status="in_progress")])
+        sd = StaticSummariserDriver()
+        mw = SummarizationMiddleware(threshold_tokens=10, keep_last_n=2, state=state, summariser=sd)
+        conv = self._make_conv_with_messages(4)
+        mw(conv, last_prompt_tokens=999)
+        system, user = sd.last_messages
+        assert "only record of what the user said" in system["content"]
+        assert "- notes/a.md" in user["content"]
+        assert "- [in_progress] Draft intro" in user["content"]
+
+    def test_custom_summariser_prompt(self):
+        sd = StaticSummariserDriver()
+        mw = SummarizationMiddleware(
+            threshold_tokens=10, keep_last_n=2, state=DeepAgentState(), summariser=sd, system_prompt="Be brief."
+        )
+        mw(self._make_conv_with_messages(4), last_prompt_tokens=999)
+        assert sd.last_messages[0]["content"] == "Be brief."
+
+    def test_earlier_summary_not_rendered_as_user_words(self):
+        sd = StaticSummariserDriver(summary="second")
+        mw = SummarizationMiddleware(threshold_tokens=10, keep_last_n=2, state=DeepAgentState(), summariser=sd)
+        conv = self._make_conv_with_messages(4)
+        conv._messages.insert(0, {"role": "user", "content": SUMMARY_PRELUDE + "first"})
+        mw(conv, last_prompt_tokens=999)
+        fragment = sd.last_messages[1]["content"]
+        assert "[earlier summary]\nfirst" in fragment
+        assert "[user]\nEarlier in this conversation" not in fragment
+
+    def test_deep_agent_passes_summarizer_prompt(self):
+        agent = DeepAgent(driver=MockToolDriver([]), summarizer_prompt="Custom.")
+        assert agent._summarizer is not None
+        assert agent._summarizer.system_prompt == "Custom."
 
 
 # ---------------------------------------------------------------------------

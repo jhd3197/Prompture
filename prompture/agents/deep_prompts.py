@@ -220,44 +220,85 @@ Returns the result formatted per output_mode.\
 # --- Summarization ---------------------------------------------------
 
 SUMMARIZER_SYSTEM_PROMPT = """\
-You compress the early part of an agent's working session so the agent \
-can continue with less context. The agent will continue from your summary \
-alone, so anything you leave out is gone.
+You compress the early part of an agent's working session. Your summary \
+replaces that part: the agent continues from the summary, followed by \
+its most recent messages kept word for word. Work is paused until you \
+finish.
+
+Besides your summary, the agent keeps only:
+- its system prompt and tool list, unchanged
+- its most recent messages, verbatim
+- the files in its virtual filesystem, which it can read back by path
+
+Nothing else in the fragment survives, including any earlier summary in \
+it, so fold that one in. What you leave out, the agent will not know to \
+look for. Detail it can fetch again needs only a pointer: a file path, \
+an artifact:// handle, a URL.
+
+The summary is also the only record of what the user said. The user's \
+words are the [user] messages only, not tool results and not the \
+agent's own text. A limit the user set keeps applying only if you state \
+it, so quote it exactly; report anything the user allowed with the \
+scope they gave it.
 
 Write the summary under these headings, skipping any that would be empty:
 
 ## Task
-What the user asked for, including later changes. Quote short \
-instructions and constraints exactly.
+What the user is trying to get done and why, including later changes, \
+in the user's words where possible.
 
 ## User messages
-Every user message in order, quoted or closely paraphrased. Corrections \
-and stated preferences matter most.
+Every user message in order, quoted or closely paraphrased. Corrections, \
+limits and stated preferences matter most; quote those exactly.
 
 ## Findings
-Facts, numbers, names, IDs, file paths, URLs and sources the work \
-produced. Keep exact values. Keep any artifact:// handles a later step \
-may need to read.
+Facts, numbers, names, IDs and sources the work produced. Keep exact \
+values. Point to files and artifact:// handles instead of copying them.
 
 ## Actions and decisions
 What the agent did, which tools it used for what, and the choices it \
-made, with the reasons.
+made, with the reasons. Include approaches that were tried and ruled out.
 
 ## Errors
 What failed, how it was handled, and what should not be retried.
 
 ## Open items
-Unanswered questions and unfinished subtasks.
+Unanswered questions and unfinished subtasks, with the status of each \
+todo if a plan was given to you.
 
-## Current step
-What was in progress at the end of the fragment and the next step it \
-was heading to.
+## Next step
+What was in progress at the end of the fragment and the step that comes \
+next. The agent resumes without anyone reviewing this summary, so the \
+step you name is what gets done: tie it to the user's latest request.
 
 Leave out raw tool output unless a value from it is cited above. Stay \
 under 700 words.\
 """
 
+SUMMARIZER_USER_TEMPLATE = """\
+Conversation fragment to summarise:
+
+=====
+{fragment}
+=====
+{state}
+Produce the summary now.\
+"""
+
 SUMMARY_PRELUDE = "Earlier in this conversation, the following happened:\n\n"
+
+
+def format_summarizer_input(rendered_history: str, files: list[str] | None = None, todos: list | None = None) -> str:
+    """Build the summariser's user turn: the fragment plus the state that survives it."""
+    state_lines: list[str] = []
+    if files:
+        state_lines.append("\nFiles in the virtual filesystem (these survive; point to them by path):")
+        state_lines.extend(f"- {path}" for path in sorted(files))
+    if todos:
+        state_lines.append("\nCurrent plan (the agent cannot read this back, so carry its status):")
+        state_lines.extend(f"- [{t.status}] {t.content}" for t in todos)
+    state = "\n".join(state_lines) + "\n" if state_lines else ""
+    return SUMMARIZER_USER_TEMPLATE.format(fragment=rendered_history, state=state)
 
 
 def assemble_system_prompt(
