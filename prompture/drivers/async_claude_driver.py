@@ -32,6 +32,7 @@ from .async_base import AsyncDriver
 from .base import _normalize_stop_reason, _translate_tool_choice
 from .claude_driver import (
     ClaudeDriver,
+    _acreate_message,
     _apply_anthropic_reporting_options,
     _apply_temperature,
     _build_anthropic_json_mode_tool_def,
@@ -43,7 +44,6 @@ from .claude_driver import (
     _first_text,
     _json_mode_input,
     _output_config,
-    _acreate_message,
     _rejects_forced_tool,
     _structured_output_format,
     env_api_key,
