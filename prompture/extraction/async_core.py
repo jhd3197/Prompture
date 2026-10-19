@@ -20,6 +20,7 @@ from ..drivers.async_base import AsyncDriver
 from ..drivers.async_registry import get_async_driver_for_model
 from ._usage import extraction_attempt, tracked_extraction
 from .core import (
+    TOON_DATA_NOTE,
     ExtractResult,
     _build_usage,
     _calculate_token_savings,
@@ -27,6 +28,7 @@ from .core import (
     _json_to_toon,
     _merge_usage,
     normalize_field_value,
+    wrap_untrusted,
 )
 from .fields import get_registry_snapshot
 from .reasoning import (
@@ -102,7 +104,7 @@ async def render_output(
     elif output_format == "markdown":
         instruct = "Return valid markdown content. You may use standard markdown formatting."
 
-    full_prompt = f"{content_prompt}\n\nSYSTEM INSTRUCTION: {instruct}"
+    full_prompt = f"{content_prompt}\n\nOutput format: {instruct}"
 
     # Use generate_messages when system_prompt is provided
     if system_prompt is not None:
@@ -403,7 +405,7 @@ async def extract_and_jsonify(
         provider = model_id = actual_model
 
     opts = {**options, "model": model_id}
-    content_prompt = f"{instruction_template} {text}"
+    content_prompt = f"{instruction_template}\n\n{wrap_untrusted(text)}"
     if reasoning_strategy == "auto":
         reasoning_strategy = auto_select_reasoning_strategy(text, json_schema)
     content_prompt = apply_reasoning_strategy(content_prompt, reasoning_strategy)
@@ -451,7 +453,7 @@ async def manual_extract_and_jsonify(
     if model_name:
         opts["model"] = model_name
 
-    content_prompt = f"{instruction_template} {text}"
+    content_prompt = f"{instruction_template}\n\n{wrap_untrusted(text)}"
     if reasoning_strategy == "auto":
         reasoning_strategy = auto_select_reasoning_strategy(text, json_schema)
     content_prompt = apply_reasoning_strategy(content_prompt, reasoning_strategy)
@@ -1134,7 +1136,7 @@ async def extract_from_data(
     token_savings = _calculate_token_savings(json_data, toon_data)
 
     content_prompt = instruction_template.format(question=question)
-    full_prompt = f"{content_prompt}\n\nData (in TOON format):\n{toon_data}"
+    full_prompt = f"{content_prompt}\n\n{TOON_DATA_NOTE}\n\n{wrap_untrusted(toon_data, 'data', 'the data to analyze')}"
 
     driver = get_async_driver_for_model(model_name)
     result = await ask_for_json(
@@ -1184,7 +1186,7 @@ async def extract_from_pandas(
     }
 
     content_prompt = instruction_template.format(question=question)
-    full_prompt = f"{content_prompt}\n\nData (in TOON format):\n{toon_data}"
+    full_prompt = f"{content_prompt}\n\n{TOON_DATA_NOTE}\n\n{wrap_untrusted(toon_data, 'data', 'the data to analyze')}"
 
     driver = get_async_driver_for_model(model_name)
     result = await ask_for_json(

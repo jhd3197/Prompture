@@ -315,7 +315,8 @@ class TestExtractFromData:
         assert kwargs["driver"] is driver
         assert kwargs["options"] == options
         assert "Custom prompt: Return product ids" in kwargs["content_prompt"]
-        assert "Data (in TOON format)" in kwargs["content_prompt"]
+        assert "<data>" in kwargs["content_prompt"]
+        assert "TOON" in kwargs["content_prompt"]
 
     @patch("prompture.extraction.core.toon")
     def test_extract_from_data_missing_array_raises(self, mock_toon):
