@@ -23,6 +23,8 @@ from ..deep_state import DeepAgentState
 from ..tools_schema import ToolDefinition
 
 _DEFAULT_READ_LIMIT = 2000
+# read_file's "{line_no:6d}\t" prefix, as it appears when copied into old_string.
+_LINE_PREFIX = re.compile(r"(?m)^ *\d+\t")
 
 
 def _normalise_path(path: str) -> str:
@@ -109,7 +111,13 @@ def make_vfs_tools(state: DeepAgentState) -> list[ToolDefinition]:
         original = state.files[path]
         count = original.count(old_string)
         if count == 0:
-            return f"Error: old_string not found in {path}"
+            if _LINE_PREFIX.search(old_string):
+                return (
+                    f"Error: old_string not found in {path}. It looks like it includes "
+                    "read_file's line-number prefixes; remove the number and tab at the "
+                    "start of each line and retry."
+                )
+            return f"Error: old_string not found in {path}. Read the file again and copy the text exactly."
         if count > 1 and not replace_all:
             return (
                 f"Error: old_string appears {count} times in {path}. "
@@ -195,7 +203,7 @@ def make_vfs_tools(state: DeepAgentState) -> list[ToolDefinition]:
                     "file_path": {"type": "string", "description": "Path of the file to read."},
                     "offset": {
                         "type": "integer",
-                        "description": "Line number to start reading from (0-indexed). Default 0.",
+                        "description": "Lines to skip before reading; 0 starts at line 1. Default 0.",
                     },
                     "limit": {
                         "type": "integer",
@@ -226,8 +234,11 @@ def make_vfs_tools(state: DeepAgentState) -> list[ToolDefinition]:
                 "type": "object",
                 "properties": {
                     "file_path": {"type": "string", "description": "Path of the file."},
-                    "old_string": {"type": "string", "description": "Substring to replace."},
-                    "new_string": {"type": "string", "description": "Replacement substring."},
+                    "old_string": {
+                        "type": "string",
+                        "description": "Exact text to replace, without read_file line-number prefixes.",
+                    },
+                    "new_string": {"type": "string", "description": "Replacement text; empty deletes old_string."},
                     "replace_all": {
                         "type": "boolean",
                         "description": "When true, replace every occurrence. Default false.",
@@ -257,7 +268,7 @@ def make_vfs_tools(state: DeepAgentState) -> list[ToolDefinition]:
             parameters={
                 "type": "object",
                 "properties": {
-                    "pattern": {"type": "string", "description": "fnmatch glob pattern."},
+                    "pattern": {"type": "string", "description": "fnmatch pattern matched against the full path."},
                 },
                 "required": ["pattern"],
             },
@@ -269,7 +280,7 @@ def make_vfs_tools(state: DeepAgentState) -> list[ToolDefinition]:
             parameters={
                 "type": "object",
                 "properties": {
-                    "pattern": {"type": "string", "description": "Python regex."},
+                    "pattern": {"type": "string", "description": "Python regular expression."},
                     "glob": {
                         "type": "string",
                         "description": "fnmatch pattern to restrict files. Default '*'.",

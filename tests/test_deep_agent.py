@@ -340,6 +340,21 @@ class TestVFS:
         assert "Error" in out
         assert "not found" in out
 
+    def test_edit_file_flags_copied_line_prefixes(self):
+        s = DeepAgentState()
+        tools = self._tools(s)
+        tools["write_file"].function(file_path="a.md", content="alpha\nbeta")
+        copied = tools["read_file"].function(file_path="a.md")
+        out = tools["edit_file"].function(file_path="a.md", old_string=copied, new_string="x")
+        assert "line-number prefixes" in out
+        assert s.files["a.md"] == "alpha\nbeta"
+
+    def test_builtin_descriptions_fit_provider_limit(self):
+        from prompture.agents.tools_schema import MAX_TOOL_DESCRIPTION_CHARS
+
+        for td in make_vfs_tools(DeepAgentState()):
+            assert len(td.description) <= MAX_TOOL_DESCRIPTION_CHARS, td.name
+
     def test_ls(self):
         s = DeepAgentState()
         tools = self._tools(s)

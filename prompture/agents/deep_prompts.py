@@ -147,74 +147,75 @@ Returns the sub-agent's final response as a string.\
 """
 
 READ_FILE_DESC = """\
-Read the contents of a file in the virtual filesystem.
+Read a file from the virtual filesystem (the run's scratchpad, not the \
+local disk).
 
-Arguments:
-- file_path (string, required): the file's path.
-- offset (integer, optional, default 0): line number to start reading from.
-- limit (integer, optional, default 2000): maximum number of lines to read.
-
-Returns the file content with line numbers prefixed (1-indexed). Returns \
-an error string if the file does not exist.\
+- Returns up to 2000 lines. Each line starts with its 1-indexed line \
+number and a tab; that prefix is not part of the file.
+- When the output ends with "[truncated at line N ...]", call again with \
+offset=N to read on. offset counts lines to skip, so offset=0 starts at \
+line 1.
+- When you only need a few lines or a value, grep is cheaper than \
+reading the whole file.
+- A missing path returns "Error: file not found"; call ls to see what \
+exists.\
 """
 
 WRITE_FILE_DESC = """\
-Create or overwrite a file in the virtual filesystem.
+Create a file in the virtual filesystem, or replace one entirely.
 
-Arguments:
-- file_path (string, required): the file's path.
-- content (string, required): the full file content.
-
-If the file already exists, it is overwritten without confirmation.\
+- content becomes the whole file. Anything already in the file is lost, \
+without confirmation.
+- To change part of an existing file, use edit_file instead; rewriting a \
+long file to change one line wastes tokens and risks dropping content.
+- Use organised paths such as notes/sources.md or draft/section1.md.\
 """
 
 EDIT_FILE_DESC = """\
-Replace a string in an existing file with a new string.
+Replace exact text in an existing file in the virtual filesystem.
 
-Arguments:
-- file_path (string, required): the file's path.
-- old_string (string, required): the exact substring to replace. Must \
-match uniquely unless replace_all is true.
-- new_string (string, required): the replacement string.
-- replace_all (boolean, optional, default false): when true, replace \
-every occurrence of old_string.
-
-Errors if the file does not exist, if old_string is not found, or if \
-old_string is not unique and replace_all is false.\
+- old_string must match the file exactly, including whitespace and \
+indentation. When copying from read_file output, drop the line-number \
+prefix (the number and tab at the start of each line); it is not part \
+of the file.
+- old_string must occur exactly once. If it occurs more than once, \
+include more surrounding lines to make it unique, or pass \
+replace_all=true to change every occurrence (useful for renames).
+- To delete text, pass an empty new_string.
+- On "old_string not found", read the file again before retrying; it may \
+have changed since you last read it.
+- Use write_file only to create a file or replace all of it.\
 """
 
 LS_DESC = """\
-List files in the virtual filesystem.
+List files in the virtual filesystem, sorted, one path per line.
 
-Arguments:
-- path (string, optional, default ""): prefix to filter by. Empty \
-string lists all files.
-
-Returns a newline-separated list of matching file paths, or a friendly \
-message when no files match.\
+- path filters by prefix ("notes/" lists everything under notes/). Leave \
+it empty to list every file.
+- Use glob for patterns and grep to search inside files.\
 """
 
 GLOB_DESC = """\
-Find files in the virtual filesystem by fnmatch-style pattern.
+Find files in the virtual filesystem whose path matches a pattern.
 
-Arguments:
-- pattern (string, required): fnmatch glob (e.g. "notes/*.md", "**/*.txt").
-
-Returns a newline-separated list of matching paths.\
+- Uses Python fnmatch on the full path: * also matches "/", so "*.md" \
+finds every Markdown file at any depth and "notes/*" finds everything \
+under notes/. "?" matches one character and "[abc]" a set.
+- Returns matching paths sorted, one per line.\
 """
 
 GREP_DESC = """\
-Search file contents in the virtual filesystem with a regular expression.
+Search inside files in the virtual filesystem with a Python regular \
+expression (re module syntax).
 
-Arguments:
-- pattern (string, required): Python regex.
-- glob (string, optional, default "*"): fnmatch pattern restricting \
-which files are searched.
-- output_mode (string, optional, default "files_with_matches"): one of \
-"files_with_matches" (paths only), "content" (matching lines with file \
-prefix), or "count" (per-file match counts).
-
-Returns the result formatted per output_mode.\
+- output_mode "files_with_matches" (default) lists files that match \
+anywhere; "content" lists matching lines as path:line:text, one line at \
+a time; "count" gives matches per file.
+- glob limits which files are searched, with the same rules as the glob \
+tool.
+- Matching is case-sensitive; start the pattern with (?i) to ignore case.
+- An invalid regex returns "Error: invalid regex"; escape literal \
+characters such as ( [ . with a backslash.\
 """
 
 # --- Summarization ---------------------------------------------------
