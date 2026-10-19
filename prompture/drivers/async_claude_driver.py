@@ -43,6 +43,7 @@ from .claude_driver import (
     _first_text,
     _json_mode_input,
     _output_config,
+    _acreate_message,
     _rejects_forced_tool,
     _structured_output_format,
     env_api_key,
@@ -158,10 +159,11 @@ class AsyncClaudeDriver(_ClaudeModelRules, CostMixin, AsyncDriver):
         with capture_rate_limits() as limits:
             if options.get("json_mode"):
                 if json_mode_tools is not None:
-                    resp = await client.messages.create(  # type: ignore[call-overload]
-                        **common_kwargs,
-                        tools=json_mode_tools,
-                        tool_choice={"type": "tool", "name": "extract_json"},
+                    resp = await _acreate_message(
+                        client,
+                        {**common_kwargs, "tools": json_mode_tools,
+                         "tool_choice": {"type": "tool", "name": "extract_json"}},
+                        opts,
                     )
                     text = ""
                     for block in resp.content:
@@ -169,10 +171,10 @@ class AsyncClaudeDriver(_ClaudeModelRules, CostMixin, AsyncDriver):
                             text = json.dumps(_json_mode_input(block.input, options["json_schema"]))
                             break
                 else:
-                    resp = await client.messages.create(**common_kwargs)
+                    resp = await _acreate_message(client, common_kwargs, opts)
                     text = _first_text(resp.content)
             else:
-                resp = await client.messages.create(**common_kwargs)
+                resp = await _acreate_message(client, common_kwargs, opts)
                 text = _first_text(resp.content)
 
         reasoning_content = ClaudeDriver._extract_thinking(resp.content)
@@ -196,9 +198,9 @@ class AsyncClaudeDriver(_ClaudeModelRules, CostMixin, AsyncDriver):
         """Clamp the requested max_tokens to the model's known output cap.
 
         Callers commonly pass a generous default (e.g. 65536). Anthropic
-        rejects values above the model ceiling (Claude 4 family: 64000),
-        and the SDK refuses long non-streaming requests outright - so
-        clamp when the capabilities KB knows the real limit.
+        rejects values above the model ceiling (Claude 4 family: 64000), so
+        clamp when the capabilities KB knows the real limit. (Requests this
+        large go over the streaming transport, see ``_acreate_message``.)
         """
         requested = int(opts.get("max_tokens") or 512)
         try:
@@ -267,7 +269,7 @@ class AsyncClaudeDriver(_ClaudeModelRules, CostMixin, AsyncDriver):
 
         _apply_anthropic_reporting_options(kwargs, opts)
         with capture_rate_limits() as limits:
-            resp = await client.messages.create(**kwargs)
+            resp = await _acreate_message(client, kwargs, opts)
 
         meta = usage_meta(self, "claude", model, resp.usage, response=resp, options=opts)
         meta["raw_response"] = as_dict(resp)
