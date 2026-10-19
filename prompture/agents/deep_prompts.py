@@ -5,7 +5,7 @@ contributes one fragment. :class:`DeepAgent` assembles the final system
 prompt deterministically:
 
     [Persona block — if provided]
-    [BASE_DEEP_AGENT_PROMPT — always]
+    [BASE_DEEP_AGENT_PROMPT — unless replaced via base_prompt=]
     [PLANNING_PROMPT_FRAGMENT — if enable_planning]
     [VFS_PROMPT_FRAGMENT — if enable_vfs]
     [SUBAGENT_PROMPT_TEMPLATE — if subagents provided]
@@ -32,8 +32,19 @@ most reasonable interpretation and proceed.
 before acting on it. Update the plan as you go.
 - Use the available tools deliberately. Reach for the right tool for \
 each subtask rather than improvising in prose.
+- Before a tool call that is hard to undo or reaches outside this run \
+(sending, deleting, buying, publishing), make sure the user asked for it.
 - Stop when the task is genuinely complete. Provide a concise final \
-answer that addresses what the user actually asked.\
+answer that addresses what the user actually asked.
+
+Final answer:
+- Report what actually happened, not what you meant to do. Call \
+something done, found or verified only if a tool result in this run \
+shows it; if you did not check, say so.
+- If any step failed, was skipped or came back different from what you \
+expected, say so in the first sentence, before the rest of the answer.
+- If you stopped before finishing, say so plainly and name what is left. \
+Never present partial work as complete.\
 """
 
 PLANNING_PROMPT_FRAGMENT = """\
@@ -327,12 +338,19 @@ def assemble_system_prompt(
     enable_vfs: bool,
     subagent_section: str | None,
     extra_suffix: str | None = None,
+    base_prompt: str | None = None,
 ) -> str:
-    """Compose the final system prompt from the configured fragments."""
+    """Compose the final system prompt from the configured fragments.
+
+    ``base_prompt`` replaces :data:`BASE_DEEP_AGENT_PROMPT`; pass ``""`` to
+    leave the base section out, so the persona alone sets the agent's role.
+    """
     parts: list[str] = []
     if persona_text:
         parts.append(persona_text.strip())
-    parts.append(BASE_DEEP_AGENT_PROMPT.strip())
+    base = BASE_DEEP_AGENT_PROMPT if base_prompt is None else base_prompt
+    if base.strip():
+        parts.append(base.strip())
     if enable_planning:
         parts.append(PLANNING_PROMPT_FRAGMENT.strip())
     if enable_vfs:

@@ -651,6 +651,23 @@ class TestPromptAssembly:
         assert VFS_PROMPT_FRAGMENT.strip() in out
         assert "write_todos" not in out.lower()
 
+    def test_base_prompt_replaced_or_dropped(self):
+        kwargs = {
+            "persona_text": "You are SuperBot.",
+            "enable_planning": False,
+            "enable_vfs": False,
+            "subagent_section": None,
+        }
+        assert assemble_system_prompt(**kwargs, base_prompt="Custom base.") == "You are SuperBot.\n\nCustom base."
+        assert assemble_system_prompt(**kwargs, base_prompt="") == "You are SuperBot."
+
+    def test_deep_agent_base_prompt_option(self):
+        agent = DeepAgent(
+            driver=MockToolDriver([]), system_prompt="You are SuperBot.", base_prompt="", enable_vfs=False
+        )
+        assert BASE_DEEP_AGENT_PROMPT.strip() not in agent.system_prompt
+        assert agent.system_prompt.startswith("You are SuperBot.")
+
     def test_persona_prefixed(self):
         out = assemble_system_prompt(
             persona_text="You are SuperBot.",

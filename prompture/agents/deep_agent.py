@@ -70,6 +70,7 @@ class DeepAgent(Agent):
         subagents: list[SubAgentSpec] | None = None,
         persona: Persona | str | None = None,
         system_prompt: str | Persona | None = None,
+        base_prompt: str | None = None,
         enable_planning: bool = True,
         enable_vfs: bool = True,
         enable_summarization: bool = True,
@@ -136,6 +137,7 @@ class DeepAgent(Agent):
             enable_planning=self._enable_planning,
             enable_vfs=self._enable_vfs,
             subagent_section=subagent_section,
+            base_prompt=base_prompt,
         )
 
         # Initialise the underlying Agent.
@@ -298,6 +300,7 @@ def create_deep_agent(
     subagents: list[SubAgentSpec] | None = None,
     persona: Persona | str | None = None,
     system_prompt: str | Persona | None = None,
+    base_prompt: str | None = None,
     enable_planning: bool = True,
     enable_vfs: bool = True,
     enable_summarization: bool = True,
@@ -327,6 +330,7 @@ def create_deep_agent(
         subagents=subagents,
         persona=persona,
         system_prompt=system_prompt,
+        base_prompt=base_prompt,
         enable_planning=enable_planning,
         enable_vfs=enable_vfs,
         enable_summarization=enable_summarization,
