@@ -25,6 +25,8 @@ import contextlib
 import json
 import logging
 import threading
+from dataclasses import dataclass
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
@@ -194,12 +196,28 @@ def _coerce_rate_dict(raw: Any) -> dict[str, float] | None:
     return out or None
 
 
-def _load_local_rates_kb() -> dict[tuple[str, str], dict[str, float]]:
+@dataclass(frozen=True)
+class _LocalRates:
+    rates: dict[str, float]
+    schedule: tuple[tuple[date, dict[str, float]], ...] = ()
+
+    def current(self) -> dict[str, float]:
+        # Evaluate at lookup time so long-running processes cross price changes.
+        today = datetime.now(timezone.utc).date()
+        rates = self.rates
+        for effective_date, scheduled_rates in self.schedule:
+            if today >= effective_date:
+                rates = scheduled_rates
+        return dict(rates)
+
+
+def _load_local_rates_kb() -> dict[tuple[str, str], _LocalRates]:
     """Build the local-KB pricing index from ``infra/rates/*.json`` files.
 
-    Only entries with a ``cost`` object are included.
+    Only entries with a ``cost`` object are included. Optional ``cost_schedule``
+    entries contain an ISO ``effective_date`` and a full replacement ``cost``.
     """
-    kb: dict[tuple[str, str], dict[str, float]] = {}
+    kb: dict[tuple[str, str], _LocalRates] = {}
     for json_file in sorted(_RATES_DIR.glob("*.json")):
         provider = json_file.stem
         try:
@@ -214,7 +232,17 @@ def _load_local_rates_kb() -> dict[tuple[str, str], dict[str, float]]:
             if rates is None:
                 continue
             if "input" in rates and "output" in rates:
-                kb[(provider, model_id)] = rates
+                schedule = []
+                raw_schedule = entry.get("cost_schedule")
+                for item in raw_schedule if isinstance(raw_schedule, list) else []:
+                    try:
+                        effective_date = date.fromisoformat(item["effective_date"])
+                        scheduled_rates = _coerce_rate_dict(item["cost"])
+                        if scheduled_rates and "input" in scheduled_rates and "output" in scheduled_rates:
+                            schedule.append((effective_date, scheduled_rates))
+                    except (KeyError, TypeError, ValueError):
+                        logger.warning("Invalid cost schedule for %s/%s — skipping", provider, model_id)
+                kb[(provider, model_id)] = _LocalRates(rates, tuple(sorted(schedule, key=lambda item: item[0])))
     return kb
 
 
@@ -229,7 +257,7 @@ class LocalKBPricingSource:
     priority = 0
 
     def __init__(self) -> None:
-        self._kb: dict[tuple[str, str], dict[str, float]] = _load_local_rates_kb()
+        self._kb = _load_local_rates_kb()
 
     def reload(self) -> None:
         """Rebuild the in-memory KB from disk."""
@@ -245,12 +273,12 @@ class LocalKBPricingSource:
         for prov in (provider, PROVIDER_MAP.get(provider, provider)):
             hit = self._kb.get((prov, model_id))
             if hit is not None:
-                return dict(hit)
+                return hit.current()
             base = _strip_to_base_model(model_id)
             if base is not None:
                 hit = self._kb.get((prov, base))
                 if hit is not None:
-                    return dict(hit)
+                    return hit.current()
         return None
 
 

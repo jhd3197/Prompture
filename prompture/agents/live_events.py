@@ -109,10 +109,12 @@ class MessageStop:
     """End of one assistant turn. ``stop_reason`` uses the shared vocabulary
     (``end_turn``, ``tool_use``, ``max_tokens``, ``content_filter``,
     ``error``); drivers preserve the provider's raw value in
-    ``usage["raw_stop_reason"]``."""
+    ``usage["raw_stop_reason"]``. ``provider_state`` carries opaque, JSON-safe
+    response data that must survive in conversation history for the next turn."""
 
     stop_reason: str
     usage: dict[str, Any] = field(default_factory=dict)
+    provider_state: dict[str, Any] = field(default_factory=dict)
     event_type: Literal["message_stop"] = field(default="message_stop", init=False)
 
 

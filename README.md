@@ -1632,6 +1632,46 @@ if doc.found:
 
 Both helpers return plain dataclasses with no I/O of their own.  See `examples/assistant_example.py` for the assistant + review-loop + extractor flow end-to-end.
 
+### Gemini 4 Argon
+
+Install or upgrade with `pip install -U "prompture[google]"` and set
+`GOOGLE_API_KEY` to a key for a billing-enabled Gemini API project.
+
+```python
+from prompture import Conversation
+
+conv = Conversation(
+    model_name="google/gemini-4-argon",
+    options={"effort": "medium", "max_tokens": 32768},
+)
+print(conv.ask("Review this design and explain the tradeoffs: ..."))
+```
+
+Use `google_vertexai/gemini-4-argon` for Vertex AI, with
+`GOOGLE_VERTEX_PROJECT_ID`, Application Default Credentials, and
+`GOOGLE_VERTEX_LOCATION=global` (or a supported endpoint for your project).
+Both providers support synchronous and asynchronous conversations, tools,
+structured output, vision, and streaming. Prompture preserves signed Gemini
+response parts in conversation history; callers managing driver history directly
+must copy the response's `_google_parts` onto the corresponding assistant message.
+
+Argon accepts `low`, `medium`, and `high` effort. Prompture maps `none` and
+`minimal` to `low`, and `xhigh` and `max` to `high`; it does not disable thinking.
+Explicit `generation_config.thinking_config` takes precedence. Sampling options
+(`temperature`, `top_p`, `top_k`) are omitted for this model.
+
+`completion_tokens` includes billed thinking tokens; `reasoning_tokens` reports
+that subset. Cached input receives the implicit-cache discount. The local pricing
+catalog uses $2 input / $10 output / $0.10 cached input per million tokens through
+November 30, 2026, then switches to $4 / $20 / $0.20 on December 1 (UTC), without
+requiring a restart. There is no free API tier. See [Google's pricing](https://ai.google.dev/gemini-api/docs/pricing).
+
+The catalog records the normal SDK output limit of 65,536 tokens, shared between
+thinking and the visible answer. The 1,048,576-token context includes input too.
+[Long decode](https://ai.google.dev/gemini-api/docs/generate-content/long-decode)
+requires `google-genai>=2.30.1` and a larger `max_tokens`; the baseline Google extra
+requires `>=1.56.0` for the thinking-level API.
+
 ### Prompt Caching
 
 Prompt caching cuts input-token cost on the repeated prefix to ~10% of the

@@ -13,8 +13,8 @@ from __future__ import annotations
 import json
 import logging
 import os
-import uuid
 from collections.abc import Iterator
+from types import SimpleNamespace
 from typing import Any
 
 try:
@@ -30,6 +30,7 @@ except ImportError:
     AnthropicVertex = None  # type: ignore[assignment]
 
 from ..infra.cost_mixin import CostMixin
+from ._google_genai import add_tools, build_generation_args, extract_usage, response_parts, tool_response
 from .base import Driver
 
 logger = logging.getLogger(__name__)
@@ -211,38 +212,21 @@ class GoogleVertexAIDriver(CostMixin, Driver):
             )
         return 0.0
 
-    def _cost_for_tokens(self, prompt_tokens: int, completion_tokens: int) -> float:
-        cost = self._calculate_cost(self._PROVIDER, self.model, prompt_tokens, completion_tokens)
+    def _cost_for_tokens(self, prompt_tokens: int, completion_tokens: int, *, cached_tokens: int = 0) -> float:
+        cost = self._calculate_cost(
+            self._PROVIDER, self.model, prompt_tokens, completion_tokens, cached_tokens=cached_tokens
+        )
         if cost == 0.0:
             upstream = "anthropic" if _is_claude_model(self.model) else "google"
-            cost = self._calculate_cost(upstream, self.model, prompt_tokens, completion_tokens)
+            cost = self._calculate_cost(
+                upstream, self.model, prompt_tokens, completion_tokens, cached_tokens=cached_tokens
+            )
         return cost
 
     # ── Gemini usage extraction ───────────────────────────────────────
 
     def _extract_gemini_usage(self, response: Any, messages: list[dict[str, Any]]) -> dict[str, Any]:
-        usage = getattr(response, "usage_metadata", None)
-        if usage:
-            prompt_tokens = getattr(usage, "prompt_token_count", 0) or 0
-            completion_tokens = getattr(usage, "candidates_token_count", 0) or 0
-            total_tokens = getattr(usage, "total_token_count", 0) or (prompt_tokens + completion_tokens)
-            cost = self._cost_for_tokens(prompt_tokens, completion_tokens)
-        else:
-            total_prompt_chars = sum(
-                len(msg.get("content", "")) for msg in messages if isinstance(msg.get("content"), str)
-            )
-            completion_chars = len(response.text) if response.text else 0
-            prompt_tokens = total_prompt_chars // 4
-            completion_tokens = completion_chars // 4
-            total_tokens = prompt_tokens + completion_tokens
-            cost = self._calculate_cost_chars(total_prompt_chars, completion_chars)
-
-        return {
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
-            "total_tokens": total_tokens,
-            "cost": round(cost, 6),
-        }
+        return extract_usage(response, messages, self._cost_for_tokens)
 
     # ── Message helpers ───────────────────────────────────────────────
 
@@ -271,101 +255,7 @@ class GoogleVertexAIDriver(CostMixin, Driver):
     def _build_gemini_generation_args(
         self, messages: list[dict[str, Any]], options: dict[str, Any] | None = None
     ) -> tuple[Any, dict[str, Any]]:
-        merged = {**self.options, **(options or {})}
-        config_dict: dict[str, Any] = {}
-
-        if "temperature" in merged:
-            config_dict["temperature"] = merged["temperature"]
-        if "max_tokens" in merged:
-            config_dict["max_output_tokens"] = merged["max_tokens"]
-        if "top_p" in merged:
-            config_dict["top_p"] = merged["top_p"]
-        if "top_k" in merged:
-            config_dict["top_k"] = merged["top_k"]
-
-        for k, v in merged.get("generation_config", {}).items():
-            config_dict.setdefault(k, v)
-
-        if merged.get("safety_settings"):
-            config_dict["safety_settings"] = merged["safety_settings"]
-
-        if merged.get("json_mode"):
-            config_dict["response_mime_type"] = "application/json"
-            if merged.get("json_schema"):
-                config_dict["response_schema"] = merged["json_schema"]
-
-        system_instruction = None
-        contents: list[dict[str, Any]] = []
-        tool_call_names: dict[str, str] = {}
-
-        for msg in messages:
-            role = msg.get("role", "user")
-            content = msg.get("content", "")
-
-            if role == "system":
-                system_instruction = content if isinstance(content, str) else str(content)
-            elif role == "assistant":
-                tool_calls = msg.get("tool_calls")
-                if tool_calls:
-                    parts: list[Any] = []
-                    if content:
-                        parts.append(content)
-                    for tc in tool_calls:
-                        fn = tc.get("function", tc)
-                        name = fn.get("name", "")
-                        tc_id = tc.get("id", "")
-                        tool_call_names[tc_id] = name
-                        args = fn.get("arguments", {})
-                        if isinstance(args, str):
-                            try:
-                                args = json.loads(args)
-                            except (json.JSONDecodeError, TypeError):
-                                args = {}
-                        parts.append(types.Part(function_call=types.FunctionCall(name=name, args=args)))
-                    contents.append({"role": "model", "parts": parts})
-                elif msg.get("_vision_parts"):
-                    contents.append({"role": "model", "parts": content})
-                else:
-                    contents.append({"role": "model", "parts": [content]})
-            elif role == "tool":
-                tc_id = msg.get("tool_call_id", "")
-                name = tool_call_names.get(tc_id, "unknown_tool")
-                result_content = content
-                if isinstance(result_content, str):
-                    try:
-                        result_content = json.loads(result_content)
-                    except (json.JSONDecodeError, TypeError):
-                        result_content = {"result": result_content}
-                if not isinstance(result_content, dict):
-                    result_content = {"result": str(result_content)}
-                contents.append(
-                    {
-                        "role": "user",
-                        "parts": [
-                            types.Part(function_response=types.FunctionResponse(name=name, response=result_content))
-                        ],
-                    }
-                )
-            else:
-                if msg.get("_vision_parts"):
-                    contents.append({"role": "user", "parts": content})
-                else:
-                    contents.append({"role": "user", "parts": [content]})
-
-        gen_input: str | list[dict[str, Any]]
-        if len(contents) == 1:
-            parts = contents[0]["parts"]
-            if len(parts) == 1 and isinstance(parts[0], str):
-                gen_input = parts[0]
-            else:
-                gen_input = contents
-        else:
-            gen_input = contents
-
-        if system_instruction:
-            config_dict["system_instruction"] = system_instruction
-
-        return gen_input, config_dict
+        return build_generation_args(self, messages, options, types)
 
     # ══════════════════════════════════════════════════════════════════
     #  CLAUDE BACKEND (via anthropic[vertex])
@@ -567,6 +457,7 @@ class GoogleVertexAIDriver(CostMixin, Driver):
             usage_meta = self._extract_gemini_usage(response, messages)
             return {
                 "text": response.text,
+                "_google_parts": response_parts(response),
                 "meta": {
                     **usage_meta,
                     "raw_response": getattr(response, "prompt_feedback", None),
@@ -577,71 +468,22 @@ class GoogleVertexAIDriver(CostMixin, Driver):
             raise RuntimeError(f"Vertex AI Gemini request failed: {e}") from e
 
     def _gemini_generate_with_tools(
-        self,
-        messages: list[dict[str, Any]],
-        tools: list[dict[str, Any]],
-        options: dict[str, Any],
+        self, messages: list[dict[str, Any]], tools: list[dict[str, Any]], options: dict[str, Any]
     ) -> dict[str, Any]:
         gen_input, config_dict = self._build_gemini_generation_args(self._prepare_messages(messages), options)
-
-        function_declarations = []
-        for t in tools:
-            if "type" in t and t["type"] == "function":
-                fn = t["function"]
-                params = fn.get("parameters")
-                decl = types.FunctionDeclaration(
-                    name=fn["name"],
-                    description=fn.get("description", ""),
-                    **({"parameters_json_schema": params} if params else {}),
-                )
-                function_declarations.append(decl)
-            elif "name" in t:
-                params = t.get("parameters") or t.get("input_schema")
-                decl = types.FunctionDeclaration(
-                    name=t["name"],
-                    description=t.get("description", ""),
-                    **({"parameters_json_schema": params} if params else {}),
-                )
-                function_declarations.append(decl)
-
-        config_dict["tools"] = [types.Tool(function_declarations=function_declarations)]
-
+        add_tools(config_dict, tools, options, types)
         try:
-            config = types.GenerateContentConfig(**config_dict)
             response = self._get_gemini_client().models.generate_content(
-                model=self.model, contents=gen_input, config=config
+                model=self.model,
+                contents=gen_input,
+                config=types.GenerateContentConfig(**config_dict),
             )
-            usage_meta = self._extract_gemini_usage(response, messages)
-            meta = {**usage_meta, "raw_response": getattr(response, "prompt_feedback", None), "model_name": self.model}
-
-            text = ""
-            tool_calls_out: list[dict[str, Any]] = []
-            stop_reason = "stop"
-
-            for candidate in response.candidates or []:
-                if candidate.content is None or candidate.content.parts is None:
-                    continue
-                for part in candidate.content.parts:
-                    if hasattr(part, "text") and part.text:
-                        text += part.text
-                    if hasattr(part, "function_call") and part.function_call is not None and part.function_call.name:
-                        fc = part.function_call
-                        tool_calls_out.append(
-                            {
-                                "id": str(uuid.uuid4()),
-                                "name": fc.name,
-                                "arguments": dict(fc.args) if fc.args else {},
-                            }
-                        )
-                finish_reason = getattr(candidate, "finish_reason", None)
-                if finish_reason is not None:
-                    stop_reason = {1: "stop", 2: "max_tokens", 3: "safety", 4: "recitation", 5: "other"}.get(
-                        finish_reason, "stop"
-                    )
-            if tool_calls_out:
-                stop_reason = "tool_use"
-
-            return {"text": text, "meta": meta, "tool_calls": tool_calls_out, "stop_reason": stop_reason}
+            meta = {
+                **self._extract_gemini_usage(response, messages),
+                "raw_response": getattr(response, "prompt_feedback", None),
+                "model_name": self.model,
+            }
+            return tool_response(response, meta)
         except Exception as e:
             raise RuntimeError(f"Vertex AI Gemini tool call failed: {e}") from e
 
@@ -656,15 +498,23 @@ class GoogleVertexAIDriver(CostMixin, Driver):
                 model=self.model, contents=gen_input, config=config
             )
             full_text = ""
+            last_usage = None
+            stream_parts = []
             for chunk in response:
+                if getattr(chunk, "usage_metadata", None) is not None:
+                    last_usage = chunk.usage_metadata
+                stream_parts.extend(response_parts(chunk))
                 chunk_text = getattr(chunk, "text", None) or ""
                 if chunk_text:
                     full_text += chunk_text
                     yield {"type": "delta", "text": chunk_text}
 
-            usage_meta = self._extract_gemini_usage(response, messages)
+            usage_meta = self._extract_gemini_usage(
+                SimpleNamespace(usage_metadata=last_usage, text=full_text), messages
+            )
             yield {
                 "type": "done",
+                "_google_parts": stream_parts,
                 "text": full_text,
                 "meta": {**usage_meta, "raw_response": {}, "model_name": self.model},
             }

@@ -8,11 +8,10 @@ the same thing. Each driver family puts it where its API reads it:
 * ``"openai"``: ``reasoning_effort`` on Chat Completions style APIs (OpenAI, Azure, Groq, xAI,
   OpenAI-compatible servers).
 * ``"openrouter"``: ``reasoning.effort``.
-* ``"google"``: ``thinking_config.thinking_level``, which takes only ``low`` and ``high``.
+* ``"google"``: ``thinking_config.thinking_level`` (model-dependent).
 
-The value is passed on as given, so a model that does not take a level answers with the
-provider's own error; the model catalogue lists the levels each model takes
-(``model_rates.get_model_info(...)["reasoning_options"]``).
+Explicit provider-specific fields take precedence. Google maps generic effort to
+the model's thinking levels; other providers validate the supplied value themselves.
 """
 
 from __future__ import annotations
@@ -30,12 +29,14 @@ def requested_effort(options: dict[str, Any] | None) -> str | None:
     return str(value) if value else None
 
 
-def google_thinking_level(effort: str) -> str:
-    """Gemini's two thinking levels for an effort: up to medium is ``low``, above is ``high``."""
+def google_thinking_level(effort: str, model: str = "") -> str:
+    """Map effort without sending unsupported levels to older Gemini models."""
+    if model.removeprefix("models/") == "gemini-4-argon" and effort == "medium":
+        return "medium"
     return "low" if effort in ("none", "minimal", "low", "medium") else "high"
 
 
-def apply_effort(request: dict[str, Any], options: dict[str, Any] | None, style: str) -> None:
+def apply_effort(request: dict[str, Any], options: dict[str, Any] | None, style: str, *, model: str = "") -> None:
     """Put the requested effort into ``request`` the way ``style``'s API takes it."""
     effort = requested_effort(options)
     if effort is None:
@@ -48,7 +49,7 @@ def apply_effort(request: dict[str, Any], options: dict[str, Any] | None, style:
             reasoning.setdefault("effort", effort)
     elif style == "google":
         thinking = request.setdefault("thinking_config", {})
-        if isinstance(thinking, dict):
-            thinking.setdefault("thinking_level", google_thinking_level(effort))
+        if isinstance(thinking, dict) and "thinking_budget" not in thinking:
+            thinking.setdefault("thinking_level", google_thinking_level(effort, model))
     else:
         raise ValueError(f"Unknown effort style: {style!r}")

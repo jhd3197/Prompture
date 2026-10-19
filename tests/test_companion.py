@@ -331,6 +331,58 @@ def test_running_instance_only_trusts_loopback_http(tmp_path, url):
     assert running_instance(state_path) is None
 
 
+def test_instance_lock_admits_one_companion(tmp_path):
+    from prompture.companion.server import instance_lock
+
+    path = tmp_path / "companion.lock"
+    first = instance_lock(path)
+    assert first is not None
+    assert instance_lock(path) is None  # held: a second companion must not start
+    first.close()
+    again = instance_lock(path)
+    assert again is not None
+    again.close()
+
+
+def test_companion_cli_defers_to_the_lock_holder(tmp_path, monkeypatch):
+    from click.testing import CliRunner
+
+    from prompture.cli.cli import cli
+    from prompture.companion import server as server_mod
+
+    lock_path, state_path = tmp_path / "companion.lock", tmp_path / "companion.json"
+    _, source = _ledger(tmp_path)
+    srv = CompanionServer(source, bus=LiveBus(), state_path=state_path)
+    import threading
+
+    held = server_mod.instance_lock(lock_path)
+    thread = threading.Thread(target=srv.run, daemon=True)
+    thread.start()
+    calls = {"n": 0}
+
+    def slow_then_up(path=state_path, timeout=2.0):
+        calls["n"] += 1  # the quick check misses the busy companion; the patient one finds it
+        return None if calls["n"] == 1 else server_mod.running_instance(state_path, timeout)
+
+    monkeypatch.setattr(server_mod, "LOCK_FILE", lock_path)
+    monkeypatch.setattr(server_mod.instance_lock, "__defaults__", (lock_path,))
+    monkeypatch.setattr("prompture.companion.running_instance", slow_then_up)
+
+    def no_second_server(*args, **kwargs):
+        raise AssertionError("started a second companion")
+
+    monkeypatch.setattr("prompture.companion.CompanionServer", no_second_server)
+    try:
+        result = CliRunner().invoke(cli, ["companion", "--no-automations"])
+        assert result.exit_code == 0, result.output
+        assert "already running" in result.output
+        assert calls["n"] >= 2
+    finally:
+        srv.shutdown()
+        thread.join(5)
+        held.close()
+
+
 def test_stops_when_owner_process_exits(tmp_path):
     import os
     import subprocess
