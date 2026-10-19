@@ -437,6 +437,26 @@ class TestSubAgents:
         out = tool.function(description="x", subagent_type="unknown")
         assert "unknown subagent_type" in out
 
+    def test_subagent_prompt_carries_report_contract(self):
+        from prompture.agents.deep.subagents import _resolve_subagent_prompt
+        from prompture.agents.deep_prompts import SUBAGENT_REPORT_NOTE
+
+        out = _resolve_subagent_prompt("You answer numbers.")
+        assert out.startswith("You answer numbers.")
+        assert out.endswith(SUBAGENT_REPORT_NOTE)
+        assert _resolve_subagent_prompt("") == SUBAGENT_REPORT_NOTE
+
+    def test_task_description_fits_provider_limit(self):
+        from prompture.agents.tools_schema import MAX_TOOL_DESCRIPTION_CHARS
+
+        specs = [
+            SubAgentSpec(name=f"agent_{i}", description="Does one focused job well.", system_prompt="p")
+            for i in range(5)
+        ]
+        tool = make_task_tool(specs=specs, state=DeepAgentState(), parent_model="m", parent_user_tools=[])
+        assert len(tool.description) <= MAX_TOOL_DESCRIPTION_CHARS
+        assert "agent_4" in tool.description
+
     def test_duplicate_spec_names_raise(self):
         state = DeepAgentState()
         specs = [

@@ -13,7 +13,7 @@ from typing import Any
 from ...drivers.base import Driver
 from ...infra.budget import BudgetPolicy
 from ...infra.callbacks import DriverCallbacks
-from ..deep_prompts import TASK_TOOL_DESC_TEMPLATE
+from ..deep_prompts import SUBAGENT_REPORT_NOTE, TASK_TOOL_DESC_TEMPLATE
 from ..deep_state import DeepAgentState, SubAgentCallRecord, SubAgentSpec
 from ..persona import Persona
 from ..tools_schema import ToolDefinition
@@ -31,10 +31,9 @@ def _truncate(text: str, limit: int = 500) -> str:
 
 
 def _resolve_subagent_prompt(prompt: str | Persona) -> str:
-    """Render a sub-agent system prompt from string or Persona."""
-    if isinstance(prompt, Persona):
-        return prompt.render()
-    return str(prompt)
+    """Render a sub-agent system prompt from string or Persona, plus the report contract."""
+    text = prompt.render() if isinstance(prompt, Persona) else str(prompt)
+    return f"{text.strip()}\n\n{SUBAGENT_REPORT_NOTE}" if text.strip() else SUBAGENT_REPORT_NOTE
 
 
 def make_task_tool(
@@ -170,7 +169,7 @@ def make_task_tool(
             "properties": {
                 "description": {
                     "type": "string",
-                    "description": "Self-contained instructions for the sub-agent.",
+                    "description": "Full brief: goal and why, what is known or ruled out, exact inputs, and what to return.",
                 },
                 "subagent_type": {
                     "type": "string",
@@ -290,7 +289,7 @@ def make_async_task_tool(
             "properties": {
                 "description": {
                     "type": "string",
-                    "description": "Self-contained instructions for the sub-agent.",
+                    "description": "Full brief: goal and why, what is known or ruled out, exact inputs, and what to return.",
                 },
                 "subagent_type": {
                     "type": "string",

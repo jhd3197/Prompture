@@ -107,8 +107,11 @@ When NOT to delegate:
 Available sub-agents:
 {available_types}
 
-Call: ``task(description="...", subagent_type="<name>")``. Be concrete \
-in the description — the sub-agent has no other context.\
+Call: ``task(description="...", subagent_type="<name>")``. The \
+description is the sub-agent's only context, so write it as a full \
+brief: the goal and why, what you know or ruled out, the exact inputs, \
+and what to return. Terse one-line briefs produce shallow, generic work. \
+You receive only the sub-agent's final message; check what you rely on.\
 """
 
 # --- Tool descriptions -----------------------------------------------
@@ -131,19 +134,35 @@ just the changed ones.\
 """
 
 TASK_TOOL_DESC_TEMPLATE = """\
-Delegate a focused subproblem to a specialist sub-agent that runs in \
-isolation (it sees only the description, not your conversation history).
+Delegate a focused subproblem to a specialist sub-agent. It starts with \
+no context: it sees only your description, not this conversation.
 
-Arguments:
-- description (string, required): clear, self-contained instructions \
-for the sub-agent. Include any context it needs — it has none.
-- subagent_type (string, required): which sub-agent to dispatch to. \
-Must be one of the configured names.
+Brief it like a capable colleague who just walked in:
+- the goal and why it matters
+- what you already know or have ruled out
+- exact names, values, URLs or file paths it needs
+- what to return, in what form and how long
+
+Do the synthesis yourself. "Based on your findings, decide what to do" \
+hands your judgment to an agent that lacks your context; ask for the \
+findings and decide yourself.
+
+Returns only the sub-agent's final message. Check claims you depend on.
 
 Available sub-agent types:
-{available_types}
+{available_types}\
+"""
 
-Returns the sub-agent's final response as a string.\
+SUBAGENT_REPORT_NOTE = """\
+## Reporting back
+
+You are working on a task delegated by another agent. Your final message \
+is the only thing it receives: it does not see your tool calls or earlier \
+messages. Put everything it needs in that message. Lead with the answer, \
+give exact values, names, paths and sources, and say plainly what you \
+could not find, verify or finish. No one can answer questions mid-task, \
+so make the most reasonable reading of the brief and state any \
+assumption you made.\
 """
 
 READ_FILE_DESC = """\
