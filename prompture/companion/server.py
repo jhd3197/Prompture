@@ -47,7 +47,7 @@ import secrets
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any
+from typing import IO, Any
 from urllib.parse import parse_qs, unquote, urlparse
 
 from .automations import AutomationError, Automations, roadmap_steps
@@ -63,6 +63,8 @@ from .tool_routing import RoutingError, ToolRouting
 logger = logging.getLogger("prompture.companion")
 
 STATE_FILE = Path.home() / ".prompture" / "companion.json"
+#: Held by the running companion, so a second one never starts next to it.
+LOCK_FILE = Path.home() / ".prompture" / "companion.lock"
 #: The port ``prompture companion`` asks for first, so routed CLIs find it at the same address.
 DEFAULT_PORT = 47811
 HEARTBEAT_SECONDS = 15.0
@@ -843,6 +845,32 @@ def running_instance(path: Path = STATE_FILE, timeout: float = 2.0) -> dict[str,
         return None
     finally:
         conn.close()
+
+
+def instance_lock(path: Path = LOCK_FILE) -> IO[bytes] | None:
+    """Claim the one-companion-per-user lock; ``None`` when another process holds it.
+
+    Keep the returned file open while serving. The OS drops the lock when the
+    process ends, however it ends, so a crash never leaves it stale. Unlike
+    :func:`running_instance` this doesn't depend on a busy companion answering
+    in time, so a slow one is never mistaken for a missing one.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fh = open(path, "a+b")  # noqa: SIM115 - held open for the life of the process
+    try:
+        if os.name == "nt":
+            import msvcrt
+
+            fh.seek(0)
+            msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        fh.close()
+        return None
+    return fh
 
 
 def process_alive(pid: int) -> bool:

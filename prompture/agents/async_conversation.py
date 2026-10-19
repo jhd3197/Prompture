@@ -160,6 +160,7 @@ class AsyncConversation(ToolContextMixin):
 
         # Reasoning content from last response
         self._last_reasoning: str | None = None
+        self._last_google_parts: list[dict[str, Any]] | None = None
 
         # Optional before_turn hook (sync or async callable). Fires before
         # each driver call inside the tool loop.
@@ -208,6 +209,8 @@ class AsyncConversation(ToolContextMixin):
         msg: dict[str, Any] = {"role": "assistant", "content": content}
         if self._last_reasoning:
             msg["reasoning_content"] = self._last_reasoning
+        if self._last_google_parts is not None:
+            msg["_google_parts"] = self._last_google_parts
         return msg
 
     @property
@@ -550,6 +553,7 @@ class AsyncConversation(ToolContextMixin):
         resp = await self._driver.generate_messages_with_hooks(final_msgs, merged)
         text: str = resp.get("text", "")
         self._last_reasoning = resp.get("reasoning_content")
+        self._last_google_parts = resp.get("_google_parts")
         self._accumulate_usage(resp.get("meta", {}))
         self._messages.append(self._assistant_message(text))
         return text
@@ -601,8 +605,9 @@ class AsyncConversation(ToolContextMixin):
         self._usage["total_tokens"] += delta_tokens
         self._usage["cost"] += delta_cost
         self._usage["turns"] += 1
-        if prompt_tokens:
-            self._last_prompt_tokens = prompt_tokens
+        context_prompt_tokens = meta.get("initial_prompt_tokens", prompt_tokens)
+        if context_prompt_tokens:
+            self._last_prompt_tokens = context_prompt_tokens
         logger.debug(
             "[conversation] usage delta tokens=%d cost=%.6f | running total tokens=%d cost=%.6f turns=%d",
             delta_tokens,
@@ -627,6 +632,7 @@ class AsyncConversation(ToolContextMixin):
         dispatches to the async tool execution loop.
         """
         self._last_reasoning = None
+        self._last_google_parts = None
 
         # Route to appropriate tool handling
         if self._tools:
@@ -648,6 +654,7 @@ class AsyncConversation(ToolContextMixin):
         text: str = resp.get("text", "")
         meta = resp.get("meta", {})
         self._last_reasoning = resp.get("reasoning_content")
+        self._last_google_parts = resp.get("_google_parts")
 
         user_content = self._build_content_with_images(content, images)
         self._messages.append({"role": "user", "content": user_content})
@@ -689,6 +696,7 @@ class AsyncConversation(ToolContextMixin):
 
             if not tool_calls:
                 self._last_reasoning = resp.get("reasoning_content")
+                self._last_google_parts = resp.get("_google_parts")
                 self._messages.append(self._assistant_message(text))
                 return text
 
@@ -711,6 +719,8 @@ class AsyncConversation(ToolContextMixin):
             # on subsequent requests (e.g. Moonshot reasoning models).
             if resp.get("reasoning_content") is not None:
                 assistant_msg["reasoning_content"] = resp["reasoning_content"]
+            if resp.get("_google_parts") is not None:
+                assistant_msg["_google_parts"] = resp["_google_parts"]
 
             self._messages.append(assistant_msg)
             msgs.append(assistant_msg)
@@ -749,6 +759,7 @@ class AsyncConversation(ToolContextMixin):
         :meth:`Conversation.ask_with_tool_events`.
         """
         self._last_reasoning = None
+        self._last_google_parts = None
 
         if not self._tools:
             async for chunk in self.ask_stream(content, options, images=images):
@@ -790,6 +801,7 @@ class AsyncConversation(ToolContextMixin):
 
             if not tool_calls:
                 self._last_reasoning = resp.get("reasoning_content")
+                self._last_google_parts = resp.get("_google_parts")
                 self._messages.append(self._assistant_message(text))
                 yield {"type": "text_delta", "text": text}
                 return
@@ -811,6 +823,8 @@ class AsyncConversation(ToolContextMixin):
             ]
             if resp.get("reasoning_content") is not None:
                 assistant_msg["reasoning_content"] = resp["reasoning_content"]
+            if resp.get("_google_parts") is not None:
+                assistant_msg["_google_parts"] = resp["_google_parts"]
 
             self._messages.append(assistant_msg)
             msgs.append(assistant_msg)
@@ -879,6 +893,7 @@ class AsyncConversation(ToolContextMixin):
         )
 
         self._last_reasoning = None
+        self._last_google_parts = None
 
         if not self._tools:
             async for chunk in self.ask_stream(content, options, images=images):
@@ -934,6 +949,7 @@ class AsyncConversation(ToolContextMixin):
             tool_calls_in_turn: list[dict[str, Any]] = []
             pending_tools: list[dict[str, Any]] = []
             turn_usage: dict[str, Any] = {}
+            google_parts: list[dict[str, Any]] | None = None
 
             tool_defs = self._active_tools().to_openai_format()
             stream = self._driver.generate_messages_with_tools_stream(msgs, tool_defs, merged)
@@ -965,6 +981,7 @@ class AsyncConversation(ToolContextMixin):
                             }
                         )
                     elif et == "message_stop":
+                        google_parts = getattr(event, "provider_state", {}).get("_google_parts")
                         turn_usage = dict(event.usage or {})
                         self._driver._auto_record_usage(
                             {"meta": turn_usage}, (time.perf_counter() - stream_started) * 1000
@@ -1014,6 +1031,9 @@ class AsyncConversation(ToolContextMixin):
             if full_thinking is not None:
                 assistant_msg["reasoning_content"] = full_thinking
                 self._last_reasoning = full_thinking
+            if google_parts is not None:
+                assistant_msg["_google_parts"] = google_parts
+                self._last_google_parts = google_parts
 
             self._messages.append(assistant_msg)
             msgs.append(assistant_msg)
@@ -1296,6 +1316,7 @@ class AsyncConversation(ToolContextMixin):
                     self._accumulate_usage(meta)
                     if chunk.get("reasoning_content"):
                         self._last_reasoning = chunk["reasoning_content"]
+                    self._last_google_parts = chunk.get("_google_parts")
         except Exception as exc:
             stream_error = exc
             elapsed_ms = (time.perf_counter() - t0) * 1000
@@ -1372,6 +1393,7 @@ class AsyncConversation(ToolContextMixin):
 
         self._check_budget()
         self._last_reasoning = None
+        self._last_google_parts = None
 
         merged = {**self._options, **(options or {})}
 
@@ -1436,6 +1458,7 @@ class AsyncConversation(ToolContextMixin):
         text = resp.get("text", "")
         meta = resp.get("meta", {})
         self._last_reasoning = resp.get("reasoning_content")
+        self._last_google_parts = resp.get("_google_parts")
 
         user_content = self._build_content_with_images(content, images)
         self._messages.append({"role": "user", "content": user_content})

@@ -1,4 +1,26 @@
 {
+  "gemini-4-argon": {
+    "supports_temperature": false,
+    "supports_tool_use": true,
+    "supports_structured_output": true,
+    "supports_vision": true,
+    "is_reasoning": true,
+    "context_window": 1048576,
+    "max_output_tokens": 65536,
+    "modalities_input": ["text", "image", "audio", "video", "pdf"],
+    "modalities_output": ["text"],
+    "api_type": "google",
+    "tokens_param": "max_tokens",
+    "cost": {"input": 2.0, "output": 10.0, "cache_read": 0.10},
+    "cost_schedule": [
+      {
+        "effective_date": "2026-12-01",
+        "cost": {"input": 4.0, "output": 20.0, "cache_read": 0.20}
+      }
+    ],
+    "pricing_source": "https://ai.google.dev/gemini-api/docs/pricing",
+    "pricing_verified_at": "2026-10-16"
+  },
   "gemini-3.1-pro-preview": {
     "supports_temperature": true,
     "supports_tool_use": true,

@@ -160,6 +160,7 @@ class Conversation(ToolContextMixin):
 
         # Reasoning content from last response
         self._last_reasoning: str | None = None
+        self._last_google_parts: list[dict[str, Any]] | None = None
 
         # Optional callback fired before each driver call inside the tool
         # loop. Used by DeepAgent for summarization. The hook receives
@@ -210,6 +211,8 @@ class Conversation(ToolContextMixin):
         msg: dict[str, Any] = {"role": "assistant", "content": content}
         if self._last_reasoning:
             msg["reasoning_content"] = self._last_reasoning
+        if self._last_google_parts is not None:
+            msg["_google_parts"] = self._last_google_parts
         return msg
 
     @property
@@ -554,6 +557,7 @@ class Conversation(ToolContextMixin):
         resp = self._driver.generate_messages_with_hooks(final_msgs, merged)
         text: str = resp.get("text", "")
         self._last_reasoning = resp.get("reasoning_content")
+        self._last_google_parts = resp.get("_google_parts")
         self._accumulate_usage(resp.get("meta", {}))
         self._messages.append(self._assistant_message(text))
         return text
@@ -607,8 +611,9 @@ class Conversation(ToolContextMixin):
         self._usage["turns"] += 1
         # Track most recent prompt size so before_turn hooks know the
         # current context window without recomputing it.
-        if prompt_tokens:
-            self._last_prompt_tokens = prompt_tokens
+        context_prompt_tokens = meta.get("initial_prompt_tokens", prompt_tokens)
+        if context_prompt_tokens:
+            self._last_prompt_tokens = context_prompt_tokens
         logger.debug(
             "[conversation] usage delta tokens=%d cost=%.6f | running total tokens=%d cost=%.6f turns=%d",
             delta_tokens,
@@ -640,6 +645,7 @@ class Conversation(ToolContextMixin):
                 base64 string, or :class:`ImageContent`).
         """
         self._last_reasoning = None
+        self._last_google_parts = None
 
         # Route to appropriate tool handling
         if self._tools:
@@ -661,6 +667,7 @@ class Conversation(ToolContextMixin):
         text: str = resp.get("text", "")
         meta = resp.get("meta", {})
         self._last_reasoning = resp.get("reasoning_content")
+        self._last_google_parts = resp.get("_google_parts")
 
         # Record in history — store content with images for context
         user_content = self._build_content_with_images(content, images)
@@ -705,6 +712,7 @@ class Conversation(ToolContextMixin):
             if not tool_calls:
                 # No tool calls -> final response
                 self._last_reasoning = resp.get("reasoning_content")
+                self._last_google_parts = resp.get("_google_parts")
                 self._messages.append(self._assistant_message(text))
                 return text
 
@@ -728,6 +736,8 @@ class Conversation(ToolContextMixin):
             # on subsequent requests (e.g. Moonshot reasoning models).
             if resp.get("reasoning_content") is not None:
                 assistant_msg["reasoning_content"] = resp["reasoning_content"]
+            if resp.get("_google_parts") is not None:
+                assistant_msg["_google_parts"] = resp["_google_parts"]
 
             self._messages.append(assistant_msg)
             msgs.append(assistant_msg)
@@ -773,6 +783,7 @@ class Conversation(ToolContextMixin):
         provide real-time feedback when tools are registered.
         """
         self._last_reasoning = None
+        self._last_google_parts = None
 
         if not self._tools:
             # No tools — just stream directly
@@ -816,6 +827,7 @@ class Conversation(ToolContextMixin):
             if not tool_calls:
                 # Final response — stream it if possible
                 self._last_reasoning = resp.get("reasoning_content")
+                self._last_google_parts = resp.get("_google_parts")
                 self._messages.append(self._assistant_message(text))
                 # Yield final text as deltas (single chunk since we already have the full text)
                 yield {"type": "text_delta", "text": text}
@@ -839,6 +851,8 @@ class Conversation(ToolContextMixin):
             ]
             if resp.get("reasoning_content") is not None:
                 assistant_msg["reasoning_content"] = resp["reasoning_content"]
+            if resp.get("_google_parts") is not None:
+                assistant_msg["_google_parts"] = resp["_google_parts"]
 
             self._messages.append(assistant_msg)
             msgs.append(assistant_msg)
@@ -919,6 +933,7 @@ class Conversation(ToolContextMixin):
         )
 
         self._last_reasoning = None
+        self._last_google_parts = None
 
         if not self._tools:
             for chunk in self.ask_stream(content, options, images=images):
@@ -974,6 +989,7 @@ class Conversation(ToolContextMixin):
             tool_calls_in_turn: list[dict[str, Any]] = []
             pending_tools: list[dict[str, Any]] = []
             turn_usage: dict[str, Any] = {}
+            google_parts: list[dict[str, Any]] | None = None
             stop_reason: str = "end_turn"
 
             tool_defs = self._active_tools().to_openai_format()
@@ -1006,6 +1022,7 @@ class Conversation(ToolContextMixin):
                             }
                         )
                     elif et == "message_stop":
+                        google_parts = getattr(event, "provider_state", {}).get("_google_parts")
                         turn_usage = dict(event.usage or {})
                         self._driver._auto_record_usage(
                             {"meta": turn_usage}, (time.perf_counter() - stream_started) * 1000
@@ -1056,6 +1073,9 @@ class Conversation(ToolContextMixin):
             if full_thinking is not None:
                 assistant_msg["reasoning_content"] = full_thinking
                 self._last_reasoning = full_thinking
+            if google_parts is not None:
+                assistant_msg["_google_parts"] = google_parts
+                self._last_google_parts = google_parts
 
             self._messages.append(assistant_msg)
             msgs.append(assistant_msg)
@@ -1331,6 +1351,7 @@ class Conversation(ToolContextMixin):
                     self._accumulate_usage(meta)
                     if chunk.get("reasoning_content"):
                         self._last_reasoning = chunk["reasoning_content"]
+                    self._last_google_parts = chunk.get("_google_parts")
         except Exception as exc:
             stream_error = exc
             elapsed_ms = (time.perf_counter() - t0) * 1000
@@ -1496,6 +1517,7 @@ class Conversation(ToolContextMixin):
 
         self._check_budget()
         self._last_reasoning = None
+        self._last_google_parts = None
 
         merged = {**self._options, **(options or {})}
 
@@ -1564,6 +1586,7 @@ class Conversation(ToolContextMixin):
         text = resp.get("text", "")
         meta = resp.get("meta", {})
         self._last_reasoning = resp.get("reasoning_content")
+        self._last_google_parts = resp.get("_google_parts")
 
         # Store original content (without schema boilerplate) for cleaner context
         # Include images in history so subsequent turns can reference them

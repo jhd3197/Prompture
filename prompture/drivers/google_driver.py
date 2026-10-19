@@ -1,8 +1,7 @@
-import json
 import logging
 import os
-import uuid
 from collections.abc import Iterator
+from types import SimpleNamespace
 from typing import Any
 
 try:
@@ -14,10 +13,9 @@ except ImportError:
     genai_errors = None  # type: ignore[assignment]
     types = None  # type: ignore[assignment]
 
-from ..exceptions import DriverError
 from ..infra.cost_mixin import CostMixin
-from ._effort import apply_effort
-from .base import Driver, DriverHTTPError, _normalize_stop_reason, _translate_tool_choice
+from ._google_genai import add_tools, build_generation_args, extract_usage, response_parts, tool_response
+from .base import Driver, DriverHTTPError
 
 logger = logging.getLogger(__name__)
 
@@ -115,52 +113,9 @@ class GoogleDriver(CostMixin, Driver):
         return 0.0
 
     def _extract_usage_metadata(self, response: Any, messages: list[dict[str, Any]]) -> dict[str, Any]:
-        """Extract token counts from response, falling back to character estimation."""
-        usage = getattr(response, "usage_metadata", None)
-        cached_prompt_tokens = 0
-        if usage:
-            prompt_tokens = getattr(usage, "prompt_token_count", 0) or 0
-            completion_tokens = getattr(usage, "candidates_token_count", 0) or 0
-            total_tokens = getattr(usage, "total_token_count", 0) or (prompt_tokens + completion_tokens)
-            # Gemini's prompt_token_count includes the cached portion (similar
-            # to OpenAI), so we don't need to add cached_content_token_count
-            # back into prompt_tokens — just surface it for cost discounting.
-            raw_cached = getattr(usage, "cached_content_token_count", 0) or 0
-            if isinstance(raw_cached, (int, float)):
-                cached_prompt_tokens = int(raw_cached)
-            cost = self._calculate_cost(
-                "google",
-                self.model,
-                prompt_tokens,
-                completion_tokens,
-                cached_tokens=cached_prompt_tokens,
-            )
-        else:
-            # Fallback: estimate from character counts
-            total_prompt_chars = 0
-            for msg in messages:
-                c = msg.get("content", "")
-                if isinstance(c, str):
-                    total_prompt_chars += len(c)
-                elif isinstance(c, list):
-                    for part in c:
-                        if isinstance(part, str):
-                            total_prompt_chars += len(part)
-                        elif isinstance(part, dict) and "text" in part:
-                            total_prompt_chars += len(part["text"])
-            completion_chars = len(response.text) if response.text else 0
-            prompt_tokens = total_prompt_chars // 4
-            completion_tokens = completion_chars // 4
-            total_tokens = prompt_tokens + completion_tokens
-            cost = self._calculate_cost_chars(total_prompt_chars, completion_chars)
-
-        return {
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
-            "total_tokens": total_tokens,
-            "cached_prompt_tokens": cached_prompt_tokens,
-            "cost": round(cost, 6),
-        }
+        return extract_usage(
+            response, messages, lambda p, c, **kw: self._calculate_cost("google", self.model, p, c, **kw)
+        )
 
     supports_messages = True
 
@@ -172,143 +127,7 @@ class GoogleDriver(CostMixin, Driver):
     def _build_generation_args(
         self, messages: list[dict[str, Any]], options: dict[str, Any] | None = None
     ) -> tuple[Any, dict[str, Any]]:
-        """Parse messages and options into (contents, config_dict) for generate_content.
-
-        Returns the content input and a config dict suitable for
-        constructing ``types.GenerateContentConfig(**config_dict)``.
-        """
-        merged_options = self.options.copy()
-        if options:
-            merged_options.update(options)
-
-        config_dict: dict[str, Any] = {}
-
-        model = merged_options.get("model", self.model)
-        supports_temperature = self._get_model_config("google", model)["supports_temperature"]
-
-        if supports_temperature and "temperature" in merged_options:
-            config_dict.setdefault("temperature", merged_options["temperature"])
-        if "max_tokens" in merged_options:
-            config_dict.setdefault("max_output_tokens", merged_options["max_tokens"])
-        if "top_p" in merged_options:
-            config_dict.setdefault("top_p", merged_options["top_p"])
-        if "top_k" in merged_options:
-            config_dict.setdefault("top_k", merged_options["top_k"])
-        apply_effort(config_dict, merged_options, "google")  # Gemini's thinking level (see _effort)
-
-        # Forward explicit generation_config entries
-        for k, v in merged_options.get("generation_config", {}).items():
-            config_dict.setdefault(k, v)
-
-        # Forward safety_settings
-        safety_settings = merged_options.get("safety_settings")
-        if safety_settings:
-            config_dict["safety_settings"] = safety_settings
-
-        # Native JSON mode support
-        if merged_options.get("json_mode"):
-            config_dict["response_mime_type"] = "application/json"
-            json_schema = merged_options.get("json_schema")
-            if json_schema:
-                config_dict["response_schema"] = json_schema
-
-        # Convert messages to Gemini format, including tool calls/results
-        system_instruction = None
-        contents: list[dict[str, Any]] = []
-        # Track tool_call id → name mapping for tool result messages
-        tool_call_names: dict[str, str] = {}
-
-        for msg in messages:
-            role = msg.get("role", "user")
-            content = msg.get("content", "")
-
-            if role == "system":
-                system_instruction = content if isinstance(content, str) else str(content)
-
-            elif role == "assistant":
-                tool_calls = msg.get("tool_calls")
-                if tool_calls:
-                    # Assistant message with function calls → model with function_call parts
-                    parts: list[Any] = []
-                    if content:
-                        parts.append(content)
-                    for tc in tool_calls:
-                        fn = tc.get("function", tc)
-                        name = fn.get("name", "")
-                        tc_id = tc.get("id", "")
-                        tool_call_names[tc_id] = name
-                        args = fn.get("arguments", {})
-                        if isinstance(args, str):
-                            try:
-                                args = json.loads(args)
-                            except (json.JSONDecodeError, TypeError):
-                                args = {}
-                        parts.append(
-                            types.Part(
-                                function_call=types.FunctionCall(
-                                    name=name,
-                                    args=args,
-                                )
-                            )
-                        )
-                    contents.append({"role": "model", "parts": parts})
-                else:
-                    if msg.get("_vision_parts"):
-                        contents.append({"role": "model", "parts": content})
-                    else:
-                        contents.append({"role": "model", "parts": [content]})
-
-            elif role == "tool":
-                # Tool result → user with function_response part
-                tc_id = msg.get("tool_call_id", "")
-                name = tool_call_names.get(tc_id)
-                if name is None:
-                    raise DriverError(
-                        f"Tool result message references unknown tool_call_id {tc_id!r}: "
-                        "no matching assistant tool call exists in the conversation "
-                        "history, and Gemini rejects function_response parts with a "
-                        "fabricated name."
-                    )
-                result_content = content
-                if isinstance(result_content, str):
-                    try:
-                        result_content = json.loads(result_content)
-                    except (json.JSONDecodeError, TypeError):
-                        result_content = {"result": result_content}
-                if not isinstance(result_content, dict):
-                    result_content = {"result": str(result_content)}
-                parts = [
-                    types.Part(
-                        function_response=types.FunctionResponse(
-                            name=name,
-                            response=result_content,
-                        )
-                    )
-                ]
-                contents.append({"role": "user", "parts": parts})
-
-            else:
-                # Regular user message
-                if msg.get("_vision_parts"):
-                    contents.append({"role": "user", "parts": content})
-                else:
-                    contents.append({"role": "user", "parts": [content]})
-
-        # For a single message, unwrap only if it has exactly one string part
-        gen_input: str | list[dict[str, Any]]
-        if len(contents) == 1:
-            parts = contents[0]["parts"]
-            if len(parts) == 1 and isinstance(parts[0], str):
-                gen_input = parts[0]
-            else:
-                gen_input = contents
-        else:
-            gen_input = contents
-
-        if system_instruction:
-            config_dict["system_instruction"] = system_instruction
-
-        return gen_input, config_dict
+        return build_generation_args(self, messages, options, types)
 
     def generate(self, prompt: str, options: dict[str, Any] | None = None) -> dict[str, Any]:
         messages = [{"role": "user", "content": prompt}]
@@ -347,7 +166,7 @@ class GoogleDriver(CostMixin, Driver):
                 "model_name": self.model,
             }
 
-            return {"text": response.text, "meta": meta}
+            return {"text": response.text, "meta": meta, "_google_parts": response_parts(response)}
 
         except (genai_errors.APIError, ValueError) as e:
             logger.error(f"Google API request failed: {e}")
@@ -362,109 +181,24 @@ class GoogleDriver(CostMixin, Driver):
     # ------------------------------------------------------------------
 
     def generate_messages_with_tools(
-        self,
-        messages: list[dict[str, Any]],
-        tools: list[dict[str, Any]],
-        options: dict[str, Any],
+        self, messages: list[dict[str, Any]], tools: list[dict[str, Any]], options: dict[str, Any]
     ) -> dict[str, Any]:
-        """Generate a response that may include tool/function calls."""
-        model = options.get("model", self.model)
-        self._validate_model_capabilities("google", model, using_tool_use=True)
-
+        self._validate_model_capabilities("google", self.model, using_tool_use=True)
         gen_input, config_dict = self._build_generation_args(self._prepare_messages(messages), options)
-
-        # Convert tools from OpenAI format to Gemini function declarations
-        function_declarations = []
-        for t in tools:
-            if "type" in t and t["type"] == "function":
-                fn = t["function"]
-                decl = types.FunctionDeclaration(
-                    name=fn["name"],
-                    description=fn.get("description", ""),
-                )
-                params = fn.get("parameters")
-                if params:
-                    decl = types.FunctionDeclaration(
-                        name=fn["name"],
-                        description=fn.get("description", ""),
-                        parameters_json_schema=params,
-                    )
-                function_declarations.append(decl)
-            elif "name" in t:
-                # Already in a generic format
-                params = t.get("parameters") or t.get("input_schema")
-                if params:
-                    decl = types.FunctionDeclaration(
-                        name=t["name"],
-                        description=t.get("description", ""),
-                        parameters_json_schema=params,
-                    )
-                else:
-                    decl = types.FunctionDeclaration(
-                        name=t["name"],
-                        description=t.get("description", ""),
-                    )
-                function_declarations.append(decl)
-
-        config_dict["tools"] = [types.Tool(function_declarations=function_declarations)]
-
-        tool_choice = _translate_tool_choice(options.get("tool_choice"), "google")
-        if tool_choice is not None:
-            config_dict["tool_config"] = types.ToolConfig(
-                function_calling_config=types.FunctionCallingConfig(**tool_choice)
-            )
-
+        add_tools(config_dict, tools, options, types)
         try:
-            config = types.GenerateContentConfig(**config_dict)
             response = self._client.models.generate_content(
                 model=self.model,
                 contents=gen_input,
-                config=config,
+                config=types.GenerateContentConfig(**config_dict),
             )
-
-            usage_meta = self._extract_usage_metadata(response, messages)
             meta = {
-                **usage_meta,
-                "raw_response": response.prompt_feedback if hasattr(response, "prompt_feedback") else None,
+                **self._extract_usage_metadata(response, messages),
+                "raw_response": getattr(response, "prompt_feedback", None),
                 "model_name": self.model,
             }
-
-            text = ""
-            tool_calls_out: list[dict[str, Any]] = []
-            raw_stop_reason: Any = None
-
-            for candidate in response.candidates or []:
-                if candidate.content is None or candidate.content.parts is None:
-                    continue
-                for part in candidate.content.parts:
-                    if hasattr(part, "text") and part.text:
-                        text += part.text
-                    if hasattr(part, "function_call") and part.function_call is not None and part.function_call.name:
-                        fc = part.function_call
-                        tool_calls_out.append(
-                            {
-                                "id": str(uuid.uuid4()),
-                                "name": fc.name,
-                                "arguments": dict(fc.args) if fc.args else {},
-                            }
-                        )
-
-                finish_reason = getattr(candidate, "finish_reason", None)
-                if finish_reason is not None:
-                    raw_stop_reason = finish_reason
-
-            stop_reason = _normalize_stop_reason(raw_stop_reason, tool_calls_present=bool(tool_calls_out))
-            meta["raw_stop_reason"] = str(raw_stop_reason) if raw_stop_reason is not None else None
-
-            return {
-                "text": text,
-                "meta": meta,
-                "tool_calls": tool_calls_out,
-                "stop_reason": stop_reason,
-            }
-
+            return tool_response(response, meta)
         except (genai_errors.APIError, ValueError) as e:
-            logger.error(f"Google API tool call request failed: {e}")
             raise DriverHTTPError(
                 f"Google API tool call request failed: {e}",
                 status_code=getattr(e, "code", None),
@@ -492,17 +226,25 @@ class GoogleDriver(CostMixin, Driver):
             )
 
             full_text = ""
+            last_usage = None
+            stream_parts = []
             for chunk in response:
+                if getattr(chunk, "usage_metadata", None) is not None:
+                    last_usage = chunk.usage_metadata
+                stream_parts.extend(response_parts(chunk))
                 chunk_text = getattr(chunk, "text", None) or ""
                 if chunk_text:
                     full_text += chunk_text
                     yield {"type": "delta", "text": chunk_text}
 
-            # After iteration completes, usage_metadata should be available
-            usage_meta = self._extract_usage_metadata(response, messages)
+            # Gemini reports cumulative usage on response chunks.
+            usage_meta = self._extract_usage_metadata(
+                SimpleNamespace(usage_metadata=last_usage, text=full_text), messages
+            )
 
             yield {
                 "type": "done",
+                "_google_parts": stream_parts,
                 "text": full_text,
                 "meta": {
                     **usage_meta,

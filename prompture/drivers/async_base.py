@@ -154,7 +154,8 @@ class AsyncDriver(ABC):
                 raw_stop_reason=meta.get("raw_stop_reason") if tc.get("arguments_error") else None,
             )
 
-        yield MessageStop(stop_reason=stop_reason, usage=meta)
+        provider_state = {"_google_parts": resp["_google_parts"]} if resp.get("_google_parts") is not None else {}
+        yield MessageStop(stop_reason=stop_reason, usage=meta, provider_state=provider_state)
 
     # ------------------------------------------------------------------
     # Hook-aware wrappers
