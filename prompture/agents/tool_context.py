@@ -287,7 +287,9 @@ class ToolLoader:
                 search_tools,
                 description=(
                     f"Search tools that are available but whose schemas are not loaded yet. "
-                    f"Deferred tools: {listing}. Returns names and one-line descriptions."
+                    f"Deferred tools: {listing}. Returns names and one-line descriptions. "
+                    f"When the task needs a capability your loaded tools lack, check here "
+                    f"before saying it can't be done."
                 ),
                 max_description_chars=None,
             ),
@@ -295,6 +297,9 @@ class ToolLoader:
                 load_tools,
                 description=(
                     "Load the full schemas of the named tools so you can call them. "
+                    "Until a deferred tool is loaded you know only its name, not its "
+                    "parameters, so load it before the first call instead of guessing "
+                    "arguments. Load several in one call when you need them together. "
                     "Loaded tools stay available for the rest of the conversation."
                 ),
             ),

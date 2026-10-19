@@ -27,6 +27,7 @@ from .core import (
     _dataframe_to_toon,
     _json_to_toon,
     _merge_usage,
+    json_repair_prompt,
     normalize_field_value,
     wrap_untrusted,
 )
@@ -48,7 +49,13 @@ logger = logging.getLogger("prompture.async_core")
 
 
 async def clean_json_text_with_ai(
-    driver: AsyncDriver, text: str, model_name: str = "", options: dict[str, Any] | None = None
+    driver: AsyncDriver,
+    text: str,
+    model_name: str = "",
+    options: dict[str, Any] | None = None,
+    *,
+    json_schema: dict[str, Any] | None = None,
+    error: str | None = None,
 ) -> tuple[str, dict[str, Any]]:
     """Use LLM to fix malformed JSON strings (async version).
 
@@ -64,11 +71,7 @@ async def clean_json_text_with_ai(
     except json.JSONDecodeError:
         pass
 
-    prompt = (
-        "The following text is supposed to be a single JSON object, but it is malformed. "
-        "Please correct it and return only the valid JSON object. Do not add any explanations or markdown. "
-        f"The text to correct is:\n\n{text}"
-    )
+    prompt = json_repair_prompt(text, json_schema=json_schema, error=error)
     resp = await driver.generate_with_hooks(prompt, options)
     raw = resp.get("text", "")
     meta = resp.get("meta", {})
@@ -324,7 +327,9 @@ async def ask_for_json(
         return result
     except json.JSONDecodeError as e:
         if ai_cleanup:
-            cleaned_fixed, cleanup_meta = await clean_json_text_with_ai(driver, cleaned, model_name, options)
+            cleaned_fixed, cleanup_meta = await clean_json_text_with_ai(
+                driver, cleaned, model_name, options, json_schema=json_schema, error=str(e)
+            )
 
             try:
                 json_obj = json.loads(cleaned_fixed)

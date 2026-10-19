@@ -304,8 +304,39 @@ def wrap_untrusted(text: Any, tag: str = "input", what: str = "the data to extra
     )
 
 
+def json_repair_prompt(text: str, *, json_schema: dict[str, Any] | None = None, error: str | None = None) -> str:
+    """Prompt asking a model to turn malformed JSON into a valid object.
+
+    With *json_schema* the fix must also validate against it, and *error*
+    (the parser's message) points the model at what broke.
+    """
+    parts = [
+        "The text inside <malformed> was meant to be a single JSON object but does not parse.",
+    ]
+    if error:
+        parts.append(f"Parser error: {error}")
+    if json_schema:
+        parts.append(
+            "The corrected object must validate against this JSON schema:\n"
+            f"{json.dumps(json_schema, cls=PromptureJSONEncoder)}\n"
+            "Where the schema needs a value the text lacks, use null."
+        )
+    parts.append(
+        "Fix the syntax and keep every value the text already holds; do not invent values. "
+        "Return only the corrected JSON object, with no explanation and no markdown."
+    )
+    parts.append(f"<malformed>\n{text}\n</malformed>")
+    return "\n\n".join(parts)
+
+
 def clean_json_text_with_ai(
-    driver: Driver, text: str, model_name: str = "", options: dict[str, Any] | None = None
+    driver: Driver,
+    text: str,
+    model_name: str = "",
+    options: dict[str, Any] | None = None,
+    *,
+    json_schema: dict[str, Any] | None = None,
+    error: str | None = None,
 ) -> tuple[str, dict[str, Any]]:
     """Use LLM to fix malformed JSON strings.
 
@@ -317,6 +348,8 @@ def clean_json_text_with_ai(
         text: Malformed JSON string to be corrected.
         model_name: Model identifier for usage tracking.
         options: Additional options passed to the driver.
+        json_schema: Schema the corrected object must validate against.
+        error: The JSON parser's error message, shown to the model.
 
     Returns:
         A tuple of (cleaned_text, meta) where cleaned_text is the fixed
@@ -331,11 +364,7 @@ def clean_json_text_with_ai(
     except json.JSONDecodeError:
         pass  # Invalid, proceed with LLM correction
 
-    prompt = (
-        "The following text is supposed to be a single JSON object, but it is malformed. "
-        "Please correct it and return only the valid JSON object. Do not add any explanations or markdown. "
-        f"The text to correct is:\n\n{text}"
-    )
+    prompt = json_repair_prompt(text, json_schema=json_schema, error=error)
     resp = driver.generate_with_hooks(prompt, options)
     raw = resp.get("text", "")
     meta = resp.get("meta", {})
@@ -685,7 +714,9 @@ def ask_for_json(
         return result
     except json.JSONDecodeError as e:
         if ai_cleanup:
-            cleaned_fixed, cleanup_meta = clean_json_text_with_ai(driver, cleaned, model_name, options)
+            cleaned_fixed, cleanup_meta = clean_json_text_with_ai(
+                driver, cleaned, model_name, options, json_schema=json_schema, error=str(e)
+            )
 
             try:
                 json_obj = json.loads(cleaned_fixed)
@@ -1251,8 +1282,10 @@ def extract_with_model(
             if validation_feedback is not None and max_retries >= 2:
                 effective_instruction = (
                     f"{augmented_instruction}\n\n"
-                    f"Previous attempt failed validation: {validation_feedback}. "
-                    "Please fix these issues."
+                    f"A previous attempt failed validation: {validation_feedback}\n"
+                    "Return the full object again with these fields corrected. Take values "
+                    "from the input; where the input does not give a value, use null rather "
+                    "than inventing one."
                 )
 
             effective_schema = tightened_schema if tightened_schema is not None else schema

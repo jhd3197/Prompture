@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from prompture.drivers.base import Driver
-from prompture.extraction.core import manual_extract_and_jsonify, wrap_untrusted
+from prompture.extraction.core import extract_and_jsonify, wrap_untrusted
 from prompture.rag.pipeline import DEFAULT_RAG_PROMPT
 
 
@@ -39,7 +39,7 @@ def test_wrap_untrusted_defuses_closing_tag():
 def test_extraction_prompt_fences_the_text():
     driver = _RecordingDriver()
     schema = {"type": "object", "properties": {"name": {"type": "string"}}}
-    manual_extract_and_jsonify(driver, "Ada wrote the first program.", schema, json_mode="off")
+    extract_and_jsonify("Ada wrote the first program.", schema, driver=driver, json_mode="off")
     prompt = driver.prompts[0]
     assert "<input>\nAda wrote the first program.\n</input>" in prompt
     assert prompt.index("Extract information") < prompt.index("<input>")
