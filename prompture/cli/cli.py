@@ -280,9 +280,11 @@ def companion(
     (their model traffic then passes through, or goes to any Prompture model),
     so the companion prefers the same port each time: 47811.
     """
+    import time
+
     from ..companion import Automations, CodingToolSource, CompanionServer, LedgerSource, running_instance
     from ..companion.memory import MemoryService
-    from ..companion.server import DEFAULT_PORT
+    from ..companion.server import DEFAULT_PORT, instance_lock
     from ..companion.tool_routing import ToolRouting
 
     existing = running_instance()
@@ -297,6 +299,21 @@ def companion(
     if existing:
         click.echo(f"Prompture companion already running at {existing['url']} (pid {existing.get('pid')}).")
         return
+    # The quick check above misses a companion that is starting or too busy to
+    # answer in time; the lock doesn't, so two never run side by side.
+    lock = instance_lock()
+    deadline = time.monotonic() + 30
+    while lock is None:
+        existing = running_instance(timeout=5.0)
+        if existing:
+            click.echo(f"Prompture companion already running at {existing['url']} (pid {existing.get('pid')}).")
+            return
+        if time.monotonic() > deadline:
+            raise click.ClickException(
+                "Another Prompture companion is running but not answering; not starting a second one."
+            )
+        time.sleep(0.5)
+        lock = instance_lock()
 
     def make(on_port: int) -> CompanionServer:
         return CompanionServer(

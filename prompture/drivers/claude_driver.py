@@ -95,6 +95,42 @@ def _first_text(content: list[Any]) -> str:
     return "" if first is None or getattr(first, "type", None) == "thinking" else getattr(first, "text", "")
 
 
+# A request that may generate for minutes goes over the streaming API and is collected into
+# the same ``Message`` that ``messages.create()`` returns. A non-streaming request sends no
+# bytes until the whole reply is ready, so a network that closes a silent connection (NAT
+# gateways and load balancers commonly do after 60 s) drops a long generation with "Server
+# disconnected without sending a response"; the SDK also refuses non-streaming requests whose
+# ``max_tokens`` could run past ten minutes. Short requests keep ``create()``. The
+# ``stream_transport`` option forces it either way.
+STREAM_TRANSPORT_ABOVE_MAX_TOKENS = 4096
+
+
+def _stream_transport(kwargs: dict[str, Any], options: dict[str, Any]) -> bool:
+    forced = options.get("stream_transport")
+    if forced is not None:
+        return bool(forced)
+    try:
+        return int(kwargs.get("max_tokens") or 0) > STREAM_TRANSPORT_ABOVE_MAX_TOKENS
+    except (TypeError, ValueError):
+        return False
+
+
+def _create_message(client: Any, kwargs: dict[str, Any], options: dict[str, Any]) -> Any:
+    """``client.messages.create(**kwargs)``, streamed under the hood for long requests."""
+    if not _stream_transport(kwargs, options):
+        return client.messages.create(**kwargs)
+    with client.messages.stream(**kwargs) as stream:
+        return stream.get_final_message()
+
+
+async def _acreate_message(client: Any, kwargs: dict[str, Any], options: dict[str, Any]) -> Any:
+    """Async :func:`_create_message`."""
+    if not _stream_transport(kwargs, options):
+        return await client.messages.create(**kwargs)
+    async with client.messages.stream(**kwargs) as stream:
+        return await stream.get_final_message()
+
+
 class _ClaudeModelRules:
     """Model rules the capabilities KB may not know yet (new models arrive before models.dev has them)."""
 
@@ -568,10 +604,11 @@ class ClaudeDriver(_ClaudeModelRules, CostMixin, Driver):
         with capture_rate_limits() as limits:
             if options.get("json_mode"):
                 if json_mode_tools is not None:
-                    resp = client.messages.create(  # type: ignore[call-overload]
-                        **common_kwargs,
-                        tools=json_mode_tools,
-                        tool_choice={"type": "tool", "name": "extract_json"},
+                    resp = _create_message(
+                        client,
+                        {**common_kwargs, "tools": json_mode_tools,
+                         "tool_choice": {"type": "tool", "name": "extract_json"}},
+                        opts,
                     )
                     text = ""
                     for block in resp.content:
@@ -579,10 +616,10 @@ class ClaudeDriver(_ClaudeModelRules, CostMixin, Driver):
                             text = json.dumps(_json_mode_input(block.input, options["json_schema"]))
                             break
                 else:
-                    resp = client.messages.create(**common_kwargs)
+                    resp = _create_message(client, common_kwargs, opts)
                     text = _first_text(resp.content)
             else:
-                resp = client.messages.create(**common_kwargs)
+                resp = _create_message(client, common_kwargs, opts)
                 text = _first_text(resp.content)
 
         reasoning_content = self._extract_thinking(resp.content)
@@ -618,9 +655,9 @@ class ClaudeDriver(_ClaudeModelRules, CostMixin, Driver):
         """Clamp the requested max_tokens to the model's known output cap.
 
         Callers commonly pass a generous default (e.g. 65536). Anthropic
-        rejects values above the model ceiling (Claude 4 family: 64000),
-        and the SDK refuses long non-streaming requests outright - so
-        clamp when the capabilities KB knows the real limit.
+        rejects values above the model ceiling (Claude 4 family: 64000), so
+        clamp when the capabilities KB knows the real limit. (Requests this
+        large go over the streaming transport, see ``_create_message``.)
         """
         requested = int(opts.get("max_tokens") or 512)
         try:
@@ -690,7 +727,7 @@ class ClaudeDriver(_ClaudeModelRules, CostMixin, Driver):
 
         _apply_anthropic_reporting_options(kwargs, opts)
         with capture_rate_limits() as limits:
-            resp = client.messages.create(**kwargs)
+            resp = _create_message(client, kwargs, opts)
 
         meta = usage_meta(self, "claude", model, resp.usage, response=resp, options=opts)
         meta["raw_response"] = as_dict(resp)

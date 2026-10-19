@@ -10,6 +10,7 @@ import json
 import logging
 import os
 from collections.abc import AsyncIterator
+from types import SimpleNamespace
 from typing import Any
 
 try:
@@ -25,6 +26,7 @@ except ImportError:
     AsyncAnthropicVertex = None  # type: ignore[assignment]
 
 from ..infra.cost_mixin import CostMixin
+from ._google_genai import add_tools, build_generation_args, extract_usage, response_parts, tool_response
 from .async_base import AsyncDriver
 from .google_vertexai_driver import GoogleVertexAIDriver, _is_claude_model
 
@@ -106,35 +108,19 @@ class AsyncGoogleVertexAIDriver(CostMixin, AsyncDriver):
 
     # ── Cost helpers ──────────────────────────────────────────────────
 
-    def _cost_for_tokens(self, prompt_tokens: int, completion_tokens: int) -> float:
-        cost = self._calculate_cost(self._PROVIDER, self.model, prompt_tokens, completion_tokens)
+    def _cost_for_tokens(self, prompt_tokens: int, completion_tokens: int, *, cached_tokens: int = 0) -> float:
+        cost = self._calculate_cost(
+            self._PROVIDER, self.model, prompt_tokens, completion_tokens, cached_tokens=cached_tokens
+        )
         if cost == 0.0:
             upstream = "anthropic" if _is_claude_model(self.model) else "google"
-            cost = self._calculate_cost(upstream, self.model, prompt_tokens, completion_tokens)
+            cost = self._calculate_cost(
+                upstream, self.model, prompt_tokens, completion_tokens, cached_tokens=cached_tokens
+            )
         return cost
 
     def _extract_gemini_usage(self, response: Any, messages: list[dict[str, Any]]) -> dict[str, Any]:
-        usage = getattr(response, "usage_metadata", None)
-        if usage:
-            prompt_tokens = getattr(usage, "prompt_token_count", 0) or 0
-            completion_tokens = getattr(usage, "candidates_token_count", 0) or 0
-            total_tokens = getattr(usage, "total_token_count", 0) or (prompt_tokens + completion_tokens)
-            cost = self._cost_for_tokens(prompt_tokens, completion_tokens)
-        else:
-            total_prompt_chars = sum(
-                len(msg.get("content", "")) for msg in messages if isinstance(msg.get("content"), str)
-            )
-            completion_chars = len(response.text) if response.text else 0
-            prompt_tokens = total_prompt_chars // 4
-            completion_tokens = completion_chars // 4
-            total_tokens = prompt_tokens + completion_tokens
-            cost = 0.0
-        return {
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
-            "total_tokens": total_tokens,
-            "cost": round(cost, 6),
-        }
+        return extract_usage(response, messages, self._cost_for_tokens)
 
     # ── Message helpers ───────────────────────────────────────��───────
 
@@ -150,55 +136,7 @@ class AsyncGoogleVertexAIDriver(CostMixin, AsyncDriver):
     def _build_gemini_generation_args(
         self, messages: list[dict[str, Any]], options: dict[str, Any] | None = None
     ) -> tuple[Any, dict[str, Any]]:
-        merged = {**self.options, **(options or {})}
-        config_dict: dict[str, Any] = {}
-
-        if "temperature" in merged:
-            config_dict["temperature"] = merged["temperature"]
-        if "max_tokens" in merged:
-            config_dict["max_output_tokens"] = merged["max_tokens"]
-        if "top_p" in merged:
-            config_dict["top_p"] = merged["top_p"]
-        if "top_k" in merged:
-            config_dict["top_k"] = merged["top_k"]
-
-        for k, v in merged.get("generation_config", {}).items():
-            config_dict.setdefault(k, v)
-
-        if merged.get("safety_settings"):
-            config_dict["safety_settings"] = merged["safety_settings"]
-        if merged.get("json_mode"):
-            config_dict["response_mime_type"] = "application/json"
-            if merged.get("json_schema"):
-                config_dict["response_schema"] = merged["json_schema"]
-
-        system_instruction = None
-        contents: list[dict[str, Any]] = []
-        for msg in messages:
-            role = msg.get("role", "user")
-            content = msg.get("content", "")
-            if role == "system":
-                system_instruction = content if isinstance(content, str) else str(content)
-            else:
-                gemini_role = "model" if role == "assistant" else "user"
-                if msg.get("_vision_parts"):
-                    contents.append({"role": gemini_role, "parts": content})
-                else:
-                    contents.append({"role": gemini_role, "parts": [content]})
-
-        gen_input: str | list[dict[str, Any]]
-        if len(contents) == 1:
-            parts = contents[0]["parts"]
-            if len(parts) == 1 and isinstance(parts[0], str):
-                gen_input = parts[0]
-            else:
-                gen_input = contents
-        else:
-            gen_input = contents
-
-        if system_instruction:
-            config_dict["system_instruction"] = system_instruction
-        return gen_input, config_dict
+        return build_generation_args(self, messages, options, types)
 
     # ── Claude backend ────────────────────────────────────────────────
 
@@ -377,6 +315,7 @@ class AsyncGoogleVertexAIDriver(CostMixin, AsyncDriver):
             usage_meta = self._extract_gemini_usage(response, messages)
             return {
                 "text": response.text,
+                "_google_parts": response_parts(response),
                 "meta": {
                     **usage_meta,
                     "raw_response": getattr(response, "prompt_feedback", None),
@@ -385,6 +324,26 @@ class AsyncGoogleVertexAIDriver(CostMixin, AsyncDriver):
             }
         except Exception as e:
             raise RuntimeError(f"Vertex AI Gemini request failed: {e}") from e
+
+    async def _gemini_generate_with_tools(
+        self, messages: list[dict[str, Any]], tools: list[dict[str, Any]], options: dict[str, Any]
+    ) -> dict[str, Any]:
+        gen_input, config_dict = self._build_gemini_generation_args(self._prepare_messages(messages), options)
+        add_tools(config_dict, tools, options, types)
+        try:
+            response = await self._get_gemini_client().aio.models.generate_content(
+                model=self.model,
+                contents=gen_input,
+                config=types.GenerateContentConfig(**config_dict),
+            )
+            meta = {
+                **self._extract_gemini_usage(response, messages),
+                "raw_response": getattr(response, "prompt_feedback", None),
+                "model_name": self.model,
+            }
+            return tool_response(response, meta)
+        except Exception as e:
+            raise RuntimeError(f"Vertex AI Gemini tool call failed: {e}") from e
 
     async def _gemini_generate_stream(
         self, messages: list[dict[str, Any]], options: dict[str, Any]
@@ -396,15 +355,23 @@ class AsyncGoogleVertexAIDriver(CostMixin, AsyncDriver):
                 model=self.model, contents=gen_input, config=config
             )
             full_text = ""
+            last_usage = None
+            stream_parts = []
             async for chunk in response:
+                if getattr(chunk, "usage_metadata", None) is not None:
+                    last_usage = chunk.usage_metadata
+                stream_parts.extend(response_parts(chunk))
                 chunk_text = getattr(chunk, "text", None) or ""
                 if chunk_text:
                     full_text += chunk_text
                     yield {"type": "delta", "text": chunk_text}
 
-            usage_meta = self._extract_gemini_usage(response, messages)
+            usage_meta = self._extract_gemini_usage(
+                SimpleNamespace(usage_metadata=last_usage, text=full_text), messages
+            )
             yield {
                 "type": "done",
+                "_google_parts": stream_parts,
                 "text": full_text,
                 "meta": {**usage_meta, "raw_response": {}, "model_name": self.model},
             }
@@ -432,8 +399,7 @@ class AsyncGoogleVertexAIDriver(CostMixin, AsyncDriver):
         prepared = self._prepare_messages(messages)
         if _is_claude_model(self.model):
             return await self._claude_generate_with_tools(prepared, tools, options)
-        # Gemini tool use — reuse sync logic isn't possible, skip for now
-        raise NotImplementedError("Async Gemini tool use on Vertex AI not yet implemented")
+        return await self._gemini_generate_with_tools(prepared, tools, options)
 
     async def generate_messages_stream(
         self, messages: list[dict[str, Any]], options: dict[str, Any]

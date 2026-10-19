@@ -209,9 +209,19 @@ class ParallelGroup:
             success=len(errors) == 0,
         )
 
-    def run(self, prompt: str = "", *, deps: Any = None) -> GroupResult:
-        """Sync wrapper around :meth:`run_async`."""
-        return asyncio.run(self.run_async(prompt, deps=deps))
+    def run(self, prompt: str = "", *, deps: Any = None) -> Any:
+        """Run the group: the :class:`GroupResult` outside an event loop, an awaitable inside one.
+
+        Every async group awaits ``child.run(...)``, so a ParallelGroup nested in an
+        ``AsyncSequentialGroup`` or ``AsyncLoopGroup`` is called from a running loop, where
+        ``asyncio.run()`` raises. There it hands back :meth:`run_async`'s coroutine for the
+        parent to await; called from plain sync code it still runs to completion.
+        """
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(self.run_async(prompt, deps=deps))
+        return self.run_async(prompt, deps=deps)
 
 
 # ------------------------------------------------------------------

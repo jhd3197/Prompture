@@ -323,3 +323,33 @@ class TestAsyncRouterAgent:
 
         no_match = router._fuzzy_match("completely_unrelated")
         assert no_match is None
+
+
+# ---------------------------------------------------------------------------
+# A ParallelGroup nested in an async group
+# ---------------------------------------------------------------------------
+
+
+class TestNestedParallelGroup:
+    """Every async group awaits ``child.run()``. A nested ParallelGroup used to call
+    ``asyncio.run()`` from inside that running loop and fail with "asyncio.run() cannot be
+    called from a running event loop"; it now hands its coroutine to the parent."""
+
+    def test_inside_a_sequential_group(self):
+        a, b = _make_async_mock_agent("a", "A"), _make_async_mock_agent("b", "B")
+        group = AsyncSequentialGroup([ParallelGroup([a, b])])
+        result = asyncio.run(group.run("go"))
+        assert result.success, result.errors
+        a.run.assert_awaited_once()
+        b.run.assert_awaited_once()
+
+    def test_inside_a_loop_group(self):
+        a = _make_async_mock_agent("a", "A")
+        group = AsyncLoopGroup([ParallelGroup([a])], exit_condition=lambda s, i: i >= 1, max_iterations=2)
+        result = asyncio.run(group.run("go"))
+        assert result.success, result.errors
+
+    def test_plain_sync_code_still_gets_a_result(self):
+        a = _make_async_mock_agent("a", "A")
+        result = ParallelGroup([a]).run("go")
+        assert result.success
