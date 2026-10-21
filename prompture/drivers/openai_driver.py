@@ -12,7 +12,7 @@ try:
 except ImportError:
     OpenAI = None  # type: ignore[misc, assignment]
 
-from ..infra.cost_mixin import CostMixin, prepare_strict_schema
+from ..infra.cost_mixin import _GPT_GENERATION_RE, CostMixin, prepare_strict_schema
 from ..infra.rate_limits import add_rate_limits, attach_rate_limit_hook, capture_rate_limits, limits_from_response
 from ._effort import apply_effort
 from ._prompt_cache import derive_prompt_cache_key
@@ -20,6 +20,29 @@ from ._usage_reporting import usage_meta
 from .base import Driver, _apply_openai_tool_options, _normalize_stop_reason, _tool_call_dict
 
 logger = logging.getLogger(__name__)
+
+_APIS = ("chat_completions", "responses")
+
+
+def default_openai_api(model: str | None) -> str:
+    """The API a model's calls go over when the caller doesn't pick one.
+
+    OpenAI refuses function tools on Chat Completions for gpt-6 and later
+    ("Function tools with reasoning_effort are not supported ... use
+    /v1/responses"), and most of those models won't take
+    ``reasoning_effort="none"`` either, so they default to the Responses API.
+    The generation is read from the name, so the next family needs no update.
+    Everything else stays on Chat Completions.
+    """
+    gpt = _GPT_GENERATION_RE.match((model or "").split("/")[-1].lower())
+    return "responses" if gpt and int(gpt.group(1)) >= 6 else "chat_completions"
+
+
+def _resolve_api(api: str | None, model: str | None) -> str:
+    api = api or default_openai_api(model)
+    if api not in _APIS:
+        raise ValueError("api must be chat_completions or responses")
+    return api
 
 
 def _apply_openai_reporting_options(kwargs: dict[str, Any], options: dict[str, Any]) -> None:
@@ -186,11 +209,10 @@ class OpenAIDriver(CostMixin, Driver):
         model: str = "gpt-4o-mini",
         base_url: str | None = None,
         *,
-        api: str = "chat_completions",
+        api: str | None = None,
     ):
-        if api not in ("chat_completions", "responses"):
-            raise ValueError("api must be chat_completions or responses")
-        self.api = api
+        # None picks by model (see default_openai_api).
+        self.api = _resolve_api(api, model)
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
         # Optional OpenAI-compatible endpoint override (gateways/proxies such as
         # prompture-hub). Default (None) keeps the official OpenAI endpoint.
