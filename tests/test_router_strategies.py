@@ -264,3 +264,54 @@ class TestRoutingStrategy:
         assert RoutingStrategy.llm == "llm"
         assert RoutingStrategy.keyword == "keyword"
         assert RoutingStrategy.round_robin == "round_robin"
+
+
+class TestRouterNameMatching:
+    def _router(self, reply: str, names: list[str]) -> tuple[RouterAgent, list[MagicMock]]:
+        agents = []
+        for n in names:
+            agent = MagicMock()
+            agent.name = n
+            agent.description = ""
+            agent.run.return_value = AgentResult(output=n, output_text=n, messages=[], usage={}, state=AgentState.idle)
+            agents.append(agent)
+        return RouterAgent(driver=MockDriver([reply]), agents=agents), agents
+
+    def test_shared_word_does_not_route(self):
+        router, agents = self._router("data", ["data_analyst", "data_engineer"])
+        router.run("q")
+        assert not agents[0].run.called and not agents[1].run.called
+
+    def test_longest_contained_name_wins(self):
+        router, agents = self._router("I pick data_engineer.", ["data", "data_engineer"])
+        router.run("q")
+        agents[1].run.assert_called_once()
+        assert not agents[0].run.called
+
+    def test_none_reply_uses_fallback(self):
+        router, agents = self._router("NONE", ["writer"])
+        fallback = MagicMock()
+        fallback.run.return_value = AgentResult(
+            output="fb", output_text="fb", messages=[], usage={}, state=AgentState.idle
+        )
+        router._fallback = fallback
+        router.run("q")
+        fallback.run.assert_called_once()
+        assert not agents[0].run.called
+
+    def test_reply_naming_two_agents_is_ambiguous(self):
+        router, agents = self._router("writer or editor", ["writer", "editor"])
+        router.run("q")
+        assert not agents[0].run.called and not agents[1].run.called
+
+    def test_quoted_name_matches(self):
+        router, agents = self._router("`editor`.", ["writer", "editor"])
+        router.run("q")
+        agents[1].run.assert_called_once()
+
+    def test_request_is_delimited(self):
+        driver = MockDriver(["writer"])
+        router = RouterAgent(driver=driver, agents=[MagicMock(name="writer")])
+        prompt = router._routing_prompt.replace("{agent_list}", "- writer").replace("{prompt}", "hi")
+        assert "<request>\nhi\n</request>" in prompt
+        assert "NONE" in prompt

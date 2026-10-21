@@ -20,13 +20,16 @@ from ..drivers.async_base import AsyncDriver
 from ..drivers.async_registry import get_async_driver_for_model
 from ._usage import extraction_attempt, tracked_extraction
 from .core import (
+    TOON_DATA_NOTE,
     ExtractResult,
     _build_usage,
     _calculate_token_savings,
     _dataframe_to_toon,
     _json_to_toon,
     _merge_usage,
+    json_repair_prompt,
     normalize_field_value,
+    wrap_untrusted,
 )
 from .fields import get_registry_snapshot
 from .reasoning import (
@@ -46,7 +49,13 @@ logger = logging.getLogger("prompture.async_core")
 
 
 async def clean_json_text_with_ai(
-    driver: AsyncDriver, text: str, model_name: str = "", options: dict[str, Any] | None = None
+    driver: AsyncDriver,
+    text: str,
+    model_name: str = "",
+    options: dict[str, Any] | None = None,
+    *,
+    json_schema: dict[str, Any] | None = None,
+    error: str | None = None,
 ) -> tuple[str, dict[str, Any]]:
     """Use LLM to fix malformed JSON strings (async version).
 
@@ -62,11 +71,7 @@ async def clean_json_text_with_ai(
     except json.JSONDecodeError:
         pass
 
-    prompt = (
-        "The following text is supposed to be a single JSON object, but it is malformed. "
-        "Please correct it and return only the valid JSON object. Do not add any explanations or markdown. "
-        f"The text to correct is:\n\n{text}"
-    )
+    prompt = json_repair_prompt(text, json_schema=json_schema, error=error)
     resp = await driver.generate_with_hooks(prompt, options)
     raw = resp.get("text", "")
     meta = resp.get("meta", {})
@@ -102,7 +107,7 @@ async def render_output(
     elif output_format == "markdown":
         instruct = "Return valid markdown content. You may use standard markdown formatting."
 
-    full_prompt = f"{content_prompt}\n\nSYSTEM INSTRUCTION: {instruct}"
+    full_prompt = f"{content_prompt}\n\nOutput format: {instruct}"
 
     # Use generate_messages when system_prompt is provided
     if system_prompt is not None:
@@ -322,7 +327,9 @@ async def ask_for_json(
         return result
     except json.JSONDecodeError as e:
         if ai_cleanup:
-            cleaned_fixed, cleanup_meta = await clean_json_text_with_ai(driver, cleaned, model_name, options)
+            cleaned_fixed, cleanup_meta = await clean_json_text_with_ai(
+                driver, cleaned, model_name, options, json_schema=json_schema, error=str(e)
+            )
 
             try:
                 json_obj = json.loads(cleaned_fixed)
@@ -403,7 +410,7 @@ async def extract_and_jsonify(
         provider = model_id = actual_model
 
     opts = {**options, "model": model_id}
-    content_prompt = f"{instruction_template} {text}"
+    content_prompt = f"{instruction_template}\n\n{wrap_untrusted(text)}"
     if reasoning_strategy == "auto":
         reasoning_strategy = auto_select_reasoning_strategy(text, json_schema)
     content_prompt = apply_reasoning_strategy(content_prompt, reasoning_strategy)
@@ -451,7 +458,7 @@ async def manual_extract_and_jsonify(
     if model_name:
         opts["model"] = model_name
 
-    content_prompt = f"{instruction_template} {text}"
+    content_prompt = f"{instruction_template}\n\n{wrap_untrusted(text)}"
     if reasoning_strategy == "auto":
         reasoning_strategy = auto_select_reasoning_strategy(text, json_schema)
     content_prompt = apply_reasoning_strategy(content_prompt, reasoning_strategy)
@@ -1134,7 +1141,7 @@ async def extract_from_data(
     token_savings = _calculate_token_savings(json_data, toon_data)
 
     content_prompt = instruction_template.format(question=question)
-    full_prompt = f"{content_prompt}\n\nData (in TOON format):\n{toon_data}"
+    full_prompt = f"{content_prompt}\n\n{TOON_DATA_NOTE}\n\n{wrap_untrusted(toon_data, 'data', 'the data to analyze')}"
 
     driver = get_async_driver_for_model(model_name)
     result = await ask_for_json(
@@ -1184,7 +1191,7 @@ async def extract_from_pandas(
     }
 
     content_prompt = instruction_template.format(question=question)
-    full_prompt = f"{content_prompt}\n\nData (in TOON format):\n{toon_data}"
+    full_prompt = f"{content_prompt}\n\n{TOON_DATA_NOTE}\n\n{wrap_untrusted(toon_data, 'data', 'the data to analyze')}"
 
     driver = get_async_driver_for_model(model_name)
     result = await ask_for_json(

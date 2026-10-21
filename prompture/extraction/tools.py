@@ -46,6 +46,7 @@ _UNION_ORIGINS: tuple[Any, ...] = (Union, types.UnionType)
 def _is_union_origin(origin: Any) -> bool:
     return origin in _UNION_ORIGINS
 
+
 # Exception tuple for value-conversion catches. Covers the standard library's
 # numeric / type-coercion paths plus a couple of attribute-access fallbacks
 # the recursive converter relies on. Conversions ultimately bottom out in

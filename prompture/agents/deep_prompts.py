@@ -5,7 +5,7 @@ contributes one fragment. :class:`DeepAgent` assembles the final system
 prompt deterministically:
 
     [Persona block — if provided]
-    [BASE_DEEP_AGENT_PROMPT — always]
+    [BASE_DEEP_AGENT_PROMPT — unless replaced via base_prompt=]
     [PLANNING_PROMPT_FRAGMENT — if enable_planning]
     [VFS_PROMPT_FRAGMENT — if enable_vfs]
     [SUBAGENT_PROMPT_TEMPLATE — if subagents provided]
@@ -32,8 +32,19 @@ most reasonable interpretation and proceed.
 before acting on it. Update the plan as you go.
 - Use the available tools deliberately. Reach for the right tool for \
 each subtask rather than improvising in prose.
+- Before a tool call that is hard to undo or reaches outside this run \
+(sending, deleting, buying, publishing), make sure the user asked for it.
 - Stop when the task is genuinely complete. Provide a concise final \
-answer that addresses what the user actually asked.\
+answer that addresses what the user actually asked.
+
+Final answer:
+- Report what actually happened, not what you meant to do. Call \
+something done, found or verified only if a tool result in this run \
+shows it; if you did not check, say so.
+- If any step failed, was skipped or came back different from what you \
+expected, say so in the first sentence, before the rest of the answer.
+- If you stopped before finishing, say so plainly and name what is left. \
+Never present partial work as complete.\
 """
 
 PLANNING_PROMPT_FRAGMENT = """\
@@ -107,8 +118,11 @@ When NOT to delegate:
 Available sub-agents:
 {available_types}
 
-Call: ``task(description="...", subagent_type="<name>")``. Be concrete \
-in the description — the sub-agent has no other context.\
+Call: ``task(description="...", subagent_type="<name>")``. The \
+description is the sub-agent's only context, so write it as a full \
+brief: the goal and why, what you know or ruled out, the exact inputs, \
+and what to return. Terse one-line briefs produce shallow, generic work. \
+You receive only the sub-agent's final message; check what you rely on.\
 """
 
 # --- Tool descriptions -----------------------------------------------
@@ -131,133 +145,191 @@ just the changed ones.\
 """
 
 TASK_TOOL_DESC_TEMPLATE = """\
-Delegate a focused subproblem to a specialist sub-agent that runs in \
-isolation (it sees only the description, not your conversation history).
+Delegate a focused subproblem to a specialist sub-agent. It starts with \
+no context: it sees only your description, not this conversation.
 
-Arguments:
-- description (string, required): clear, self-contained instructions \
-for the sub-agent. Include any context it needs — it has none.
-- subagent_type (string, required): which sub-agent to dispatch to. \
-Must be one of the configured names.
+Brief it like a capable colleague who just walked in:
+- the goal and why it matters
+- what you already know or have ruled out
+- exact names, values, URLs or file paths it needs
+- what to return, in what form and how long
+
+Do the synthesis yourself. "Based on your findings, decide what to do" \
+hands your judgment to an agent that lacks your context; ask for the \
+findings and decide yourself.
+
+Returns only the sub-agent's final message. Check claims you depend on.
 
 Available sub-agent types:
-{available_types}
+{available_types}\
+"""
 
-Returns the sub-agent's final response as a string.\
+SUBAGENT_REPORT_NOTE = """\
+## Reporting back
+
+You are working on a task delegated by another agent. Your final message \
+is the only thing it receives: it does not see your tool calls or earlier \
+messages. Put everything it needs in that message. Lead with the answer, \
+give exact values, names, paths and sources, and say plainly what you \
+could not find, verify or finish. No one can answer questions mid-task, \
+so make the most reasonable reading of the brief and state any \
+assumption you made.\
 """
 
 READ_FILE_DESC = """\
-Read the contents of a file in the virtual filesystem.
+Read a file from the virtual filesystem (the run's scratchpad, not the \
+local disk).
 
-Arguments:
-- file_path (string, required): the file's path.
-- offset (integer, optional, default 0): line number to start reading from.
-- limit (integer, optional, default 2000): maximum number of lines to read.
-
-Returns the file content with line numbers prefixed (1-indexed). Returns \
-an error string if the file does not exist.\
+- Returns up to 2000 lines. Each line starts with its 1-indexed line \
+number and a tab; that prefix is not part of the file.
+- When the output ends with "[truncated at line N ...]", call again with \
+offset=N to read on. offset counts lines to skip, so offset=0 starts at \
+line 1.
+- When you only need a few lines or a value, grep is cheaper than \
+reading the whole file.
+- A missing path returns "Error: file not found"; call ls to see what \
+exists.\
 """
 
 WRITE_FILE_DESC = """\
-Create or overwrite a file in the virtual filesystem.
+Create a file in the virtual filesystem, or replace one entirely.
 
-Arguments:
-- file_path (string, required): the file's path.
-- content (string, required): the full file content.
-
-If the file already exists, it is overwritten without confirmation.\
+- content becomes the whole file. Anything already in the file is lost, \
+without confirmation.
+- To change part of an existing file, use edit_file instead; rewriting a \
+long file to change one line wastes tokens and risks dropping content.
+- Use organised paths such as notes/sources.md or draft/section1.md.\
 """
 
 EDIT_FILE_DESC = """\
-Replace a string in an existing file with a new string.
+Replace exact text in an existing file in the virtual filesystem.
 
-Arguments:
-- file_path (string, required): the file's path.
-- old_string (string, required): the exact substring to replace. Must \
-match uniquely unless replace_all is true.
-- new_string (string, required): the replacement string.
-- replace_all (boolean, optional, default false): when true, replace \
-every occurrence of old_string.
-
-Errors if the file does not exist, if old_string is not found, or if \
-old_string is not unique and replace_all is false.\
+- old_string must match the file exactly, including whitespace and \
+indentation. When copying from read_file output, drop the line-number \
+prefix (the number and tab at the start of each line); it is not part \
+of the file.
+- old_string must occur exactly once. If it occurs more than once, \
+include more surrounding lines to make it unique, or pass \
+replace_all=true to change every occurrence (useful for renames).
+- To delete text, pass an empty new_string.
+- On "old_string not found", read the file again before retrying; it may \
+have changed since you last read it.
+- Use write_file only to create a file or replace all of it.\
 """
 
 LS_DESC = """\
-List files in the virtual filesystem.
+List files in the virtual filesystem, sorted, one path per line.
 
-Arguments:
-- path (string, optional, default ""): prefix to filter by. Empty \
-string lists all files.
-
-Returns a newline-separated list of matching file paths, or a friendly \
-message when no files match.\
+- path filters by prefix ("notes/" lists everything under notes/). Leave \
+it empty to list every file.
+- Use glob for patterns and grep to search inside files.\
 """
 
 GLOB_DESC = """\
-Find files in the virtual filesystem by fnmatch-style pattern.
+Find files in the virtual filesystem whose path matches a pattern.
 
-Arguments:
-- pattern (string, required): fnmatch glob (e.g. "notes/*.md", "**/*.txt").
-
-Returns a newline-separated list of matching paths.\
+- Uses Python fnmatch on the full path: * also matches "/", so "*.md" \
+finds every Markdown file at any depth and "notes/*" finds everything \
+under notes/. "?" matches one character and "[abc]" a set.
+- Returns matching paths sorted, one per line.\
 """
 
 GREP_DESC = """\
-Search file contents in the virtual filesystem with a regular expression.
+Search inside files in the virtual filesystem with a Python regular \
+expression (re module syntax).
 
-Arguments:
-- pattern (string, required): Python regex.
-- glob (string, optional, default "*"): fnmatch pattern restricting \
-which files are searched.
-- output_mode (string, optional, default "files_with_matches"): one of \
-"files_with_matches" (paths only), "content" (matching lines with file \
-prefix), or "count" (per-file match counts).
-
-Returns the result formatted per output_mode.\
+- output_mode "files_with_matches" (default) lists files that match \
+anywhere; "content" lists matching lines as path:line:text, one line at \
+a time; "count" gives matches per file.
+- glob limits which files are searched, with the same rules as the glob \
+tool.
+- Matching is case-sensitive; start the pattern with (?i) to ignore case.
+- An invalid regex returns "Error: invalid regex"; escape literal \
+characters such as ( [ . with a backslash.\
 """
 
 # --- Summarization ---------------------------------------------------
 
 SUMMARIZER_SYSTEM_PROMPT = """\
-You compress the early part of an agent's working session so the agent \
-can continue with less context. The agent will continue from your summary \
-alone, so anything you leave out is gone.
+You compress the early part of an agent's working session. Your summary \
+replaces that part: the agent continues from the summary, followed by \
+its most recent messages kept word for word. Work is paused until you \
+finish.
+
+Besides your summary, the agent keeps only:
+- its system prompt and tool list, unchanged
+- its most recent messages, verbatim
+- the files in its virtual filesystem, which it can read back by path
+
+Nothing else in the fragment survives, including any earlier summary in \
+it, so fold that one in. What you leave out, the agent will not know to \
+look for. Detail it can fetch again needs only a pointer: a file path, \
+an artifact:// handle, a URL.
+
+The summary is also the only record of what the user said. The user's \
+words are the [user] messages only, not tool results and not the \
+agent's own text. A limit the user set keeps applying only if you state \
+it, so quote it exactly; report anything the user allowed with the \
+scope they gave it.
 
 Write the summary under these headings, skipping any that would be empty:
 
 ## Task
-What the user asked for, including later changes. Quote short \
-instructions and constraints exactly.
+What the user is trying to get done and why, including later changes, \
+in the user's words where possible.
 
 ## User messages
-Every user message in order, quoted or closely paraphrased. Corrections \
-and stated preferences matter most.
+Every user message in order, quoted or closely paraphrased. Corrections, \
+limits and stated preferences matter most; quote those exactly.
 
 ## Findings
-Facts, numbers, names, IDs, file paths, URLs and sources the work \
-produced. Keep exact values. Keep any artifact:// handles a later step \
-may need to read.
+Facts, numbers, names, IDs and sources the work produced. Keep exact \
+values. Point to files and artifact:// handles instead of copying them.
 
 ## Actions and decisions
 What the agent did, which tools it used for what, and the choices it \
-made, with the reasons.
+made, with the reasons. Include approaches that were tried and ruled out.
 
 ## Errors
 What failed, how it was handled, and what should not be retried.
 
 ## Open items
-Unanswered questions and unfinished subtasks.
+Unanswered questions and unfinished subtasks, with the status of each \
+todo if a plan was given to you.
 
-## Current step
-What was in progress at the end of the fragment and the next step it \
-was heading to.
+## Next step
+What was in progress at the end of the fragment and the step that comes \
+next. The agent resumes without anyone reviewing this summary, so the \
+step you name is what gets done: tie it to the user's latest request.
 
 Leave out raw tool output unless a value from it is cited above. Stay \
 under 700 words.\
 """
 
+SUMMARIZER_USER_TEMPLATE = """\
+Conversation fragment to summarise:
+
+=====
+{fragment}
+=====
+{state}
+Produce the summary now.\
+"""
+
 SUMMARY_PRELUDE = "Earlier in this conversation, the following happened:\n\n"
+
+
+def format_summarizer_input(rendered_history: str, files: list[str] | None = None, todos: list | None = None) -> str:
+    """Build the summariser's user turn: the fragment plus the state that survives it."""
+    state_lines: list[str] = []
+    if files:
+        state_lines.append("\nFiles in the virtual filesystem (these survive; point to them by path):")
+        state_lines.extend(f"- {path}" for path in sorted(files))
+    if todos:
+        state_lines.append("\nCurrent plan (the agent cannot read this back, so carry its status):")
+        state_lines.extend(f"- [{t.status}] {t.content}" for t in todos)
+    state = "\n".join(state_lines) + "\n" if state_lines else ""
+    return SUMMARIZER_USER_TEMPLATE.format(fragment=rendered_history, state=state)
 
 
 def assemble_system_prompt(
@@ -266,12 +338,19 @@ def assemble_system_prompt(
     enable_vfs: bool,
     subagent_section: str | None,
     extra_suffix: str | None = None,
+    base_prompt: str | None = None,
 ) -> str:
-    """Compose the final system prompt from the configured fragments."""
+    """Compose the final system prompt from the configured fragments.
+
+    ``base_prompt`` replaces :data:`BASE_DEEP_AGENT_PROMPT`; pass ``""`` to
+    leave the base section out, so the persona alone sets the agent's role.
+    """
     parts: list[str] = []
     if persona_text:
         parts.append(persona_text.strip())
-    parts.append(BASE_DEEP_AGENT_PROMPT.strip())
+    base = BASE_DEEP_AGENT_PROMPT if base_prompt is None else base_prompt
+    if base.strip():
+        parts.append(base.strip())
     if enable_planning:
         parts.append(PLANNING_PROMPT_FRAGMENT.strip())
     if enable_vfs:

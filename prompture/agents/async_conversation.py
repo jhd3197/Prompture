@@ -1466,11 +1466,13 @@ class AsyncConversation(ToolContextMixin):
         cleaned = clean_json_text(text)
         try:
             json_obj = json.loads(cleaned)
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as exc:
             if ai_cleanup:
                 from ..extraction.async_core import clean_json_text_with_ai
 
-                cleaned, cleanup_meta = await clean_json_text_with_ai(self._driver, cleaned, self._model_name, merged)
+                cleaned, cleanup_meta = await clean_json_text_with_ai(
+                    self._driver, cleaned, self._model_name, merged, json_schema=json_schema, error=str(exc)
+                )
                 json_obj = json.loads(cleaned)
                 if cleanup_meta:
                     self._accumulate_usage(cleanup_meta)

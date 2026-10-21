@@ -50,10 +50,15 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+import re
 from collections.abc import AsyncIterator, Callable
 from typing import Any, Literal, Protocol, runtime_checkable
 
 logger = logging.getLogger("prompture.review_loop")
+
+_VERDICT_LINE = re.compile(r"^[\W_]*verdict[\W_]*(approved|changes requested)", re.IGNORECASE | re.MULTILINE)
+_APPROVED_WORD = re.compile(r"\bapproved\b", re.IGNORECASE)
+_NEGATION = re.compile(r"\b(?:not|never|no|cannot|nor)\b|n't\b", re.IGNORECASE)
 
 
 # ---------------------------------------------------------------------------
@@ -163,8 +168,36 @@ class ReviewLoopResult:
 
 
 def _default_approve(review: _HasOutput) -> bool:
-    """Default predicate: anything containing the literal word 'approved'."""
-    return "approved" in (review.output or "").lower()
+    """Default predicate: the review's verdict approves the work.
+
+    The last ``VERDICT:`` line decides when there is one (the default
+    review prompt asks for it).  Without one, the review approves when it
+    says "approved" somewhere that is not negated ("not approved",
+    "isn't approved yet").
+    """
+    text = review.output or ""
+    verdicts = _VERDICT_LINE.findall(text)
+    if verdicts:
+        return verdicts[-1].lower() == "approved"
+    for match in _APPROVED_WORD.finditer(text):
+        sentence_start = max(text.rfind(".", 0, match.start()), text.rfind("\n", 0, match.start())) + 1
+        if not _NEGATION.search(text[max(sentence_start, match.start() - 30) : match.start()]):
+            return True
+    return False
+
+
+def _default_review_prompt(code: str, task: str = "") -> str:
+    """Ask for concrete problems and a final machine-readable verdict line."""
+    task_block = f"<task>\n{task}\n</task>\n\n" if task else ""
+    against = " against the task it was meant to do" if task else ""
+    return (
+        f"Review the work below{against}. List each concrete problem with what "
+        "to change. Approve only if the work is ready to use as it is.\n\n"
+        f"{task_block}<work>\n{code}\n</work>\n\n"
+        "End your review with one final line, exactly one of:\n"
+        "VERDICT: APPROVED\n"
+        "VERDICT: CHANGES REQUESTED"
+    )
 
 
 def _default_feedback_prompt(
@@ -199,9 +232,11 @@ class AsyncReviewLoop:
             Defaults to 3.
         approve_when: Predicate applied to each reviewer result.  When
             True, the loop exits and the latest code is returned.
-            Defaults to a substring check for the word "approved".
-        review_prompt: Builds the prompt sent to the reviewer.  Defaults
-            to wrapping the coder's output in a brief "Review this:" frame.
+            Defaults to reading the review's final ``VERDICT:`` line,
+            falling back to an un-negated "approved".
+        review_prompt: Builds the prompt sent to the reviewer.  The default
+            shows the reviewer the task and the work and asks it to end
+            with ``VERDICT: APPROVED`` or ``VERDICT: CHANGES REQUESTED``.
         feedback_prompt: Builds the next coder prompt from the original
             request + the latest iteration.  Defaults to appending the
             review verbatim as "Reviewer feedback".
@@ -211,9 +246,7 @@ class AsyncReviewLoop:
     reviewer: _Runnable
     max_iters: int = 3
     approve_when: Callable[[Any], bool] = _default_approve
-    review_prompt: Callable[[str], str] = dataclasses.field(
-        default=lambda code: f"Review this work and give feedback:\n\n{code}"
-    )
+    review_prompt: Callable[[str], str] = _default_review_prompt
     feedback_prompt: Callable[[str, ReviewLoopIteration], str] = _default_feedback_prompt
 
     def __post_init__(self) -> None:
@@ -289,7 +322,12 @@ class AsyncReviewLoop:
                 code_result=code_result,
             )
 
-            review_result = await self.reviewer.arun(self.review_prompt(code_text), **reviewer_kwargs)
+            review_request = (
+                _default_review_prompt(code_text, prompt)
+                if self.review_prompt is _default_review_prompt
+                else self.review_prompt(code_text)
+            )
+            review_result = await self.reviewer.arun(review_request, **reviewer_kwargs)
             review_text = getattr(review_result, "output", "") or ""
             approved = bool(self.approve_when(review_result))
             yield ReviewLoopEvent(

@@ -439,3 +439,23 @@ class TestDebateDeps:
         group = DebateGroup([a], DebateConfig(rounds=1), deps=deps)
         group.run("Topic")
         assert a.run.call_args.kwargs.get("deps") is deps
+
+
+class TestJudgeWinner:
+    def test_winner_line_parsed_to_debater(self):
+        pro = _make_mock_agent("pro", "Pro argument")
+        con = _make_mock_agent("con", "Con argument")
+        judge = _make_mock_agent("judge", "Summary...\nWINNER: con")
+        result = DebateGroup([pro, con], DebateConfig(rounds=1, judge=judge)).run("Topic")
+        assert result.judge_winner == "con"
+        prompt = judge.run.call_args[0][0]
+        assert "<topic>\nTopic\n</topic>" in prompt
+        assert "WINNER:" in prompt
+
+    def test_position_label_maps_to_debater(self):
+        from prompture.groups.debate import parse_judge_winner
+
+        positions = {"a": "FOR", "b": "AGAINST"}
+        assert parse_judge_winner("**Winner:** AGAINST.", ["a", "b"], positions) == "b"
+        assert parse_judge_winner("WINNER: tie", ["a", "b"]) == "TIE"
+        assert parse_judge_winner("no verdict line", ["a", "b"]) is None

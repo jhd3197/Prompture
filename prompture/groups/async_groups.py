@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from ..agents.async_conversation import AsyncConversation
 
 from ..agents.types import AgentResult, AgentState
-from .groups import _agent_name, _inject_state, _normalise_agents
+from .groups import _DEFAULT_ROUTING_PROMPT, _agent_name, _inject_state, _match_agent_name, _normalise_agents
 from .types import (
     AgentError,
     ErrorPolicy,
@@ -608,13 +608,6 @@ class AsyncLoopGroup:
 # AsyncRouterAgent
 # ------------------------------------------------------------------
 
-_DEFAULT_ROUTING_PROMPT = """Given these specialists:
-{agent_list}
-
-Which should handle this? Reply with ONLY the name.
-
-Request: {prompt}"""
-
 
 class AsyncRouterAgent:
     """Async router that delegates to the best-matching agent.
@@ -755,24 +748,8 @@ class AsyncRouterAgent:
             )
 
     def _fuzzy_match_name(self, response: str) -> str | None:
-        """Find the best matching agent name in the LLM response."""
-        response_lower = response.lower().strip()
-
-        for aname in self._agents:
-            if aname.lower() == response_lower:
-                return aname
-
-        for aname in self._agents:
-            if aname.lower() in response_lower:
-                return aname
-
-        response_words = set(response_lower.split())
-        for aname in self._agents:
-            name_words = set(aname.lower().replace("_", " ").split())
-            if name_words & response_words:
-                return aname
-
-        return None
+        """Find the agent name the LLM response picked (see :func:`_match_agent_name`)."""
+        return _match_agent_name(response, list(self._agents))
 
     def _fuzzy_match(self, response: str) -> Any | None:
         """Find the best matching agent in the LLM response (legacy)."""

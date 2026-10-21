@@ -16,6 +16,7 @@ from prompture.agents.deep_agent import DeepAgent, create_deep_agent
 from prompture.agents.deep_prompts import (
     BASE_DEEP_AGENT_PROMPT,
     PLANNING_PROMPT_FRAGMENT,
+    SUMMARY_PRELUDE,
     VFS_PROMPT_FRAGMENT,
     assemble_system_prompt,
     format_subagent_section,
@@ -111,6 +112,7 @@ class StaticSummariserDriver(Driver):
         self._summary = summary
         self.calls = 0
         self.model = "mock/summariser"
+        self.last_messages: list[dict[str, Any]] = []
 
     def generate(self, prompt, options):
         self.calls += 1
@@ -118,6 +120,7 @@ class StaticSummariserDriver(Driver):
 
     def generate_messages(self, messages, options):
         self.calls += 1
+        self.last_messages = messages
         return self._make()
 
     def _make(self):
@@ -337,6 +340,21 @@ class TestVFS:
         assert "Error" in out
         assert "not found" in out
 
+    def test_edit_file_flags_copied_line_prefixes(self):
+        s = DeepAgentState()
+        tools = self._tools(s)
+        tools["write_file"].function(file_path="a.md", content="alpha\nbeta")
+        copied = tools["read_file"].function(file_path="a.md")
+        out = tools["edit_file"].function(file_path="a.md", old_string=copied, new_string="x")
+        assert "line-number prefixes" in out
+        assert s.files["a.md"] == "alpha\nbeta"
+
+    def test_builtin_descriptions_fit_provider_limit(self):
+        from prompture.agents.tools_schema import MAX_TOOL_DESCRIPTION_CHARS
+
+        for td in make_vfs_tools(DeepAgentState()):
+            assert len(td.description) <= MAX_TOOL_DESCRIPTION_CHARS, td.name
+
     def test_ls(self):
         s = DeepAgentState()
         tools = self._tools(s)
@@ -418,6 +436,26 @@ class TestSubAgents:
         )
         out = tool.function(description="x", subagent_type="unknown")
         assert "unknown subagent_type" in out
+
+    def test_subagent_prompt_carries_report_contract(self):
+        from prompture.agents.deep.subagents import _resolve_subagent_prompt
+        from prompture.agents.deep_prompts import SUBAGENT_REPORT_NOTE
+
+        out = _resolve_subagent_prompt("You answer numbers.")
+        assert out.startswith("You answer numbers.")
+        assert out.endswith(SUBAGENT_REPORT_NOTE)
+        assert _resolve_subagent_prompt("") == SUBAGENT_REPORT_NOTE
+
+    def test_task_description_fits_provider_limit(self):
+        from prompture.agents.tools_schema import MAX_TOOL_DESCRIPTION_CHARS
+
+        specs = [
+            SubAgentSpec(name=f"agent_{i}", description="Does one focused job well.", system_prompt="p")
+            for i in range(5)
+        ]
+        tool = make_task_tool(specs=specs, state=DeepAgentState(), parent_model="m", parent_user_tools=[])
+        assert len(tool.description) <= MAX_TOOL_DESCRIPTION_CHARS
+        assert "agent_4" in tool.description
 
     def test_duplicate_spec_names_raise(self):
         state = DeepAgentState()
@@ -542,6 +580,40 @@ class TestSummarizer:
         assert conv._messages == before
         assert sd.calls == 0
 
+    def test_summariser_sees_surviving_state(self):
+        state = DeepAgentState(files={"notes/a.md": "x"}, todos=[Todo(content="Draft intro", status="in_progress")])
+        sd = StaticSummariserDriver()
+        mw = SummarizationMiddleware(threshold_tokens=10, keep_last_n=2, state=state, summariser=sd)
+        conv = self._make_conv_with_messages(4)
+        mw(conv, last_prompt_tokens=999)
+        system, user = sd.last_messages
+        assert "only record of what the user said" in system["content"]
+        assert "- notes/a.md" in user["content"]
+        assert "- [in_progress] Draft intro" in user["content"]
+
+    def test_custom_summariser_prompt(self):
+        sd = StaticSummariserDriver()
+        mw = SummarizationMiddleware(
+            threshold_tokens=10, keep_last_n=2, state=DeepAgentState(), summariser=sd, system_prompt="Be brief."
+        )
+        mw(self._make_conv_with_messages(4), last_prompt_tokens=999)
+        assert sd.last_messages[0]["content"] == "Be brief."
+
+    def test_earlier_summary_not_rendered_as_user_words(self):
+        sd = StaticSummariserDriver(summary="second")
+        mw = SummarizationMiddleware(threshold_tokens=10, keep_last_n=2, state=DeepAgentState(), summariser=sd)
+        conv = self._make_conv_with_messages(4)
+        conv._messages.insert(0, {"role": "user", "content": SUMMARY_PRELUDE + "first"})
+        mw(conv, last_prompt_tokens=999)
+        fragment = sd.last_messages[1]["content"]
+        assert "[earlier summary]\nfirst" in fragment
+        assert "[user]\nEarlier in this conversation" not in fragment
+
+    def test_deep_agent_passes_summarizer_prompt(self):
+        agent = DeepAgent(driver=MockToolDriver([]), summarizer_prompt="Custom.")
+        assert agent._summarizer is not None
+        assert agent._summarizer.system_prompt == "Custom."
+
 
 # ---------------------------------------------------------------------------
 # Prompt assembly
@@ -578,6 +650,23 @@ class TestPromptAssembly:
         )
         assert VFS_PROMPT_FRAGMENT.strip() in out
         assert "write_todos" not in out.lower()
+
+    def test_base_prompt_replaced_or_dropped(self):
+        kwargs = {
+            "persona_text": "You are SuperBot.",
+            "enable_planning": False,
+            "enable_vfs": False,
+            "subagent_section": None,
+        }
+        assert assemble_system_prompt(**kwargs, base_prompt="Custom base.") == "You are SuperBot.\n\nCustom base."
+        assert assemble_system_prompt(**kwargs, base_prompt="") == "You are SuperBot."
+
+    def test_deep_agent_base_prompt_option(self):
+        agent = DeepAgent(
+            driver=MockToolDriver([]), system_prompt="You are SuperBot.", base_prompt="", enable_vfs=False
+        )
+        assert BASE_DEEP_AGENT_PROMPT.strip() not in agent.system_prompt
+        assert agent.system_prompt.startswith("You are SuperBot.")
 
     def test_persona_prefixed(self):
         out = assemble_system_prompt(
