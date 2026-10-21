@@ -24,6 +24,7 @@ from .openai_driver import (
     _build_openai_json_mode_response_format,
     _extract_openai_tool_calls,
     _openai_prompt_cache_key,
+    _resolve_api,
 )
 
 logger = logging.getLogger(__name__)
@@ -45,11 +46,10 @@ class AsyncOpenAIDriver(CostMixin, AsyncDriver):
         model: str = "gpt-4o-mini",
         base_url: str | None = None,
         *,
-        api: str = "chat_completions",
+        api: str | None = None,
     ):
-        if api not in ("chat_completions", "responses"):
-            raise ValueError("api must be chat_completions or responses")
-        self.api = api
+        # None picks by model (see default_openai_api).
+        self.api = _resolve_api(api, model)
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
         self.model = model
         if AsyncOpenAI is None:
