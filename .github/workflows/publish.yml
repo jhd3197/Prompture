@@ -171,3 +171,24 @@ jobs:
           TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN_LLM_TO_TOON }}
         run: |
           python -m twine upload dist/llm_to_toon/* --non-interactive
+
+  # A release adds a merge commit and the VERSION bump to main, which never
+  # reached dev, so dev drifted behind main release after release. Bring them
+  # back. dev never touches VERSION, so the merge cannot conflict on it. A push
+  # made with GITHUB_TOKEN starts no workflow, so this publishes no dev build.
+  sync-dev:
+    needs: [release]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout dev
+        uses: actions/checkout@v4
+        with: { ref: dev, fetch-depth: 0 }
+
+      - name: Merge main into dev
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git merge --ff-only origin/main \
+            || git merge --no-edit -m "Merge main into dev [skip ci]" origin/main
+          git push origin HEAD:dev
