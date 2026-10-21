@@ -217,3 +217,31 @@ class TestResponsesStreaming:
         driver.client.responses.create.return_value = events()
         received = [event async for event in driver.generate_messages_stream([], {})]
         assert received[-1]["meta"]["cost"] == pytest.approx(0.0044)
+
+
+class TestDefaultApi:
+    """OpenAI takes function tools on gpt-6 and later only over the Responses API."""
+
+    @pytest.mark.parametrize("cls", [OpenAIDriver, AsyncOpenAIDriver])
+    @pytest.mark.parametrize(
+        ("model", "api"),
+        [
+            ("gpt-6-astra", "responses"),
+            ("gpt-6.1-sol", "responses"),
+            ("openai/gpt-10", "responses"),
+            ("gpt-5.4", "chat_completions"),
+            ("gpt-4o-mini", "chat_completions"),
+            ("o3-mini", "chat_completions"),
+        ],
+    )
+    def test_picks_by_model(self, cls, model, api):
+        assert cls(api_key="sk-test", model=model).api == api
+
+    @pytest.mark.parametrize("cls", [OpenAIDriver, AsyncOpenAIDriver])
+    def test_an_explicit_api_wins(self, cls):
+        assert cls(api_key="sk-test", model="gpt-6-luna", api="chat_completions").api == "chat_completions"
+        assert cls(api_key="sk-test", model="gpt-5.4", api="responses").api == "responses"
+
+    def test_rejects_an_unknown_api(self):
+        with pytest.raises(ValueError):
+            OpenAIDriver(api_key="sk-test", model="gpt-5.4", api="assistants")
