@@ -79,6 +79,7 @@ class AsyncConversation(ToolContextMixin):
         tool_result_policy: ToolResultPolicy | None = None,
         defer_tools: bool | Literal["auto"] = "auto",
         preload_tools: list[str] | None = None,
+        seed_tools: int = 0,
     ) -> None:
         if system_prompt is not None and persona is not None:
             raise ValueError("Cannot provide both 'system_prompt' and 'persona'. Use one or the other.")
@@ -136,6 +137,7 @@ class AsyncConversation(ToolContextMixin):
             tool_result_policy=tool_result_policy,
             defer_tools=defer_tools,
             preload_tools=preload_tools,
+            seed_tools=seed_tools,
         )
         self._simulated_tools = simulated_tools
         self._max_history_messages = max_history_messages

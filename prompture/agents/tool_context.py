@@ -7,9 +7,11 @@ Three loop-level helpers shared by :class:`Conversation` and
   parallel batch, are moved into an :class:`ArtifactStore` and replaced by a
   head/tail preview plus a handle.  The model reads them back with the
   ``read_tool_result`` tool instead of losing everything past a cut-off.
-* :class:`ToolLoader` — when the tool schemas themselves are too large, only a
-  ``search_tools`` / ``load_tools`` pair is sent; the schemas the model loads
-  stay loaded for the rest of the conversation.
+* :class:`ToolLoader` — when the tool schemas themselves are too large, or
+  there are more tools than the model accepts in one request (the driver's
+  ``max_tools``), only a ``search_tools`` / ``load_tools`` pair is sent, plus
+  the tools most relevant to the message when ``seed_tools`` is set.  The
+  schemas the model loads stay loaded, up to that per-request limit.
 * :func:`repair_tool_pairs` — every assistant tool call gets a result and no
   result is left without its call, so an interrupted run does not leave a
   history that providers reject.
@@ -19,6 +21,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal
@@ -201,6 +204,93 @@ def make_read_tool_result(store: ArtifactStore, scope: str, *, page_chars: int =
 # ---------------------------------------------------------------------------
 
 
+_WORDS = re.compile(r"[a-z0-9]+")
+# Words that say nothing about which tool a request needs. Plain overlap
+# counts them, which let a tool whose description says "the" and "in" outrank
+# get_weather for "What's the weather in Lima?".
+_STOP_WORDS = frozenset(
+    [
+        "a",
+        "an",
+        "and",
+        "are",
+        "as",
+        "at",
+        "be",
+        "by",
+        "can",
+        "do",
+        "does",
+        "for",
+        "from",
+        "get",
+        "give",
+        "how",
+        "i",
+        "in",
+        "is",
+        "it",
+        "me",
+        "my",
+        "of",
+        "on",
+        "or",
+        "our",
+        "please",
+        "s",
+        "show",
+        "tell",
+        "that",
+        "the",
+        "their",
+        "them",
+        "then",
+        "there",
+        "these",
+        "this",
+        "to",
+        "us",
+        "use",
+        "using",
+        "we",
+        "what",
+        "when",
+        "where",
+        "which",
+        "who",
+        "why",
+        "will",
+        "with",
+        "would",
+        "you",
+        "your",
+    ]
+)
+
+
+def _rank_terms(text: str) -> set[str]:
+    out = set()
+    for word in _WORDS.findall((text or "").casefold()):
+        if word in _STOP_WORDS or len(word) < 2:
+            continue
+        out.add(word[:-1] if len(word) > 3 and word.endswith("s") else word)
+    return out
+
+
+def rank_tool(query: str, summary: Any) -> float:
+    """How well a tool fits *query*: its name's words count three times its description's.
+
+    The ranking ``search_tools`` and seeding use. Stop words are ignored and a
+    trailing plural ``s`` is folded, so "invoices" finds ``get_invoice``.
+    """
+    wanted = _rank_terms(query)
+    if not wanted:
+        return 0.0
+    name_hits = len(wanted & _rank_terms(str(summary.name).replace("_", " ")))
+    description_hits = len(wanted & _rank_terms(summary.description or ""))
+    return (3 * name_hits + description_hits) / (4 * len(wanted))
+
+
 class ToolLoader:
     """Sends tool schemas on demand once a registry is too large to send whole.
 
@@ -209,6 +299,15 @@ class ToolLoader:
             once the full schemas would cost more than ``auto_threshold_tokens``.
         auto_threshold_tokens: Schema size that switches ``"auto"`` on.
         preload: Tools whose schemas are always sent, deferred or not.
+        seed: When deferring, load the schemas of this many tools most
+            relevant to each new user message before the model's first step,
+            so the likely tools are already in hand instead of behind a search.
+            ``0`` (default) loads nothing up front.
+        max_tools: The most tools one request may carry, usually the driver's
+            :attr:`~prompture.drivers.base.Driver.max_tools`. A registry over it
+            is deferred even when ``defer`` is ``False``, because sending it
+            whole would be rejected, and the tools sent never exceed it: the
+            least recently used loaded tools go back to being searchable.
     """
 
     def __init__(
@@ -217,10 +316,20 @@ class ToolLoader:
         defer: bool | Literal["auto"] = "auto",
         auto_threshold_tokens: int = 8000,
         preload: Iterable[str] = (),
+        seed: int = 0,
+        max_tools: int | None = None,
     ) -> None:
         self.defer = defer
         self.auto_threshold_tokens = auto_threshold_tokens
-        self.loaded: set[str] = set(preload)
+        self.seed = max(0, int(seed))
+        self.max_tools = max_tools
+        self.pinned: frozenset[str] = frozenset(preload)
+        self.loaded: set[str] = set(self.pinned)
+        # Recency of each loaded tool, for choosing what to unload at the cap.
+        self._last_touched: dict[str, int] = {}
+        self._clock = 0
+        self._seed_key: str | None = None
+        self._warned_limit = False
         self._size_cache: tuple[tuple[str, ...], int] | None = None
 
     def schema_tokens(self, registry: ToolRegistry) -> int:
@@ -229,23 +338,76 @@ class ToolLoader:
             self._size_cache = (key, count_tokens(json.dumps(registry.to_openai_format())))
         return self._size_cache[1]
 
-    def is_deferring(self, registry: ToolRegistry) -> bool:
-        if not registry or self.defer is False:
+    def over_limit(self, registry: ToolRegistry, reserve: int = 0) -> bool:
+        """Whether sending every tool, plus ``reserve`` helpers, would pass ``max_tools``."""
+        return bool(self.max_tools) and len(registry) + reserve > self.max_tools  # type: ignore[operator]
+
+    def is_deferring(self, registry: ToolRegistry, reserve: int = 0) -> bool:
+        if not registry:
+            return False
+        if self.over_limit(registry, reserve):
+            if self.defer is False and not self._warned_limit:
+                logger.warning(
+                    "%d tools is over this model's limit of %d per request; deferring tool schemas "
+                    "although defer_tools=False, since the request would be rejected otherwise",
+                    len(registry),
+                    self.max_tools,
+                )
+                self._warned_limit = True
+            return True
+        if self.defer is False:
             return False
         if self.defer is True:
             return True
         return self.schema_tokens(registry) > self.auto_threshold_tokens
 
+    def touch(self, name: str) -> None:
+        """Load *name* (or mark it used), making it the most recent."""
+        self._clock += 1
+        self.loaded.add(name)
+        self._last_touched[name] = self._clock
+
     def mark_used(self, name: str, registry: ToolRegistry) -> None:
         """A tool called by name without loading it is loaded from then on."""
         if name in registry:
-            self.loaded.add(name)
+            self.touch(name)
 
-    def visible(self, registry: ToolRegistry) -> ToolRegistry:
-        """The user tools whose schemas go to the model this round."""
-        if not self.is_deferring(registry):
+    def seed_from(self, query: str | None, registry: ToolRegistry) -> list[str]:
+        """Load the ``seed`` tools most relevant to *query*, once per new query."""
+        if not self.seed or not query or query == self._seed_key:
+            return []
+        self._seed_key = query
+        hits = ToolCatalog(registry).search(query, limit=self.seed, min_relevance=0.01, rank=rank_tool)
+        for summary in hits:
+            self.touch(summary.name)
+        return [s.name for s in hits]
+
+    def visible(self, registry: ToolRegistry, *, reserve: int = 0, deferring: bool | None = None) -> ToolRegistry:
+        """The user tools whose schemas go to the model this round.
+
+        ``reserve`` is the number of helper tools sent beside them, counted
+        against ``max_tools``.
+        """
+        if deferring is None:
+            deferring = self.is_deferring(registry)
+        if not deferring:
             return registry
-        return registry.subset([n for n in registry.names if n in self.loaded])
+        names = [n for n in registry.names if n in self.loaded]
+        cap = None if not self.max_tools else max(0, self.max_tools - reserve)
+        if cap is not None and len(names) > cap:
+            # Preloaded tools stay; the rest by how recently they were loaded or used.
+            pinned = [n for n in names if n in self.pinned][:cap]
+            others = sorted(
+                (n for n in names if n not in self.pinned),
+                key=lambda n: self._last_touched.get(n, 0),
+                reverse=True,
+            )
+            keep = set(pinned) | set(others[: cap - len(pinned)])
+            for name in names:
+                if name not in keep:
+                    self.loaded.discard(name)
+            names = [n for n in names if n in keep]
+        return registry.subset(names)
 
     def meta_tools(self, registry_getter: Callable[[], ToolRegistry]) -> list[ToolDefinition]:
         registry = registry_getter()
@@ -257,7 +419,7 @@ class ToolLoader:
         def search_tools(query: str, limit: int = 8) -> str:
             reg = registry_getter()
             catalog = ToolCatalog(reg)
-            hits = catalog.search(query, limit=max(1, int(limit)), min_relevance=0.01)
+            hits = catalog.search(query, limit=max(1, int(limit)), min_relevance=0.01, rank=rank_tool)
             if not hits:
                 needle = query.casefold().strip()
                 hits = [s for s in catalog.summaries() if needle and needle in s.name.casefold()][: int(limit)]
@@ -273,7 +435,8 @@ class ToolLoader:
             reg = registry_getter()
             found = [n for n in names if n in reg]
             missing = [n for n in names if n not in reg]
-            self.loaded.update(found)
+            for name in found:
+                self.touch(name)
             parts = []
             if found:
                 parts.append(f"Loaded {', '.join(found)}. Their full schemas are available from your next step on.")
@@ -325,6 +488,7 @@ class ToolContextMixin:
         tool_result_policy: ToolResultPolicy | None,
         defer_tools: bool | Literal["auto"],
         preload_tools: Iterable[str] | None,
+        seed_tools: int = 0,
     ) -> None:
         # An explicit max_tool_result_length=None keeps the old "never shorten" meaning.
         if tool_result_policy is None and max_tool_result_length is not None:
@@ -332,7 +496,7 @@ class ToolContextMixin:
         self._tool_result_policy = tool_result_policy
         self._artifacts = ArtifactStore()
         self._has_offloaded = False
-        self._tool_loader = ToolLoader(defer=defer_tools, preload=preload_tools or ())
+        self._tool_loader = ToolLoader(defer=defer_tools, preload=preload_tools or (), seed=seed_tools)
         self._system_tools = ToolRegistry()
 
     def _reset_tool_context(self) -> None:
@@ -347,23 +511,45 @@ class ToolContextMixin:
         ``read_tool_result`` once something was offloaded).  A user tool with
         the same name always wins over a helper.
         """
+        loader = self._tool_loader
+        # The model's own cap on tools per request (OpenAI: 128); None when unlimited.
+        loader.max_tools = getattr(getattr(self, "_driver", None), "max_tools", None)
         system = ToolRegistry()
         helpers = []
-        if self._tool_loader.is_deferring(self._tools):
-            helpers.extend(self._tool_loader.meta_tools(lambda: self._tools))
+        deferring = loader.is_deferring(self._tools, reserve=1 if self._has_offloaded else 0)
+        if deferring:
+            loader.seed_from(self._latest_user_text(), self._tools)
+            helpers.extend(loader.meta_tools(lambda: self._tools))
         if self._has_offloaded:
             helpers.append(make_read_tool_result(self._artifacts, self._conversation_id))
         for td in helpers:
             if td.name not in self._tools:
                 system.add(td)
         self._system_tools = system
-        visible = self._tool_loader.visible(self._tools)
+        visible = loader.visible(self._tools, reserve=len(system), deferring=deferring)
         if not system:
             return visible
         active = ToolRegistry()
         for td in [*visible.definitions, *system.definitions]:
             active.add(td)
         return active
+
+    def _latest_user_text(self) -> str:
+        """The text of the newest user message, the query tool seeding ranks against."""
+        for message in reversed(getattr(self, "_messages", []) or []):
+            if message.get("role") != "user":
+                continue
+            content = message.get("content")
+            if isinstance(content, str):
+                return content
+            if isinstance(content, list):
+                return " ".join(
+                    str(part.get("text", ""))
+                    for part in content
+                    if isinstance(part, dict) and part.get("type") == "text"
+                )
+            return ""
+        return ""
 
     def _dispatch_registry(self, name: str) -> ToolRegistry:
         """Registry that executes *name*: a helper or the user's tools."""

@@ -338,6 +338,34 @@ class TestToolLoader:
         search_td = ToolLoader(defer=True).meta_tools(lambda: reg)[0]
         assert "get_weather" in search_td.description
 
+    def test_over_the_model_limit_defers_even_when_disabled(self):
+        reg = _many_tools()  # 61 tools
+        assert ToolLoader(defer=False, max_tools=50).is_deferring(reg)
+        assert not ToolLoader(defer=False, max_tools=128).is_deferring(reg)
+        # Helpers sent beside the tools count against the limit too.
+        assert ToolLoader(defer=False, max_tools=61).is_deferring(reg, reserve=1)
+
+    def test_seed_loads_the_most_relevant_tools_once_per_query(self):
+        reg = _many_tools()
+        loader = ToolLoader(defer=True, seed=1)
+        assert loader.seed_from("weather in a city", reg) == ["get_weather"]
+        assert loader.visible(reg).names == ["get_weather"]
+        assert loader.seed_from("weather in a city", reg) == []
+        assert ToolLoader(defer=True).seed_from("weather in a city", reg) == []
+
+    def test_visible_tools_never_pass_the_cap(self):
+        reg = _many_tools()
+        loader = ToolLoader(defer=True, preload=["get_weather"], max_tools=5)
+        for i in range(10):
+            loader.touch(f"service_{i}_operation")
+        names = loader.visible(reg, reserve=2).names
+        # 5 per request, 2 of them helpers: the pinned tool and the two most recent.
+        assert sorted(names) == ["get_weather", "service_8_operation", "service_9_operation"]
+        # What did not fit goes back to being searchable, not silently gone.
+        assert "service_0_operation" not in loader.loaded
+        search_td = loader.meta_tools(lambda: reg)[0]
+        assert "service_0_operation" in search_td.description
+
 
 class TestConversationDeferral:
     def test_large_registry_sends_only_meta_tools_then_loaded(self):
@@ -380,6 +408,34 @@ class TestConversationDeferral:
         conv.ask("hi")
         assert len(driver.offered[0]) == 61
         assert SEARCH_TOOLS_NAME not in driver.offered[0]
+
+    def test_seed_tools_offers_the_relevant_tool_in_the_first_round(self):
+        driver = RecordingDriver([_text("ok")])
+        conv = Conversation(driver=driver, tools=_many_tools(), seed_tools=1)
+        conv.ask("What's the weather in Lima?")
+        assert "get_weather" in driver.offered[0]
+        assert SEARCH_TOOLS_NAME in driver.offered[0]
+        assert "service_0_operation" not in driver.offered[0]
+
+    def test_driver_tool_limit_caps_the_request(self):
+        class CappedDriver(RecordingDriver):
+            max_tools = 10
+
+        driver = CappedDriver([_text("ok")])
+        conv = Conversation(driver=driver, tools=_many_tools(), defer_tools=False)
+        conv.ask("hi")
+        assert len(driver.offered[0]) <= 10
+        assert SEARCH_TOOLS_NAME in driver.offered[0]
+
+    def test_async_driver_tool_limit_caps_the_request(self):
+        class CappedAsyncDriver(AsyncRecordingDriver):
+            max_tools = 10
+
+        driver = CappedAsyncDriver([_text("ok")])
+        conv = AsyncConversation(driver=driver, tools=_many_tools(), defer_tools=False, seed_tools=3)
+        asyncio.run(conv.ask("weather in Quito"))
+        assert len(driver.offered[0]) <= 10
+        assert "get_weather" in driver.offered[0]
 
     def test_user_tool_named_like_a_helper_wins(self):
         reg = _many_tools()
