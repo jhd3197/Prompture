@@ -34,6 +34,8 @@ class AsyncOpenAIDriver(CostMixin, AsyncDriver):
     supports_json_mode = True
     supports_json_schema = True
     supports_tool_use = True
+    # OpenAI rejects a request with more than 128 tools.
+    max_tools = 128
     supports_streaming = True
     supports_streaming_tool_use = True
     supports_vision = True
