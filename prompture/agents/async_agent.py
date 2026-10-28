@@ -202,6 +202,9 @@ class AsyncAgent(Generic[DepsType]):
             schemas would cost more than ~8k tokens.
         preload_tools: Tools whose schemas are always sent, even when
             deferring.
+        seed_tools: When deferring, load this many tools most relevant to
+            each new user message up front, so the likely tools need no
+            search first.  ``0`` (default) loads none.
         brand: A :class:`~prompture.marketing.BrandContext` (or dict /
             brand file path).  Its block is added to the system prompt
             right after the persona on every run.
@@ -238,6 +241,7 @@ class AsyncAgent(Generic[DepsType]):
         tool_result_policy: ToolResultPolicy | None = None,
         defer_tools: bool | Literal["auto"] = "auto",
         preload_tools: list[str] | None = None,
+        seed_tools: int = 0,
         max_depth: int = _DEFAULT_MAX_AGENT_DEPTH,
         env: ProviderEnvironment | None = None,
         brand: Any = None,
@@ -278,6 +282,7 @@ class AsyncAgent(Generic[DepsType]):
         self._tool_result_policy = tool_result_policy
         self._defer_tools = defer_tools
         self._preload_tools = list(preload_tools) if preload_tools else None
+        self._seed_tools = seed_tools
         self._tool_timeout = tool_timeout
         self._conversation: Any = None
         # The conversation driving the current run.  Tracked separately from
@@ -1025,6 +1030,8 @@ class AsyncAgent(Generic[DepsType]):
         kwargs["defer_tools"] = self._defer_tools
         if self._preload_tools:
             kwargs["preload_tools"] = self._preload_tools
+        if self._seed_tools:
+            kwargs["seed_tools"] = self._seed_tools
         if self._tool_timeout is not None:
             kwargs["tool_timeout"] = self._tool_timeout
         if self._options:

@@ -37,6 +37,8 @@ class AzureDriver(CostMixin, Driver):
     supports_json_mode = True
     supports_json_schema = True
     supports_tool_use = True
+    # OpenAI rejects a request with more than 128 tools.
+    max_tools = 128
     supports_vision = True
 
     # All pricing and model config now resolved from JSON rate files (KB) and

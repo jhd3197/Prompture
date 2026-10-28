@@ -403,6 +403,10 @@ class Driver(ABC):
     supports_streaming: bool = False
     supports_streaming_tool_use: bool = False
     supports_vision: bool = False
+    #: The most tools one request may carry, or ``None`` for no known limit.
+    #: Conversations defer tool schemas past it (see ``ToolLoader``) rather
+    #: than send a request the provider would reject.
+    max_tools: int | None = None
 
     callbacks: DriverCallbacks | None = None
 
