@@ -2559,6 +2559,95 @@ class TestAgentStopDelegation:
         asyncio.run(_test())
 
 
+class TestStopWithoutFinalAnswer:
+    """stop(final_answer=False): the turn ends after the tool, no extra model call."""
+
+    @staticmethod
+    def _asking_response() -> dict:
+        response = _tool_call_response("call_1", "ask_person", {})
+        response["text"] = "One question before I start."
+        return response
+
+    def test_sync_run_ends_on_the_tool_round(self):
+        holder: dict[str, Any] = {}
+
+        def ask_person() -> str:
+            """Hand the turn back to the person."""
+            holder["agent"].stop(final_answer=False)
+            return "asked"
+
+        driver = MockToolDriver([self._asking_response(), _text_response("SHOULD NOT BE CALLED")])
+        agent = Agent("test/model", driver=driver, tools=[ask_person], max_iterations=5)
+        holder["agent"] = agent
+        result = agent.run("start")
+
+        assert result.output == "One question before I start."
+        assert driver._call_idx == 1
+        assert _tool_message_contents(result) == ["asked"]
+
+    def test_async_run_ends_on_the_tool_round(self):
+        holder: dict[str, Any] = {}
+
+        def ask_person() -> str:
+            """Hand the turn back to the person."""
+            holder["agent"].stop(final_answer=False)
+            return "asked"
+
+        async def _test():
+            driver = MockAsyncToolDriver([self._asking_response(), _text_response("SHOULD NOT BE CALLED")])
+            agent = AsyncAgent("test/model", driver=driver, tools=[ask_person], max_iterations=5)
+            holder["agent"] = agent
+            result = await agent.run("start")
+
+            assert result.output == "One question before I start."
+            assert driver._call_idx == 1
+
+        asyncio.run(_test())
+
+    def test_default_stop_still_writes_a_final_answer(self):
+        holder: dict[str, Any] = {}
+
+        def ask_person() -> str:
+            """Hand the turn back to the person."""
+            holder["agent"].stop()
+            return "asked"
+
+        driver = MockToolDriver([self._asking_response(), _text_response("final answer")])
+        agent = Agent("test/model", driver=driver, tools=[ask_person], max_iterations=5)
+        holder["agent"] = agent
+
+        assert agent.run("start").output == "final answer"
+        assert driver._call_idx == 2
+
+    def test_pending_stop_keeps_final_answer_off_when_replayed(self):
+        def ping() -> str:
+            """Ping."""
+            return "pong"
+
+        for cls, driver in ((Agent, MockToolDriver([_text_response("hi")])), (AsyncAgent, MockAsyncDriver())):
+            agent = cls("test/model", driver=driver, tools=[ping])
+            agent.stop(final_answer=False)
+            conv = agent._build_conversation()
+            assert conv._stop_requested is True
+            assert conv._stop_final_answer is False
+
+    def test_next_run_answers_normally_again(self):
+        holder: dict[str, Any] = {"stop": True}
+
+        def ask_person() -> str:
+            """Hand the turn back to the person once."""
+            if holder.pop("stop", False):
+                holder["agent"].stop(final_answer=False)
+            return "asked"
+
+        driver = MockToolDriver([self._asking_response(), self._asking_response(), _text_response("second run answer")])
+        agent = Agent("test/model", driver=driver, tools=[ask_person], max_iterations=5)
+        holder["agent"] = agent
+
+        assert agent.run("start").output == "One question before I start."
+        assert agent.run("again").output == "second run answer"
+
+
 # ---------------------------------------------------------------------------
 # Per-tool timeout plumbed from the Agent
 # ---------------------------------------------------------------------------

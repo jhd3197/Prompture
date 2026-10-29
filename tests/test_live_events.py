@@ -637,6 +637,43 @@ class TestAsyncAgentRunLive:
         assert "Tokyo" in result.output_text
 
     @pytest.mark.asyncio
+    async def test_async_run_live_stop_without_final_answer(self):
+        """A tool that hands the turn back ends the stream on its round."""
+        holder: dict[str, Any] = {}
+
+        def ask_person() -> str:
+            """Ask the person a question."""
+            holder["agent"].stop(final_answer=False)
+            return "asked"
+
+        turn1 = [
+            AssistantTurnStart(turn_index=0),
+            TextDelta(text="One question first."),
+            ToolUseStart(id="q", name="ask_person"),
+            ToolUseStop(id="q", name="ask_person", input={}),
+            MessageStop(stop_reason="tool_use", usage={"total_tokens": 5, "cost": 0.001}),
+        ]
+        never = [
+            AssistantTurnStart(turn_index=1),
+            TextDelta(text="SHOULD NOT STREAM"),
+            MessageStop(stop_reason="end_turn", usage={"total_tokens": 6, "cost": 0.001}),
+        ]
+        driver = AsyncNativeStreamingDriver([turn1, never])
+        agent = AsyncAgent("mock/mock", driver=driver, tools=[ask_person])
+        holder["agent"] = agent
+
+        streamed = agent.run_live("Make me something")
+        collected = [ev async for ev in streamed]
+
+        kinds = [e.event_type for e in collected]
+        assert "SHOULD NOT STREAM" not in "".join(e.text for e in collected if e.event_type == "text_delta")
+        assert kinds.count("tool_result") == 1
+        assert kinds[-1] == "turn_complete"
+        assert driver._idx == 1
+        assert streamed.result is not None
+        assert streamed.result.output_text == "One question first."
+
+    @pytest.mark.asyncio
     async def test_async_run_live_without_tools(self):
         class _AsyncTextStream(AsyncDriver):
             supports_messages = True
