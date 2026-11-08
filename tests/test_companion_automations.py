@@ -83,11 +83,46 @@ def test_runs_steps_in_order_and_carries_sessions(auto, agent, tmp_path):
     assert agent.calls[0]["session_id"] is None
     assert agent.calls[1]["session_id"] == "s1"  # "same": continues step one's session
     assert agent.calls[2]["session_id"] is None  # "new"
-    assert all(c["approval_mode"] == "auto" for c in agent.calls)
+    assert all(c["approval_mode"] == "default" for c in agent.calls)
     run = auto.state()["current"]
     assert [s["status"] for s in run["steps"]] == ["done", "done", "done"]
     assert run["cost_usd"] == 3.0
     assert auto.state()["history"][0]["id"] == run["id"]
+
+
+def test_permission_failure_always_pauses_and_resume_preserves_session(auto, agent, tmp_path):
+    agent.replies["write"] = {"error": "Tool approval required"}
+    start(auto, tmp_path, ["write", "next"], stop={"fail": False, "ask": False})
+    wait_until(lambda: status(auto) == "paused")
+    assert auto.run.reason == "approval"
+    assert auto.run.current == 0
+    assert len(agent.calls) == 1
+    assert auto.run.steps[0].failure["category"] == "permission"
+    auto.resume()
+    wait_until(lambda: status(auto) == "finished")
+    assert agent.calls[1]["session_id"] == "s1"
+    assert agent.calls[1]["approval_mode"] == "default"
+    assert "current tool permissions" in agent.calls[1]["task"]
+
+
+def test_structured_denial_cannot_be_reported_as_success(auto, tmp_path):
+    async def denied(*args, **kwargs):
+        yield CodingAgentEvent(type="system", session_id="blocked-session")
+        yield CodingAgentEvent(type="approval", tool_name="Bash", tool_input={"command": "python extract.py"})
+        yield CodingAgentEvent(type="done", text="Done", cost_usd=0.12)
+
+    auto.runner = denied
+    start(auto, tmp_path, ["extract", "next"])
+    wait_until(lambda: status(auto) == "paused")
+    assert auto.run.reason == "approval"
+    assert "python extract.py" in auto.run.steps[0].error
+    assert auto.run.steps[0].cost_usd == 0.12
+    assert auto.run.steps[1].status == "waiting"
+
+
+def test_invalid_approval_mode_is_rejected(auto, tmp_path):
+    with pytest.raises(AutomationError, match="approval_mode"):
+        start(auto, tmp_path, ["task"], approval_mode="yolo")
 
 
 def test_failure_pauses_and_resume_retries(auto, agent, tmp_path):

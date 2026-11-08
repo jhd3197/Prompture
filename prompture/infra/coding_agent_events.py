@@ -23,6 +23,7 @@ EventType = Literal[
     "question",
     "done",
     "error",
+    "approval",
 ]
 
 
@@ -75,6 +76,18 @@ def _claude_event_to_events(obj: Mapping[str, Any]) -> Iterator[CodingAgentEvent
         )
         return
     if kind == "result":
+        # Claude may exit successfully after denied tools. These are not a
+        # completed task, even when its final prose sounds successful.
+        denials = obj.get("permission_denials")
+        for denial in denials if isinstance(denials, list) else []:
+            if isinstance(denial, dict):
+                yield CodingAgentEvent(
+                    type="approval",
+                    tool_name=denial.get("tool_name") if isinstance(denial.get("tool_name"), str) else None,
+                    tool_input=denial.get("tool_input") if isinstance(denial.get("tool_input"), dict) else None,
+                    error="Tool permission denied",
+                    raw=denial,
+                )
         usage = obj.get("usage") if isinstance(obj.get("usage"), dict) else {}
         is_error = bool(obj.get("is_error"))
         text = obj.get("result") if isinstance(obj.get("result"), str) else None
@@ -168,6 +181,15 @@ def _codex_event_to_events(obj: Mapping[str, Any]) -> Iterator[CodingAgentEvent]
             yield from _codex_thread_event_to_events(obj)
         return
     kind = msg.get("type")
+    if kind in ("exec_approval_request", "apply_patch_approval_request"):
+        yield CodingAgentEvent(
+            type="approval",
+            tool_name="exec" if kind == "exec_approval_request" else "apply_patch",
+            tool_input={"command": msg.get("command"), "changes": msg.get("changes")},
+            error="Native agent approval required",
+            raw=obj,
+        )
+        return
     if kind in ("task_started", "session_configured"):
         # Codex emits session_id either nested in msg or at the envelope level.
         sid = msg.get("session_id") if isinstance(msg.get("session_id"), str) else None

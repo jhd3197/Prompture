@@ -1,8 +1,8 @@
 """Delegate a task to a coding agent through the companion's automation queue.
 
 The companion (``prompture companion``) runs queued coding-agent steps
-unattended: Claude Code or Codex does the task with permission prompts
-skipped, model access coming from this machine's Prompture setup — the
+with native permissions preserved by default. Explicit ``--approval-mode auto``
+opts into unattended execution. Model access comes from this machine's Prompture setup — the
 delegating caller never needs a provider key. These commands are the
 scriptable front end to that queue, so another agent (or a person) can
 hand off a task and read the result from stdout.
@@ -17,7 +17,7 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, overload
 
 import click
 
@@ -27,6 +27,7 @@ ENDED = ("finished", "failed", "stopped")
 EXIT_ASK = 3
 #: Exit code when the run carries on without us (stopped, cost cap, timeout, Ctrl+C).
 EXIT_DETACHED = 4
+EXIT_APPROVAL = 5
 #: Seconds between polls while a run is followed.
 POLL_SECONDS = 1.5
 
@@ -96,11 +97,22 @@ def _start_companion(timeout: float = 30.0) -> dict[str, Any] | None:
     return None
 
 
-def _ensure_companion() -> _Companion:
+@overload
+def _ensure_companion(*, start: Literal[True] = True) -> _Companion: ...
+
+
+@overload
+def _ensure_companion(*, start: Literal[False]) -> _Companion | None: ...
+
+
+def _ensure_companion(*, start: bool = True) -> _Companion | None:
     """A client for the running companion, starting one first if needed."""
     from ..companion import running_instance
 
-    state = running_instance() or _start_companion()
+    state = running_instance()
+    if state is None and not start:
+        return None
+    state = state or _start_companion()
     if state is None:
         raise click.ClickException(
             "No companion is running and starting one failed. Run `prompture companion` yourself to see why."
@@ -155,6 +167,22 @@ def _follow(client: _Companion, run_id: str, *, as_json: bool = False, timeout: 
                 return 0 if state == "finished" else (1 if state == "failed" else EXIT_DETACHED)
             if state == "paused":
                 reason = run.get("reason")
+                # JSON is one parseable terminal snapshot, never prose followed
+                # by an endless poll on a failure or approval gate.
+                if as_json:
+                    click.echo(json.dumps(run, indent=2))
+                    return {"ask": EXIT_ASK, "approval": EXIT_APPROVAL, "fail": 1}.get(reason, EXIT_DETACHED)
+                if reason == "approval":
+                    step = (run.get("steps") or [{}])[run.get("current", 0)]
+                    click.echo(
+                        f"Native agent: {run.get('agent')}; folder: {run.get('cwd')}; session: {step.get('session_id') or 'not provided'}"
+                    )
+                    click.echo(f"\nApproval required: {step.get('error') or 'tool permission blocked'}")
+                    click.echo(
+                        (step.get("failure") or {}).get("hint")
+                        or "Review permissions in the native agent, then run prompture delegate-resume."
+                    )
+                    return EXIT_APPROVAL
                 if reason == "ask":
                     question = run.get("question") or "The agent is asking a question."
                     click.echo(f"\nThe agent asks: {question}")
@@ -178,7 +206,10 @@ def _follow(client: _Companion, run_id: str, *, as_json: bool = False, timeout: 
                     elif reason == "fail":
                         step = (run.get("steps") or [{}])[run.get("current", 0)]
                         click.echo(f"\nStep failed: {step.get('error') or 'unknown error'}")
-                        click.echo("Fix and carry on with: prompture delegate-resume")
+                        click.echo(
+                            (step.get("failure") or {}).get("hint")
+                            or "Fix and carry on with: prompture delegate-resume"
+                        )
                         return 1
                     elif reason == "cost":
                         click.echo(f"\nCost cap reached (${run.get('cost_usd') or 0:.4f}).")
@@ -189,7 +220,11 @@ def _follow(client: _Companion, run_id: str, *, as_json: bool = False, timeout: 
             else:
                 last_note = None
             if deadline is not None and time.monotonic() > deadline:
-                click.echo("\nStill running — leaving it in the background. Check with: prompture delegate-status")
+                click.echo(
+                    json.dumps(run, indent=2)
+                    if as_json
+                    else "\nStill running — leaving it in the background. Check with: prompture delegate-status"
+                )
                 return EXIT_DETACHED
             time.sleep(POLL_SECONDS)
     except KeyboardInterrupt:
@@ -222,6 +257,13 @@ def _wait_options(command: Any) -> Any:
 )
 @click.option("--model", default=None, help="Model string (provider/model); default is the agent's own.")
 @click.option("--cost-cap", default=None, type=float, help="Pause the run once it passes this many USD.")
+@click.option(
+    "--approval-mode",
+    type=click.Choice(["default", "auto"]),
+    default="default",
+    show_default=True,
+    help="Preserve native permissions (default), or explicitly run unattended (auto).",
+)
 @_wait_options
 def delegate(
     task: tuple[str, ...],
@@ -229,27 +271,39 @@ def delegate(
     agent: str,
     model: str | None,
     cost_cap: float | None,
+    approval_mode: str,
     wait: bool,
     timeout: float,
     as_json: bool,
 ) -> None:
     """Hand a task to a coding agent and watch it finish.
 
-    The companion runs TASK unattended — permission prompts skipped, model
+    The companion runs TASK with native permissions preserved by default. Use
+    --approval-mode auto only to explicitly opt into unattended execution. Model
     access from this machine's Prompture setup, so no provider key is needed
     here. The agent's work streams to stdout. If it ends on a question, answer
     with `prompture delegate-answer "…"`.
 
     Exit codes: 0 finished, 1 failed, 3 waiting for an answer, 4 stopped or
-    still running in the background.
+    still running in the background, 5 waiting for native tool approval.
     """
     text = " ".join(task).strip()
     if not text:
         raise click.ClickException("Say what to do.")
     client = _ensure_companion()
+    if approval_mode == "default":
+        status, capabilities = client.get("/v1/automations")
+        if status != 200:
+            raise click.ClickException(f"Cannot check delegation permissions: {_detail(capabilities)}")
+        if "default" not in capabilities.get("approval_modes", []):
+            raise click.ClickException(
+                "This companion does not support permission-preserving delegation. "
+                "Update/restart it after any active queue finishes; no task was submitted."
+            )
     body: dict[str, Any] = {
         "cwd": str(Path(cwd).resolve()),
         "agent": agent,
+        "approval_mode": approval_mode,
         "steps": [{"text": text, "session": "new"}],
     }
     if model:
@@ -267,9 +321,11 @@ def delegate(
         )
     if status != 200:
         raise click.ClickException(_detail(run))
-    if not wait and not as_json:
+    if not wait:
         click.echo(
-            f"Running as {run.get('agent_name', agent)} (run {run['id']}). Watch with: prompture delegate-status"
+            json.dumps(run, indent=2)
+            if as_json
+            else f"Running as {run.get('agent_name', agent)} (run {run['id']}). Watch with: prompture delegate-status"
         )
         return
     if not as_json:
@@ -288,8 +344,8 @@ def delegate_answer(text: tuple[str, ...], wait: bool, timeout: float, as_json: 
     status, run = client.post("/v1/automations/current/answer", {"text": " ".join(text).strip()})
     if status != 200:
         raise click.ClickException(_detail(run))
-    if not wait and not as_json:
-        click.echo("Answer sent — the step's session continues.")
+    if not wait:
+        click.echo(json.dumps(run, indent=2) if as_json else "Answer sent — the step's session continues.")
         return
     code = _follow(client, run["id"], as_json=as_json, timeout=timeout)
     if code:
@@ -304,8 +360,8 @@ def delegate_resume(wait: bool, timeout: float, as_json: bool) -> None:
     status, run = client.post("/v1/automations/current/resume")
     if status != 200:
         raise click.ClickException(_detail(run))
-    if not wait and not as_json:
-        click.echo("Resumed.")
+    if not wait:
+        click.echo(json.dumps(run, indent=2) if as_json else "Resumed.")
         return
     code = _follow(client, run["id"], as_json=as_json, timeout=timeout)
     if code:
@@ -331,7 +387,11 @@ def delegate_stop() -> None:
 @click.option("--json", "as_json", is_flag=True, help="Print the queue state as JSON.")
 def delegate_status(as_json: bool) -> None:
     """Show the queue the companion is running now."""
-    client = _ensure_companion()
+    client = _ensure_companion(start=False)
+    if client is None:
+        state = {"online": False, "current": None, "history": [], "agents": []}
+        click.echo(json.dumps(state, indent=2) if as_json else "Companion offline. Start it with: prompture companion")
+        return
     status, state = client.get("/v1/automations")
     if status == 404:
         raise click.ClickException(
@@ -340,7 +400,7 @@ def delegate_status(as_json: bool) -> None:
     if status != 200:
         raise click.ClickException(_detail(state))
     if as_json:
-        click.echo(json.dumps(state, indent=2))
+        click.echo(json.dumps({"online": True, **state}, indent=2))
         return
     run = state.get("current")
     if not run:
@@ -358,6 +418,14 @@ def delegate_status(as_json: bool) -> None:
     if run.get("question"):
         click.echo(f"Question: {run['question']}")
         click.echo('Answer with: prompture delegate-answer "your answer"')
+    if run.get("reason") in ("approval", "fail"):
+        step = (run.get("steps") or [{}])[run.get("current", 0)]
+        click.echo(
+            f"Native agent: {run.get('agent')}; folder: {run.get('cwd')}; session: {step.get('session_id') or 'not provided'}"
+        )
+        click.echo(step.get("error") or "Step blocked")
+        if step.get("failure"):
+            click.echo(step["failure"]["hint"])
     for index, step in enumerate(run.get("steps") or []):
         mark = marks.get(step.get("status"), " ")
         click.echo(f"  {mark} {index + 1}. {step.get('text', '')}")

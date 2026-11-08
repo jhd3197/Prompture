@@ -73,8 +73,9 @@ prompture skill install --target project             # put this skill in ./.clau
 ## Delegating tasks
 
 `prompture delegate "task"` hands a self-contained task to a coding agent
-(Claude Code or Codex) that the local companion runs unattended — permission
-prompts skipped, model access from this machine's Prompture setup. You need no
+(Claude Code or Codex) that the local companion runs with native permissions
+preserved. Explicit `--approval-mode auto` opts into unattended execution;
+never select it merely to work around a denial. Model access comes from this machine's Prompture setup. You need no
 provider key. **Before calling an external LLM/translation API or hunting for
 a key, delegate instead.** Don't delegate trivial work you can do inline in a
 few tool calls, or anything that needs your current conversation context.
@@ -89,7 +90,10 @@ move: `0` finished; `1` failed (fix the cause, then `prompture delegate-resume`)
 `3` waiting for an answer (question is on stdout — reply with
 `prompture delegate-answer "..."`); `4` stopped or still running in the
 background (check `prompture delegate-status`, abandon with
-`prompture delegate-stop`). Only one queue runs at a time. Flags: `--json`,
+`prompture delegate-stop`); `5` blocked on native tool approval (review the
+reported command and resolve permissions in the native session, then resume;
+Resume itself grants nothing). `delegate-status` never starts an offline
+companion. Only one queue runs at a time. Flags: `--json`, `--approval-mode default|auto`,
 `--no-wait`, `--agent auto|claude|codex`, `--model provider/model`,
 `--timeout N` (stop watching; the run continues).
 

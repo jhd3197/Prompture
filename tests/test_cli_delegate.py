@@ -80,7 +80,7 @@ def test_delegate_streams_to_done(comp, agent, tmp_path):
 
     assert result.exit_code == 0, result.output
     assert agent.calls[0]["task"] == "translate README.md"
-    assert agent.calls[0]["approval_mode"] == "auto"  # unattended: no permission prompts
+    assert agent.calls[0]["approval_mode"] == "default"  # preserve native permissions
     assert "step 1/1: translate README.md" in result.output
     assert "finished" in result.output
 
@@ -248,3 +248,70 @@ def test_client_refuses_non_loopback_urls():
     with pytest.raises(click.ClickException, match="non-loopback"):
         delegate_cmd._Companion("http://example.com:8000", "t0ken")
     assert delegate_cmd._Companion("http://localhost:47811/", "t0ken").url == "http://localhost:47811"
+
+
+def test_status_offline_never_starts_companion():
+    import json
+
+    with (
+        patch("prompture.companion.running_instance", return_value=None),
+        patch.object(delegate_cmd, "_start_companion") as start,
+    ):
+        result = invoke("delegate-status", "--json")
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.output)["online"] is False
+    start.assert_not_called()
+
+
+def test_old_companion_cannot_silently_ignore_permission_mode(tmp_path):
+    from unittest.mock import Mock
+
+    client = Mock()
+    client.get.return_value = (200, {"current": None})
+    with patch.object(delegate_cmd, "_ensure_companion", return_value=client):
+        result = invoke("delegate", "--cwd", str(tmp_path), "task")
+    assert result.exit_code == 1
+    assert "no task was submitted" in result.output
+    client.post.assert_not_called()
+
+
+def test_explicit_unattended_mode(comp, agent, tmp_path):
+    result = invoke("delegate", "--cwd", str(tmp_path), "--approval-mode", "auto", "one")
+    assert result.exit_code == 0, result.output
+    assert agent.calls[0]["approval_mode"] == "auto"
+
+
+@pytest.mark.parametrize(
+    ("message", "code", "category"),
+    [
+        ("Tool approval required", 5, "permission"),
+        ("The model requires a newer version of Codex", 1, "model"),
+        ("Not inside a trusted directory", 1, "directory"),
+        ("Not logged in", 1, "authentication"),
+        ("tests failed", 1, "task"),
+    ],
+)
+def test_blocked_json_returns_snapshot_and_action(comp, agent, tmp_path, message, code, category):
+    import json
+
+    agent.replies["blocked"] = {"error": message}
+    result = invoke("delegate", "--cwd", str(tmp_path), "--json", "blocked")
+    assert result.exit_code == code, result.output
+    run = json.loads(result.output)
+    assert run["steps"][0]["failure"]["category"] == category
+    assert run["steps"][0]["failure"]["hint"]
+
+
+def test_no_wait_json_does_not_follow(comp, agent, tmp_path, monkeypatch):
+    import json
+
+    agent.gate.clear()
+
+    def unexpected(*args, **kwargs):
+        pytest.fail("--no-wait must not follow the run")
+
+    monkeypatch.setattr(delegate_cmd, "_follow", unexpected)
+    result = invoke("delegate", "--cwd", str(tmp_path), "--no-wait", "--json", "slow")
+    agent.gate.set()
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.output)["id"]
