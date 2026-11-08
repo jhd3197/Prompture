@@ -60,13 +60,17 @@ def _build_drivers(providers: list[str]) -> dict[str, object]:
 @cli.command("coding-agents")
 @click.option("--json", "json_output", is_flag=True, help="Output machine-readable JSON.")
 @click.option("--verify", is_flag=True, help="Run a lightweight health check for each detected CLI.")
-def coding_agents(json_output: bool, verify: bool) -> None:
+@click.option("--agent", "agent_ids", multiple=True, help="Only discover/check this agent (repeatable).")
+def coding_agents(json_output: bool, verify: bool, agent_ids: tuple[str, ...]) -> None:
     """List detected local coding-agent CLIs."""
     from dataclasses import asdict
 
     from ..infra import get_available_coding_agents
 
-    agents = get_available_coding_agents(verify=verify)
+    try:
+        agents = get_available_coding_agents(verify=verify, **({"agent_ids": agent_ids} if agent_ids else {}))
+    except ValueError as exc:
+        raise click.BadParameter(str(exc), param_hint="--agent") from exc
     if json_output:
         click.echo(json.dumps([asdict(agent) for agent in agents], indent=2))
         return

@@ -627,6 +627,7 @@ def resolve_coding_agent_executable(
 
 def get_available_coding_agents(
     *,
+    agent_ids: Sequence[str] | None = None,
     agent_paths: Mapping[str, str] | None = None,
     include_unavailable: bool = True,
     verify: bool = False,
@@ -635,6 +636,8 @@ def get_available_coding_agents(
     """Auto-detect installed coding-agent CLIs.
 
     Args:
+        agent_ids: Only discover these registered agents. Unselected binaries
+            are never resolved or health-checked; ``None`` selects all.
         agent_paths: Optional explicit binary paths by agent id. Any id
             registered in :data:`CODING_AGENT_SPECS` is accepted (Claude,
             Codex, Gemini, Qwen, Aider, OpenCode, Cursor Agent, Crush today,
@@ -653,8 +656,14 @@ def get_available_coding_agents(
     """
     configured_paths = agent_paths or {}
     agents: list[CodingAgentInfo] = []
+    selected = set(agent_ids) if agent_ids is not None else set(CODING_AGENT_SPECS)
+    unknown = selected - CODING_AGENT_SPECS.keys()
+    if unknown:
+        raise ValueError(f"Unknown coding agents: {', '.join(sorted(unknown))}")
 
     for agent_id, spec in CODING_AGENT_SPECS.items():
+        if agent_id not in selected:
+            continue
         display_name = spec.display_name
         default_binary = spec.default_binary
         custom_binary = configured_paths.get(agent_id, "")

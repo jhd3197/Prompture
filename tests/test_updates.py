@@ -25,6 +25,42 @@ def _pypi(version: str, releases: dict | None = None) -> dict:
     return {"info": {"version": version}, "releases": releases if releases is not None else {version: [{}]}}
 
 
+@pytest.mark.parametrize("offline", [False, True])
+def test_editable_checkout_never_gets_release_upgrade_advice(monkeypatch, tmp_path, offline):
+    monkeypatch.setattr(updates, "editable_installation", lambda: True)
+    monkeypatch.setattr(updates, "installed_version", lambda: "1.0.0.dev0")
+    state = tmp_path / "update.json"
+    fetch = FakeFetch(_pypi("9.0.0"), [])
+    info = check_for_update(state_path=state, fetch_json=fetch, now=100)
+    assert info.installation == "editable"
+    assert info.comparison == "unknown"
+    assert not info.update_available
+    assert info.upgrade_command is None
+    assert "checkout" in info.summary()
+    assert "up to date" not in info.summary()
+    assert fetch.calls == [PYPI_URL]
+    again = check_for_update(state_path=state, fetch_json=FakeFetch(fail=OSError("offline")), force=offline, now=101)
+    assert again.source == "cache"
+    assert again.installation == "editable"
+    assert again.upgrade_command is None
+
+
+def test_editable_detection_uses_pep610(monkeypatch):
+    import importlib.metadata
+    from unittest.mock import Mock
+
+    dist = Mock()
+    monkeypatch.setattr(importlib.metadata, "distribution", lambda _: dist)
+    for raw, expected in [
+        (' {"dir_info":{"editable":true}}', True),
+        ('{"dir_info":{}}', False),
+        (None, False),
+        ("invalid", False),
+    ]:
+        dist.read_text.return_value = raw
+        assert updates.editable_installation() is expected
+
+
 RELEASES = [
     {
         "tag_name": "v1.3.0",

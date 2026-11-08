@@ -49,7 +49,8 @@ class UpdateInfo:
     Attributes:
         installed: Installed Prompture version.
         latest: Latest version on PyPI (``None`` when unknown).
-        update_available: ``latest`` is newer than ``installed``.
+        update_available: ``latest`` is newer than a release installation;
+            false when an editable checkout cannot be compared reliably.
         checked_at: Unix time the PyPI answer was fetched.
         source: ``network`` (fresh), ``cache`` (within TTL or offline fallback)
             or ``offline`` (no answer at all).
@@ -57,6 +58,8 @@ class UpdateInfo:
         highlights: ``[{"version", "date", "url", "notes": [...]}]`` for
             releases newer than ``installed`` (newest first, best-effort).
         release_url: PyPI page of the latest version.
+        installation: ``release`` or ``editable`` (PEP 610 metadata).
+        comparison: ``version`` or ``unknown`` for an editable checkout.
     """
 
     installed: str
@@ -67,10 +70,12 @@ class UpdateInfo:
     error: str | None = None
     highlights: list[dict[str, Any]] = field(default_factory=list)
     release_url: str | None = None
+    installation: str = "release"
+    comparison: str = "version"
 
     @property
     def upgrade_command(self) -> str | None:
-        return UPGRADE_COMMAND if self.update_available else None
+        return UPGRADE_COMMAND if self.update_available and self.installation == "release" else None
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
@@ -80,6 +85,12 @@ class UpdateInfo:
 
     def summary(self) -> str:
         """One line for humans."""
+        if self.installation == "editable":
+            latest = f"; latest PyPI release {self.latest}" if self.latest else ""
+            return (
+                f"prompture editable checkout (installed metadata {self.installed}{latest}); "
+                "checkout freshness cannot be inferred from installed metadata. Update through your checkout workflow."
+            )
         if self.latest is None:
             reason = f" ({self.error})" if self.error else ""
             return f"prompture {self.installed} installed; latest version unknown{reason}"
@@ -104,6 +115,26 @@ def installed_version() -> str:
             return str(__version__)
         except Exception:
             return "0"
+
+
+def editable_installation() -> bool:
+    """PEP 610 metadata, not a guess based on a dev suffix or working directory."""
+    from importlib.metadata import PackageNotFoundError, distribution
+
+    try:
+        direct = json.loads(distribution(PACKAGE).read_text("direct_url.json") or "{}")
+        return isinstance(direct, dict) and direct.get("dir_info", {}).get("editable") is True
+    except (PackageNotFoundError, OSError, ValueError, TypeError, AttributeError):
+        return False
+
+
+def _installation_info(info: UpdateInfo, editable: bool) -> UpdateInfo:
+    if editable:
+        info.installation = "editable"
+        info.comparison = "unknown"
+        info.update_available = False
+        info.highlights = []
+    return info
 
 
 _PRE_TAGS = {"dev": -4, "a": -3, "alpha": -3, "b": -2, "beta": -2, "rc": -1, "c": -1, "pre": -1, "preview": -1}
@@ -311,6 +342,7 @@ def check_for_update(
         now: Clock override (tests).
     """
     path = state_path or STATE_FILE
+    editable = installed is None and editable_installation()
     installed = installed or installed_version()
     clock = time.time() if now is None else now
     state = _read_state(path)
@@ -323,7 +355,7 @@ def check_for_update(
         and 0 <= clock - state["checked_at"] < cache_ttl
     )
     if fresh:
-        return _info_from_state(state, installed, "cache", None)
+        return _installation_info(_info_from_state(state, installed, "cache", None), editable)
 
     fetch = fetch_json or _default_fetch_json
     try:
@@ -334,11 +366,11 @@ def check_for_update(
 
         error = scrub_secrets(f"{type(exc).__name__}: {exc}")[:300]
         if state.get("latest"):
-            return _info_from_state(state, installed, "cache", error)
-        return UpdateInfo(installed=installed, source="offline", error=error)
+            return _installation_info(_info_from_state(state, installed, "cache", error), editable)
+        return _installation_info(UpdateInfo(installed=installed, source="offline", error=error), editable)
 
     highlights: list[dict[str, Any]] = []
-    if include_changelog and is_newer(latest, installed):
+    if include_changelog and not editable and is_newer(latest, installed):
         try:
             highlights = changelog_since(fetch(RELEASES_URL, timeout), installed, latest)
         except Exception as exc:
@@ -355,14 +387,17 @@ def check_for_update(
         }
     )
     _write_state(path, state)
-    return UpdateInfo(
-        installed=installed,
-        latest=latest,
-        update_available=is_newer(latest, installed),
-        checked_at=clock,
-        source="network",
-        highlights=highlights,
-        release_url=release_url,
+    return _installation_info(
+        UpdateInfo(
+            installed=installed,
+            latest=latest,
+            update_available=is_newer(latest, installed),
+            checked_at=clock,
+            source="network",
+            highlights=highlights,
+            release_url=release_url,
+        ),
+        editable,
     )
 
 
