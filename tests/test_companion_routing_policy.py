@@ -7,6 +7,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
@@ -288,6 +289,8 @@ def test_calls_are_summed_per_tool_project_and_rule(tmp_path):
     a.baseline_usd, a.savings_usd = 1.0, 1.0
     b = _call("passthrough", "api", "api")
     b.id, b.cost_usd, b.baseline_usd = "b", 2.0, 2.0
+    # Keep these aggregation records inside the log's retention window.
+    a.ts = b.ts = datetime.now(timezone.utc).isoformat()
     log.add(a)
     log.add(b)
     again = CallLog(tmp_path / "calls.jsonl")  # read back from disk
