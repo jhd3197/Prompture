@@ -3,8 +3,8 @@
 A queue is a project folder, a coding agent (Claude Code or Codex) and a list
 of steps such as ``/gsd:execute-phase 3``. The companion runs each step as soon
 as the one before it finishes: like pre-moves in chess, the next hour of work
-is decided before this one ends. Steps run unattended, so the agent's
-permission prompts are skipped (``approval_mode="auto"``).
+is decided before this one ends. Steps preserve native permissions by default;
+``approval_mode="auto"`` explicitly opts into unattended execution.
 
 A queue pauses by itself when a step fails, when the agent ends a step on a
 question (answering continues that step's session), when the agent's plan
@@ -36,6 +36,7 @@ from pathlib import Path
 from typing import Any
 
 from ..infra.coding_agent_events import CodingAgentEvent
+from ..infra.coding_agent_failures import classify_failure
 from .live import LiveBus
 
 logger = logging.getLogger("prompture.companion.automations")
@@ -92,6 +93,7 @@ class Step:
     error: str | None = None
     #: What to send next instead of ``text``: an answer, or "continue" after a usage limit.
     reply: str | None = None
+    failure: dict[str, str] | None = None
 
 
 @dataclasses.dataclass
@@ -115,6 +117,7 @@ class Run:
     ignore_limit: bool = False
     #: The agent is chosen by plan left, and may change between fresh sessions.
     auto: bool = False
+    approval_mode: str = "default"
 
     @property
     def project(self) -> str:
@@ -133,6 +136,7 @@ class Run:
             "agent": self.agent,
             "agent_name": AGENTS.get(self.agent, self.agent),
             "auto": self.auto,
+            "approval_mode": self.approval_mode,
             "model": self.model,
             "status": self.status,
             "reason": self.reason,
@@ -322,6 +326,7 @@ class Automations:
                 "current": self.run.to_dict() if self.run else None,
                 "history": [_summary(r) for r in self.history],
                 "agents": self.agents(),
+                "approval_modes": ["default", "auto"],
             }
 
     def get_run(self, run_id: str) -> dict[str, Any]:
@@ -352,6 +357,9 @@ class Automations:
     def start(self, body: dict[str, Any]) -> dict[str, Any]:
         cwd = str(body.get("cwd") or "").strip()
         agent = str(body.get("agent") or "claude")
+        approval_mode = body.get("approval_mode", "default")
+        if approval_mode not in ("default", "auto"):
+            raise AutomationError(422, "approval_mode must be default (preserve permissions) or auto (unattended).")
         if not cwd or not Path(cwd).is_dir():
             raise AutomationError(422, "Pick a project folder that exists.")
         auto = agent == "auto"
@@ -384,6 +392,7 @@ class Automations:
                 },
                 created_at=time.time(),
                 auto=auto,
+                approval_mode=approval_mode,
                 note=note,
             )
             self.run = run
@@ -431,8 +440,15 @@ class Automations:
                     run.stop["cost_usd"] = None
                 elif run.reason == "limit":
                     run.ignore_limit = True
-                elif run.reason == "fail" and step is not None:
+                elif run.reason in ("fail", "approval") and step is not None:
                     step.status, step.error = "waiting", None
+                    step.failure = None
+                    if step.session_id:
+                        step.reply = (
+                            "Continue the same task from where it stopped, respecting the current tool permissions."
+                            if run.reason == "approval"
+                            else step.text
+                        )
                 elif run.reason == "ask" and step is not None:
                     step.status = "done"
                     run.current += 1
@@ -499,6 +515,8 @@ class Automations:
             return self.run
 
     def _carry_on(self, run: Run) -> None:
+        if run.reason == "approval":
+            run.note = None
         run.status, run.reason, run.question, run.resumes_at = "running", None, None, None
 
     def _pause(self, run: Run, reason: str, resumes_at: float | None = None) -> None:
@@ -631,6 +649,7 @@ class Automations:
                     continue
                 task, session_id = job
                 step.status, step.error, step.action = "running", None, None
+                step.failure = None
                 step.started_at = step.started_at or time.time()
                 step.running_since = time.time()
                 started = time.time()
@@ -655,9 +674,16 @@ class Automations:
             step.status = "skipped"
             self._log(run, step, "Skipped", "info")
             run.current += 1
-        elif error:
+        elif error or outcome.get("permission"):
+            error = outcome.get("permission") or error
             step.error = _short(error, 300)
+            step.failure = classify_failure(error, permission=bool(outcome.get("permission")))
             self._log(run, step, _short(error, 600), "err")
+            if step.failure["category"] == "permission":
+                step.status = "failed"
+                run.note = f"{step.error}. {step.failure['hint']}"
+                self._pause(run, "approval")
+                return
             if _LIMIT_RE.search(error):
                 step.status = "waiting"
                 if step.session_id:
@@ -691,12 +717,20 @@ class Automations:
                 from ..infra.coding_agents import astream_coding_agent
 
                 runner = astream_coding_agent
-            extra = ["--append-system-prompt", UNATTENDED] if run.agent == "claude" else []
+            instruction = (
+                UNATTENDED
+                if run.approval_mode == "auto"
+                else (
+                    "Work on the queued task within the current tool permissions. "
+                    "If a tool is blocked, report the exact tool and command or path needing approval."
+                )
+            )
+            extra = ["--append-system-prompt", instruction] if run.agent == "claude" else []
             stream = runner(
                 run.agent,
                 task,
                 cwd=run.cwd,
-                approval_mode="auto",
+                approval_mode=run.approval_mode,
                 model=run.model,
                 session_id=session_id,
                 extra_args=extra,
@@ -704,6 +738,11 @@ class Automations:
             async with contextlib.aclosing(stream):  # type: ignore[type-var]
                 async for event in stream:
                     self._on_event(run, step, event, outcome)
+                    # Approval requests need a native human decision, not an
+                    # unattended stdin response. Close a live request stream;
+                    # resume the same session after its permissions are resolved.
+                    if event.type == "approval" and (event.raw or {}).get("msg"):
+                        break
 
         loop = asyncio.new_event_loop()
         job = loop.create_task(go())
@@ -730,7 +769,11 @@ class Automations:
         with self.lock:
             if event.session_id:
                 step.session_id = event.session_id
-            if event.type == "tool_call":
+            if event.type == "approval":
+                _, detail = describe(event, run.cwd)
+                outcome["permission"] = f"Permission required: {detail}"
+                self._log(run, step, outcome["permission"], "err")
+            elif event.type == "tool_call":
                 step.action, line = describe(event, run.cwd)
                 self._log(run, step, line, "tool")
             elif event.type == "message" and event.text:
@@ -775,6 +818,7 @@ def _summary(run: dict[str, Any]) -> dict[str, Any]:
         "steps": [{"status": s.get("status"), "text": s.get("text")} for s in steps],
         "last": last.get("text"),
         "last_error": last.get("error"),
+        "last_failure": last.get("failure"),
     }
 
 

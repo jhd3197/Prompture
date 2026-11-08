@@ -1983,6 +1983,7 @@ needed.
 
 ```bash
 prompture coding-agents --verify
+prompture coding-agents --agent claude --agent codex --verify  # only these CLIs
 prompture code-agent claude --auto-approve "Review this package for release blockers"
 prompture code-agent codex  --auto-approve "Add tests for the pricing cache"
 prompture code-agent aider  --auto-approve --model gpt-4o "Rename foo to bar across the package"
@@ -1992,8 +1993,8 @@ prompture code-agent aider  --auto-approve --model gpt-4o "Rename foo to bar acr
 
 `prompture delegate` hands a task to the companion's automation queue instead
 of running the agent in your terminal: the companion (`prompture companion`,
-started for you if it's not running) drives Claude Code or Codex unattended —
-permission prompts skipped, model access from this machine's Prompture setup,
+started for you if it's not running) drives Claude Code or Codex with native
+permissions preserved by default. Model access comes from this machine's Prompture setup,
 so the caller needs no provider key. The agent's work streams to stdout, and
 the queue keeps going in the background if you stop watching. This is the
 entry point to give other agents: a delegating LLM can run
@@ -2003,6 +2004,7 @@ API keys.
 ```bash
 prompture delegate "Translate docs/guide.md to Spanish"
 prompture delegate --agent codex --cost-cap 2 "Add tests for the pricing cache"
+prompture delegate --approval-mode auto "Run an explicitly authorized unattended task"
 prompture delegate-status                  # what's the queue doing now
 prompture delegate-answer "Use SQLite"     # reply when a run ends on a question
 prompture delegate-resume                  # carry on after a failure or cost cap
@@ -2010,9 +2012,37 @@ prompture delegate-stop                    # abandon the queue so a new one can 
 ```
 
 Exit codes: `0` finished, `1` failed, `3` waiting for an answer, `4` stopped
-or still running in the background. `--json` prints the final run as JSON,
+or still running/paused in the background, `5` blocked on native tool approval.
+`--json` prints one run snapshot when finished, blocked or detached,
 `--no-wait` returns at once, and companion apps (like Prompture Desk) show the
 same queue live.
+
+`delegate-status` is read-only: an offline companion stays offline. Start it
+explicitly with `prompture companion`, or let a new `delegate` task start it.
+
+Queues now default to `approval_mode: "default"` (also in the companion API).
+Restart an older running companion after its active queue finishes to load this
+support. The CLI refuses to submit a default-mode task to a companion that
+does not advertise permission-preserving delegation.
+Opt into the previous unattended behavior with `--approval-mode auto` or
+`approval_mode: "auto"`. Permission blocks always pause, even with stop-on-failure
+disabled. The paused step exposes `failure.category` and `failure.hint` for
+permission, model compatibility, directory/trust, authentication, usage-limit
+and task errors. `delegate-resume` retains the step's native session when available.
+
+Approval decisions remain in the native agent: inspect the blocked command,
+resume that session in the native CLI and resolve its permissions there, then
+resume the queue. This is a pause-and-resume workflow, not a remote approval
+button; Prompture never treats an answer or Resume as a permission grant.
+The current noninteractive adapters cannot forward a live permission decision
+to a blocked CLI process. Native structured denial/request events are supported;
+an agent that only describes a denial in prose may instead surface a question
+or task failure. Existing Desk clients can still resume through the API; richer
+approval-specific Desk controls can consume the new state fields.
+
+`check-update` recognizes PEP 610 editable installs. It reports the latest
+PyPI release but labels checkout freshness unknown, rather than trusting stale
+installed version metadata or recommending a wheel upgrade over a checkout.
 
 #### From the server
 
