@@ -637,6 +637,43 @@ class TestAsyncAgentRunLive:
         assert "Tokyo" in result.output_text
 
     @pytest.mark.asyncio
+    async def test_async_run_live_stop_without_final_answer(self):
+        """A tool that hands the turn back ends the stream on its round."""
+        holder: dict[str, Any] = {}
+
+        def ask_person() -> str:
+            """Ask the person a question."""
+            holder["agent"].stop(final_answer=False)
+            return "asked"
+
+        turn1 = [
+            AssistantTurnStart(turn_index=0),
+            TextDelta(text="One question first."),
+            ToolUseStart(id="q", name="ask_person"),
+            ToolUseStop(id="q", name="ask_person", input={}),
+            MessageStop(stop_reason="tool_use", usage={"total_tokens": 5, "cost": 0.001}),
+        ]
+        never = [
+            AssistantTurnStart(turn_index=1),
+            TextDelta(text="SHOULD NOT STREAM"),
+            MessageStop(stop_reason="end_turn", usage={"total_tokens": 6, "cost": 0.001}),
+        ]
+        driver = AsyncNativeStreamingDriver([turn1, never])
+        agent = AsyncAgent("mock/mock", driver=driver, tools=[ask_person])
+        holder["agent"] = agent
+
+        streamed = agent.run_live("Make me something")
+        collected = [ev async for ev in streamed]
+
+        kinds = [e.event_type for e in collected]
+        assert "SHOULD NOT STREAM" not in "".join(e.text for e in collected if e.event_type == "text_delta")
+        assert kinds.count("tool_result") == 1
+        assert kinds[-1] == "turn_complete"
+        assert driver._idx == 1
+        assert streamed.result is not None
+        assert streamed.result.output_text == "One question first."
+
+    @pytest.mark.asyncio
     async def test_async_run_live_without_tools(self):
         class _AsyncTextStream(AsyncDriver):
             supports_messages = True
@@ -850,3 +887,70 @@ class TestRawHttpHelper:
         text = "".join(e.text for e in events if e.event_type == "text_delta")
         assert text == "hi"
         assert "GHOST" not in text
+
+
+# Every driver that streams tool calls through the raw-HTTP helper, by class.
+_RAW_HTTP_DRIVERS = [
+    ("prompture.drivers.openrouter_driver", "OpenRouterDriver"),
+    ("prompture.drivers.async_openrouter_driver", "AsyncOpenRouterDriver"),
+    ("prompture.drivers.moonshot_driver", "MoonshotDriver"),
+    ("prompture.drivers.async_moonshot_driver", "AsyncMoonshotDriver"),
+    ("prompture.drivers.mistral_driver", "MistralDriver"),
+    ("prompture.drivers.async_mistral_driver", "AsyncMistralDriver"),
+    ("prompture.drivers.zai_driver", "ZaiDriver"),
+    ("prompture.drivers.async_zai_driver", "AsyncZaiDriver"),
+    ("prompture.drivers.modelscope_driver", "ModelScopeDriver"),
+    ("prompture.drivers.async_modelscope_driver", "AsyncModelScopeDriver"),
+    ("prompture.drivers.cachibot_driver", "CachiBotDriver"),
+    ("prompture.drivers.async_cachibot_driver", "AsyncCachiBotDriver"),
+    ("prompture.drivers.grok_driver", "GrokDriver"),
+    ("prompture.drivers.async_grok_driver", "AsyncGrokDriver"),
+]
+
+
+class TestRawHttpDriverWiring:
+    @pytest.mark.parametrize(("module", "cls"), _RAW_HTTP_DRIVERS)
+    def test_each_driver_resolves_url_and_headers(self, module, cls):
+        """A driver may name its base URL ``api_base`` or ``base_url``; the
+        helper must reach ``/chat/completions`` either way, with auth."""
+        import importlib
+
+        from prompture.drivers._openai_compat_stream import _compat_headers, _compat_url
+
+        driver = getattr(importlib.import_module(module), cls)(api_key="test-key")
+        url = _compat_url(driver)
+        assert url.startswith("https://")
+        assert url.endswith("/chat/completions")
+        assert "/chat/completions/chat/completions" not in url
+        assert _compat_headers(driver)["Authorization"] == "Bearer test-key"
+
+    def test_base_url_driver_streams_with_its_own_headers(self, monkeypatch):
+        from prompture.drivers import _openai_compat_stream
+
+        seen: dict[str, Any] = {}
+
+        def fake_post(url, headers, json, stream, timeout):
+            seen["url"], seen["headers"] = url, headers
+            return _FakeStreamResponse(
+                [
+                    _sse({"choices": [{"index": 0, "delta": {"content": "hi"}, "finish_reason": "stop"}]}),
+                    "data: [DONE]",
+                ]
+            )
+
+        monkeypatch.setattr("requests.post", fake_post)
+
+        class BaseUrlDriver(_FakeRawHttpDriver):
+            api_base = None
+            base_url = "https://example.invalid/api/v1/"
+            headers = {"Authorization": "Bearer test-key", "HTTP-Referer": "https://example.invalid"}
+
+        events = list(
+            _openai_compat_stream.stream_raw_http_compat_tool_call(
+                BaseUrlDriver(), messages=[], tools=[], options={}, provider="openrouter"
+            )
+        )
+        assert "".join(e.text for e in events if e.event_type == "text_delta") == "hi"
+        assert seen["url"] == "https://example.invalid/api/v1/chat/completions"
+        assert seen["headers"]["HTTP-Referer"] == "https://example.invalid"
+        assert seen["headers"]["Content-Type"] == "application/json"

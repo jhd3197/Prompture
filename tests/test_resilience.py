@@ -231,6 +231,56 @@ class Clock:
         return self.now
 
 
+class TestProviderSchemaAndUnknown:
+    def test_tag_mismatch_400_fails_over(self):
+        err = _http_error(
+            400,
+            "Input tag 'image_url' found using 'type' does not match any of the expected tags: 'text', 'image'",
+        )
+        info = classify_error(err)
+        assert info.category == "provider_schema"
+        assert info.action is ErrorAction.FAILOVER
+
+    def test_plain_bad_request_stays_fatal(self):
+        assert classify_error(_http_error(400, "invalid temperature")).action is ErrorAction.FATAL
+
+    def test_error_type_is_recorded(self):
+        info = classify_error(KeyError("choices"))
+        assert info.category == "unknown"
+        assert info.error_type == "KeyError"
+        assert info.to_dict()["error_type"] == "KeyError"
+
+    def test_schema_rejection_rides_the_next_target(self):
+        drv, _, _ = _driver(
+            ["a/one", "b/two"],
+            {
+                "a/one": [
+                    _http_error(400, "Input tag 'image_url' found using 'type' does not match any of the expected tags")
+                ]
+            },
+        )
+        assert drv.generate("hi", {})["text"] == "b/two:ok"
+
+    def test_summary_says_why_each_target_failed(self):
+        drv, _, _ = _driver(
+            ["a/one", "b/two"],
+            {"a/one": [KeyError("choices")], "b/two": [_http_error(401, "bad key")]},
+        )
+        with pytest.raises(AllTargetsFailedError) as ei:
+            drv.generate("hi", {})
+        msg = str(ei.value)
+        assert "a/one: unknown (KeyError: 'choices')" in msg
+        assert "b/two: auth 401 (401 Error: bad key)" in msg
+
+    def test_summary_reason_is_one_short_line(self):
+        drv, _, _ = _driver(["a/one"], {"a/one": [RuntimeError("line one\n" + "x" * 400)]})
+        with pytest.raises(AllTargetsFailedError) as ei:
+            drv.generate("hi", {})
+        msg = str(ei.value)
+        assert "\n" not in msg
+        assert msg.endswith("...))")
+
+
 class TestCircuitBreaker:
     def test_opens_after_threshold_and_recovers_lazily(self):
         clock = Clock()

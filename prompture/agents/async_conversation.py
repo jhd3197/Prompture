@@ -146,6 +146,7 @@ class AsyncConversation(ToolContextMixin):
 
         # Cooperative stop (C2) and graceful max-rounds (C4) state.
         self._stop_requested = False
+        self._stop_final_answer = True
         self._max_rounds_reached = False
 
         # Budget enforcement
@@ -231,13 +232,37 @@ class AsyncConversation(ToolContextMixin):
         self._full_tool_results.clear()
         self._reset_tool_context()
 
-    def request_stop(self) -> None:
+    def request_stop(self, *, final_answer: bool = True) -> None:
         """Request a cooperative stop of the tool loop.
 
         The loop checks the flag between rounds; when set, it finishes
         with one final no-tools answer instead of executing more tools.
+
+        Args:
+            final_answer: With ``False`` the turn ends right after the
+                current round, with no further model call: the reply is
+                the text the model wrote alongside its last tool calls.
+                For a tool that hands the turn back to a person (a
+                question, a form, an approval) and must not be followed
+                by an answer written without them.
         """
         self._stop_requested = True
+        self._stop_final_answer = final_answer
+
+    def _text_on_stop(self) -> str:
+        """The reply of a turn stopped with ``final_answer=False``.
+
+        The text of the last assistant message when it carried native tool
+        calls, else ``""`` (a simulated-tools round holds only the call).
+        """
+        for msg in reversed(self._messages):
+            if msg.get("role") != "assistant":
+                continue
+            content = msg.get("content")
+            if msg.get("tool_calls") and isinstance(content, str):
+                return content
+            return ""
+        return ""
 
     @property
     def max_rounds_reached(self) -> bool:
@@ -673,6 +698,7 @@ class AsyncConversation(ToolContextMixin):
     ) -> str:
         """Async tool-use loop: send -> check tool_calls -> execute -> re-send."""
         self._stop_requested = False
+        self._stop_final_answer = True
         self._max_rounds_reached = False
         merged = {**self._options, **(options or {})}
 
@@ -682,6 +708,9 @@ class AsyncConversation(ToolContextMixin):
 
         for _round in range(self._max_tool_rounds):
             if self._stop_requested:
+                if not self._stop_final_answer:
+                    logger.info("Stop requested; ending the turn without a final answer")
+                    return self._text_on_stop()
                 logger.info("Stop requested; finishing with a final answer (no more tool calls)")
                 return await self._final_answer_without_tools(msgs, merged)
             self._check_budget()
@@ -776,6 +805,7 @@ class AsyncConversation(ToolContextMixin):
 
         # Native tool calling with event emission
         self._stop_requested = False
+        self._stop_final_answer = True
         self._max_rounds_reached = False
         merged = {**self._options, **(options or {})}
 
@@ -785,6 +815,9 @@ class AsyncConversation(ToolContextMixin):
 
         for _round in range(self._max_tool_rounds):
             if self._stop_requested:
+                if not self._stop_final_answer:
+                    logger.info("Stop requested; ending the turn without a final answer")
+                    return
                 logger.info("Stop requested; finishing with a final answer (no more tool calls)")
                 final_text = await self._final_answer_without_tools(msgs, merged)
                 yield {"type": "text_delta", "text": final_text}
@@ -926,6 +959,7 @@ class AsyncConversation(ToolContextMixin):
             return
 
         self._stop_requested = False
+        self._stop_final_answer = True
         self._max_rounds_reached = False
         merged = {**self._options, **(options or {})}
 
@@ -935,6 +969,10 @@ class AsyncConversation(ToolContextMixin):
 
         for round_idx in range(self._max_tool_rounds):
             if self._stop_requested:
+                if not self._stop_final_answer:
+                    logger.info("Stop requested; ending the turn without a final answer")
+                    yield TurnComplete(usage=dict(self._usage))
+                    return
                 logger.info("Stop requested; finishing with a final answer (no more tool calls)")
                 final_text = await self._final_answer_without_tools(msgs, merged)
                 yield TextDelta(text=final_text)
@@ -1078,6 +1116,7 @@ class AsyncConversation(ToolContextMixin):
         from .simulated_tools import format_tool_result, parse_simulated_response
 
         self._stop_requested = False
+        self._stop_final_answer = True
         self._max_rounds_reached = False
         merged = {**self._options, **(options or {})}
         augmented_system = self._simulated_system_prompt()
@@ -1087,6 +1126,9 @@ class AsyncConversation(ToolContextMixin):
 
         for _round in range(self._max_tool_rounds):
             if self._stop_requested:
+                if not self._stop_final_answer:
+                    logger.info("Stop requested; ending the turn without a final answer")
+                    return
                 logger.info("Stop requested; finishing with a final answer (no more tool calls)")
                 answer = await self._final_answer_simulated(augmented_system, merged)
                 yield {"type": "text_delta", "text": answer}
@@ -1160,6 +1202,7 @@ class AsyncConversation(ToolContextMixin):
         from .simulated_tools import format_tool_result, parse_simulated_response
 
         self._stop_requested = False
+        self._stop_final_answer = True
         self._max_rounds_reached = False
         merged = {**self._options, **(options or {})}
         augmented_system = self._simulated_system_prompt()
@@ -1170,6 +1213,9 @@ class AsyncConversation(ToolContextMixin):
 
         for _round in range(self._max_tool_rounds):
             if self._stop_requested:
+                if not self._stop_final_answer:
+                    logger.info("Stop requested; ending the turn without a final answer")
+                    return self._text_on_stop()
                 logger.info("Stop requested; finishing with a final answer (no more tool calls)")
                 return await self._final_answer_simulated(augmented_system, merged)
             self._check_budget()

@@ -522,6 +522,28 @@ def _bearer_headers(api_key: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
 
 
+def _compat_url(driver: Any) -> str:
+    """The driver's ``/chat/completions`` URL.
+
+    Raw-HTTP drivers name their base URL ``api_base`` or ``base_url``; both are
+    accepted so a driver can't break streaming tool calls by its naming.
+    """
+    base = getattr(driver, "api_base", None) or getattr(driver, "base_url", None)
+    if not base:
+        raise AttributeError(f"{type(driver).__name__} has no api_base or base_url for streaming tool calls")
+    base = str(base).rstrip("/")
+    return base if base.endswith("/chat/completions") else f"{base}/chat/completions"
+
+
+def _compat_headers(driver: Any) -> dict[str, str]:
+    """The driver's own request headers when it keeps them (attribution
+    headers, provider extras), else a plain bearer header."""
+    own = getattr(driver, "headers", None)
+    if isinstance(own, dict) and own:
+        return {"Content-Type": "application/json", **own}
+    return _bearer_headers(driver.api_key)
+
+
 def stream_raw_http_compat_tool_call(
     driver: Any,
     messages: list[dict[str, Any]],
@@ -541,8 +563,8 @@ def stream_raw_http_compat_tool_call(
     of using the OpenAI SDK).
 
     Defaults assume the driver exposes:
-    - ``self.api_base`` — base URL (no trailing ``/chat/completions``)
-    - ``self.api_key`` — used as ``Authorization: Bearer <key>``
+    - ``self.api_base`` or ``self.base_url`` — base URL (no trailing ``/chat/completions``)
+    - ``self.headers`` (used as is) or ``self.api_key`` (``Authorization: Bearer <key>``)
 
     Override *url* or *headers* if the driver uses a different shape.
     Pass a complete *payload* (including streaming options) to preserve a
@@ -562,8 +584,8 @@ def stream_raw_http_compat_tool_call(
         )
     else:
         model = payload["model"]
-    resolved_url = url or f"{driver.api_base}/chat/completions"
-    resolved_headers = headers or _bearer_headers(driver.api_key)
+    resolved_url = url or _compat_url(driver)
+    resolved_headers = headers or _compat_headers(driver)
 
     state = _fresh_state()
     with requests.post(
@@ -634,8 +656,8 @@ async def astream_raw_http_compat_tool_call(
         )
     else:
         model = payload["model"]
-    resolved_url = url or f"{driver.api_base}/chat/completions"
-    resolved_headers = headers or _bearer_headers(driver.api_key)
+    resolved_url = url or _compat_url(driver)
+    resolved_headers = headers or _compat_headers(driver)
 
     state = _fresh_state()
     async with (

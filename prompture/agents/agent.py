@@ -368,6 +368,7 @@ class Agent(Generic[DepsType]):
 
         self._lifecycle = AgentState.idle
         self._stop_requested = False
+        self._stop_final_answer = True
 
     # ------------------------------------------------------------------
     # Public API
@@ -394,7 +395,7 @@ class Agent(Generic[DepsType]):
         """Current lifecycle state of the agent."""
         return self._lifecycle
 
-    def stop(self) -> None:
+    def stop(self, *, final_answer: bool = True) -> None:
         """Request graceful shutdown after the current iteration.
 
         Sets the agent-level flag and forwards the request to the
@@ -405,11 +406,26 @@ class Agent(Generic[DepsType]):
         of the run, so the flag is never merely decorative.
 
         Safe to call from a tool, a callback, or another thread.
+
+        Args:
+            final_answer: With ``False`` the run ends right after the current
+                tool round, with no further model call. For a tool that hands
+                the turn back to a person (a question, a form, an approval):
+                the default would ask the model for one more answer, written
+                without the person's reply.
         """
         self._stop_requested = True
+        self._stop_final_answer = final_answer
         conv = self._active_conversation or self._conversation
         if conv is not None:
+            self._forward_stop(conv)
+
+    def _forward_stop(self, conv: Any) -> None:
+        """Pass a pending stop on to *conv*, keeping ``final_answer=False``."""
+        if self._stop_final_answer:
             conv.request_stop()
+        else:
+            conv.request_stop(final_answer=False)
 
     @property
     def callbacks(self) -> AgentCallbacks:
@@ -1045,7 +1061,7 @@ class Agent(Generic[DepsType]):
         """
         self._active_conversation = conv
         if self._stop_requested:
-            conv.request_stop()
+            self._forward_stop(conv)
         return conv
 
     def _execute(self, prompt: str, steps: list[AgentStep], deps: Any) -> AgentResult:

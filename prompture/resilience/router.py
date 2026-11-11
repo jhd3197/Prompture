@@ -305,6 +305,25 @@ def should_retry_same(policy: RetryPolicy, info: ErrorInfo, attempt: int, is_las
     return None
 
 
+_REASON_MAX = 160
+
+
+def _reason(err: dict[str, Any]) -> str:
+    """The failure's own words, shortened to one line.
+
+    A status code says little on its own and an ``unknown`` category says
+    nothing, so the summary carries what the exception said (and, when there
+    is no HTTP status, its type) to make a failed route diagnosable.
+    """
+    message = " ".join(str(err.get("message") or "").split())
+    error_type = err.get("error_type")
+    if error_type and not err.get("status_code") and error_type not in message:
+        message = f"{error_type}: {message}" if message else error_type
+    if len(message) > _REASON_MAX:
+        message = message[: _REASON_MAX - 3].rstrip() + "..."
+    return message
+
+
 def failure_message(attempts: list[dict[str, Any]]) -> str:
     if not attempts:
         return "No route targets were available"
@@ -314,5 +333,8 @@ def failure_message(attempts: list[dict[str, Any]]) -> str:
         detail = err.get("category") or a["outcome"]
         if err.get("status_code"):
             detail += f" {err['status_code']}"
+        reason = _reason(err) if err else ""
+        if reason and reason != err.get("category"):
+            detail += f" ({reason})"
         parts.append(f"{a['model']}: {detail}")
     return "All route targets failed (" + "; ".join(parts) + ")"

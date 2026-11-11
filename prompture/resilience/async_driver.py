@@ -202,6 +202,12 @@ class AsyncResilientDriver(AsyncDriver):
                 self._plan.observe(target, event)
                 yield _attach_route_to_event(event, route)
         except Exception as exc:
+            # Mid-stream failures do not fail over, on purpose. Events already
+            # reached the caller (text, tool calls), and replaying the request on
+            # another model would duplicate or contradict them. The target is
+            # penalized so the next request routes around it; the caller decides
+            # whether to retry the turn. Failures before the first event do fail
+            # over, because the opener runs inside ``_route``.
             self._plan.penalize(target, classify_error(exc))
             raise
 
