@@ -51,6 +51,8 @@ class ErrorInfo:
     retry_after: float | None = None
     message: str = ""
     provider: str | None = None
+    error_type: str | None = None
+    """Class name of the exception that was classified (e.g. ``KeyError``)."""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -59,6 +61,7 @@ class ErrorInfo:
             "status_code": self.status_code,
             "retry_after": self.retry_after,
             "message": self.message,
+            "error_type": self.error_type,
         }
 
 
@@ -147,6 +150,16 @@ _DEFAULT_RULES: list[ErrorRule] = [
         _A.FAILOVER,
         pattern=r"does not support|not supported|unsupported|does not have access|not enabled for",
         priority=60,
+    ),
+    # A valid OpenAI-schema request that one upstream validates against its own
+    # native schema (content block tags, part types). The next target is fine.
+    ErrorRule(
+        "provider_schema",
+        _A.FAILOVER,
+        pattern=r"does not match any of the expected tags|input tag .{0,80} found using|"
+        r"(?:invalid|unknown|unexpected|unrecognized) content (?:block|part|type)|"
+        r"content (?:block|part) type .{0,60} (?:is )?not (?:supported|allowed|permitted)",
+        priority=55,
     ),
     ErrorRule("overloaded", _A.COOLDOWN, pattern=r"overloaded|at capacity|server is busy", priority=50),
     ErrorRule("rate_limit", _A.COOLDOWN, pattern=r"rate[_ ]limit|too many requests", priority=40),
@@ -355,7 +368,7 @@ def classify_error(exc: BaseException) -> ErrorInfo:
     message = str(exc) or type(exc).__name__
 
     def info(category: str, action: ErrorAction) -> ErrorInfo:
-        return ErrorInfo(action, category, status, retry_after, message, provider)
+        return ErrorInfo(action, category, status, retry_after, message, provider, type(exc).__name__)
 
     # Local capability gaps and missing configuration never improve on retry.
     # DriverError subclasses NotImplementedError for historical reasons, so
