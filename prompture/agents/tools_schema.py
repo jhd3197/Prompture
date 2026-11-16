@@ -37,6 +37,7 @@ from pydantic import BaseModel, TypeAdapter
 
 from ..extraction.tools import _is_union_origin, convert_value
 from ..infra.cost_mixin import prepare_strict_schema
+from ..infra.tool_schema import flatten_tool_schema
 
 try:  # same defensive pattern as prompture/extraction/validator.py
     import jsonschema
@@ -332,8 +333,13 @@ class ToolDefinition:
         every property key listed in ``required``, and parameters that were
         optional (i.e. have a default) made nullable — and ``"strict": true``
         is set on the function object.
+
+        A schema with ``oneOf`` / ``anyOf`` / ``allOf`` at the top level is
+        flattened into one object first (:func:`flatten_tool_schema`), since
+        providers reject those as tool parameters.
         """
-        parameters = _strict_parameters(self.parameters) if strict else self.parameters
+        flat = flatten_tool_schema(self.parameters)
+        parameters = _strict_parameters(flat) if strict else flat
         function: dict[str, Any] = {
             "name": self.name,
             "description": self.description,
@@ -354,7 +360,7 @@ class ToolDefinition:
         return {
             "name": self.name,
             "description": self.description,
-            "input_schema": self.parameters,
+            "input_schema": flatten_tool_schema(self.parameters),
         }
 
     @property

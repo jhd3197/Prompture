@@ -119,6 +119,7 @@ class AsyncMistralDriver(CostMixin, AsyncDriver):
         tools: list[dict[str, Any]],
         options: dict[str, Any],
     ) -> dict[str, Any]:
+        messages = self._prepare_messages(messages)
         model = options.get("model", self.model)
         model_config = self._get_model_config("mistral", model)
         tokens_param = model_config["tokens_param"]
@@ -195,6 +196,7 @@ class AsyncMistralDriver(CostMixin, AsyncDriver):
         options: dict[str, Any],
     ):
         """Async streaming-tool via the shared raw-HTTP helper."""
+        messages = self._prepare_messages(messages)
         from ._openai_compat_stream import astream_raw_http_compat_tool_call
 
         async for ev in astream_raw_http_compat_tool_call(self, messages, tools, options, provider="mistral"):

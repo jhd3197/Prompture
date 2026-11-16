@@ -129,6 +129,7 @@ class AsyncCachiBotDriver(CostMixin, AsyncDriver):
         options: dict[str, Any],
     ) -> dict[str, Any]:
         """Generate a response that may include tool calls."""
+        messages = self._prepare_messages(messages)
         if not self.api_key:
             raise RuntimeError("CACHIBOT_API_KEY is required")
 
@@ -216,6 +217,7 @@ class AsyncCachiBotDriver(CostMixin, AsyncDriver):
         options: dict[str, Any],
     ):
         """Async streaming-tool via the shared raw-HTTP helper."""
+        messages = self._prepare_messages(messages)
         from ._openai_compat_stream import astream_raw_http_compat_tool_call
 
         async for ev in astream_raw_http_compat_tool_call(self, messages, tools, options, provider="cachibot"):

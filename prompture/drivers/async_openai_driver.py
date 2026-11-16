@@ -159,6 +159,7 @@ class AsyncOpenAIDriver(CostMixin, AsyncDriver):
         options: dict[str, Any],
     ) -> dict[str, Any]:
         """Generate a response that may include tool calls."""
+        messages = self._prepare_messages(messages)
         if options.get("api", getattr(self, "api", "chat_completions")) == "responses":
             if self.client is None or not hasattr(self.client, "responses"):
                 from ..exceptions import ConfigurationError
@@ -166,7 +167,7 @@ class AsyncOpenAIDriver(CostMixin, AsyncDriver):
                 raise ConfigurationError("Responses API requires a recent openai SDK and a configured client")
             from ._openai_responses import agenerate
 
-            return await agenerate(self, self._prepare_messages(messages), options, tools)
+            return await agenerate(self, messages, options, tools)
 
         if self.client is None:
             from ..exceptions import ConfigurationError

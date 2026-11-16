@@ -72,6 +72,7 @@ class AsyncOllamaDriver(PromptedToolStreamMixin, AsyncDriver):
         options: dict[str, Any],
     ) -> dict[str, Any]:
         """Generate a response that may include tool calls via Ollama's /api/chat endpoint."""
+        messages = self._prepare_messages(messages)
         merged_options = self.options.copy()
         if options:
             merged_options.update(options)
@@ -316,6 +317,7 @@ class AsyncOllamaDriver(PromptedToolStreamMixin, AsyncDriver):
         ``/api/chat`` with ``stream=True`` and ``tools=[...]``, text
         streamed live, tool calls emitted from the final ``done`` chunk.
         """
+        messages = self._prepare_messages(messages)
         if options.get("prompted_tools"):
             async for ev in self._astream_via_prompted_emulation(messages, tools, options):
                 yield ev
