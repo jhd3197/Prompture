@@ -140,6 +140,7 @@ class AsyncGroqDriver(CostMixin, AsyncDriver):
         options: dict[str, Any],
     ) -> dict[str, Any]:
         """Generate a response that may include tool calls."""
+        messages = self._prepare_messages(messages)
         if self.client is None:
             from ..exceptions import ConfigurationError
 

@@ -42,6 +42,7 @@ except ImportError:  # pragma: no cover - exercised in tests via patch
     _BOTO3_AVAILABLE = False
 
 from ..infra.cost_mixin import CostMixin
+from ..infra.tool_schema import flatten_tool_schema
 from ._prompt_cache import (
     apply_cache_control_to_messages,
     apply_cache_control_to_system,
@@ -171,11 +172,11 @@ def _convert_tools_to_anthropic_bedrock(tools: list[dict[str, Any]]) -> list[dic
                 {
                     "name": fn["name"],
                     "description": fn.get("description", ""),
-                    "input_schema": fn.get("parameters", {"type": "object", "properties": {}}),
+                    "input_schema": flatten_tool_schema(fn.get("parameters", {"type": "object", "properties": {}})),
                 }
             )
         elif "input_schema" in t:
-            anthropic_tools.append(t)
+            anthropic_tools.append({**t, "input_schema": flatten_tool_schema(t["input_schema"])})
         else:
             anthropic_tools.append(t)
     return anthropic_tools

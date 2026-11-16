@@ -26,6 +26,7 @@ except ImportError:
     AsyncAnthropicVertex = None  # type: ignore[assignment]
 
 from ..infra.cost_mixin import CostMixin
+from ..infra.tool_schema import flatten_tool_schema
 from ._google_genai import add_tools, build_generation_args, extract_usage, response_parts, tool_response
 from .async_base import AsyncDriver
 from .google_vertexai_driver import GoogleVertexAIDriver, _is_claude_model
@@ -204,11 +205,11 @@ class AsyncGoogleVertexAIDriver(CostMixin, AsyncDriver):
                     {
                         "name": fn["name"],
                         "description": fn.get("description", ""),
-                        "input_schema": fn.get("parameters", {"type": "object", "properties": {}}),
+                        "input_schema": flatten_tool_schema(fn.get("parameters", {"type": "object", "properties": {}})),
                     }
                 )
             elif "input_schema" in t:
-                anthropic_tools.append(t)
+                anthropic_tools.append({**t, "input_schema": flatten_tool_schema(t["input_schema"])})
             else:
                 anthropic_tools.append(t)
 
