@@ -159,6 +159,7 @@ class MistralDriver(CostMixin, Driver):
         tools: list[dict[str, Any]],
         options: dict[str, Any],
     ) -> dict[str, Any]:
+        messages = self._prepare_messages(messages)
         if not self.api_key:
             from ..exceptions import ConfigurationError
 
@@ -257,6 +258,7 @@ class MistralDriver(CostMixin, Driver):
         options: dict[str, Any],
     ):
         """Stream one turn as :class:`LiveEvent` via the shared raw-HTTP helper."""
+        messages = self._prepare_messages(messages)
         from ._openai_compat_stream import stream_raw_http_compat_tool_call
 
         yield from stream_raw_http_compat_tool_call(self, messages, tools, options, provider="mistral")

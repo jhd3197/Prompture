@@ -22,6 +22,7 @@ except ImportError:
 
 from ..infra.cost_mixin import CostMixin, prepare_strict_schema
 from ..infra.rate_limits import add_rate_limits, attach_rate_limit_hook, capture_rate_limits
+from ..infra.tool_schema import flatten_tool_schema
 from ._effort import apply_effort
 from .async_base import AsyncDriver
 from .azure_config import classify_backend, resolve_config
@@ -294,6 +295,7 @@ class AsyncAzureDriver(CostMixin, AsyncDriver):
         options: dict[str, Any],
     ) -> dict[str, Any]:
         """Generate a response that may include tool calls."""
+        messages = self._prepare_messages(messages)
         model = options.get("model", self.model)
         config = self._resolve_model_config(model, options)
         backend = classify_backend(model)
@@ -425,11 +427,11 @@ class AsyncAzureDriver(CostMixin, AsyncDriver):
                     {
                         "name": fn["name"],
                         "description": fn.get("description", ""),
-                        "input_schema": fn.get("parameters", {"type": "object", "properties": {}}),
+                        "input_schema": flatten_tool_schema(fn.get("parameters", {"type": "object", "properties": {}})),
                     }
                 )
             elif "input_schema" in t:
-                anthropic_tools.append(t)
+                anthropic_tools.append({**t, "input_schema": flatten_tool_schema(t["input_schema"])})
             else:
                 anthropic_tools.append(t)
 

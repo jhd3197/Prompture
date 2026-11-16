@@ -115,6 +115,7 @@ class OllamaDriver(PromptedToolStreamMixin, Driver):
         options: dict[str, Any],
     ) -> dict[str, Any]:
         """Generate a response that may include tool calls via Ollama's /api/chat endpoint."""
+        messages = self._prepare_messages(messages)
         merged_options = self.options.copy()
         if options:
             merged_options.update(options)
@@ -240,6 +241,7 @@ class OllamaDriver(PromptedToolStreamMixin, Driver):
           *any* Ollama model (including ones without native tool
           training like Phi-3, older Gemma, base Llama 3).
         """
+        messages = self._prepare_messages(messages)
         if options.get("prompted_tools"):
             yield from self._stream_via_prompted_emulation(messages, tools, options)
             return

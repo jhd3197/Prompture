@@ -163,6 +163,7 @@ class AsyncOpenRouterDriver(CostMixin, AsyncDriver):
         options: dict[str, Any],
     ) -> dict[str, Any]:
         """Generate a response that may include tool calls."""
+        messages = self._prepare_messages(messages)
         model = options.get("model", self.model)
         model_config = self._get_model_config("openrouter", model)
         tokens_param = model_config["tokens_param"]
@@ -250,6 +251,7 @@ class AsyncOpenRouterDriver(CostMixin, AsyncDriver):
         options: dict[str, Any],
     ):
         """Async streaming-tool via the shared raw-HTTP helper."""
+        messages = self._prepare_messages(messages)
         from ._openai_compat_stream import astream_raw_http_compat_tool_call
 
         async for ev in astream_raw_http_compat_tool_call(self, messages, tools, options, provider="openrouter"):

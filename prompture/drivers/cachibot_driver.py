@@ -185,6 +185,7 @@ class CachiBotDriver(CostMixin, Driver):
         options: dict[str, Any],
     ) -> dict[str, Any]:
         """Generate a response that may include tool calls."""
+        messages = self._prepare_messages(messages)
         if _requests is None:
             raise RuntimeError("requests package is not installed")
         if not self.api_key:
@@ -273,6 +274,7 @@ class CachiBotDriver(CostMixin, Driver):
         options: dict[str, Any],
     ):
         """Stream one turn as :class:`LiveEvent` via the shared raw-HTTP helper."""
+        messages = self._prepare_messages(messages)
         from ._openai_compat_stream import stream_raw_http_compat_tool_call
 
         yield from stream_raw_http_compat_tool_call(self, messages, tools, options, provider="cachibot")

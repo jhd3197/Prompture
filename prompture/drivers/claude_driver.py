@@ -18,6 +18,7 @@ except ImportError:
 
 from ..infra.cost_mixin import CostMixin, prepare_strict_schema
 from ..infra.rate_limits import add_rate_limits, attach_rate_limit_hook, capture_rate_limits, limits_from_response
+from ..infra.tool_schema import flatten_tool_schema
 from ._effort import requested_effort
 from ._prompt_cache import (
     CACHE_PROMPT_MIN_CHARS,
@@ -262,11 +263,11 @@ def _convert_tools_to_anthropic(tools: list[dict[str, Any]]) -> list[dict[str, A
                 {
                     "name": fn["name"],
                     "description": fn.get("description", ""),
-                    "input_schema": fn.get("parameters", {"type": "object", "properties": {}}),
+                    "input_schema": flatten_tool_schema(fn.get("parameters", {"type": "object", "properties": {}})),
                 }
             )
         elif "input_schema" in t:
-            anthropic_tools.append(t)
+            anthropic_tools.append({**t, "input_schema": flatten_tool_schema(t["input_schema"])})
         else:
             anthropic_tools.append(t)
     return anthropic_tools
