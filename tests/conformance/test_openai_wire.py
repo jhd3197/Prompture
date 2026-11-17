@@ -236,10 +236,12 @@ def test_stream_sends_the_same_request(target, monkeypatch):
     """Whatever shaping the buffered tool call gets, the streamed one gets too."""
     options = {"tool_choice": "required", "temperature": 1.7, "max_tokens": 900, "effort": "low"}
 
+    messages = image_messages() if _has("supports_vision")(target) else HISTORY
+
     buffered = Wire(PARIS)
-    call_tools(target, target.build(monkeypatch, buffered), image_messages(), [ONE_OF_TOOL], options)
+    call_tools(target, target.build(monkeypatch, buffered), messages, [ONE_OF_TOOL], options)
     streamed = Wire(PARIS)
-    stream_tools(target, target.build(monkeypatch, streamed), image_messages(), [ONE_OF_TOOL], options)
+    stream_tools(target, target.build(monkeypatch, streamed), messages, [ONE_OF_TOOL], options)
 
     assert _strip_stream(streamed.payload) == _strip_stream(buffered.payload)
 

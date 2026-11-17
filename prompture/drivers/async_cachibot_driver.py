@@ -19,6 +19,7 @@ from typing import Any
 import httpx
 
 from ..infra.cost_mixin import CostMixin
+from ._openai_chat import AsyncOpenAIChatTools, AsyncOpenAIChatToolStream, ChatRoute, get_chat_profile
 from .async_base import AsyncDriver
 from .cachibot_driver import CachiBotDriver, _resolve_model
 
@@ -27,7 +28,13 @@ logger = logging.getLogger(__name__)
 _DEFAULT_ENDPOINT = "https://cachibot.ai/api/v1"
 
 
-class AsyncCachiBotDriver(CostMixin, AsyncDriver):
+class AsyncCachiBotDriver(AsyncOpenAIChatTools, AsyncOpenAIChatToolStream, CostMixin, AsyncDriver):
+    chat_profile = get_chat_profile("cachibot")
+
+    def _chat_route(self, model: str, options: dict[str, Any]) -> ChatRoute:
+        api_model, upstream_provider, upstream_model = _resolve_model(model)
+        return ChatRoute(api_model, upstream_provider, upstream_model)
+
     supports_json_mode = True
     supports_tool_use = True
     supports_streaming_tool_use = True
@@ -119,111 +126,6 @@ class AsyncCachiBotDriver(CostMixin, AsyncDriver):
         return {"text": text, "meta": meta}
 
     # ------------------------------------------------------------------
-    # Tool use
-    # ------------------------------------------------------------------
-
-    async def generate_messages_with_tools(
-        self,
-        messages: list[dict[str, Any]],
-        tools: list[dict[str, Any]],
-        options: dict[str, Any],
-    ) -> dict[str, Any]:
-        """Generate a response that may include tool calls."""
-        messages = self._prepare_messages(messages)
-        if not self.api_key:
-            raise RuntimeError("CACHIBOT_API_KEY is required")
-
-        model = options.get("model", self.model)
-        api_model, upstream_provider, upstream_model = _resolve_model(model)
-
-        model_config = self._get_model_config(upstream_provider, upstream_model)
-        tokens_param = model_config["tokens_param"]
-        supports_temperature = model_config["supports_temperature"]
-
-        self._validate_model_capabilities(upstream_provider, upstream_model, using_tool_use=True)
-
-        opts = {"temperature": 1.0, "max_tokens": 4096, **options}
-
-        payload: dict[str, Any] = {
-            "model": api_model,
-            "messages": messages,
-            "tools": tools,
-        }
-        payload[tokens_param] = opts.get("max_tokens", 4096)
-
-        if supports_temperature and "temperature" in opts:
-            payload["temperature"] = opts["temperature"]
-
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"{self.base_url}/chat/completions",
-                headers=self.headers,
-                json=payload,
-                timeout=120,
-            )
-            response.raise_for_status()
-            data = response.json()
-
-        usage = data.get("usage", {})
-        prompt_tokens = usage.get("prompt_tokens", 0)
-        completion_tokens = usage.get("completion_tokens", 0)
-        total_tokens = usage.get("total_tokens", 0)
-        total_cost = self._calculate_cost(upstream_provider, upstream_model, prompt_tokens, completion_tokens)
-
-        meta = {
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
-            "total_tokens": total_tokens,
-            "cost": round(total_cost, 6),
-            "raw_response": data,
-            "model_name": model,
-        }
-
-        choice = data["choices"][0]
-        text = choice["message"].get("content") or ""
-        stop_reason = choice.get("finish_reason")
-
-        tool_calls_out: list[dict[str, Any]] = []
-        for tc in choice["message"].get("tool_calls", []):
-            try:
-                args = json.loads(tc["function"]["arguments"])
-            except (json.JSONDecodeError, TypeError):
-                raw = tc["function"].get("arguments")
-                logger.warning("Failed to parse tool arguments for %s: %r", tc["function"]["name"], raw)
-                args = {}
-            tool_calls_out.append(
-                {
-                    "id": tc["id"],
-                    "name": tc["function"]["name"],
-                    "arguments": args,
-                }
-            )
-
-        return {
-            "text": text,
-            "meta": meta,
-            "tool_calls": tool_calls_out,
-            "stop_reason": stop_reason,
-        }
-
-    # ------------------------------------------------------------------
-    # Live streaming with interleaved tool calls
-    # ------------------------------------------------------------------
-
-    async def generate_messages_with_tools_stream(
-        self,
-        messages: list[dict[str, Any]],
-        tools: list[dict[str, Any]],
-        options: dict[str, Any],
-    ):
-        """Async streaming-tool via the shared raw-HTTP helper."""
-        messages = self._prepare_messages(messages)
-        from ._openai_compat_stream import astream_raw_http_compat_tool_call
-
-        async for ev in astream_raw_http_compat_tool_call(self, messages, tools, options, provider="cachibot"):
-            yield ev
-
-    # ------------------------------------------------------------------
     # Streaming
     # ------------------------------------------------------------------
 
@@ -233,6 +135,7 @@ class AsyncCachiBotDriver(CostMixin, AsyncDriver):
         options: dict[str, Any],
     ) -> AsyncIterator[dict[str, Any]]:
         """Yield response chunks via CachiBot streaming API (SSE)."""
+        messages = self._prepare_messages(messages)
         if not self.api_key:
             raise RuntimeError("CACHIBOT_API_KEY is required")
 

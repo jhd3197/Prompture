@@ -19,14 +19,17 @@ from typing import Any
 import requests
 
 from ..infra.cost_mixin import CostMixin, prepare_strict_schema
-from .base import Driver, _parse_tool_arguments
+from ._openai_chat import OpenAIChatTools, get_chat_profile
+from .base import Driver
 
 logger = logging.getLogger(__name__)
 
 _DEFAULT_ENDPOINT = "https://api.minimax.io/v1"
 
 
-class MiniMaxDriver(CostMixin, Driver):
+class MiniMaxDriver(OpenAIChatTools, CostMixin, Driver):
+    chat_profile = get_chat_profile("minimax")
+
     supports_json_mode = True
     supports_json_schema = True
     supports_tool_use = True
@@ -121,65 +124,4 @@ class MiniMaxDriver(CostMixin, Driver):
                 "raw_response": resp,
                 "model_name": model,
             },
-        }
-
-    def generate_messages_with_tools(
-        self,
-        messages: list[dict[str, Any]],
-        tools: list[dict[str, Any]],
-        options: dict[str, Any],
-    ) -> dict[str, Any]:
-        model = options.get("model", self.model)
-        opts = {"temperature": 1.0, "max_tokens": 4096, **options}
-        data: dict[str, Any] = {
-            "model": model,
-            "messages": messages,
-            "tools": tools,
-            "max_tokens": opts["max_tokens"],
-            "temperature": opts["temperature"],
-        }
-        if "tool_choice" in options:
-            data["tool_choice"] = options["tool_choice"]
-
-        try:
-            response = requests.post(
-                f"{self.base_url}/text/chatcompletion_v2",
-                headers=self.headers,
-                json=data,
-                timeout=opts.get("timeout", 300),  # nosec B113
-            )
-            response.raise_for_status()
-            resp = response.json()
-        except requests.exceptions.RequestException as e:
-            raise RuntimeError(f"MiniMax API request failed: {e!s}") from e
-
-        usage = resp.get("usage", {})
-        prompt_tokens = usage.get("prompt_tokens", 0) or 0
-        completion_tokens = usage.get("completion_tokens", 0) or 0
-        total_tokens = usage.get("total_tokens", prompt_tokens + completion_tokens)
-        total_cost = self._calculate_cost("minimax", model, prompt_tokens, completion_tokens)
-
-        choice = (resp.get("choices") or [{}])[0]
-        message = choice.get("message") or {}
-        text = message.get("content") or ""
-        stop_reason = choice.get("finish_reason")
-
-        tool_calls_out: list[dict[str, Any]] = []
-        for tc in message.get("tool_calls") or []:
-            fn = tc.get("function") or {}
-            args = _parse_tool_arguments(fn.get("arguments"), fn.get("name", ""), stop_reason)
-            tool_calls_out.append({"id": tc.get("id"), "name": fn.get("name"), "arguments": args})
-
-        return {
-            "text": text,
-            "meta": {
-                "prompt_tokens": prompt_tokens,
-                "completion_tokens": completion_tokens,
-                "total_tokens": total_tokens,
-                "cost": round(total_cost, 6),
-                "raw_response": resp,
-                "model_name": model,
-            },
-            "tool_calls": tool_calls_out,
-            "stop_reason": stop_reason,
         }

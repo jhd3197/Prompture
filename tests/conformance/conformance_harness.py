@@ -190,7 +190,8 @@ class Obj:
     def __init__(self, data: dict[str, Any]):
         self._data = data
         for key, value in data.items():
-            setattr(self, key, _wrap(value))
+            # Tool arguments are data, not SDK objects: an SDK hands them over as-is.
+            setattr(self, key, value if key in ("arguments", "input") else _wrap(value))
 
     def __getattr__(self, name: str) -> Any:
         # ``keys`` stays absent so ``dict(obj)`` iterates pairs, as pydantic does.

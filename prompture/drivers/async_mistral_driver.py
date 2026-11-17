@@ -9,14 +9,16 @@ from typing import Any
 import httpx
 
 from ..infra.cost_mixin import CostMixin, prepare_strict_schema
+from ._openai_chat import AsyncOpenAIChatTools, AsyncOpenAIChatToolStream, get_chat_profile
 from .async_base import AsyncDriver
-from .base import _parse_tool_arguments
 from .mistral_driver import MistralDriver
 
 logger = logging.getLogger(__name__)
 
 
-class AsyncMistralDriver(CostMixin, AsyncDriver):
+class AsyncMistralDriver(AsyncOpenAIChatTools, AsyncOpenAIChatToolStream, CostMixin, AsyncDriver):
+    chat_profile = get_chat_profile("mistral")
+
     supports_json_mode = True
     supports_json_schema = True
     supports_tool_use = True
@@ -112,92 +114,3 @@ class AsyncMistralDriver(CostMixin, AsyncDriver):
         message = resp["choices"][0]["message"]
         text = message.get("content") or ""
         return {"text": text, "meta": meta}
-
-    async def generate_messages_with_tools(
-        self,
-        messages: list[dict[str, Any]],
-        tools: list[dict[str, Any]],
-        options: dict[str, Any],
-    ) -> dict[str, Any]:
-        messages = self._prepare_messages(messages)
-        model = options.get("model", self.model)
-        model_config = self._get_model_config("mistral", model)
-        tokens_param = model_config["tokens_param"]
-        supports_temperature = model_config["supports_temperature"]
-
-        self._validate_model_capabilities("mistral", model, using_tool_use=True)
-
-        opts = {"temperature": 0.7, "max_tokens": 4096, **options}
-        data: dict[str, Any] = {"model": model, "messages": messages, "tools": tools}
-        data[tokens_param] = opts.get("max_tokens", 4096)
-        if supports_temperature and "temperature" in opts:
-            data["temperature"] = opts["temperature"]
-
-        async with httpx.AsyncClient() as client:
-            try:
-                response = await client.post(
-                    f"{self.base_url}/chat/completions",
-                    headers=self.headers,
-                    json=data,
-                    timeout=120,
-                )
-                response.raise_for_status()
-                resp = response.json()
-            except httpx.HTTPStatusError as e:
-                raise RuntimeError(f"Mistral API request failed: {e!s}") from e
-            except Exception as e:
-                raise RuntimeError(f"Mistral API request failed: {e!s}") from e
-
-        usage = resp.get("usage", {})
-        prompt_tokens = usage.get("prompt_tokens", 0)
-        completion_tokens = usage.get("completion_tokens", 0)
-        total_tokens = usage.get("total_tokens", 0)
-        total_cost = self._calculate_cost("mistral", model, prompt_tokens, completion_tokens)
-
-        meta = {
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
-            "total_tokens": total_tokens,
-            "cost": round(total_cost, 6),
-            "raw_response": resp,
-            "model_name": model,
-        }
-
-        choice = resp["choices"][0]
-        text = choice["message"].get("content") or ""
-        stop_reason = choice.get("finish_reason")
-
-        tool_calls_out: list[dict[str, Any]] = []
-        for tc in choice["message"].get("tool_calls", []) or []:
-            args = _parse_tool_arguments(tc["function"]["arguments"], tc["function"]["name"], stop_reason)
-            tool_calls_out.append(
-                {
-                    "id": tc.get("id", ""),
-                    "name": tc["function"]["name"],
-                    "arguments": args,
-                }
-            )
-
-        return {
-            "text": text,
-            "meta": meta,
-            "tool_calls": tool_calls_out,
-            "stop_reason": stop_reason,
-        }
-
-    # ------------------------------------------------------------------
-    # Live streaming with interleaved tool calls
-    # ------------------------------------------------------------------
-
-    async def generate_messages_with_tools_stream(
-        self,
-        messages: list[dict[str, Any]],
-        tools: list[dict[str, Any]],
-        options: dict[str, Any],
-    ):
-        """Async streaming-tool via the shared raw-HTTP helper."""
-        messages = self._prepare_messages(messages)
-        from ._openai_compat_stream import astream_raw_http_compat_tool_call
-
-        async for ev in astream_raw_http_compat_tool_call(self, messages, tools, options, provider="mistral"):
-            yield ev

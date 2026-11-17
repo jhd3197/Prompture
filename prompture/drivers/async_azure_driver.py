@@ -24,6 +24,7 @@ from ..infra.cost_mixin import CostMixin, prepare_strict_schema
 from ..infra.rate_limits import add_rate_limits, attach_rate_limit_hook, capture_rate_limits
 from ..infra.tool_schema import flatten_tool_schema
 from ._effort import apply_effort
+from ._openai_chat import AsyncOpenAISDKChatTools, ChatRoute, get_chat_profile
 from .async_base import AsyncDriver
 from .azure_config import classify_backend, resolve_config
 from .azure_driver import AzureDriver
@@ -31,7 +32,9 @@ from .azure_driver import AzureDriver
 logger = logging.getLogger(__name__)
 
 
-class AsyncAzureDriver(CostMixin, AsyncDriver):
+class AsyncAzureDriver(AsyncOpenAISDKChatTools, CostMixin, AsyncDriver):
+    chat_profile = get_chat_profile("azure")
+
     supports_json_mode = True
     supports_json_schema = True
     supports_tool_use = True
@@ -295,108 +298,27 @@ class AsyncAzureDriver(CostMixin, AsyncDriver):
         options: dict[str, Any],
     ) -> dict[str, Any]:
         """Generate a response that may include tool calls."""
-        messages = self._prepare_messages(messages)
         model = options.get("model", self.model)
-        config = self._resolve_model_config(model, options)
-        backend = classify_backend(model)
+        if classify_backend(model) != "claude":
+            # OpenAI and Mistral deployments speak the OpenAI chat protocol.
+            return await super().generate_messages_with_tools(messages, tools, options)
 
+        messages = self._prepare_messages(messages)
+        config = self._resolve_model_config(model, options)
         with capture_rate_limits() as limits:
-            if backend == "claude":
-                result = await self._generate_claude_with_tools(messages, tools, options, config, model)
-            else:
-                result = await self._generate_openai_with_tools(messages, tools, options, config, model)
+            result = await self._generate_claude_with_tools(messages, tools, options, config, model)
         add_rate_limits(result["meta"], limits.snapshot)
         return result
 
-    async def _generate_openai_with_tools(
-        self,
-        messages: list[dict[str, Any]],
-        tools: list[dict[str, Any]],
-        options: dict[str, Any],
-        config: dict[str, Any],
-        model: str,
-    ) -> dict[str, Any]:
-        """Tool calling via Azure OpenAI endpoint."""
-        client = self._get_openai_client(config)
-        deployment_id = config.get("deployment_id") or model
+    def _chat_route(self, model: str, options: dict[str, Any]) -> ChatRoute:
+        config = self._resolve_model_config(model, options)
+        return ChatRoute(config.get("deployment_id") or model, "azure", model, context=config)
 
-        model_config = self._get_model_config("azure", model)
-        tokens_param = model_config["tokens_param"]
-        supports_temperature = model_config["supports_temperature"]
+    def _chat_client(self, request: Any) -> Any:
+        return self._get_openai_client(request.route.context)
 
-        self._validate_model_capabilities("azure", model, using_tool_use=True)
-
-        opts = {"temperature": 1.0, "max_tokens": 4096, **options}
-
-        kwargs: dict[str, Any] = {
-            "model": deployment_id,
-            "messages": messages,
-            "tools": tools,
-        }
-        kwargs[tokens_param] = opts.get("max_tokens", 4096)
-        apply_effort(kwargs, opts, "openai")
-
-        if supports_temperature and "temperature" in opts:
-            kwargs["temperature"] = opts["temperature"]
-
-        resp = await client.chat.completions.create(**kwargs)
-
-        usage = getattr(resp, "usage", None)
-        prompt_tokens = getattr(usage, "prompt_tokens", 0)
-        completion_tokens = getattr(usage, "completion_tokens", 0)
-        total_tokens = getattr(usage, "total_tokens", 0)
-        total_cost = self._calculate_cost("azure", model, prompt_tokens, completion_tokens)
-
-        meta = {
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
-            "total_tokens": total_tokens,
-            "cost": round(total_cost, 6),
-            "raw_response": resp.model_dump(),
-            "model_name": model,
-            "deployment_id": deployment_id,
-        }
-
-        choice = resp.choices[0]
-        text = choice.message.content or ""
-        stop_reason = choice.finish_reason
-
-        tool_calls_out: list[dict[str, Any]] = []
-        if choice.message.tool_calls:
-            for tc in choice.message.tool_calls:
-                try:
-                    args = json.loads(tc.function.arguments)
-                except (json.JSONDecodeError, TypeError):
-                    raw = tc.function.arguments
-                    if stop_reason == "length":
-                        logger.warning(
-                            "Tool arguments for %s were truncated due to max_tokens limit. "
-                            "Increase max_tokens in options to allow longer tool outputs. "
-                            "Truncated arguments: %r",
-                            tc.function.name,
-                            raw[:200] if raw else raw,
-                        )
-                    else:
-                        logger.warning(
-                            "Failed to parse tool arguments for %s: %r",
-                            tc.function.name,
-                            raw,
-                        )
-                    args = {}
-                tool_calls_out.append(
-                    {
-                        "id": tc.id,
-                        "name": tc.function.name,
-                        "arguments": args,
-                    }
-                )
-
-        return {
-            "text": text,
-            "meta": meta,
-            "tool_calls": tool_calls_out,
-            "stop_reason": stop_reason,
-        }
+    def _chat_meta(self, meta: dict[str, Any], request: Any) -> None:
+        meta["deployment_id"] = request.route.api_model
 
     async def _generate_claude_with_tools(
         self,

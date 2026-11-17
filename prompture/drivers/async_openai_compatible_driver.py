@@ -11,6 +11,7 @@ import httpx
 
 from ..infra.cost_mixin import CostMixin
 from ..infra.rate_limits import add_rate_limits, limits_from_response
+from ._openai_chat import _ChatToolsBase
 from .async_base import AsyncDriver
 from .openai_compatible_driver import (
     OPENAI_COMPATIBLE_PROFILES,
@@ -21,7 +22,7 @@ from .openai_compatible_driver import (
 logger = logging.getLogger(__name__)
 
 
-class AsyncOpenAICompatibleDriver(CostMixin, AsyncDriver):
+class AsyncOpenAICompatibleDriver(_ChatToolsBase, CostMixin, AsyncDriver):
     supports_json_mode = True
     supports_json_schema = True
     supports_tool_use = True
@@ -97,6 +98,9 @@ class AsyncOpenAICompatibleDriver(CostMixin, AsyncDriver):
     _build_request = OpenAICompatibleDriver._build_request
     _parse_response = OpenAICompatibleDriver._parse_response
     _stream_usage = OpenAICompatibleDriver._stream_usage
+    chat_profile = OpenAICompatibleDriver.chat_profile
+    _chat_route = OpenAICompatibleDriver._chat_route
+    _chat_finalize = OpenAICompatibleDriver._chat_finalize
 
     async def generate_messages_with_tools(
         self,

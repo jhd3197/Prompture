@@ -14,14 +14,16 @@ except ImportError:
 from ..infra.cost_mixin import CostMixin
 from ..infra.rate_limits import add_rate_limits, attach_rate_limit_hook, capture_rate_limits
 from ._effort import apply_effort
+from ._openai_chat import AsyncOpenAISDKChatTools, AsyncOpenAISDKChatToolStream, get_chat_profile
 from .async_base import AsyncDriver
-from .base import _parse_tool_arguments
 from .groq_driver import GroqDriver
 
 logger = logging.getLogger(__name__)
 
 
-class AsyncGroqDriver(CostMixin, AsyncDriver):
+class AsyncGroqDriver(AsyncOpenAISDKChatTools, AsyncOpenAISDKChatToolStream, CostMixin, AsyncDriver):
+    chat_profile = get_chat_profile("groq")
+
     supports_json_mode = True
     supports_tool_use = True
     supports_streaming_tool_use = True
@@ -128,119 +130,3 @@ class AsyncGroqDriver(CostMixin, AsyncDriver):
         if reasoning_content is not None:
             result["reasoning_content"] = reasoning_content
         return result
-
-    # ------------------------------------------------------------------
-    # Tool use
-    # ------------------------------------------------------------------
-
-    async def generate_messages_with_tools(
-        self,
-        messages: list[dict[str, Any]],
-        tools: list[dict[str, Any]],
-        options: dict[str, Any],
-    ) -> dict[str, Any]:
-        """Generate a response that may include tool calls."""
-        messages = self._prepare_messages(messages)
-        if self.client is None:
-            from ..exceptions import ConfigurationError
-
-            raise ConfigurationError('groq package is not installed. Install it with: pip install "prompture[groq]"')
-
-        model = options.get("model", self.model)
-        model_config = self._get_model_config("groq", model)
-        tokens_param = model_config["tokens_param"]
-        supports_temperature = model_config["supports_temperature"]
-
-        self._validate_model_capabilities("groq", model, using_tool_use=True)
-
-        opts = {"temperature": 0.7, "max_tokens": 4096, **options}
-
-        kwargs: dict[str, Any] = {
-            "model": model,
-            "messages": messages,
-            "tools": tools,
-        }
-        kwargs[tokens_param] = opts.get("max_tokens", 4096)
-        apply_effort(kwargs, opts, "openai")
-
-        if supports_temperature and "temperature" in opts:
-            kwargs["temperature"] = opts["temperature"]
-
-        with capture_rate_limits() as limits:
-            resp = await self.client.chat.completions.create(**kwargs)
-
-        from .openai_driver import _extract_openai_cached_tokens
-
-        usage = getattr(resp, "usage", None)
-        prompt_tokens = getattr(usage, "prompt_tokens", 0)
-        completion_tokens = getattr(usage, "completion_tokens", 0)
-        total_tokens = getattr(usage, "total_tokens", 0)
-        cached_prompt_tokens = _extract_openai_cached_tokens(usage)
-        total_cost = self._calculate_cost(
-            "groq",
-            model,
-            prompt_tokens,
-            completion_tokens,
-            cached_tokens=cached_prompt_tokens,
-        )
-
-        meta = {
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
-            "total_tokens": total_tokens,
-            "cached_prompt_tokens": cached_prompt_tokens,
-            "cost": round(total_cost, 6),
-            "raw_response": resp.model_dump(),
-            "model_name": model,
-        }
-
-        choice = resp.choices[0]
-        text = choice.message.content or ""
-        stop_reason = choice.finish_reason
-
-        tool_calls_out: list[dict[str, Any]] = []
-        if choice.message.tool_calls:
-            for tc in choice.message.tool_calls:
-                args = _parse_tool_arguments(tc.function.arguments, tc.function.name, stop_reason)
-                tool_calls_out.append(
-                    {
-                        "id": tc.id,
-                        "name": tc.function.name,
-                        "arguments": args,
-                    }
-                )
-
-        add_rate_limits(meta, limits.snapshot)
-        result: dict[str, Any] = {
-            "text": text,
-            "meta": meta,
-            "tool_calls": tool_calls_out,
-            "stop_reason": stop_reason,
-        }
-        reasoning_content = getattr(choice.message, "reasoning_content", None)
-        if reasoning_content is not None:
-            result["reasoning_content"] = reasoning_content
-        return result
-
-    # ------------------------------------------------------------------
-    # Live streaming with interleaved tool calls
-    # ------------------------------------------------------------------
-
-    async def generate_messages_with_tools_stream(
-        self,
-        messages: list[dict[str, Any]],
-        tools: list[dict[str, Any]],
-        options: dict[str, Any],
-    ):
-        """Async streaming-tool via the shared OpenAI-compat helper."""
-        if self.client is None:
-            from ..exceptions import ConfigurationError
-
-            raise ConfigurationError('groq package is not installed. Install it with: pip install "prompture[groq]"')
-
-        from ._openai_compat_stream import astream_openai_compat_tool_call
-
-        async for ev in astream_openai_compat_tool_call(
-            self, self._prepare_messages(messages), tools, options, provider="groq"
-        ):
-            yield ev
