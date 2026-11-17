@@ -27,7 +27,6 @@ The order of the pipeline is fixed and no step is the driver's to remember:
 from __future__ import annotations
 
 import contextlib
-import copy
 import logging
 from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass
@@ -211,7 +210,13 @@ def _tighten_tool_shape(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def _strict_tools(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    from ..infra.cost_mixin import prepare_strict_schema
+    """Mark function tools ``strict`` with a schema strict mode accepts.
+
+    Strict mode wants every property required, so parameters that were
+    optional become nullable; the tool registry drops those nulls again
+    before the function runs.
+    """
+    from ..agents.tools_schema import _strict_parameters
 
     out = []
     for tool in tools:
@@ -219,7 +224,7 @@ def _strict_tools(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if not isinstance(fn, dict) or fn.get("strict") is not None:
             out.append(tool)
             continue
-        params = prepare_strict_schema(copy.deepcopy(fn.get("parameters") or {"type": "object", "properties": {}}))
+        params = _strict_parameters(fn.get("parameters") or {"type": "object", "properties": {}})
         out.append({**tool, "function": {**fn, "parameters": params, "strict": True}})
     return out
 

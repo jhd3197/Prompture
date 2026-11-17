@@ -493,6 +493,9 @@ class OpenAIDriver(CostMixin, Driver):
         """Stream one OpenAI turn as :class:`LiveEvent` via the shared
         OpenAI-compat helper. See
         :mod:`prompture.drivers._openai_compat_stream` for the protocol."""
+        from ._openai_chat import get_chat_profile, prepare_tools
+
+        tools = prepare_tools(tools, get_chat_profile("openai"), options)
         if options.get("api", getattr(self, "api", "chat_completions")) == "responses":
             if self.client is None or not hasattr(self.client, "responses"):
                 from ..exceptions import ConfigurationError

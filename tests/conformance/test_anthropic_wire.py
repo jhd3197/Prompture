@@ -157,3 +157,14 @@ def test_thinking_is_returned_as_reasoning(target, monkeypatch):
     result = call_tools(target, driver, SIMPLE, [WEATHER_TOOL])
 
     assert result["reasoning_content"] == "Paris is a city."
+
+
+@pytest.mark.parametrize("target", targets("test_strict_tools_when_asked"))
+def test_strict_tools_when_asked(target, monkeypatch):
+    wire = Wire(PARIS)
+    driver = target.build(monkeypatch, wire)
+    call_tools(target, driver, SIMPLE, [WEATHER_TOOL], {"strict_tools": True})
+
+    tool = wire.payload["tools"][0]
+    assert tool["strict"] is True
+    assert tool["input_schema"]["additionalProperties"] is False

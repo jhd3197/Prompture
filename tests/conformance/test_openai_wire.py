@@ -272,3 +272,23 @@ def test_plain_stream_converts_images(target, monkeypatch):
     assert [b["type"] for b in wire.payload["messages"][0]["content"]] == ["text", "image_url"]
     assert chunks[-1]["type"] == "done"
     assert chunks[-1]["text"] == "A pixel."
+
+
+# ---------------------------------------------------------------------------
+# Strict tool use
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("target", targets("test_strict_tools_only_where_the_provider_has_them"))
+def test_strict_tools_only_where_the_provider_has_them(target, monkeypatch):
+    wire = Wire(PARIS)
+    driver = target.build(monkeypatch, wire)
+    call_tools(target, driver, SIMPLE, [WEATHER_TOOL], {"strict_tools": True})
+
+    function = wire.payload["tools"][0]["function"]
+    if target.id.removesuffix("-async") in ("openai", "azure"):
+        assert function["strict"] is True
+        assert function["parameters"]["additionalProperties"] is False
+    else:
+        assert "strict" not in function
+    assert "strict_tools" not in wire.payload

@@ -1011,6 +1011,7 @@ class AsyncConversation(ToolContextMixin):
                                 "name": event.name,
                                 "arguments": event.input,
                                 "truncated": getattr(event, "truncated", False),
+                                "arguments_error": getattr(event, "arguments_error", None),
                             }
                         )
                         tool_calls_in_turn.append(

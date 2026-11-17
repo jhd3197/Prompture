@@ -160,6 +160,7 @@ def _finalize_tool_use_stops(state: dict[str, Any]) -> Iterator[Any]:
     import uuid
 
     from ..agents.live_events import ToolUseStart, ToolUseStop
+    from .base import _parse_tool_arguments_with_error
 
     finish_reason = state.get("finish_reason")
     for idx in sorted(state["tool_calls"].keys()):
@@ -170,32 +171,16 @@ def _finalize_tool_use_stops(state: dict[str, Any]) -> Iterator[Any]:
             yield ToolUseStart(id=bucket["id"], name=bucket["name"])
             bucket["start_emitted"] = True
         args_str = "".join(bucket["args_fragments"])
-        parse_failed = False
-        try:
-            parsed = json.loads(args_str) if args_str else {}
-            if not isinstance(parsed, dict):
-                parse_failed = True
-                logger.warning(
-                    "Streamed tool input for %s parsed to non-object JSON: %r",
-                    bucket["name"],
-                    args_str[:200],
-                )
-                parsed = {}
-        except json.JSONDecodeError:
-            parse_failed = True
-            logger.warning(
-                "Failed to parse streamed tool input for %s: %r",
-                bucket["name"],
-                args_str[:200],
-            )
-            parsed = {}
-        truncated = parse_failed and finish_reason in ("length", "max_tokens")
+        # Same parser as the buffered path, so a streamed turn reports
+        # malformed arguments exactly as a buffered one does.
+        parsed, error = _parse_tool_arguments_with_error(args_str or None, bucket["name"], finish_reason)
         yield ToolUseStop(
             id=bucket["id"],
             name=bucket["name"],
             input=parsed,
-            truncated=truncated,
-            raw_stop_reason=finish_reason if parse_failed else None,
+            truncated=bool(error) and finish_reason in ("length", "max_tokens"),
+            raw_stop_reason=finish_reason if error else None,
+            arguments_error=error,
         )
 
 

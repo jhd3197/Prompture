@@ -592,7 +592,9 @@ class ClaudeDriver(_ClaudeModelRules, CostMixin, Driver):
 
         system_content, api_messages = _extract_anthropic_system_and_messages(self._prepare_messages(messages))
         cache_kwargs = _cache_opts(opts, model)
-        anthropic_tools = _apply_cache_control_to_tools(_convert_tools_to_anthropic(tools), **cache_kwargs)
+        anthropic_tools = _apply_cache_control_to_tools(
+            _convert_tools_to_anthropic(tools, strict=bool(opts.get("strict_tools"))), **cache_kwargs
+        )
         wrapped_system = _apply_cache_control_to_system(system_content, **cache_kwargs)
         api_messages = _apply_cache_control_to_messages(
             api_messages,
@@ -800,7 +802,9 @@ class ClaudeDriver(_ClaudeModelRules, CostMixin, Driver):
 
         system_content, api_messages = _extract_anthropic_system_and_messages(self._prepare_messages(messages))
         cache_kwargs = _cache_opts(opts, model)
-        anthropic_tools = _apply_cache_control_to_tools(_convert_tools_to_anthropic(tools), **cache_kwargs)
+        anthropic_tools = _apply_cache_control_to_tools(
+            _convert_tools_to_anthropic(tools, strict=bool(opts.get("strict_tools"))), **cache_kwargs
+        )
         wrapped_system = _apply_cache_control_to_system(system_content, **cache_kwargs)
         api_messages = _apply_cache_control_to_messages(
             api_messages,
@@ -922,6 +926,7 @@ class ClaudeDriver(_ClaudeModelRules, CostMixin, Driver):
                 input={},
                 truncated=stop_reason == "max_tokens",
                 raw_stop_reason=stop_reason,
+                arguments_error=f"Streamed arguments for {info.get('name', '?')} were not valid JSON",
             )
 
         meta = usage_meta(

@@ -83,6 +83,10 @@ class ToolUseStop:
     parse — the conversation layer treats these like malformed-argument
     calls (no execution, error fed back to the model). ``raw_stop_reason``
     preserves the provider's original finish reason for diagnostics.
+
+    ``arguments_error`` says why the arguments could not be used when they
+    failed to parse for any reason, truncated or not. ``input`` is then ``{}``
+    and the tool must not run on it.
     """
 
     id: str
@@ -90,6 +94,7 @@ class ToolUseStop:
     input: dict[str, Any]
     truncated: bool = False
     raw_stop_reason: str | None = None
+    arguments_error: str | None = None
     event_type: Literal["tool_use_stop"] = field(default="tool_use_stop", init=False)
 
 

@@ -172,8 +172,58 @@ def to_anthropic_tools(tools: list[dict[str, Any]], *, strict: bool = False) -> 
             out.append(tool)
             continue
         if strict and "strict" not in converted:
+            converted["input_schema"] = strict_input_schema(converted["input_schema"])
             converted["strict"] = True
         out.append(converted)
+    return out
+
+
+#: Constraints Anthropic's strict tool use rejects. They move into the
+#: description, where the model still reads them.
+_STRICT_UNSUPPORTED = (
+    "minimum",
+    "maximum",
+    "exclusiveMinimum",
+    "exclusiveMaximum",
+    "multipleOf",
+    "minLength",
+    "maxLength",
+    "maxItems",
+    "uniqueItems",
+)
+
+
+def strict_input_schema(schema: Any) -> Any:
+    """A copy of *schema* that Anthropic's strict tool use accepts.
+
+    Every object gets ``additionalProperties: false``; numeric and length
+    constraints, which strict mode refuses, are restated in the description;
+    ``minItems`` above 1 is lowered to 1.
+    """
+    if isinstance(schema, list):
+        return [strict_input_schema(item) for item in schema]
+    if not isinstance(schema, dict):
+        return schema
+    out: dict[str, Any] = {}
+    notes: list[str] = []
+    for key, value in schema.items():
+        if key in _STRICT_UNSUPPORTED:
+            notes.append(f"{key}={value}")
+        elif key == "minItems" and isinstance(value, int) and value > 1:
+            notes.append(f"minItems={value}")
+            out[key] = 1
+        elif key in ("properties", "$defs", "definitions") and isinstance(value, dict):
+            out[key] = {name: strict_input_schema(sub) for name, sub in value.items()}
+        elif key in ("items", "anyOf", "allOf", "oneOf"):
+            out[key] = strict_input_schema(value)
+        else:
+            out[key] = value
+    if out.get("type") == "object" or "properties" in out:
+        out["additionalProperties"] = False
+    if notes:
+        note = "Constraints: " + ", ".join(notes) + "."
+        description = out.get("description")
+        out["description"] = f"{description} {note}" if isinstance(description, str) and description else note
     return out
 
 
@@ -291,6 +341,7 @@ __all__ = [
     "build_tool_request",
     "normalize_content",
     "parse_message",
+    "strict_input_schema",
     "to_anthropic_messages",
     "to_anthropic_tools",
     "tool_result",
