@@ -21,3 +21,11 @@ def _no_network(monkeypatch: pytest.MonkeyPatch) -> None:
         return real_connect(self, address, *args, **kwargs)
 
     monkeypatch.setattr(socket.socket, "connect", guarded)
+
+    # A pricing lookup made behind the guard cannot fetch models.dev and would
+    # mark the rates as loaded-but-empty for every later test in the process.
+    # Restoring the load state afterwards lets the next test fetch normally.
+    from prompture.infra import model_rates
+
+    monkeypatch.setattr(model_rates, "_data", model_rates._data)
+    monkeypatch.setattr(model_rates, "_loaded", model_rates._loaded)
