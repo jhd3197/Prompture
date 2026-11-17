@@ -22,7 +22,7 @@ except ImportError:
 
 from ..infra.cost_mixin import CostMixin, prepare_strict_schema
 from ..infra.rate_limits import add_rate_limits, attach_rate_limit_hook, capture_rate_limits
-from ..infra.tool_schema import flatten_tool_schema
+from ._anthropic_wire import build_tool_request, parse_message, to_anthropic_messages, tool_result
 from ._effort import apply_effort
 from ._openai_chat import AsyncOpenAISDKChatTools, ChatRoute, get_chat_profile
 from .async_base import AsyncDriver
@@ -227,13 +227,7 @@ class AsyncAzureDriver(AsyncOpenAISDKChatTools, CostMixin, AsyncDriver):
 
         opts = {**{"temperature": 0.0, "max_tokens": 512}, **options}
 
-        system_content = None
-        api_messages = []
-        for msg in messages:
-            if msg.get("role") == "system":
-                system_content = msg.get("content", "")
-            else:
-                api_messages.append(msg)
+        system_content, api_messages = to_anthropic_messages(messages)
 
         common_kwargs: dict[str, Any] = {
             "model": model,
@@ -303,7 +297,8 @@ class AsyncAzureDriver(AsyncOpenAISDKChatTools, CostMixin, AsyncDriver):
             # OpenAI and Mistral deployments speak the OpenAI chat protocol.
             return await super().generate_messages_with_tools(messages, tools, options)
 
-        messages = self._prepare_messages(messages)
+        # Claude takes Anthropic's shapes; ``_anthropic_wire`` converts the images.
+        self._check_vision_support(messages)
         config = self._resolve_model_config(model, options)
         with capture_rate_limits() as limits:
             result = await self._generate_claude_with_tools(messages, tools, options, config, model)
@@ -330,76 +325,8 @@ class AsyncAzureDriver(AsyncOpenAISDKChatTools, CostMixin, AsyncDriver):
     ) -> dict[str, Any]:
         """Tool calling via Anthropic SDK with Azure endpoint."""
         client = self._get_anthropic_client(config)
-
-        opts = {**{"temperature": 0.0, "max_tokens": 4096}, **options}
-
-        system_content = None
-        api_messages: list[dict[str, Any]] = []
-        for msg in messages:
-            if msg.get("role") == "system":
-                system_content = msg.get("content", "")
-            else:
-                api_messages.append(msg)
-
-        anthropic_tools = []
-        for t in tools:
-            if "type" in t and t["type"] == "function":
-                fn = t["function"]
-                anthropic_tools.append(
-                    {
-                        "name": fn["name"],
-                        "description": fn.get("description", ""),
-                        "input_schema": flatten_tool_schema(fn.get("parameters", {"type": "object", "properties": {}})),
-                    }
-                )
-            elif "input_schema" in t:
-                anthropic_tools.append({**t, "input_schema": flatten_tool_schema(t["input_schema"])})
-            else:
-                anthropic_tools.append(t)
-
-        kwargs: dict[str, Any] = {
-            "model": model,
-            "messages": api_messages,
-            "temperature": opts["temperature"],
-            "max_tokens": opts["max_tokens"],
-            "tools": anthropic_tools,
-        }
-        if system_content:
-            kwargs["system"] = system_content
-
+        kwargs = build_tool_request(messages, tools, options, model=model)
         resp = await client.messages.create(**kwargs)
-
-        prompt_tokens = resp.usage.input_tokens
-        completion_tokens = resp.usage.output_tokens
-        total_tokens = prompt_tokens + completion_tokens
-        total_cost = self._calculate_cost("azure", model, prompt_tokens, completion_tokens)
-
-        meta = {
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
-            "total_tokens": total_tokens,
-            "cost": round(total_cost, 6),
-            "raw_response": dict(resp),
-            "model_name": model,
-        }
-
-        text = ""
-        tool_calls_out: list[dict[str, Any]] = []
-        for block in resp.content:
-            if block.type == "text":
-                text += block.text
-            elif block.type == "tool_use":
-                tool_calls_out.append(
-                    {
-                        "id": block.id,
-                        "name": block.name,
-                        "arguments": block.input,
-                    }
-                )
-
-        return {
-            "text": text,
-            "meta": meta,
-            "tool_calls": tool_calls_out,
-            "stop_reason": resp.stop_reason,
-        }
+        parsed = parse_message(resp)
+        cost = self._calculate_cost("azure", model, parsed["prompt_tokens"], parsed["completion_tokens"])
+        return tool_result(parsed, model=model, cost=cost, raw_response=dict(resp))

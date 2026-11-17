@@ -26,7 +26,7 @@ except ImportError:
     AsyncAnthropicVertex = None  # type: ignore[assignment]
 
 from ..infra.cost_mixin import CostMixin
-from ..infra.tool_schema import flatten_tool_schema
+from ._anthropic_wire import build_tool_request, parse_message, tool_result
 from ._google_genai import add_tools, build_generation_args, extract_usage, response_parts, tool_response
 from .async_base import AsyncDriver
 from .google_vertexai_driver import GoogleVertexAIDriver, _is_claude_model
@@ -192,65 +192,12 @@ class AsyncGoogleVertexAIDriver(CostMixin, AsyncDriver):
         self, messages: list[dict[str, Any]], tools: list[dict[str, Any]], options: dict[str, Any]
     ) -> dict[str, Any]:
         client = self._get_claude_client()
-        opts = {**{"temperature": 0.0, "max_tokens": 4096}, **options}
-        model = opts.get("model", self.model)
-
-        system_content, api_messages = GoogleVertexAIDriver._extract_system_and_messages(messages)
-
-        anthropic_tools = []
-        for t in tools:
-            if "type" in t and t["type"] == "function":
-                fn = t["function"]
-                anthropic_tools.append(
-                    {
-                        "name": fn["name"],
-                        "description": fn.get("description", ""),
-                        "input_schema": flatten_tool_schema(fn.get("parameters", {"type": "object", "properties": {}})),
-                    }
-                )
-            elif "input_schema" in t:
-                anthropic_tools.append({**t, "input_schema": flatten_tool_schema(t["input_schema"])})
-            else:
-                anthropic_tools.append(t)
-
-        kwargs: dict[str, Any] = {
-            "model": model,
-            "messages": api_messages,
-            "max_tokens": opts["max_tokens"],
-            "tools": anthropic_tools,
-        }
-        if "temperature" in opts:
-            kwargs["temperature"] = opts["temperature"]
-        if system_content:
-            kwargs["system"] = system_content
-
+        model = options.get("model", self.model)
+        kwargs = build_tool_request(messages, tools, options, model=model)
         resp = await client.messages.create(**kwargs)
-
-        prompt_tokens = resp.usage.input_tokens
-        completion_tokens = resp.usage.output_tokens
-        cost = self._cost_for_tokens(prompt_tokens, completion_tokens)
-
-        text = ""
-        tool_calls_out: list[dict[str, Any]] = []
-        for block in resp.content:
-            if block.type == "text":
-                text += block.text
-            elif block.type == "tool_use":
-                tool_calls_out.append({"id": block.id, "name": block.name, "arguments": block.input})
-
-        return {
-            "text": text,
-            "meta": {
-                "prompt_tokens": prompt_tokens,
-                "completion_tokens": completion_tokens,
-                "total_tokens": prompt_tokens + completion_tokens,
-                "cost": round(cost, 6),
-                "raw_response": dict(resp),
-                "model_name": model,
-            },
-            "tool_calls": tool_calls_out,
-            "stop_reason": resp.stop_reason,
-        }
+        parsed = parse_message(resp)
+        cost = self._cost_for_tokens(parsed["prompt_tokens"], parsed["completion_tokens"])
+        return tool_result(parsed, model=model, cost=cost, raw_response=dict(resp))
 
     async def _claude_generate_stream(
         self, messages: list[dict[str, Any]], options: dict[str, Any]

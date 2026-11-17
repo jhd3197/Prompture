@@ -42,14 +42,14 @@ except ImportError:  # pragma: no cover - exercised in tests via patch
     _BOTO3_AVAILABLE = False
 
 from ..infra.cost_mixin import CostMixin
-from ..infra.tool_schema import flatten_tool_schema
+from ._anthropic_wire import parse_message, to_anthropic_messages, to_anthropic_tools, tool_result
 from ._prompt_cache import (
     apply_cache_control_to_messages,
     apply_cache_control_to_system,
     apply_cache_control_to_tools,
     breakpoint_budget,
 )
-from .base import Driver
+from .base import Driver, _translate_tool_choice
 
 logger = logging.getLogger(__name__)
 
@@ -163,23 +163,8 @@ def _prepare_anthropic_messages_for_bedrock(
     return out
 
 
-def _convert_tools_to_anthropic_bedrock(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    anthropic_tools: list[dict[str, Any]] = []
-    for t in tools:
-        if t.get("type") == "function" and "function" in t:
-            fn = t["function"]
-            anthropic_tools.append(
-                {
-                    "name": fn["name"],
-                    "description": fn.get("description", ""),
-                    "input_schema": flatten_tool_schema(fn.get("parameters", {"type": "object", "properties": {}})),
-                }
-            )
-        elif "input_schema" in t:
-            anthropic_tools.append({**t, "input_schema": flatten_tool_schema(t["input_schema"])})
-        else:
-            anthropic_tools.append(t)
-    return anthropic_tools
+# Shared with every other Anthropic-wire driver; the name stays for importers.
+_convert_tools_to_anthropic_bedrock = to_anthropic_tools
 
 
 # ----------------------------------------------------------------------
@@ -193,7 +178,9 @@ def _build_anthropic_request(
     *,
     tools: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    system_content, api_messages = _extract_system_and_messages(messages)
+    # Tool history and images become Anthropic blocks first; Bedrock's own pass
+    # then inlines anything still carried as a URL.
+    system_content, api_messages = to_anthropic_messages(messages)
     api_messages = _prepare_anthropic_messages_for_bedrock(api_messages)
 
     # Bedrock serves the same Anthropic Messages body, so the same
@@ -206,7 +193,11 @@ def _build_anthropic_request(
     }
     wrapped_system = apply_cache_control_to_system(system_content, **cache_kwargs)
     anthropic_tools = (
-        apply_cache_control_to_tools(_convert_tools_to_anthropic_bedrock(tools), **cache_kwargs) if tools else None
+        apply_cache_control_to_tools(
+            to_anthropic_tools(tools, strict=bool(options.get("strict_tools"))), **cache_kwargs
+        )
+        if tools
+        else None
     )
     api_messages = apply_cache_control_to_messages(
         api_messages,
@@ -225,6 +216,9 @@ def _build_anthropic_request(
         body["temperature"] = options["temperature"]
     if anthropic_tools is not None:
         body["tools"] = anthropic_tools
+        tool_choice = _translate_tool_choice(options.get("tool_choice"), "anthropic")
+        if tool_choice is not None:
+            body["tool_choice"] = tool_choice
     return body
 
 
@@ -233,29 +227,7 @@ def _parse_anthropic_response(
     *,
     response_headers: dict[str, str] | None = None,
 ) -> dict[str, Any]:
-    content_blocks = payload.get("content", []) or []
-    text_parts: list[str] = []
-    tool_calls: list[dict[str, Any]] = []
-    for block in content_blocks:
-        btype = block.get("type")
-        if btype == "text":
-            text_parts.append(block.get("text", ""))
-        elif btype == "tool_use":
-            tool_calls.append(
-                {
-                    "id": block.get("id", ""),
-                    "name": block.get("name", ""),
-                    "arguments": block.get("input", {}),
-                }
-            )
-    usage = payload.get("usage", {}) or {}
-    return {
-        "text": "".join(text_parts),
-        "tool_calls": tool_calls,
-        "prompt_tokens": int(usage.get("input_tokens", 0) or 0),
-        "completion_tokens": int(usage.get("output_tokens", 0) or 0),
-        "stop_reason": payload.get("stop_reason"),
-    }
+    return parse_message(payload)
 
 
 def _build_meta_request(messages: list[dict[str, Any]], options: dict[str, Any]) -> dict[str, Any]:
@@ -567,20 +539,7 @@ class BedrockDriver(CostMixin, Driver):
             parsed["prompt_tokens"],
             parsed["completion_tokens"],
         )
-        meta = {
-            "prompt_tokens": parsed["prompt_tokens"],
-            "completion_tokens": parsed["completion_tokens"],
-            "total_tokens": parsed["prompt_tokens"] + parsed["completion_tokens"],
-            "cost": round(total_cost, 6),
-            "raw_response": payload,
-            "model_name": model,
-        }
-        return {
-            "text": parsed["text"],
-            "meta": meta,
-            "tool_calls": parsed["tool_calls"],
-            "stop_reason": parsed["stop_reason"],
-        }
+        return tool_result(parsed, model=model, cost=total_cost, raw_response=payload)
 
     # ------------------------------------------------------------------
     # Streaming (Anthropic only)
