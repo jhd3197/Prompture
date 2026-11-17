@@ -37,7 +37,15 @@ import requests
 from ..infra.cost_mixin import CostMixin, prepare_strict_schema
 from ..infra.rate_limits import add_rate_limits, limits_from_response
 from ._effort import apply_effort
-from .base import Driver, _apply_openai_tool_options, _tool_call_dict
+from ._openai_chat import (
+    ChatProfile,
+    ChatRoute,
+    _ChatToolsBase,
+    build_chat_request,
+    get_chat_profile,
+    parse_chat_completion,
+)
+from .base import Driver
 
 logger = logging.getLogger(__name__)
 
@@ -98,7 +106,7 @@ def _parse_profile_and_model(model: str) -> tuple[str | None, str]:
     return None, model
 
 
-class OpenAICompatibleDriver(CostMixin, Driver):
+class OpenAICompatibleDriver(_ChatToolsBase, CostMixin, Driver):
     """Generic driver for any OpenAI-compatible Chat Completions endpoint."""
 
     supports_json_mode = True
@@ -169,6 +177,29 @@ class OpenAICompatibleDriver(CostMixin, Driver):
             h["Authorization"] = f"Bearer {api_key}"
         return h
 
+    # -- shared tool-call codec (see ``_openai_chat``) -----------------------
+
+    @property
+    def chat_profile(self) -> ChatProfile:
+        """A curated profile's own quirks when it has any, else plain OpenAI behaviour."""
+        from dataclasses import replace
+
+        cap_provider = self.profile or "openai_compatible"
+        return replace(get_chat_profile("openai_compatible"), provider=cap_provider, label="OpenAI-compatible")
+
+    def _chat_route(self, model: str, options: dict[str, Any]) -> ChatRoute:
+        return ChatRoute(model, self.profile or "openai_compatible", model)
+
+    def _chat_finalize(self, payload: dict[str, Any], options: dict[str, Any]) -> None:
+        from ._openai_compat import apply_guided_decoding, build_response_format
+
+        if options.get("json_mode"):
+            json_schema = options.get("json_schema")
+            payload["response_format"] = build_response_format(json_schema) if json_schema else {"type": "json_object"}
+        apply_guided_decoding(
+            payload, json_schema=options.get("json_schema"), guided_decoding=options.get("guided_decoding")
+        )
+
     def generate(self, prompt: str, options: dict[str, Any]) -> dict[str, Any]:
         messages = [{"role": "user", "content": prompt}]
         return self._do_generate(messages, options)
@@ -189,6 +220,11 @@ class OpenAICompatibleDriver(CostMixin, Driver):
         endpoint = (options.get("endpoint") or self.endpoint).rstrip("/")
         api_key = options.get("api_key") or self.api_key
         model = options.get("model", self.model)
+
+        if tools is not None:
+            # Tool turns are shaped by the shared codec, streamed or not.
+            request = build_chat_request(self, messages, tools, options, self.chat_profile, stream=stream)
+            return endpoint, api_key, model, request.payload
 
         # Capabilities lookup uses the profile name (so e.g. "fireworks"
         # finds entries in rates/fireworks.json). For explicit-endpoint
@@ -221,10 +257,6 @@ class OpenAICompatibleDriver(CostMixin, Driver):
                 }
             else:
                 data["response_format"] = {"type": "json_object"}
-
-        if tools is not None:
-            data["tools"] = tools
-            _apply_openai_tool_options(data, options)
 
         # vLLM-style FSM-constrained decoding pass-through (8A-lite).
         # Safe on every OpenAI-compatible server — unrecognised keys are ignored.
@@ -289,6 +321,13 @@ class OpenAICompatibleDriver(CostMixin, Driver):
         tools: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         cap_provider = self.profile or "openai_compatible"
+        if tools is not None:
+            result = parse_chat_completion(self, resp, model=model, cost_provider=cap_provider)
+            result["meta"].update(endpoint=endpoint, profile=self.profile)
+            if result["meta"]["cost"] == 0.0:
+                result["meta"]["pricing_unknown"] = True
+            return result
+
         usage = resp.get("usage", {})
         prompt_tokens = usage.get("prompt_tokens", 0)
         completion_tokens = usage.get("completion_tokens", 0)
@@ -312,15 +351,7 @@ class OpenAICompatibleDriver(CostMixin, Driver):
 
         message = resp["choices"][0]["message"]
         text = message.get("content") or ""
-        result = {"text": text, "meta": meta}
-        if tools is not None:
-            stop_reason = resp["choices"][0].get("finish_reason")
-            result["stop_reason"] = stop_reason
-            result["tool_calls"] = [
-                _tool_call_dict(tc.get("id"), tc["function"]["name"], tc["function"].get("arguments"), stop_reason)
-                for tc in message.get("tool_calls") or []
-            ]
-        return result
+        return {"text": text, "meta": meta}
 
     def _stream_usage(self, usage: dict[str, Any], endpoint: str) -> dict[str, Any]:
         meta = {**usage, "raw_response": {}, "endpoint": endpoint, "profile": self.profile}

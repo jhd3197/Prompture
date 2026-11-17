@@ -7,6 +7,7 @@ import uuid
 from typing import Any
 
 from ..exceptions import DriverError
+from ..infra.tool_schema import flatten_tool_schema
 from ._effort import apply_effort
 from .base import _normalize_stop_reason, _translate_tool_choice
 
@@ -118,6 +119,8 @@ def add_tools(config: dict[str, Any], tools: list[dict[str, Any]], options: dict
         if "name" not in fn:
             continue
         params = fn.get("parameters") or fn.get("input_schema")
+        if params:
+            params = flatten_tool_schema(params)
         declarations.append(
             types.FunctionDeclaration(
                 name=fn["name"],

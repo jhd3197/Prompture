@@ -65,13 +65,11 @@ class TestBackendDispatch:
     def test_tool_dispatch_openai(self):
         driver = _make_driver(model="gpt-4o")
 
-        with patch.object(
-            driver,
-            "_generate_openai_with_tools",
-            return_value={"text": "", "meta": {}, "tool_calls": [], "stop_reason": "stop"},
-        ) as mock:
-            driver.generate_messages_with_tools([{"role": "user", "content": "hi"}], [], {})
+        reply = {"choices": [{"message": {"content": ""}, "finish_reason": "stop"}]}
+        with patch.object(driver, "_chat_send", return_value=(reply, None)) as mock:
+            result = driver.generate_messages_with_tools([{"role": "user", "content": "hi"}], [], {})
             mock.assert_called_once()
+        assert result["stop_reason"] == "end_turn"
 
     def test_tool_dispatch_claude(self):
         driver = _make_driver(model="claude-sonnet-4-20250514")

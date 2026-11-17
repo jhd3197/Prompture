@@ -13,12 +13,15 @@ import requests
 
 from ..infra.cost_mixin import CostMixin, prepare_strict_schema
 from ._effort import apply_effort
-from .base import Driver, _parse_tool_arguments
+from ._openai_chat import OpenAIChatTools, OpenAIChatToolStream, get_chat_profile
+from .base import Driver
 
 logger = logging.getLogger(__name__)
 
 
-class OpenRouterDriver(CostMixin, Driver):
+class OpenRouterDriver(OpenAIChatTools, OpenAIChatToolStream, CostMixin, Driver):
+    chat_profile = get_chat_profile("openrouter")
+
     supports_json_mode = True
     supports_json_schema = True
     supports_tool_use = True
@@ -199,112 +202,6 @@ class OpenRouterDriver(CostMixin, Driver):
         return result
 
     # ------------------------------------------------------------------
-    # Tool use
-    # ------------------------------------------------------------------
-
-    def generate_messages_with_tools(
-        self,
-        messages: list[dict[str, Any]],
-        tools: list[dict[str, Any]],
-        options: dict[str, Any],
-    ) -> dict[str, Any]:
-        """Generate a response that may include tool calls."""
-        messages = self._prepare_messages(messages)
-        if not self.api_key:
-            raise RuntimeError("OpenRouter API key not found")
-
-        model = options.get("model", self.model)
-        model_config = self._get_model_config("openrouter", model)
-        tokens_param = model_config["tokens_param"]
-        supports_temperature = model_config["supports_temperature"]
-
-        self._validate_model_capabilities("openrouter", model, using_tool_use=True)
-
-        opts = {"temperature": 1.0, "max_tokens": 4096, **options}
-
-        data: dict[str, Any] = {
-            "model": model,
-            "messages": messages,
-            "tools": tools,
-        }
-        data[tokens_param] = opts.get("max_tokens", 4096)
-        apply_effort(data, opts, "openrouter")
-
-        if supports_temperature and "temperature" in opts:
-            data["temperature"] = opts["temperature"]
-
-        try:
-            response = requests.post(
-                f"{self.base_url}/chat/completions",
-                headers=self.headers,
-                json=data,
-                timeout=120,
-            )
-            response.raise_for_status()
-            resp = response.json()
-        except requests.exceptions.HTTPError as e:
-            error_msg = f"OpenRouter API request failed: {e!s}"
-            raise RuntimeError(error_msg) from e
-        except requests.exceptions.RequestException as e:
-            raise RuntimeError(f"OpenRouter API request failed: {e!s}") from e
-
-        usage = resp.get("usage", {})
-        prompt_tokens = usage.get("prompt_tokens", 0)
-        completion_tokens = usage.get("completion_tokens", 0)
-        total_tokens = usage.get("total_tokens", 0)
-        total_cost = self._calculate_cost("openrouter", model, prompt_tokens, completion_tokens)
-
-        meta = {
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
-            "total_tokens": total_tokens,
-            "cost": round(total_cost, 6),
-            "raw_response": resp,
-            "model_name": model,
-        }
-
-        choice = resp["choices"][0]
-        text = choice["message"].get("content") or ""
-        stop_reason = choice.get("finish_reason")
-
-        tool_calls_out: list[dict[str, Any]] = []
-        for tc in choice["message"].get("tool_calls", []):
-            args = _parse_tool_arguments(tc["function"]["arguments"], tc["function"]["name"], stop_reason)
-            tool_calls_out.append(
-                {
-                    "id": tc["id"],
-                    "name": tc["function"]["name"],
-                    "arguments": args,
-                }
-            )
-
-        result: dict[str, Any] = {
-            "text": text,
-            "meta": meta,
-            "tool_calls": tool_calls_out,
-            "stop_reason": stop_reason,
-        }
-        if choice["message"].get("reasoning_content") is not None:
-            result["reasoning_content"] = choice["message"]["reasoning_content"]
-        return result
-
-    # ------------------------------------------------------------------
-    # Live streaming with interleaved tool calls
-    # ------------------------------------------------------------------
-
-    def generate_messages_with_tools_stream(
-        self,
-        messages: list[dict[str, Any]],
-        tools: list[dict[str, Any]],
-        options: dict[str, Any],
-    ):
-        """Stream one turn as :class:`LiveEvent` via the shared raw-HTTP helper."""
-        messages = self._prepare_messages(messages)
-        from ._openai_compat_stream import stream_raw_http_compat_tool_call
-
-        yield from stream_raw_http_compat_tool_call(self, messages, tools, options, provider="openrouter")
-
-    # ------------------------------------------------------------------
     # Streaming
     # ------------------------------------------------------------------
 
@@ -314,6 +211,7 @@ class OpenRouterDriver(CostMixin, Driver):
         options: dict[str, Any],
     ) -> Iterator[dict[str, Any]]:
         """Yield response chunks via OpenRouter streaming API."""
+        messages = self._prepare_messages(messages)
         if not self.api_key:
             raise RuntimeError("OpenRouter API key not found")
 

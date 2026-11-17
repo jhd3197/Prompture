@@ -14,13 +14,16 @@ from typing import Any
 import httpx
 
 from ..infra.cost_mixin import CostMixin
+from ._openai_chat import AsyncOpenAIChatTools, AsyncOpenAIChatToolStream, get_chat_profile
 from .async_base import AsyncDriver
 from .modelscope_driver import ModelScopeDriver
 
 logger = logging.getLogger(__name__)
 
 
-class AsyncModelScopeDriver(CostMixin, AsyncDriver):
+class AsyncModelScopeDriver(AsyncOpenAIChatTools, AsyncOpenAIChatToolStream, CostMixin, AsyncDriver):
+    chat_profile = get_chat_profile("modelscope")
+
     supports_json_mode = True
     supports_json_schema = False
     supports_tool_use = True
@@ -116,126 +119,6 @@ class AsyncModelScopeDriver(CostMixin, AsyncDriver):
 
         text = resp["choices"][0]["message"]["content"]
         return {"text": text, "meta": meta}
-
-    # ------------------------------------------------------------------
-    # Tool use
-    # ------------------------------------------------------------------
-
-    async def generate_messages_with_tools(
-        self,
-        messages: list[dict[str, Any]],
-        tools: list[dict[str, Any]],
-        options: dict[str, Any],
-    ) -> dict[str, Any]:
-        """Generate a response that may include tool calls."""
-        model = options.get("model", self.model)
-        model_config = self._get_model_config("modelscope", model)
-        tokens_param = model_config["tokens_param"]
-        supports_temperature = model_config["supports_temperature"]
-
-        self._validate_model_capabilities("modelscope", model, using_tool_use=True)
-
-        opts = {"temperature": 1.0, "max_tokens": 4096, **options}
-
-        data: dict[str, Any] = {
-            "model": model,
-            "messages": messages,
-            "tools": tools,
-        }
-        data[tokens_param] = opts.get("max_tokens", 4096)
-
-        if supports_temperature and "temperature" in opts:
-            data["temperature"] = opts["temperature"]
-
-        if "tool_choice" in options:
-            data["tool_choice"] = options["tool_choice"]
-
-        async with httpx.AsyncClient() as client:
-            try:
-                response = await client.post(
-                    f"{self.base_url}/chat/completions",
-                    headers=self.headers,
-                    json=data,
-                    timeout=120,
-                )
-                response.raise_for_status()
-                resp = response.json()
-            except httpx.HTTPStatusError as e:
-                error_msg = f"ModelScope API request failed: {e!s}"
-                raise RuntimeError(error_msg) from e
-            except Exception as e:
-                raise RuntimeError(f"ModelScope API request failed: {e!s}") from e
-
-        usage = resp.get("usage", {})
-        prompt_tokens = usage.get("prompt_tokens", 0)
-        completion_tokens = usage.get("completion_tokens", 0)
-        total_tokens = usage.get("total_tokens", 0)
-        total_cost = self._calculate_cost("modelscope", model, prompt_tokens, completion_tokens)
-
-        meta = {
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
-            "total_tokens": total_tokens,
-            "cost": round(total_cost, 6),
-            "raw_response": resp,
-            "model_name": model,
-        }
-
-        choice = resp["choices"][0]
-        text = choice["message"].get("content") or ""
-        stop_reason = choice.get("finish_reason")
-
-        tool_calls_out: list[dict[str, Any]] = []
-        for tc in choice["message"].get("tool_calls", []):
-            try:
-                args = json.loads(tc["function"]["arguments"])
-            except (json.JSONDecodeError, TypeError):
-                raw = tc["function"].get("arguments")
-                if stop_reason == "length":
-                    logger.warning(
-                        "Tool arguments for %s were truncated due to max_tokens limit. "
-                        "Increase max_tokens in options to allow longer tool outputs. "
-                        "Truncated arguments: %r",
-                        tc["function"]["name"],
-                        raw[:200] if raw else raw,
-                    )
-                else:
-                    logger.warning(
-                        "Failed to parse tool arguments for %s: %r",
-                        tc["function"]["name"],
-                        raw,
-                    )
-                args = {}
-            tool_calls_out.append(
-                {
-                    "id": tc["id"],
-                    "name": tc["function"]["name"],
-                    "arguments": args,
-                }
-            )
-
-        return {
-            "text": text,
-            "meta": meta,
-            "tool_calls": tool_calls_out,
-            "stop_reason": stop_reason,
-        }
-
-    # ------------------------------------------------------------------
-    # Live streaming with interleaved tool calls
-    # ------------------------------------------------------------------
-
-    async def generate_messages_with_tools_stream(
-        self,
-        messages: list[dict[str, Any]],
-        tools: list[dict[str, Any]],
-        options: dict[str, Any],
-    ):
-        """Async streaming-tool via the shared raw-HTTP helper."""
-        from ._openai_compat_stream import astream_raw_http_compat_tool_call
-
-        async for ev in astream_raw_http_compat_tool_call(self, messages, tools, options, provider="modelscope"):
-            yield ev
 
     # ------------------------------------------------------------------
     # Streaming

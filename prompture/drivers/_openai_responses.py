@@ -245,6 +245,7 @@ def _pending_tool_stops(state: dict[str, Any]) -> Iterator[Any]:
             input=call["arguments"],
             truncated=reason == "max_output_tokens",
             raw_stop_reason=reason,
+            arguments_error=call.get("arguments_error"),
         )
 
 

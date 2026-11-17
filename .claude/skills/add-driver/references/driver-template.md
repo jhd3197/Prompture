@@ -21,15 +21,19 @@ from typing import Any
 import requests
 
 from ..cost_mixin import CostMixin, prepare_strict_schema
-from ..driver import Driver
+from ._openai_chat import OpenAIChatTools, OpenAIChatToolStream, get_chat_profile
+from .base import Driver
 
 logger = logging.getLogger(__name__)
 
 
-class {Provider}Driver(CostMixin, Driver):
+class {Provider}Driver(OpenAIChatTools, OpenAIChatToolStream, CostMixin, Driver):
+    chat_profile = get_chat_profile("{provider}")
+
     supports_json_mode = True
     supports_json_schema = True
     supports_tool_use = True
+    supports_streaming_tool_use = True
     supports_streaming = True
     supports_vision = False  # set True if the provider supports image input
     supports_messages = True
@@ -157,87 +161,13 @@ class {Provider}Driver(CostMixin, Driver):
     # ------------------------------------------------------------------
     # Tool use
     # ------------------------------------------------------------------
-
-    def generate_messages_with_tools(
-        self,
-        messages: list[dict[str, Any]],
-        tools: list[dict[str, Any]],
-        options: dict[str, Any],
-    ) -> dict[str, Any]:
-        """Generate a response that may include tool calls."""
-        model = options.get("model", self.model)
-        model_config = self._get_model_config("{provider}", model)
-        tokens_param = model_config["tokens_param"]
-        supports_temperature = model_config["supports_temperature"]
-
-        self._validate_model_capabilities("{provider}", model, using_tool_use=True)
-
-        opts = {"temperature": 1.0, "max_tokens": 512, **options}
-
-        data: dict[str, Any] = {
-            "model": model,
-            "messages": messages,
-            "tools": tools,
-        }
-        data[tokens_param] = opts.get("max_tokens", 512)
-
-        if supports_temperature and "temperature" in opts:
-            data["temperature"] = opts["temperature"]
-
-        if "tool_choice" in options:
-            data["tool_choice"] = options["tool_choice"]
-
-        try:
-            response = requests.post(
-                f"{self.base_url}/chat/completions",
-                headers=self.headers,
-                json=data,
-                timeout=120,
-            )
-            response.raise_for_status()
-            resp = response.json()
-        except requests.exceptions.HTTPError as e:
-            raise RuntimeError(f"{Provider} API request failed: {e!s}") from e
-        except requests.exceptions.RequestException as e:
-            raise RuntimeError(f"{Provider} API request failed: {e!s}") from e
-
-        usage = resp.get("usage", {})
-        prompt_tokens = usage.get("prompt_tokens", 0)
-        completion_tokens = usage.get("completion_tokens", 0)
-        total_tokens = usage.get("total_tokens", 0)
-        total_cost = self._calculate_cost("{provider}", model, prompt_tokens, completion_tokens)
-
-        meta = {
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
-            "total_tokens": total_tokens,
-            "cost": round(total_cost, 6),
-            "raw_response": resp,
-            "model_name": model,
-        }
-
-        choice = resp["choices"][0]
-        text = choice["message"].get("content") or ""
-        stop_reason = choice.get("finish_reason")
-
-        tool_calls_out: list[dict[str, Any]] = []
-        for tc in choice["message"].get("tool_calls", []):
-            try:
-                args = json.loads(tc["function"]["arguments"])
-            except (json.JSONDecodeError, TypeError):
-                args = {}
-            tool_calls_out.append({
-                "id": tc["id"],
-                "name": tc["function"]["name"],
-                "arguments": args,
-            })
-
-        return {
-            "text": text,
-            "meta": meta,
-            "tool_calls": tool_calls_out,
-            "stop_reason": stop_reason,
-        }
+    #
+    # Nothing to write. ``OpenAIChatTools`` / ``OpenAIChatToolStream`` provide
+    # ``generate_messages_with_tools`` and ``generate_messages_with_tools_stream``
+    # from the shared codec in ``_openai_chat.py``. They read ``self.base_url``
+    # (or ``self.api_base``), ``self.headers`` (or ``self.api_key``) and
+    # ``self._prepare_messages``. If this provider differs from OpenAI, say so
+    # in its ``ChatProfile`` (see below), never by re-implementing the method.
 
     # ------------------------------------------------------------------
     # Streaming
@@ -323,6 +253,34 @@ class {Provider}Driver(CostMixin, Driver):
             },
         }
 ```
+
+## Tool calling: profile, not code
+
+Tool calls for OpenAI-wire providers are implemented once, in
+`prompture/drivers/_openai_chat.py`. A new driver inherits them and describes
+its quirks as data. Register the profile next to the others in that module:
+
+```python
+ChatProfile(
+    "{provider}",
+    "{Provider}",
+    default_temperature=1.0,
+    required_tool_choice="required",   # "any" on Mistral, "auto" where unsupported
+    temperature_range=None,            # e.g. (0.0, 1.0) to clamp
+    strict_tool_shape=False,           # True if tools need descriptions / no empty `required`
+    strict_tools=False,                # True if the API accepts `"strict": true` on tools
+    effort_style=None,                 # "openai" or "openrouter" if it takes an effort setting
+)
+```
+
+The async driver uses `AsyncOpenAIChatTools, AsyncOpenAIChatToolStream` with the
+same profile. SDK-based drivers use the `OpenAISDKChatTools` variants. Providers
+on the Anthropic Messages format use `_anthropic_wire.py` (`build_tool_request`,
+`parse_message`, `tool_result`) instead.
+
+Then add the driver to `tests/conformance/conformance_harness.py` (`OPENAI_WIRE`
+or `ANTHROPIC_WIRE`). The conformance suite runs every tool-call scenario
+against it, and `test_every_tool_driver_is_covered` fails until it is listed.
 
 ## Lazy Import Pattern (for optional SDKs)
 

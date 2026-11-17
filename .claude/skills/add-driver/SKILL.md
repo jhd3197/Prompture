@@ -40,7 +40,8 @@ Key rules:
 - Create a JSON rate file at `prompture/infra/rates/{provider}.json` with model capabilities
 - `generate()` returns `{"text": str, "meta": dict}`
 - `meta` MUST contain: `prompt_tokens`, `completion_tokens`, `total_tokens`, `cost`, `raw_response`, `model_name`
-- Implement `generate_messages()`, `generate_messages_with_tools()`, and `generate_messages_stream()` for full feature support
+- Implement `generate_messages()` and `generate_messages_stream()`. Do NOT write `generate_messages_with_tools()`: inherit it from `OpenAIChatTools` / `OpenAIChatToolStream` (`_openai_chat.py`) and describe provider quirks in a `ChatProfile`. Anthropic-format providers use `_anthropic_wire.py`
+- Add the driver to `tests/conformance/conformance_harness.py` so the conformance suite covers it
 - Optional SDK: wrap import in try/except, raise `ImportError` pointing to `pip install prompture[{provider}]`
 
 ### 2. NEW: `prompture/drivers/async_{provider}_driver.py` (async driver)

@@ -1150,6 +1150,35 @@ class ToolRegistry:
     # Execution
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _drop_null_optionals(td: ToolDefinition, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Remove ``null`` values for optional parameters that do not accept null.
+
+        Strict tool use makes every parameter required and optional ones
+        nullable, so a model that wants a parameter's default sends ``null``.
+        The function should then get its default, not ``None``.
+        """
+        if not isinstance(arguments, dict) or not any(value is None for value in arguments.values()):
+            return arguments
+        schema = td.parameters if isinstance(td.parameters, dict) else {}
+        properties = schema.get("properties") or {}
+        required = set(schema.get("required") or [])
+
+        def accepts_null(prop: Any) -> bool:
+            if not isinstance(prop, dict):
+                return True
+            kind = prop.get("type")
+            if kind == "null" or (isinstance(kind, list) and "null" in kind):
+                return True
+            options = (prop.get("anyOf") or []) + (prop.get("oneOf") or [])
+            return any(isinstance(o, dict) and o.get("type") == "null" for o in options)
+
+        return {
+            key: value
+            for key, value in arguments.items()
+            if not (value is None and key in properties and key not in required and not accepts_null(properties[key]))
+        }
+
     def execute(self, name: str, arguments: dict[str, Any]) -> Any:
         """Execute a registered tool by name with the given arguments.
 
@@ -1164,6 +1193,7 @@ class ToolRegistry:
         td = self._tools.get(name)
         if td is None:
             raise KeyError(f"Tool not registered: {name!r}")
+        arguments = self._drop_null_optionals(td, arguments)
         error = self._validate_arguments(td, arguments)
         if error:
             return error
@@ -1187,6 +1217,7 @@ class ToolRegistry:
         td = self._tools.get(name)
         if td is None:
             raise KeyError(f"Tool not registered: {name!r}")
+        arguments = self._drop_null_optionals(td, arguments)
         error = self._validate_arguments(td, arguments)
         if error:
             return error

@@ -18,14 +18,16 @@ from typing import Any
 import httpx
 
 from ..infra.cost_mixin import CostMixin, prepare_strict_schema
+from ._openai_chat import AsyncOpenAIChatTools, AsyncOpenAIChatToolStream, get_chat_profile
 from .async_base import AsyncDriver
-from .base import _parse_tool_arguments
 from .moonshot_driver import MoonshotDriver, _extract_moonshot_cached_tokens
 
 logger = logging.getLogger("prompture.drivers.moonshot")
 
 
-class AsyncMoonshotDriver(CostMixin, AsyncDriver):
+class AsyncMoonshotDriver(AsyncOpenAIChatTools, AsyncOpenAIChatToolStream, CostMixin, AsyncDriver):
+    chat_profile = get_chat_profile("moonshot")
+
     supports_json_mode = True
     supports_json_schema = True
     supports_tool_use = True
@@ -224,142 +226,6 @@ class AsyncMoonshotDriver(CostMixin, AsyncDriver):
         return result
 
     # ------------------------------------------------------------------
-    # Tool use
-    # ------------------------------------------------------------------
-
-    async def generate_messages_with_tools(
-        self,
-        messages: list[dict[str, Any]],
-        tools: list[dict[str, Any]],
-        options: dict[str, Any],
-    ) -> dict[str, Any]:
-        """Generate a response that may include tool calls."""
-        messages = self._prepare_messages(messages)
-        model = options.get("model", self.model)
-        model_config = self._get_model_config("moonshot", model)
-        tokens_param = model_config["tokens_param"]
-        supports_temperature = model_config["supports_temperature"]
-
-        self._validate_model_capabilities("moonshot", model, using_tool_use=True)
-
-        opts = {"temperature": 1.0, "max_tokens": 4096, **options}
-        MoonshotDriver._clamp_temperature(opts)
-
-        sanitized_tools = MoonshotDriver._sanitize_tools(tools)
-
-        data: dict[str, Any] = {
-            "model": model,
-            "messages": messages,
-            "tools": sanitized_tools,
-        }
-        data[tokens_param] = opts.get("max_tokens", 4096)
-
-        if supports_temperature and "temperature" in opts:
-            data["temperature"] = opts["temperature"]
-
-        if "tool_choice" in options:
-            data["tool_choice"] = options["tool_choice"]
-
-        MoonshotDriver._sanitize_tool_choice(data)
-
-        # Disable thinking for reasoning models during tool use so
-        # structured output lands in content, not reasoning_content.
-        from ..infra.model_rates import get_model_capabilities
-
-        caps = get_model_capabilities("moonshot", model)
-        is_reasoning = caps is not None and caps.is_reasoning is True
-        if is_reasoning:
-            data["thinking"] = options.get("thinking", {"type": "disabled"})
-
-        async with httpx.AsyncClient() as client:
-            try:
-                response = await client.post(
-                    f"{self.base_url}/chat/completions",
-                    headers=self.headers,
-                    json=data,
-                    timeout=120,
-                )
-                response.raise_for_status()
-                resp = response.json()
-            except httpx.HTTPStatusError as e:
-                error_body = MoonshotDriver._format_error_body(data, e)
-                error_msg = f"Moonshot API request failed: {e!s}{error_body}"
-                raise RuntimeError(error_msg) from e
-            except Exception as e:
-                raise RuntimeError(f"Moonshot API request failed: {e!s}") from e
-
-        usage = resp.get("usage", {})
-        prompt_tokens = usage.get("prompt_tokens", 0)
-        completion_tokens = usage.get("completion_tokens", 0)
-        total_tokens = usage.get("total_tokens", 0)
-        cached_prompt_tokens = _extract_moonshot_cached_tokens(usage)
-        total_cost = self._calculate_cost(
-            "moonshot",
-            model,
-            prompt_tokens,
-            completion_tokens,
-            cached_tokens=cached_prompt_tokens,
-        )
-
-        meta = {
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
-            "total_tokens": total_tokens,
-            "cached_prompt_tokens": cached_prompt_tokens,
-            "cost": round(total_cost, 6),
-            "raw_response": resp,
-            "model_name": model,
-        }
-
-        choice = resp["choices"][0]
-        message = choice["message"]
-        text = message.get("content") or ""
-        stop_reason = choice.get("finish_reason")
-
-        tool_calls_out: list[dict[str, Any]] = []
-        for tc in message.get("tool_calls", []):
-            args = _parse_tool_arguments(tc["function"]["arguments"], tc["function"]["name"], stop_reason)
-            tool_calls_out.append(
-                {
-                    "id": tc["id"],
-                    "name": tc["function"]["name"],
-                    "arguments": args,
-                }
-            )
-
-        result: dict[str, Any] = {
-            "text": text,
-            "meta": meta,
-            "tool_calls": tool_calls_out,
-            "stop_reason": stop_reason,
-        }
-
-        # Preserve reasoning_content for reasoning models so the
-        # conversation loop can include it when sending the assistant
-        # message back (Moonshot requires it on subsequent requests).
-        if message.get("reasoning_content") is not None:
-            result["reasoning_content"] = message["reasoning_content"]
-
-        return result
-
-    # ------------------------------------------------------------------
-    # Live streaming with interleaved tool calls
-    # ------------------------------------------------------------------
-
-    async def generate_messages_with_tools_stream(
-        self,
-        messages: list[dict[str, Any]],
-        tools: list[dict[str, Any]],
-        options: dict[str, Any],
-    ):
-        """Async streaming-tool via the shared raw-HTTP helper."""
-        messages = self._prepare_messages(messages)
-        from ._openai_compat_stream import astream_raw_http_compat_tool_call
-
-        async for ev in astream_raw_http_compat_tool_call(self, messages, tools, options, provider="moonshot"):
-            yield ev
-
-    # ------------------------------------------------------------------
     # Streaming
     # ------------------------------------------------------------------
 
@@ -369,6 +235,7 @@ class AsyncMoonshotDriver(CostMixin, AsyncDriver):
         options: dict[str, Any],
     ) -> AsyncIterator[dict[str, Any]]:
         """Yield response chunks via Moonshot streaming API."""
+        messages = self._prepare_messages(messages)
         model = options.get("model", self.model)
         model_config = self._get_model_config("moonshot", model)
         tokens_param = model_config["tokens_param"]

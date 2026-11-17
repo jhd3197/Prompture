@@ -160,6 +160,7 @@ def _finalize_tool_use_stops(state: dict[str, Any]) -> Iterator[Any]:
     import uuid
 
     from ..agents.live_events import ToolUseStart, ToolUseStop
+    from .base import _parse_tool_arguments_with_error
 
     finish_reason = state.get("finish_reason")
     for idx in sorted(state["tool_calls"].keys()):
@@ -170,32 +171,16 @@ def _finalize_tool_use_stops(state: dict[str, Any]) -> Iterator[Any]:
             yield ToolUseStart(id=bucket["id"], name=bucket["name"])
             bucket["start_emitted"] = True
         args_str = "".join(bucket["args_fragments"])
-        parse_failed = False
-        try:
-            parsed = json.loads(args_str) if args_str else {}
-            if not isinstance(parsed, dict):
-                parse_failed = True
-                logger.warning(
-                    "Streamed tool input for %s parsed to non-object JSON: %r",
-                    bucket["name"],
-                    args_str[:200],
-                )
-                parsed = {}
-        except json.JSONDecodeError:
-            parse_failed = True
-            logger.warning(
-                "Failed to parse streamed tool input for %s: %r",
-                bucket["name"],
-                args_str[:200],
-            )
-            parsed = {}
-        truncated = parse_failed and finish_reason in ("length", "max_tokens")
+        # Same parser as the buffered path, so a streamed turn reports
+        # malformed arguments exactly as a buffered one does.
+        parsed, error = _parse_tool_arguments_with_error(args_str or None, bucket["name"], finish_reason)
         yield ToolUseStop(
             id=bucket["id"],
             name=bucket["name"],
             input=parsed,
-            truncated=truncated,
-            raw_stop_reason=finish_reason if parse_failed else None,
+            truncated=bool(error) and finish_reason in ("length", "max_tokens"),
+            raw_stop_reason=finish_reason if error else None,
+            arguments_error=error,
         )
 
 
@@ -329,9 +314,11 @@ def stream_openai_compat_tool_call(
     The driver must satisfy the contract described in this module's
     docstring. *provider* is the pricing-table key (e.g. ``"groq"``).
     """
+    from ..infra.tool_schema import flatten_tool_definitions
     from .base import _apply_openai_tool_options
     from .openai_driver import _build_openai_base_kwargs
 
+    tools = flatten_tool_definitions(tools)
     model = options.get("model", driver.model)
     model_config = driver._get_model_config(provider, model)
     tokens_param = model_config["tokens_param"]
@@ -399,9 +386,11 @@ async def astream_openai_compat_tool_call(
     default_temperature: float = 1.0,
 ) -> AsyncIterator[Any]:
     """Async sibling of :func:`stream_openai_compat_tool_call`."""
+    from ..infra.tool_schema import flatten_tool_definitions
     from .base import _apply_openai_tool_options
     from .openai_driver import _build_openai_base_kwargs
 
+    tools = flatten_tool_definitions(tools)
     model = options.get("model", driver.model)
     model_config = driver._get_model_config(provider, model)
     tokens_param = model_config["tokens_param"]
@@ -500,10 +489,12 @@ def _build_raw_http_payload(
 
     opts = {"temperature": default_temperature, "max_tokens": default_max_tokens, **options}
 
+    from ..infra.tool_schema import flatten_tool_definitions
+
     payload: dict[str, Any] = {
         "model": model,
         "messages": messages,
-        "tools": tools,
+        "tools": flatten_tool_definitions(tools),
         "stream": True,
         "stream_options": {"include_usage": True},
     }
@@ -522,8 +513,8 @@ def _bearer_headers(api_key: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
 
 
-def _compat_url(driver: Any) -> str:
-    """The driver's ``/chat/completions`` URL.
+def _compat_url(driver: Any, path: str = "/chat/completions") -> str:
+    """The driver's chat-completions URL (*path* under its base URL).
 
     Raw-HTTP drivers name their base URL ``api_base`` or ``base_url``; both are
     accepted so a driver can't break streaming tool calls by its naming.
@@ -532,7 +523,7 @@ def _compat_url(driver: Any) -> str:
     if not base:
         raise AttributeError(f"{type(driver).__name__} has no api_base or base_url for streaming tool calls")
     base = str(base).rstrip("/")
-    return base if base.endswith("/chat/completions") else f"{base}/chat/completions"
+    return base if base.endswith(path) else f"{base}{path}"
 
 
 def _compat_headers(driver: Any) -> dict[str, str]:
@@ -555,8 +546,10 @@ def stream_raw_http_compat_tool_call(
     headers: dict[str, str] | None = None,
     default_max_tokens: int = 4096,
     default_temperature: float = 1.0,
-    timeout: int = 120,
+    timeout: float = 120,
     payload: dict[str, Any] | None = None,
+    cost_model: str | None = None,
+    model_name: str | None = None,
 ) -> Iterator[Any]:
     """Generic sync streaming-tool implementation for raw-HTTP OpenAI-compat
     drivers (those that call ``requests.post(/chat/completions)`` instead
@@ -569,6 +562,8 @@ def stream_raw_http_compat_tool_call(
     Override *url* or *headers* if the driver uses a different shape.
     Pass a complete *payload* (including streaming options) to preserve a
     driver's custom request shaping; otherwise use the shared defaults.
+    *cost_model* / *model_name* override the payload's model for pricing and
+    for ``meta["model_name"]`` when the wire name is not the caller's name.
     """
     import requests
 
@@ -616,12 +611,12 @@ def stream_raw_http_compat_tool_call(
     yield from _finalize_tool_use_stops(state)
     cost = driver._calculate_cost(
         provider,
-        model,
+        cost_model or model,
         state["prompt_tokens"],
         state["completion_tokens"],
         cached_tokens=state["cached_prompt_tokens"],
     )
-    stop = _build_message_stop(state, model, cost)
+    stop = _build_message_stop(state, model_name or model, cost)
     add_rate_limits(stop.usage, limits)
     yield stop
 
@@ -639,6 +634,8 @@ async def astream_raw_http_compat_tool_call(
     default_temperature: float = 1.0,
     timeout: float = 120.0,
     payload: dict[str, Any] | None = None,
+    cost_model: str | None = None,
+    model_name: str | None = None,
 ) -> AsyncIterator[Any]:
     """Async sibling of :func:`stream_raw_http_compat_tool_call` using
     ``httpx.AsyncClient.stream``. Accepts the same complete *payload* override."""
@@ -692,12 +689,12 @@ async def astream_raw_http_compat_tool_call(
         yield ev
     cost = driver._calculate_cost(
         provider,
-        model,
+        cost_model or model,
         state["prompt_tokens"],
         state["completion_tokens"],
         cached_tokens=state["cached_prompt_tokens"],
     )
-    stop = _build_message_stop(state, model, cost)
+    stop = _build_message_stop(state, model_name or model, cost)
     add_rate_limits(stop.usage, limits)
     yield stop
 

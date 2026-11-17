@@ -336,7 +336,10 @@ class OpenAIDriver(CostMixin, Driver):
         options: dict[str, Any],
     ) -> dict[str, Any]:
         """Generate a response that may include tool calls."""
+        from ._openai_chat import get_chat_profile, prepare_tools
+
         messages = self._prepare_messages(messages)
+        tools = prepare_tools(tools, get_chat_profile("openai"), options)
         if options.get("api", getattr(self, "api", "chat_completions")) == "responses":
             if self.client is None or not hasattr(self.client, "responses"):
                 from ..exceptions import ConfigurationError
@@ -388,12 +391,16 @@ class OpenAIDriver(CostMixin, Driver):
         stop_reason = _normalize_stop_reason(raw_stop_reason, tool_calls_present=bool(tool_calls_out))
         meta["raw_stop_reason"] = raw_stop_reason
 
-        return {
+        result: dict[str, Any] = {
             "text": text,
             "meta": meta,
             "tool_calls": tool_calls_out,
             "stop_reason": stop_reason,
         }
+        reasoning_content = getattr(choice.message, "reasoning_content", None)
+        if isinstance(reasoning_content, str):
+            result["reasoning_content"] = reasoning_content
+        return result
 
     # ------------------------------------------------------------------
     # Streaming
@@ -405,6 +412,7 @@ class OpenAIDriver(CostMixin, Driver):
         options: dict[str, Any],
     ) -> Iterator[dict[str, Any]]:
         """Yield response chunks via OpenAI streaming API."""
+        messages = self._prepare_messages(messages)
         if options.get("api", getattr(self, "api", "chat_completions")) == "responses":
             if self.client is None or not hasattr(self.client, "responses"):
                 from ..exceptions import ConfigurationError
@@ -485,6 +493,9 @@ class OpenAIDriver(CostMixin, Driver):
         """Stream one OpenAI turn as :class:`LiveEvent` via the shared
         OpenAI-compat helper. See
         :mod:`prompture.drivers._openai_compat_stream` for the protocol."""
+        from ._openai_chat import get_chat_profile, prepare_tools
+
+        tools = prepare_tools(tools, get_chat_profile("openai"), options)
         if options.get("api", getattr(self, "api", "chat_completions")) == "responses":
             if self.client is None or not hasattr(self.client, "responses"):
                 from ..exceptions import ConfigurationError

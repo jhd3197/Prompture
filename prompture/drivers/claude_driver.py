@@ -18,7 +18,7 @@ except ImportError:
 
 from ..infra.cost_mixin import CostMixin, prepare_strict_schema
 from ..infra.rate_limits import add_rate_limits, attach_rate_limit_hook, capture_rate_limits, limits_from_response
-from ..infra.tool_schema import flatten_tool_schema
+from ._anthropic_wire import normalize_content, to_anthropic_messages, to_anthropic_tools
 from ._effort import requested_effort
 from ._prompt_cache import (
     CACHE_PROMPT_MIN_CHARS,
@@ -153,124 +153,11 @@ __all__ = ["CACHE_PROMPT_MIN_CHARS", "MAX_CACHE_BREAKPOINTS", "ClaudeDriver"]
 # ----------------------------------------------------------------------
 
 
-def _normalize_anthropic_content(content):
-    """Convert provider-neutral image blocks into Anthropic's wire format.
-
-    Conversations attach images as ``{"type": "image", "source": ImageContent}``
-    (a dataclass) — the SDK needs ``{"type": "base64", "media_type", "data"}``
-    (or a url source). Non-list content and unknown blocks pass through.
-    """
-    if not isinstance(content, list):
-        return content
-    from ..media.image import ImageContent
-
-    out = []
-    for block in content:
-        if isinstance(block, dict) and block.get("type") == "image":
-            src = block.get("source")
-            if isinstance(src, ImageContent):
-                if src.source_type == "url" and src.url:
-                    out.append({"type": "image", "source": {"type": "url", "url": src.url}})
-                else:
-                    out.append(
-                        {
-                            "type": "image",
-                            "source": {
-                                "type": "base64",
-                                "media_type": src.media_type,
-                                "data": src.data,
-                            },
-                        }
-                    )
-                continue
-        out.append(block)
-    return out
-
-
-def _extract_anthropic_system_and_messages(
-    messages: list[dict[str, Any]],
-) -> tuple[str | None, list[dict[str, Any]]]:
-    """Separate system message and translate OpenAI-shaped tool messages to Anthropic format.
-
-    See ClaudeDriver._extract_system_and_messages for the shape contract.
-    """
-    system_content: str | None = None
-    api_messages: list[dict[str, Any]] = []
-    for msg in messages:
-        role = msg.get("role")
-        if role == "system":
-            system_content = msg.get("content", "")
-            continue
-
-        if role == "assistant" and msg.get("tool_calls"):
-            content = msg.get("content") or ""
-            blocks: list[dict[str, Any]] = []
-            if content:
-                blocks.append({"type": "text", "text": content})
-            for tc in msg["tool_calls"]:
-                fn = tc.get("function", tc)
-                raw_args = fn.get("arguments", tc.get("arguments", {}))
-                if isinstance(raw_args, str):
-                    try:
-                        tool_input = json.loads(raw_args) if raw_args else {}
-                    except json.JSONDecodeError:
-                        tool_input = {"_raw": raw_args}
-                else:
-                    tool_input = raw_args or {}
-                blocks.append(
-                    {
-                        "type": "tool_use",
-                        "id": tc.get("id", ""),
-                        "name": fn.get("name", tc.get("name", "")),
-                        "input": tool_input,
-                    }
-                )
-            api_messages.append({"role": "assistant", "content": blocks})
-            continue
-
-        if role == "tool":
-            result_block = {
-                "type": "tool_result",
-                "tool_use_id": msg.get("tool_call_id", ""),
-                "content": msg.get("content", ""),
-            }
-            # Merge consecutive tool_results into one user turn (Anthropic prefers
-            # one user turn per assistant turn even with multiple tool calls).
-            if (
-                api_messages
-                and api_messages[-1].get("role") == "user"
-                and isinstance(api_messages[-1].get("content"), list)
-                and all(isinstance(b, dict) and b.get("type") == "tool_result" for b in api_messages[-1]["content"])
-            ):
-                api_messages[-1]["content"].append(result_block)
-            else:
-                api_messages.append({"role": "user", "content": [result_block]})
-            continue
-
-        content = msg.get("content")
-        if isinstance(content, list):
-            msg = {**msg, "content": _normalize_anthropic_content(content)}
-        api_messages.append(msg)
-    return system_content, api_messages
-
-
-def _convert_tools_to_anthropic(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    anthropic_tools: list[dict[str, Any]] = []
-    for t in tools:
-        if "type" in t and t["type"] == "function":
-            fn = t["function"]
-            anthropic_tools.append(
-                {
-                    "name": fn["name"],
-                    "description": fn.get("description", ""),
-                    "input_schema": flatten_tool_schema(fn.get("parameters", {"type": "object", "properties": {}})),
-                }
-            )
-        elif "input_schema" in t:
-            anthropic_tools.append({**t, "input_schema": flatten_tool_schema(t["input_schema"])})
-        else:
-            anthropic_tools.append(t)
-    return anthropic_tools
+# The Anthropic wire conversion is shared with Azure, Vertex and Bedrock (see
+# ``_anthropic_wire``). These names stay because callers and tests import them.
+_normalize_anthropic_content = normalize_content
+_extract_anthropic_system_and_messages = to_anthropic_messages
+_convert_tools_to_anthropic = to_anthropic_tools
 
 
 def _extract_anthropic_cache_tokens(usage: Any) -> tuple[int, int]:
@@ -607,8 +494,11 @@ class ClaudeDriver(_ClaudeModelRules, CostMixin, Driver):
                 if json_mode_tools is not None:
                     resp = _create_message(
                         client,
-                        {**common_kwargs, "tools": json_mode_tools,
-                         "tool_choice": {"type": "tool", "name": "extract_json"}},
+                        {
+                            **common_kwargs,
+                            "tools": json_mode_tools,
+                            "tool_choice": {"type": "tool", "name": "extract_json"},
+                        },
                         opts,
                     )
                     text = ""
@@ -702,7 +592,9 @@ class ClaudeDriver(_ClaudeModelRules, CostMixin, Driver):
 
         system_content, api_messages = _extract_anthropic_system_and_messages(self._prepare_messages(messages))
         cache_kwargs = _cache_opts(opts, model)
-        anthropic_tools = _apply_cache_control_to_tools(_convert_tools_to_anthropic(tools), **cache_kwargs)
+        anthropic_tools = _apply_cache_control_to_tools(
+            _convert_tools_to_anthropic(tools, strict=bool(opts.get("strict_tools"))), **cache_kwargs
+        )
         wrapped_system = _apply_cache_control_to_system(system_content, **cache_kwargs)
         api_messages = _apply_cache_control_to_messages(
             api_messages,
@@ -910,7 +802,9 @@ class ClaudeDriver(_ClaudeModelRules, CostMixin, Driver):
 
         system_content, api_messages = _extract_anthropic_system_and_messages(self._prepare_messages(messages))
         cache_kwargs = _cache_opts(opts, model)
-        anthropic_tools = _apply_cache_control_to_tools(_convert_tools_to_anthropic(tools), **cache_kwargs)
+        anthropic_tools = _apply_cache_control_to_tools(
+            _convert_tools_to_anthropic(tools, strict=bool(opts.get("strict_tools"))), **cache_kwargs
+        )
         wrapped_system = _apply_cache_control_to_system(system_content, **cache_kwargs)
         api_messages = _apply_cache_control_to_messages(
             api_messages,
@@ -1032,6 +926,7 @@ class ClaudeDriver(_ClaudeModelRules, CostMixin, Driver):
                 input={},
                 truncated=stop_reason == "max_tokens",
                 raw_stop_reason=stop_reason,
+                arguments_error=f"Streamed arguments for {info.get('name', '?')} were not valid JSON",
             )
 
         meta = usage_meta(

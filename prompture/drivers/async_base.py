@@ -156,6 +156,7 @@ class AsyncDriver(ABC):
                 input=tc_args,
                 truncated=bool(tc.get("arguments_error")) and stop_reason in ("length", "max_tokens"),
                 raw_stop_reason=meta.get("raw_stop_reason") if tc.get("arguments_error") else None,
+                arguments_error=tc.get("arguments_error"),
             )
 
         provider_state = {"_google_parts": resp["_google_parts"]} if resp.get("_google_parts") is not None else {}

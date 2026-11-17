@@ -177,7 +177,8 @@ class TestCompatibleGateway:
             assert len([e for e in result if e.event_type == "tool_input_delta"]) == 2
         else:
             assert result["tool_calls"] == [{"id": "call_weather", "name": "weather", "arguments": {"city": "Miami"}}]
-            assert result["stop_reason"] == "tool_calls"
+            assert result["stop_reason"] == "tool_use"
+            assert result["meta"]["raw_stop_reason"] == "tool_calls"
             assert result["text"] == ""
         _, headers, payload = gateway[1][-1]
         assert "Authorization" not in headers

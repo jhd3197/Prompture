@@ -9,14 +9,16 @@ from typing import Any
 import httpx
 
 from ..infra.cost_mixin import CostMixin, prepare_strict_schema
+from ._openai_chat import AsyncOpenAIChatTools, get_chat_profile
 from .async_base import AsyncDriver
-from .base import _parse_tool_arguments
 from .minimax_driver import _DEFAULT_ENDPOINT, MiniMaxDriver
 
 logger = logging.getLogger(__name__)
 
 
-class AsyncMiniMaxDriver(CostMixin, AsyncDriver):
+class AsyncMiniMaxDriver(AsyncOpenAIChatTools, CostMixin, AsyncDriver):
+    chat_profile = get_chat_profile("minimax")
+
     supports_json_mode = MiniMaxDriver.supports_json_mode
     supports_json_schema = MiniMaxDriver.supports_json_schema
     supports_tool_use = MiniMaxDriver.supports_tool_use
@@ -107,63 +109,4 @@ class AsyncMiniMaxDriver(CostMixin, AsyncDriver):
                 "raw_response": resp,
                 "model_name": model,
             },
-        }
-
-    async def generate_messages_with_tools(
-        self,
-        messages: list[dict[str, Any]],
-        tools: list[dict[str, Any]],
-        options: dict[str, Any],
-    ) -> dict[str, Any]:
-        model = options.get("model", self.model)
-        opts = {"temperature": 1.0, "max_tokens": 4096, **options}
-        data: dict[str, Any] = {
-            "model": model,
-            "messages": messages,
-            "tools": tools,
-            "max_tokens": opts["max_tokens"],
-            "temperature": opts["temperature"],
-        }
-        if "tool_choice" in options:
-            data["tool_choice"] = options["tool_choice"]
-
-        async with httpx.AsyncClient(timeout=opts.get("timeout", 300)) as client:
-            response = await client.post(
-                f"{self.base_url}/text/chatcompletion_v2",
-                headers=self.headers,
-                json=data,
-            )
-            if response.status_code >= 400:
-                raise RuntimeError(f"MiniMax API error {response.status_code}: {response.text}")
-            resp = response.json()
-
-        usage = resp.get("usage", {})
-        prompt_tokens = usage.get("prompt_tokens", 0) or 0
-        completion_tokens = usage.get("completion_tokens", 0) or 0
-        total_tokens = usage.get("total_tokens", prompt_tokens + completion_tokens)
-        total_cost = self._calculate_cost("minimax", model, prompt_tokens, completion_tokens)
-
-        choice = (resp.get("choices") or [{}])[0]
-        message = choice.get("message") or {}
-        text = message.get("content") or ""
-        stop_reason = choice.get("finish_reason")
-
-        tool_calls_out: list[dict[str, Any]] = []
-        for tc in message.get("tool_calls") or []:
-            fn = tc.get("function") or {}
-            args = _parse_tool_arguments(fn.get("arguments"), fn.get("name", ""), stop_reason)
-            tool_calls_out.append({"id": tc.get("id"), "name": fn.get("name"), "arguments": args})
-
-        return {
-            "text": text,
-            "meta": {
-                "prompt_tokens": prompt_tokens,
-                "completion_tokens": completion_tokens,
-                "total_tokens": total_tokens,
-                "cost": round(total_cost, 6),
-                "raw_response": resp,
-                "model_name": model,
-            },
-            "tool_calls": tool_calls_out,
-            "stop_reason": stop_reason,
         }

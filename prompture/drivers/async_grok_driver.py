@@ -10,14 +10,16 @@ import httpx
 
 from ..infra.cost_mixin import CostMixin
 from ._effort import apply_effort
+from ._openai_chat import AsyncOpenAIChatTools, AsyncOpenAIChatToolStream, get_chat_profile
 from .async_base import AsyncDriver
-from .base import _parse_tool_arguments
 from .grok_driver import GrokDriver
 
 logger = logging.getLogger(__name__)
 
 
-class AsyncGrokDriver(CostMixin, AsyncDriver):
+class AsyncGrokDriver(AsyncOpenAIChatTools, AsyncOpenAIChatToolStream, CostMixin, AsyncDriver):
+    chat_profile = get_chat_profile("grok")
+
     supports_json_mode = True
     supports_tool_use = True
     supports_streaming_tool_use = True
@@ -122,122 +124,3 @@ class AsyncGrokDriver(CostMixin, AsyncDriver):
         if reasoning_content is not None:
             result["reasoning_content"] = reasoning_content
         return result
-
-    # ------------------------------------------------------------------
-    # Tool use
-    # ------------------------------------------------------------------
-
-    async def generate_messages_with_tools(
-        self,
-        messages: list[dict[str, Any]],
-        tools: list[dict[str, Any]],
-        options: dict[str, Any],
-    ) -> dict[str, Any]:
-        """Generate a response that may include tool calls."""
-        messages = self._prepare_messages(messages)
-        if not self.api_key:
-            raise RuntimeError("GROK_API_KEY environment variable is required")
-
-        model = options.get("model", self.model)
-        model_config = self._get_model_config("grok", model)
-        tokens_param = model_config["tokens_param"]
-        supports_temperature = model_config["supports_temperature"]
-
-        self._validate_model_capabilities("grok", model, using_tool_use=True)
-
-        opts = {"temperature": 1.0, "max_tokens": 4096, **options}
-
-        payload: dict[str, Any] = {
-            "model": model,
-            "messages": messages,
-            "tools": tools,
-        }
-        payload[tokens_param] = opts.get("max_tokens", 4096)
-        apply_effort(payload, opts, "openai")
-
-        if supports_temperature and "temperature" in opts:
-            payload["temperature"] = opts["temperature"]
-
-        if "tool_choice" in options:
-            payload["tool_choice"] = options["tool_choice"]
-
-        headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
-
-        async with httpx.AsyncClient() as client:
-            try:
-                response = await client.post(
-                    f"{self.api_base}/chat/completions", headers=headers, json=payload, timeout=120
-                )
-                response.raise_for_status()
-                resp = response.json()
-            except httpx.HTTPStatusError as e:
-                raise RuntimeError(f"Grok API request failed: {e!s}") from e
-            except Exception as e:
-                raise RuntimeError(f"Grok API request failed: {e!s}") from e
-
-        from .moonshot_driver import _extract_moonshot_cached_tokens
-
-        usage = resp.get("usage", {})
-        prompt_tokens = usage.get("prompt_tokens", 0)
-        completion_tokens = usage.get("completion_tokens", 0)
-        total_tokens = usage.get("total_tokens", 0)
-        cached_prompt_tokens = _extract_moonshot_cached_tokens(usage)
-        total_cost = self._calculate_cost(
-            "grok",
-            model,
-            prompt_tokens,
-            completion_tokens,
-            cached_tokens=cached_prompt_tokens,
-        )
-
-        meta = {
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
-            "total_tokens": total_tokens,
-            "cached_prompt_tokens": cached_prompt_tokens,
-            "cost": round(total_cost, 6),
-            "raw_response": resp,
-            "model_name": model,
-        }
-
-        choice = resp["choices"][0]
-        text = choice["message"].get("content") or ""
-        stop_reason = choice.get("finish_reason")
-
-        tool_calls_out: list[dict[str, Any]] = []
-        for tc in choice["message"].get("tool_calls", []):
-            args = _parse_tool_arguments(tc["function"]["arguments"], tc["function"]["name"], stop_reason)
-            tool_calls_out.append(
-                {
-                    "id": tc["id"],
-                    "name": tc["function"]["name"],
-                    "arguments": args,
-                }
-            )
-
-        result: dict[str, Any] = {
-            "text": text,
-            "meta": meta,
-            "tool_calls": tool_calls_out,
-            "stop_reason": stop_reason,
-        }
-        if choice["message"].get("reasoning_content") is not None:
-            result["reasoning_content"] = choice["message"]["reasoning_content"]
-        return result
-
-    # ------------------------------------------------------------------
-    # Live streaming with interleaved tool calls
-    # ------------------------------------------------------------------
-
-    async def generate_messages_with_tools_stream(
-        self,
-        messages: list[dict[str, Any]],
-        tools: list[dict[str, Any]],
-        options: dict[str, Any],
-    ):
-        """Async streaming-tool via the shared raw-HTTP helper."""
-        messages = self._prepare_messages(messages)
-        from ._openai_compat_stream import astream_raw_http_compat_tool_call
-
-        async for ev in astream_raw_http_compat_tool_call(self, messages, tools, options, provider="grok"):
-            yield ev
