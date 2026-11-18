@@ -38,6 +38,8 @@ class ImageGenDriver:
     # Editing capabilities (default: not supported). Drivers that implement
     # editing flip these so callers can feature-detect before offering UI.
     supports_edit: bool = False
+    # How many input pictures one edit_image call takes (several = a combining edit).
+    max_edit_images: int = 1
     supports_variation: bool = False
 
     # Whether the driver honors a native ``negative_prompt`` option. Drivers
@@ -70,7 +72,8 @@ class ImageGenDriver:
         """Edit an existing image with a text instruction (image-to-image).
 
         Args:
-            image: Source image bytes (PNG/JPEG).
+            image: Source image bytes (PNG/JPEG), or a sequence of them on a
+                driver whose ``max_edit_images`` is above one.
             prompt: Instruction describing the desired change.
             options: Provider-specific options (size, n, model, etc.).
             mask: Optional PNG mask; transparent pixels mark the region to edit
