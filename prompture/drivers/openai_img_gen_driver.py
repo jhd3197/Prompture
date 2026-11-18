@@ -6,6 +6,7 @@ import io
 import logging
 import os
 import re
+from collections.abc import Sequence
 from typing import Any
 
 try:
@@ -26,6 +27,8 @@ class OpenAIImageGenDriver(ImageCostMixin, ImageGenDriver):
     supports_multiple = True
     supports_size_variants = True
     supports_edit = True
+    # The images API takes up to 16 input pictures for a gpt-image edit.
+    max_edit_images = 16
     supports_variation = True
     supported_sizes = [
         "256x256",
@@ -261,23 +264,37 @@ class OpenAIImageGenDriver(ImageCostMixin, ImageGenDriver):
 
     def edit_image(
         self,
-        image: bytes,
+        image: bytes | Sequence[bytes],
         prompt: str,
         options: dict[str, Any],
         *,
         mask: bytes | None = None,
     ) -> dict[str, Any]:
-        """Edit an image with an instruction. Uses gpt-image-1 by default."""
+        """Edit an image with an instruction.
+
+        ``image`` is one picture, or several (up to ``max_edit_images``) for an
+        edit that combines them: "put the product from the second image into
+        the first". The model is ``options["model"]``, else this driver's own
+        model when it is a gpt-image model, else gpt-image-1.
+        """
         if self.client is None:
             raise RuntimeError("openai package (>=1.0.0) is not installed")
 
-        model = options.get("model", "gpt-image-1")
+        images = [image] if isinstance(image, (bytes, bytearray)) else list(image)
+        if not images:
+            raise ValueError("edit_image needs at least one image")
+        if len(images) > self.max_edit_images:
+            raise ValueError(f"edit_image takes at most {self.max_edit_images} images, got {len(images)}")
+
+        default_model = self.model if str(self.model).startswith("gpt-image") else "gpt-image-1"
+        model = options.get("model") or default_model
         size = options.get("size", "1024x1024")
         n = options.get("n", 1)
+        files = [(f"image{i}.png", io.BytesIO(data), "image/png") for i, data in enumerate(images, 1)]
         kwargs: dict[str, Any] = {
             "model": model,
             "prompt": prompt,
-            "image": ("image.png", io.BytesIO(image), "image/png"),
+            "image": files[0] if len(files) == 1 else files,
             "n": n,
             "size": size,
         }
