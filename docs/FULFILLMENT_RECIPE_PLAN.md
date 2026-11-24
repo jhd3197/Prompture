@@ -97,6 +97,8 @@ The cold model chose the right recipe on 10/12 supported prompts. It sent a pack
 
 ## Delivery sequence
 
+The first unfamiliar-phrasing benchmark now covers six warehouse recipes, two local models and Claude. It measures candidate retrieval, recipe selection and appropriate abstention on the same requests. [Discovery implementation and results](benchmarks/recipe-discovery/README.md)
+
 | Increment | Work and dependency | Evidence required to finish |
 | --- | --- | --- |
 | 1. Ground truth and baselines | Extend the existing inventory harness with shipment lines, independent physical scans, split shipments, labels and custody. Implement pack verification first. Add a direct Python handler, current tool loop, fresh architect graph, and pre-authored graph as baselines. | Same input snapshot yields the same externally graded decision and reason. Faults include correct SKU in wrong carton, short quantity, stale label, duplicate scan and cancellation. |

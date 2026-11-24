@@ -44,7 +44,7 @@ receipt = store.run_or_learn(
 print(receipt["decisions"]["S11"], store.popular())
 ```
 
-Here the verifier uses a fixture oracle. In a deployment, supply an independent check appropriate for the business operation. A repeated event executes against fresh data and increments the verified-use count once per recipe version. To publish confirmed phrases, call `store.publish(graph, aliases=[...])`. Register `store.as_tool(name, verify=...)` in an agent's ToolRegistry to expose the recipe through native or simulated tool calling. Hosts can export graph definitions with `store.load(name).to_json()` and review a deserialized graph before publishing it in another scope. The store executes synchronous, read-only tools and local transforms. Ranking is local to the project. Semantic matching and warehouse writes remain later milestones.
+Here the verifier uses a fixture oracle. In a deployment, supply an independent check appropriate for the business operation. A repeated event executes against fresh data and increments the verified-use count once per recipe version. To publish confirmed phrases, call `store.publish(graph, aliases=[...])`. Register `store.as_tool(name, verify=...)` in an agent's ToolRegistry to expose the recipe through native or simulated tool calling. Hosts can export graph definitions with `store.load(name).to_json()` and review a deserialized graph before publishing it in another scope. The store executes synchronous, read-only tools and local transforms. Ranking is local to the project. For unfamiliar wording, the host can now request a ranked suggestion and review it before execution. [Recipe discovery benchmark](../recipe-discovery/README.md)
 
 ### Reproduce
 

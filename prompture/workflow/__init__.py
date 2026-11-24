@@ -35,6 +35,7 @@ from .architect import (
     architect,
     node_type_catalog,
 )
+from .discovery import RecipeCandidate, RecipeMatch
 from .engine import (
     CompiledWorkflow,
     GraphRunner,
@@ -123,6 +124,8 @@ __all__ = [
     "OperationLedger",
     "OperationRecord",
     "OperationStatus",
+    "RecipeCandidate",
+    "RecipeMatch",
     "RecipeStore",
     "ReconciliationRequired",
     # references

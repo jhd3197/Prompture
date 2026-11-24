@@ -8,16 +8,21 @@ import sqlite3
 from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from jsonschema import validate
 
+from ..agents.tool_context import rank_tool
 from ..agents.tools_schema import ToolDefinition, ToolRegistry
+from .discovery import RecipeCandidate, RecipeMatch, select_recipe
 from .engine import compile_graph
 from .errors import WorkflowError
 from .model import Graph
 from .recovery import graph_version
+
+if TYPE_CHECKING:
+    from ..drivers.base import Driver
 
 
 class RecipeStore:
@@ -195,24 +200,81 @@ class RecipeStore:
             raise WorkflowError(f"Verification failed for recipe {graph.id!r}")
         return output
 
-    def popular(self) -> list[tuple[str, int]]:
-        """Current definitions and their verified usage counts in this scope."""
+    def _catalog(self) -> Iterator[tuple[RecipeCandidate, list[str]]]:
         with self._connect() as db:
+            db.execute("BEGIN")
             rows = db.execute(
                 """SELECT name,COUNT(event) AS uses,graph,fingerprint FROM recipe_defs
                                  LEFT JOIN recipe_runs USING(scope,fingerprint) WHERE scope=?
                                  GROUP BY name ORDER BY uses DESC,name""",
                 (self.scope,),
             ).fetchall()
-        eligible = []
+            aliases: dict[str, list[str]] = {}
+            for name, route in db.execute(
+                "SELECT name,route FROM recipe_routes WHERE scope=? AND route<>name", (self.scope,)
+            ):
+                aliases.setdefault(name, []).append(route)
         for name, count, raw, fingerprint in rows:
+            graph = Graph.from_json(raw)
             try:
-                compatible = self._fingerprint(Graph.from_json(raw)) == fingerprint
+                compatible = self._fingerprint(graph) == fingerprint
             except WorkflowError:
                 continue
             if compatible:
-                eligible.append((name, count))
-        return eligible
+                yield RecipeCandidate(name, graph.name or name, fingerprint, count), aliases.get(name, [])
+
+    def popular(self) -> list[tuple[str, int]]:
+        """Current definitions and their verified usage counts in this scope."""
+        return [(candidate.name, candidate.verified_uses) for candidate, _ in self._catalog()]
+
+    def search(self, request: str, *, limit: int = 6) -> list[RecipeCandidate]:
+        """Rank compatible definitions by name, description and confirmed aliases; ties favor verified use."""
+        if limit < 1:
+            raise ValueError("limit must be positive")
+        ranked = []
+        for candidate, aliases in self._catalog():
+            summary = RecipeCandidate(
+                candidate.name,
+                " ".join([candidate.description, *aliases]),
+                candidate.fingerprint,
+                candidate.verified_uses,
+            )
+            ranked.append((rank_tool(request, summary), candidate))
+        ranked.sort(key=lambda entry: -entry[0])  # stable: catalog order is usage, then name
+        return [candidate for _, candidate in ranked[:limit]]
+
+    def discover(
+        self, request: str, *, model: str | Driver, limit: int = 6, options: dict[str, Any] | None = None
+    ) -> RecipeMatch:
+        """Resolve confirmed wording locally, otherwise ask a text driver to choose or abstain. No tools execute."""
+        if not request.strip() or limit < 1:
+            raise ValueError("A nonempty request and a positive candidate limit are required")
+        try:
+            graph, fingerprint = self._load(request)
+        except KeyError:
+            return select_recipe(self.scope, request, self.search(request, limit=limit), model, options)
+        with self._connect() as db:
+            uses = db.execute(
+                "SELECT COUNT(*) FROM recipe_runs WHERE scope=? AND fingerprint=?", (self.scope, fingerprint)
+            ).fetchone()[0]
+        candidate = RecipeCandidate(graph.id, graph.name or graph.id, fingerprint, uses)
+        return RecipeMatch(self.scope, candidate, "exact", (graph.id,), {})
+
+    def run_match(
+        self,
+        match: RecipeMatch,
+        inputs: dict[str, Any],
+        *,
+        verify: Callable[[dict[str, Any]], bool],
+        event_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Recheck the selected definition before executing it with caller-supplied inputs."""
+        if match.scope != self.scope or match.recipe is None:
+            raise WorkflowError("A selected recipe in the current project is required")
+        graph, fingerprint = self._load(match.recipe.name)
+        if fingerprint != match.recipe.fingerprint:
+            raise WorkflowError("The recipe changed after discovery")
+        return self._run_loaded(graph, fingerprint, inputs, verify=verify, event_id=event_id)
 
     def as_tool(self, route: str, *, verify: Callable[[dict[str, Any]], bool]) -> ToolDefinition:
         """Expose a verified recipe through the existing native or simulated tool loop."""
