@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from ..drivers.base import Driver
+    from ..drivers.decision_base import DecisionDriver
 
 
 @dataclass(frozen=True)
@@ -31,11 +32,37 @@ class RecipeMatch:
 
 
 def select_recipe(
-    scope: str, request: str, candidates: list[RecipeCandidate], model: str | Driver, options: dict[str, Any] | None
+    scope: str,
+    request: str,
+    candidates: list[RecipeCandidate],
+    model: str | Driver | DecisionDriver,
+    options: dict[str, Any] | None,
 ) -> RecipeMatch:
     names = tuple(c.name for c in candidates)
     if not candidates:
         return RecipeMatch(scope, None, "empty", names, {})
+    from ..drivers.decision_base import Choice, ChoiceAnswer, DecisionDriver
+
+    if isinstance(model, DecisionDriver):
+        criteria = {str(i): f"{c.name}: {c.description}" for i, c in enumerate(candidates, 1)}
+        criteria["0"] = (
+            "No single read-only recipe fulfills the entire request (unclear, unsupported, multiple jobs or a change)."
+        )
+        result = model.decide(
+            request,
+            {"recipe": Choice("Which option fulfills the entire request? Record IDs can be supplied later.", criteria)},
+            **(options or {}),
+        )
+        answer = result.answers.get("recipe")
+        meta = result.usage
+        usage = {k: meta[k] for k in ("total_tokens", "cost", "model_name") if k in meta}
+        for source, target in (("input_tokens", "prompt_tokens"), ("output_tokens", "completion_tokens")):
+            if source in meta:
+                usage[target] = meta[source]
+        choice = answer.choice if isinstance(answer, ChoiceAnswer) else ""
+        if choice in criteria and choice != "0":
+            return RecipeMatch(scope, candidates[int(choice) - 1], "selected", names, usage)
+        return RecipeMatch(scope, None, "abstained" if choice == "0" else "invalid", names, usage)
     if isinstance(model, str):
         from ..drivers import get_driver_for_model
 
