@@ -533,6 +533,13 @@ class TestDecisionRegistry:
 
 
 class TestDecisionDiscovery:
+    @pytest.fixture(autouse=True)
+    def isolate_configured_providers(self, monkeypatch):
+        from prompture.infra.settings import settings
+
+        monkeypatch.setattr(settings, "typesafe_api_key", None)
+        monkeypatch.setattr(settings, "kev_base_url", None)
+
     def test_lists_configured_providers_only(self, monkeypatch):
         monkeypatch.setenv("TYPESAFE_API_KEY", "k")
         monkeypatch.delenv("KEV_BASE_URL", raising=False)

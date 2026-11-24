@@ -1,0 +1,2486 @@
+{
+  "model": "typesafe/jev-latest",
+  "fixture_sha256": "f25ff3674b9dac0d3eb942987054a845bad933d31823480dccaf8f544b9c75da",
+  "arms": {
+    "6": {
+      "summary": {
+        "requests": 36,
+        "supported": 24,
+        "should_abstain": 12,
+        "correct": 35,
+        "correct_recipe": 23,
+        "correct_abstentions": 12,
+        "false_accepts": 0,
+        "invalid": 0,
+        "retrieved_gold": 24,
+        "input_tokens": 17958,
+        "output_tokens": 2376
+      },
+      "rows": [
+        {
+          "request": "Get me the signed handovers and the packing discrepancy on consignment R17.",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane",
+            "free_stock",
+            "inbound_count",
+            "label_revision"
+          ],
+          "input_tokens": 498,
+          "output_tokens": 66,
+          "seconds": 0.427,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 2.092e-05
+        },
+        {
+          "request": "Before I sign off job 71, are the articles inside consistent with its sales lines?",
+          "expected": "carton_contents",
+          "predicted": "carton_contents",
+          "status": "selected",
+          "candidates": [
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane",
+            "free_stock",
+            "inbound_count",
+            "label_revision"
+          ],
+          "input_tokens": 499,
+          "output_tokens": 66,
+          "seconds": 0.405,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 2.096e-05
+        },
+        {
+          "request": "What's the humidity inside the cheese cage right now?",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane",
+            "free_stock",
+            "inbound_count",
+            "label_revision"
+          ],
+          "input_tokens": 491,
+          "output_tokens": 66,
+          "seconds": 0.363,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 2.062e-05
+        },
+        {
+          "request": "We signed for pallet P09 at receiving. Was the vendor short on any of the ordered quantities?",
+          "expected": "inbound_count",
+          "predicted": "inbound_count",
+          "status": "selected",
+          "candidates": [
+            "carton_contents",
+            "inbound_count",
+            "custody_history",
+            "dispatch_lane",
+            "free_stock",
+            "label_revision"
+          ],
+          "input_tokens": 501,
+          "output_tokens": 66,
+          "seconds": 0.41,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 2.104e-05
+        },
+        {
+          "request": "Bin A has 36 rolls on the ledger, some earmarked for jobs. What's the sellable balance at this depot?",
+          "expected": "free_stock",
+          "predicted": "free_stock",
+          "status": "selected",
+          "candidates": [
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane",
+            "free_stock",
+            "inbound_count",
+            "label_revision"
+          ],
+          "input_tokens": 508,
+          "output_tokens": 66,
+          "seconds": 0.373,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 2.134e-05
+        },
+        {
+          "request": "We found two versions of the courier label. Is the one physically attached to 938 the active one?",
+          "expected": "label_revision",
+          "predicted": "label_revision",
+          "status": "selected",
+          "candidates": [
+            "label_revision",
+            "free_stock",
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane",
+            "inbound_count"
+          ],
+          "input_tokens": 503,
+          "output_tokens": 66,
+          "seconds": 0.394,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 2.113e-05
+        },
+        {
+          "request": "Northline collects from door seven. Does the chute used for this consignment lead there?",
+          "expected": "dispatch_lane",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane",
+            "free_stock",
+            "inbound_count",
+            "label_revision"
+          ],
+          "input_tokens": 500,
+          "output_tokens": 66,
+          "seconds": 0.463,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 2.1e-05
+        },
+        {
+          "request": "A package is missing between shifts. Who acknowledged possession of 77-B most recently?",
+          "expected": "custody_history",
+          "predicted": "custody_history",
+          "status": "selected",
+          "candidates": [
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane",
+            "free_stock",
+            "inbound_count",
+            "label_revision"
+          ],
+          "input_tokens": 498,
+          "output_tokens": 66,
+          "seconds": 0.382,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 2.092e-05
+        },
+        {
+          "request": "Has the waybill on the outside been superseded since it was printed?",
+          "expected": "label_revision",
+          "predicted": "label_revision",
+          "status": "selected",
+          "candidates": [
+            "label_revision",
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane",
+            "free_stock",
+            "inbound_count"
+          ],
+          "input_tokens": 496,
+          "output_tokens": 66,
+          "seconds": 0.371,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 2.083e-05
+        },
+        {
+          "request": "The inbound supplier invoice has a fuel surcharge. Was the rate negotiated correctly?",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "inbound_count",
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane",
+            "free_stock",
+            "label_revision"
+          ],
+          "input_tokens": 497,
+          "output_tokens": 66,
+          "seconds": 0.376,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 2.087e-05
+        },
+        {
+          "request": "Change the recorded recipient on last night's custody slip to Dana.",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "custody_history",
+            "carton_contents",
+            "dispatch_lane",
+            "free_stock",
+            "inbound_count",
+            "label_revision"
+          ],
+          "input_tokens": 493,
+          "output_tokens": 66,
+          "seconds": 0.379,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 2.071e-05
+        },
+        {
+          "request": "Someone at packing counted six mugs in BX88, although the shopper ordered a set of four. Can you check the discrepancy?",
+          "expected": "carton_contents",
+          "predicted": "carton_contents",
+          "status": "selected",
+          "candidates": [
+            "free_stock",
+            "inbound_count",
+            "label_revision",
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane"
+          ],
+          "input_tokens": 507,
+          "output_tokens": 66,
+          "seconds": 0.408,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 2.129e-05
+        },
+        {
+          "request": "Which of today's pallets is tallest?",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane",
+            "free_stock",
+            "inbound_count",
+            "label_revision"
+          ],
+          "input_tokens": 489,
+          "output_tokens": 66,
+          "seconds": 0.396,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 2.054e-05
+        },
+        {
+          "request": "If that sticker is obsolete, print a replacement and put it on the package.",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane",
+            "free_stock",
+            "inbound_count",
+            "label_revision"
+          ],
+          "input_tokens": 496,
+          "output_tokens": 66,
+          "seconds": 0.373,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 2.083e-05
+        },
+        {
+          "request": "Parcel W14 lit up the amber diverter. Is that its carrier's designated exit?",
+          "expected": "dispatch_lane",
+          "predicted": "dispatch_lane",
+          "status": "selected",
+          "candidates": [
+            "dispatch_lane",
+            "custody_history",
+            "free_stock",
+            "carton_contents",
+            "inbound_count",
+            "label_revision"
+          ],
+          "input_tokens": 500,
+          "output_tokens": 66,
+          "seconds": 0.365,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 2.1e-05
+        },
+        {
+          "request": "Give me a delivery ETA for a parcel already on the motorway.",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "dispatch_lane",
+            "inbound_count",
+            "carton_contents",
+            "custody_history",
+            "free_stock",
+            "label_revision"
+          ],
+          "input_tokens": 494,
+          "output_tokens": 66,
+          "seconds": 0.351,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 2.075e-05
+        },
+        {
+          "request": "Can finance pay for all 120 incoming cases, judging only by the number physically received against the PO?",
+          "expected": "inbound_count",
+          "predicted": "inbound_count",
+          "status": "selected",
+          "candidates": [
+            "inbound_count",
+            "dispatch_lane",
+            "carton_contents",
+            "custody_history",
+            "free_stock",
+            "label_revision"
+          ],
+          "input_tokens": 503,
+          "output_tokens": 66,
+          "seconds": 0.357,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 2.113e-05
+        },
+        {
+          "request": "Can I promise any units of R4 today from this building once the open allocations are deducted?",
+          "expected": "free_stock",
+          "predicted": "free_stock",
+          "status": "selected",
+          "candidates": [
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane",
+            "free_stock",
+            "inbound_count",
+            "label_revision"
+          ],
+          "input_tokens": 499,
+          "output_tokens": 66,
+          "seconds": 0.348,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 2.096e-05
+        },
+        {
+          "request": "A caller wants our remaining supply of lime paint at East. Exclude anything held for another customer.",
+          "expected": "free_stock",
+          "predicted": "free_stock",
+          "status": "selected",
+          "candidates": [
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane",
+            "free_stock",
+            "inbound_count",
+            "label_revision"
+          ],
+          "input_tokens": 501,
+          "output_tokens": 66,
+          "seconds": 0.362,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 2.104e-05
+        },
+        {
+          "request": "Read back the transfers of tote G from pack station to courier, including the latest confirmed holder.",
+          "expected": "custody_history",
+          "predicted": "custody_history",
+          "status": "selected",
+          "candidates": [
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane",
+            "free_stock",
+            "inbound_count",
+            "label_revision"
+          ],
+          "input_tokens": 499,
+          "output_tokens": 66,
+          "seconds": 0.355,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 2.096e-05
+        },
+        {
+          "request": "Night shift booked in the ceramic order. Did the wholesaler send all the pieces we were expecting?",
+          "expected": "inbound_count",
+          "predicted": "inbound_count",
+          "status": "selected",
+          "candidates": [
+            "inbound_count",
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane",
+            "free_stock",
+            "label_revision"
+          ],
+          "input_tokens": 501,
+          "output_tokens": 66,
+          "seconds": 0.413,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 2.104e-05
+        },
+        {
+          "request": "Check sellable stock at East and also whether our vendor's shipment was short.",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "free_stock",
+            "carton_contents",
+            "custody_history",
+            "inbound_count",
+            "label_revision",
+            "dispatch_lane"
+          ],
+          "input_tokens": 496,
+          "output_tokens": 66,
+          "seconds": 0.364,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 2.083e-05
+        },
+        {
+          "request": "Can you tell me if yesterday's job is fine?",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane",
+            "free_stock",
+            "inbound_count",
+            "label_revision"
+          ],
+          "input_tokens": 491,
+          "output_tokens": 66,
+          "seconds": 0.363,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 2.062e-05
+        },
+        {
+          "request": "Did anyone take responsibility for the parcel after the cage attendant signed it out?",
+          "expected": "custody_history",
+          "predicted": "custody_history",
+          "status": "selected",
+          "candidates": [
+            "dispatch_lane",
+            "free_stock",
+            "carton_contents",
+            "custody_history",
+            "inbound_count",
+            "label_revision"
+          ],
+          "input_tokens": 495,
+          "output_tokens": 66,
+          "seconds": 0.41,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 2.079e-05
+        },
+        {
+          "request": "Security needs the handover record for consignment H21. Who accepted it last?",
+          "expected": "custody_history",
+          "predicted": "custody_history",
+          "status": "selected",
+          "candidates": [
+            "custody_history",
+            "carton_contents",
+            "dispatch_lane",
+            "free_stock",
+            "inbound_count",
+            "label_revision"
+          ],
+          "input_tokens": 499,
+          "output_tokens": 66,
+          "seconds": 0.444,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 2.096e-05
+        },
+        {
+          "request": "The sorter logged a divert to spur 18 for P31. Check the outbound assignment.",
+          "expected": "dispatch_lane",
+          "predicted": "dispatch_lane",
+          "status": "selected",
+          "candidates": [
+            "dispatch_lane",
+            "free_stock",
+            "inbound_count",
+            "label_revision",
+            "carton_contents",
+            "custody_history"
+          ],
+          "input_tokens": 500,
+          "output_tokens": 66,
+          "seconds": 0.383,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 2.1e-05
+        },
+        {
+          "request": "The weight alarm went off. I only need to know whether each product and count inside matches the order.",
+          "expected": "carton_contents",
+          "predicted": "carton_contents",
+          "status": "selected",
+          "candidates": [
+            "inbound_count",
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane",
+            "free_stock",
+            "label_revision"
+          ],
+          "input_tokens": 501,
+          "output_tokens": 66,
+          "seconds": 0.386,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 2.104e-05
+        },
+        {
+          "request": "Move P18 from the postal spur to express so it doesn't miss departure.",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane",
+            "free_stock",
+            "inbound_count",
+            "label_revision"
+          ],
+          "input_tokens": 497,
+          "output_tokens": 66,
+          "seconds": 0.44,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 2.087e-05
+        },
+        {
+          "request": "The website wants to sell another eight kettles from Bristol. How many are still available after commitments?",
+          "expected": "free_stock",
+          "predicted": "free_stock",
+          "status": "selected",
+          "candidates": [
+            "free_stock",
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane",
+            "inbound_count",
+            "label_revision"
+          ],
+          "input_tokens": 500,
+          "output_tokens": 66,
+          "seconds": 0.428,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 2.1e-05
+        },
+        {
+          "request": "Bench 12 got order 804. The pick ticket says two lids and a tub. Does the sealed unit contain that mix?",
+          "expected": "carton_contents",
+          "predicted": "carton_contents",
+          "status": "selected",
+          "candidates": [
+            "inbound_count",
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane",
+            "free_stock",
+            "label_revision"
+          ],
+          "input_tokens": 510,
+          "output_tokens": 66,
+          "seconds": 0.427,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 2.142e-05
+        },
+        {
+          "request": "This is a postal bag on carousel C. Verify it is headed for the correct loading bay.",
+          "expected": "dispatch_lane",
+          "predicted": "dispatch_lane",
+          "status": "selected",
+          "candidates": [
+            "carton_contents",
+            "dispatch_lane",
+            "custody_history",
+            "free_stock",
+            "inbound_count",
+            "label_revision"
+          ],
+          "input_tokens": 499,
+          "output_tokens": 66,
+          "seconds": 0.435,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 2.096e-05
+        },
+        {
+          "request": "Set aside nine green towels for the next web order.",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "inbound_count",
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane",
+            "free_stock",
+            "label_revision"
+          ],
+          "input_tokens": 491,
+          "output_tokens": 66,
+          "seconds": 0.399,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 2.062e-05
+        },
+        {
+          "request": "Truck 54 delivered the summer replenishment. Reconcile what came off it with what purchasing asked for.",
+          "expected": "inbound_count",
+          "predicted": "inbound_count",
+          "status": "selected",
+          "candidates": [
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane",
+            "free_stock",
+            "inbound_count",
+            "label_revision"
+          ],
+          "input_tokens": 506,
+          "output_tokens": 66,
+          "seconds": 0.377,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 2.125e-05
+        },
+        {
+          "request": "I have number 702 and an upset driver. Can you look into it?",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "custody_history",
+            "free_stock",
+            "carton_contents",
+            "dispatch_lane",
+            "inbound_count",
+            "label_revision"
+          ],
+          "input_tokens": 498,
+          "output_tokens": 66,
+          "seconds": 0.435,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 2.092e-05
+        },
+        {
+          "request": "The returns team see an old barcode layout. Compare this parcel's label edition with the one on file.",
+          "expected": "label_revision",
+          "predicted": "label_revision",
+          "status": "selected",
+          "candidates": [
+            "label_revision",
+            "carton_contents",
+            "dispatch_lane",
+            "free_stock",
+            "inbound_count",
+            "custody_history"
+          ],
+          "input_tokens": 501,
+          "output_tokens": 66,
+          "seconds": 0.397,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 2.104e-05
+        },
+        {
+          "request": "The thermal sticker says issue C. Does that agree with the last shipping artwork issued for BX11?",
+          "expected": "label_revision",
+          "predicted": "label_revision",
+          "status": "selected",
+          "candidates": [
+            "label_revision",
+            "custody_history",
+            "carton_contents",
+            "dispatch_lane",
+            "free_stock",
+            "inbound_count"
+          ],
+          "input_tokens": 501,
+          "output_tokens": 66,
+          "seconds": 0.392,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 2.104e-05
+        }
+      ]
+    },
+    "3": {
+      "summary": {
+        "requests": 36,
+        "supported": 24,
+        "should_abstain": 12,
+        "correct": 30,
+        "correct_recipe": 18,
+        "correct_abstentions": 12,
+        "false_accepts": 0,
+        "invalid": 0,
+        "retrieved_gold": 18,
+        "input_tokens": 15173,
+        "output_tokens": 1620
+      },
+      "rows": [
+        {
+          "request": "Get me the signed handovers and the packing discrepancy on consignment R17.",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane"
+          ],
+          "input_tokens": 421,
+          "output_tokens": 45,
+          "seconds": 0.392,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.768e-05
+        },
+        {
+          "request": "Before I sign off job 71, are the articles inside consistent with its sales lines?",
+          "expected": "carton_contents",
+          "predicted": "carton_contents",
+          "status": "selected",
+          "candidates": [
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane"
+          ],
+          "input_tokens": 422,
+          "output_tokens": 45,
+          "seconds": 0.361,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.772e-05
+        },
+        {
+          "request": "What's the humidity inside the cheese cage right now?",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane"
+          ],
+          "input_tokens": 414,
+          "output_tokens": 45,
+          "seconds": 0.393,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.739e-05
+        },
+        {
+          "request": "We signed for pallet P09 at receiving. Was the vendor short on any of the ordered quantities?",
+          "expected": "inbound_count",
+          "predicted": "inbound_count",
+          "status": "selected",
+          "candidates": [
+            "carton_contents",
+            "inbound_count",
+            "custody_history"
+          ],
+          "input_tokens": 425,
+          "output_tokens": 45,
+          "seconds": 0.387,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.785e-05
+        },
+        {
+          "request": "Bin A has 36 rolls on the ledger, some earmarked for jobs. What's the sellable balance at this depot?",
+          "expected": "free_stock",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane"
+          ],
+          "input_tokens": 431,
+          "output_tokens": 45,
+          "seconds": 0.373,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.81e-05
+        },
+        {
+          "request": "We found two versions of the courier label. Is the one physically attached to 938 the active one?",
+          "expected": "label_revision",
+          "predicted": "label_revision",
+          "status": "selected",
+          "candidates": [
+            "label_revision",
+            "free_stock",
+            "carton_contents"
+          ],
+          "input_tokens": 423,
+          "output_tokens": 45,
+          "seconds": 0.354,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.777e-05
+        },
+        {
+          "request": "Northline collects from door seven. Does the chute used for this consignment lead there?",
+          "expected": "dispatch_lane",
+          "predicted": "dispatch_lane",
+          "status": "selected",
+          "candidates": [
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane"
+          ],
+          "input_tokens": 423,
+          "output_tokens": 45,
+          "seconds": 0.371,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.777e-05
+        },
+        {
+          "request": "A package is missing between shifts. Who acknowledged possession of 77-B most recently?",
+          "expected": "custody_history",
+          "predicted": "custody_history",
+          "status": "selected",
+          "candidates": [
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane"
+          ],
+          "input_tokens": 421,
+          "output_tokens": 45,
+          "seconds": 0.387,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.768e-05
+        },
+        {
+          "request": "Has the waybill on the outside been superseded since it was printed?",
+          "expected": "label_revision",
+          "predicted": "label_revision",
+          "status": "selected",
+          "candidates": [
+            "label_revision",
+            "carton_contents",
+            "custody_history"
+          ],
+          "input_tokens": 419,
+          "output_tokens": 45,
+          "seconds": 0.37,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.76e-05
+        },
+        {
+          "request": "The inbound supplier invoice has a fuel surcharge. Was the rate negotiated correctly?",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "inbound_count",
+            "carton_contents",
+            "custody_history"
+          ],
+          "input_tokens": 421,
+          "output_tokens": 45,
+          "seconds": 0.353,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.768e-05
+        },
+        {
+          "request": "Change the recorded recipient on last night's custody slip to Dana.",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "custody_history",
+            "carton_contents",
+            "dispatch_lane"
+          ],
+          "input_tokens": 416,
+          "output_tokens": 45,
+          "seconds": 0.389,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.747e-05
+        },
+        {
+          "request": "Someone at packing counted six mugs in BX88, although the shopper ordered a set of four. Can you check the discrepancy?",
+          "expected": "carton_contents",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "free_stock",
+            "inbound_count",
+            "label_revision"
+          ],
+          "input_tokens": 428,
+          "output_tokens": 45,
+          "seconds": 0.415,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.798e-05
+        },
+        {
+          "request": "Which of today's pallets is tallest?",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane"
+          ],
+          "input_tokens": 412,
+          "output_tokens": 45,
+          "seconds": 0.325,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.73e-05
+        },
+        {
+          "request": "If that sticker is obsolete, print a replacement and put it on the package.",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane"
+          ],
+          "input_tokens": 419,
+          "output_tokens": 45,
+          "seconds": 0.351,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.76e-05
+        },
+        {
+          "request": "Parcel W14 lit up the amber diverter. Is that its carrier's designated exit?",
+          "expected": "dispatch_lane",
+          "predicted": "dispatch_lane",
+          "status": "selected",
+          "candidates": [
+            "dispatch_lane",
+            "custody_history",
+            "free_stock"
+          ],
+          "input_tokens": 421,
+          "output_tokens": 45,
+          "seconds": 0.408,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.768e-05
+        },
+        {
+          "request": "Give me a delivery ETA for a parcel already on the motorway.",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "dispatch_lane",
+            "inbound_count",
+            "carton_contents"
+          ],
+          "input_tokens": 417,
+          "output_tokens": 45,
+          "seconds": 0.359,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.751e-05
+        },
+        {
+          "request": "Can finance pay for all 120 incoming cases, judging only by the number physically received against the PO?",
+          "expected": "inbound_count",
+          "predicted": "inbound_count",
+          "status": "selected",
+          "candidates": [
+            "inbound_count",
+            "dispatch_lane",
+            "carton_contents"
+          ],
+          "input_tokens": 426,
+          "output_tokens": 45,
+          "seconds": 0.361,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.789e-05
+        },
+        {
+          "request": "Can I promise any units of R4 today from this building once the open allocations are deducted?",
+          "expected": "free_stock",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane"
+          ],
+          "input_tokens": 422,
+          "output_tokens": 45,
+          "seconds": 0.389,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.772e-05
+        },
+        {
+          "request": "A caller wants our remaining supply of lime paint at East. Exclude anything held for another customer.",
+          "expected": "free_stock",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane"
+          ],
+          "input_tokens": 424,
+          "output_tokens": 45,
+          "seconds": 0.358,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.781e-05
+        },
+        {
+          "request": "Read back the transfers of tote G from pack station to courier, including the latest confirmed holder.",
+          "expected": "custody_history",
+          "predicted": "custody_history",
+          "status": "selected",
+          "candidates": [
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane"
+          ],
+          "input_tokens": 422,
+          "output_tokens": 45,
+          "seconds": 0.37,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.772e-05
+        },
+        {
+          "request": "Night shift booked in the ceramic order. Did the wholesaler send all the pieces we were expecting?",
+          "expected": "inbound_count",
+          "predicted": "inbound_count",
+          "status": "selected",
+          "candidates": [
+            "inbound_count",
+            "carton_contents",
+            "custody_history"
+          ],
+          "input_tokens": 425,
+          "output_tokens": 45,
+          "seconds": 0.411,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.785e-05
+        },
+        {
+          "request": "Check sellable stock at East and also whether our vendor's shipment was short.",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "free_stock",
+            "carton_contents",
+            "custody_history"
+          ],
+          "input_tokens": 417,
+          "output_tokens": 45,
+          "seconds": 0.446,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.751e-05
+        },
+        {
+          "request": "Can you tell me if yesterday's job is fine?",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane"
+          ],
+          "input_tokens": 414,
+          "output_tokens": 45,
+          "seconds": 0.509,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.739e-05
+        },
+        {
+          "request": "Did anyone take responsibility for the parcel after the cage attendant signed it out?",
+          "expected": "custody_history",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "dispatch_lane",
+            "free_stock",
+            "carton_contents"
+          ],
+          "input_tokens": 415,
+          "output_tokens": 45,
+          "seconds": 0.528,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.743e-05
+        },
+        {
+          "request": "Security needs the handover record for consignment H21. Who accepted it last?",
+          "expected": "custody_history",
+          "predicted": "custody_history",
+          "status": "selected",
+          "candidates": [
+            "custody_history",
+            "carton_contents",
+            "dispatch_lane"
+          ],
+          "input_tokens": 422,
+          "output_tokens": 45,
+          "seconds": 0.425,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.772e-05
+        },
+        {
+          "request": "The sorter logged a divert to spur 18 for P31. Check the outbound assignment.",
+          "expected": "dispatch_lane",
+          "predicted": "dispatch_lane",
+          "status": "selected",
+          "candidates": [
+            "dispatch_lane",
+            "free_stock",
+            "inbound_count"
+          ],
+          "input_tokens": 421,
+          "output_tokens": 45,
+          "seconds": 0.476,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.768e-05
+        },
+        {
+          "request": "The weight alarm went off. I only need to know whether each product and count inside matches the order.",
+          "expected": "carton_contents",
+          "predicted": "carton_contents",
+          "status": "selected",
+          "candidates": [
+            "inbound_count",
+            "carton_contents",
+            "custody_history"
+          ],
+          "input_tokens": 425,
+          "output_tokens": 45,
+          "seconds": 0.456,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.785e-05
+        },
+        {
+          "request": "Move P18 from the postal spur to express so it doesn't miss departure.",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane"
+          ],
+          "input_tokens": 420,
+          "output_tokens": 45,
+          "seconds": 0.411,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.764e-05
+        },
+        {
+          "request": "The website wants to sell another eight kettles from Bristol. How many are still available after commitments?",
+          "expected": "free_stock",
+          "predicted": "free_stock",
+          "status": "selected",
+          "candidates": [
+            "free_stock",
+            "carton_contents",
+            "custody_history"
+          ],
+          "input_tokens": 421,
+          "output_tokens": 45,
+          "seconds": 0.415,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.768e-05
+        },
+        {
+          "request": "Bench 12 got order 804. The pick ticket says two lids and a tub. Does the sealed unit contain that mix?",
+          "expected": "carton_contents",
+          "predicted": "carton_contents",
+          "status": "selected",
+          "candidates": [
+            "inbound_count",
+            "carton_contents",
+            "custody_history"
+          ],
+          "input_tokens": 434,
+          "output_tokens": 45,
+          "seconds": 0.459,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.823e-05
+        },
+        {
+          "request": "This is a postal bag on carousel C. Verify it is headed for the correct loading bay.",
+          "expected": "dispatch_lane",
+          "predicted": "dispatch_lane",
+          "status": "selected",
+          "candidates": [
+            "carton_contents",
+            "dispatch_lane",
+            "custody_history"
+          ],
+          "input_tokens": 422,
+          "output_tokens": 45,
+          "seconds": 0.441,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.772e-05
+        },
+        {
+          "request": "Set aside nine green towels for the next web order.",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "inbound_count",
+            "carton_contents",
+            "custody_history"
+          ],
+          "input_tokens": 415,
+          "output_tokens": 45,
+          "seconds": 0.405,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.743e-05
+        },
+        {
+          "request": "Truck 54 delivered the summer replenishment. Reconcile what came off it with what purchasing asked for.",
+          "expected": "inbound_count",
+          "predicted": "carton_contents",
+          "status": "selected",
+          "candidates": [
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane"
+          ],
+          "input_tokens": 429,
+          "output_tokens": 45,
+          "seconds": 0.436,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.802e-05
+        },
+        {
+          "request": "I have number 702 and an upset driver. Can you look into it?",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "custody_history",
+            "free_stock",
+            "carton_contents"
+          ],
+          "input_tokens": 419,
+          "output_tokens": 45,
+          "seconds": 0.462,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.76e-05
+        },
+        {
+          "request": "The returns team see an old barcode layout. Compare this parcel's label edition with the one on file.",
+          "expected": "label_revision",
+          "predicted": "label_revision",
+          "status": "selected",
+          "candidates": [
+            "label_revision",
+            "carton_contents",
+            "dispatch_lane"
+          ],
+          "input_tokens": 423,
+          "output_tokens": 45,
+          "seconds": 0.446,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.777e-05
+        },
+        {
+          "request": "The thermal sticker says issue C. Does that agree with the last shipping artwork issued for BX11?",
+          "expected": "label_revision",
+          "predicted": "label_revision",
+          "status": "selected",
+          "candidates": [
+            "label_revision",
+            "custody_history",
+            "carton_contents"
+          ],
+          "input_tokens": 424,
+          "output_tokens": 45,
+          "seconds": 0.568,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.781e-05
+        }
+      ]
+    },
+    "examples": {
+      "summary": {
+        "requests": 36,
+        "supported": 24,
+        "should_abstain": 12,
+        "correct": 35,
+        "correct_recipe": 23,
+        "correct_abstentions": 12,
+        "false_accepts": 0,
+        "invalid": 0,
+        "retrieved_gold": 24,
+        "input_tokens": 15160,
+        "output_tokens": 1620
+      },
+      "rows": [
+        {
+          "request": "Get me the signed handovers and the packing discrepancy on consignment R17.",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "custody_history",
+            "inbound_count",
+            "label_revision"
+          ],
+          "input_tokens": 422,
+          "output_tokens": 45,
+          "seconds": 0.416,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.772e-05
+        },
+        {
+          "request": "Before I sign off job 71, are the articles inside consistent with its sales lines?",
+          "expected": "carton_contents",
+          "predicted": "carton_contents",
+          "status": "selected",
+          "candidates": [
+            "carton_contents",
+            "inbound_count",
+            "dispatch_lane"
+          ],
+          "input_tokens": 422,
+          "output_tokens": 45,
+          "seconds": 0.423,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.772e-05
+        },
+        {
+          "request": "What's the humidity inside the cheese cage right now?",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "carton_contents",
+            "custody_history",
+            "inbound_count"
+          ],
+          "input_tokens": 415,
+          "output_tokens": 45,
+          "seconds": 0.392,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.743e-05
+        },
+        {
+          "request": "We signed for pallet P09 at receiving. Was the vendor short on any of the ordered quantities?",
+          "expected": "inbound_count",
+          "predicted": "inbound_count",
+          "status": "selected",
+          "candidates": [
+            "inbound_count",
+            "custody_history",
+            "free_stock"
+          ],
+          "input_tokens": 423,
+          "output_tokens": 45,
+          "seconds": 0.531,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.777e-05
+        },
+        {
+          "request": "Bin A has 36 rolls on the ledger, some earmarked for jobs. What's the sellable balance at this depot?",
+          "expected": "free_stock",
+          "predicted": "free_stock",
+          "status": "selected",
+          "candidates": [
+            "free_stock",
+            "inbound_count",
+            "carton_contents"
+          ],
+          "input_tokens": 429,
+          "output_tokens": 45,
+          "seconds": 0.493,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.802e-05
+        },
+        {
+          "request": "We found two versions of the courier label. Is the one physically attached to 938 the active one?",
+          "expected": "label_revision",
+          "predicted": "label_revision",
+          "status": "selected",
+          "candidates": [
+            "label_revision",
+            "dispatch_lane",
+            "inbound_count"
+          ],
+          "input_tokens": 426,
+          "output_tokens": 45,
+          "seconds": 0.558,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.789e-05
+        },
+        {
+          "request": "Northline collects from door seven. Does the chute used for this consignment lead there?",
+          "expected": "dispatch_lane",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "dispatch_lane",
+            "custody_history",
+            "free_stock"
+          ],
+          "input_tokens": 421,
+          "output_tokens": 45,
+          "seconds": 0.583,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.768e-05
+        },
+        {
+          "request": "A package is missing between shifts. Who acknowledged possession of 77-B most recently?",
+          "expected": "custody_history",
+          "predicted": "custody_history",
+          "status": "selected",
+          "candidates": [
+            "custody_history",
+            "carton_contents",
+            "label_revision"
+          ],
+          "input_tokens": 421,
+          "output_tokens": 45,
+          "seconds": 0.561,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.768e-05
+        },
+        {
+          "request": "Has the waybill on the outside been superseded since it was printed?",
+          "expected": "label_revision",
+          "predicted": "label_revision",
+          "status": "selected",
+          "candidates": [
+            "label_revision",
+            "dispatch_lane",
+            "free_stock"
+          ],
+          "input_tokens": 416,
+          "output_tokens": 45,
+          "seconds": 0.547,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.747e-05
+        },
+        {
+          "request": "The inbound supplier invoice has a fuel surcharge. Was the rate negotiated correctly?",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "dispatch_lane",
+            "inbound_count",
+            "custody_history"
+          ],
+          "input_tokens": 421,
+          "output_tokens": 45,
+          "seconds": 0.547,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.768e-05
+        },
+        {
+          "request": "Change the recorded recipient on last night's custody slip to Dana.",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "carton_contents",
+            "inbound_count",
+            "custody_history"
+          ],
+          "input_tokens": 417,
+          "output_tokens": 45,
+          "seconds": 0.519,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.751e-05
+        },
+        {
+          "request": "Someone at packing counted six mugs in BX88, although the shopper ordered a set of four. Can you check the discrepancy?",
+          "expected": "carton_contents",
+          "predicted": "carton_contents",
+          "status": "selected",
+          "candidates": [
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane"
+          ],
+          "input_tokens": 430,
+          "output_tokens": 45,
+          "seconds": 0.58,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.806e-05
+        },
+        {
+          "request": "Which of today's pallets is tallest?",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "inbound_count",
+            "custody_history",
+            "free_stock"
+          ],
+          "input_tokens": 411,
+          "output_tokens": 45,
+          "seconds": 0.535,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.726e-05
+        },
+        {
+          "request": "If that sticker is obsolete, print a replacement and put it on the package.",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "label_revision",
+            "carton_contents",
+            "dispatch_lane"
+          ],
+          "input_tokens": 418,
+          "output_tokens": 45,
+          "seconds": 0.54,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.756e-05
+        },
+        {
+          "request": "Parcel W14 lit up the amber diverter. Is that its carrier's designated exit?",
+          "expected": "dispatch_lane",
+          "predicted": "dispatch_lane",
+          "status": "selected",
+          "candidates": [
+            "dispatch_lane",
+            "custody_history",
+            "carton_contents"
+          ],
+          "input_tokens": 423,
+          "output_tokens": 45,
+          "seconds": 0.581,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.777e-05
+        },
+        {
+          "request": "Give me a delivery ETA for a parcel already on the motorway.",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "free_stock",
+            "custody_history",
+            "label_revision"
+          ],
+          "input_tokens": 415,
+          "output_tokens": 45,
+          "seconds": 0.54,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.743e-05
+        },
+        {
+          "request": "Can finance pay for all 120 incoming cases, judging only by the number physically received against the PO?",
+          "expected": "inbound_count",
+          "predicted": "inbound_count",
+          "status": "selected",
+          "candidates": [
+            "custody_history",
+            "inbound_count",
+            "dispatch_lane"
+          ],
+          "input_tokens": 427,
+          "output_tokens": 45,
+          "seconds": 0.531,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.793e-05
+        },
+        {
+          "request": "Can I promise any units of R4 today from this building once the open allocations are deducted?",
+          "expected": "free_stock",
+          "predicted": "free_stock",
+          "status": "selected",
+          "candidates": [
+            "free_stock",
+            "custody_history",
+            "inbound_count"
+          ],
+          "input_tokens": 421,
+          "output_tokens": 45,
+          "seconds": 0.533,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.768e-05
+        },
+        {
+          "request": "A caller wants our remaining supply of lime paint at East. Exclude anything held for another customer.",
+          "expected": "free_stock",
+          "predicted": "free_stock",
+          "status": "selected",
+          "candidates": [
+            "free_stock",
+            "carton_contents",
+            "inbound_count"
+          ],
+          "input_tokens": 422,
+          "output_tokens": 45,
+          "seconds": 0.431,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.772e-05
+        },
+        {
+          "request": "Read back the transfers of tote G from pack station to courier, including the latest confirmed holder.",
+          "expected": "custody_history",
+          "predicted": "custody_history",
+          "status": "selected",
+          "candidates": [
+            "label_revision",
+            "carton_contents",
+            "custody_history"
+          ],
+          "input_tokens": 422,
+          "output_tokens": 45,
+          "seconds": 0.42,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.772e-05
+        },
+        {
+          "request": "Night shift booked in the ceramic order. Did the wholesaler send all the pieces we were expecting?",
+          "expected": "inbound_count",
+          "predicted": "inbound_count",
+          "status": "selected",
+          "candidates": [
+            "inbound_count",
+            "carton_contents",
+            "free_stock"
+          ],
+          "input_tokens": 422,
+          "output_tokens": 45,
+          "seconds": 0.439,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.772e-05
+        },
+        {
+          "request": "Check sellable stock at East and also whether our vendor's shipment was short.",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "inbound_count",
+            "dispatch_lane",
+            "carton_contents"
+          ],
+          "input_tokens": 419,
+          "output_tokens": 45,
+          "seconds": 0.418,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.76e-05
+        },
+        {
+          "request": "Can you tell me if yesterday's job is fine?",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "label_revision",
+            "inbound_count",
+            "carton_contents"
+          ],
+          "input_tokens": 414,
+          "output_tokens": 45,
+          "seconds": 0.475,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.739e-05
+        },
+        {
+          "request": "Did anyone take responsibility for the parcel after the cage attendant signed it out?",
+          "expected": "custody_history",
+          "predicted": "custody_history",
+          "status": "selected",
+          "candidates": [
+            "custody_history",
+            "dispatch_lane",
+            "carton_contents"
+          ],
+          "input_tokens": 418,
+          "output_tokens": 45,
+          "seconds": 0.46,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.756e-05
+        },
+        {
+          "request": "Security needs the handover record for consignment H21. Who accepted it last?",
+          "expected": "custody_history",
+          "predicted": "custody_history",
+          "status": "selected",
+          "candidates": [
+            "custody_history",
+            "carton_contents",
+            "inbound_count"
+          ],
+          "input_tokens": 423,
+          "output_tokens": 45,
+          "seconds": 1.172,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.777e-05
+        },
+        {
+          "request": "The sorter logged a divert to spur 18 for P31. Check the outbound assignment.",
+          "expected": "dispatch_lane",
+          "predicted": "dispatch_lane",
+          "status": "selected",
+          "candidates": [
+            "dispatch_lane",
+            "custody_history",
+            "carton_contents"
+          ],
+          "input_tokens": 423,
+          "output_tokens": 45,
+          "seconds": 0.424,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.777e-05
+        },
+        {
+          "request": "The weight alarm went off. I only need to know whether each product and count inside matches the order.",
+          "expected": "carton_contents",
+          "predicted": "carton_contents",
+          "status": "selected",
+          "candidates": [
+            "dispatch_lane",
+            "free_stock",
+            "carton_contents"
+          ],
+          "input_tokens": 421,
+          "output_tokens": 45,
+          "seconds": 0.42,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.768e-05
+        },
+        {
+          "request": "Move P18 from the postal spur to express so it doesn't miss departure.",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "dispatch_lane",
+            "custody_history",
+            "free_stock"
+          ],
+          "input_tokens": 418,
+          "output_tokens": 45,
+          "seconds": 0.336,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.756e-05
+        },
+        {
+          "request": "The website wants to sell another eight kettles from Bristol. How many are still available after commitments?",
+          "expected": "free_stock",
+          "predicted": "free_stock",
+          "status": "selected",
+          "candidates": [
+            "free_stock",
+            "carton_contents",
+            "custody_history"
+          ],
+          "input_tokens": 421,
+          "output_tokens": 45,
+          "seconds": 0.392,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.768e-05
+        },
+        {
+          "request": "Bench 12 got order 804. The pick ticket says two lids and a tub. Does the sealed unit contain that mix?",
+          "expected": "carton_contents",
+          "predicted": "carton_contents",
+          "status": "selected",
+          "candidates": [
+            "carton_contents",
+            "inbound_count",
+            "free_stock"
+          ],
+          "input_tokens": 431,
+          "output_tokens": 45,
+          "seconds": 0.385,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.81e-05
+        },
+        {
+          "request": "This is a postal bag on carousel C. Verify it is headed for the correct loading bay.",
+          "expected": "dispatch_lane",
+          "predicted": "dispatch_lane",
+          "status": "selected",
+          "candidates": [
+            "dispatch_lane",
+            "label_revision",
+            "custody_history"
+          ],
+          "input_tokens": 422,
+          "output_tokens": 45,
+          "seconds": 0.36,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.772e-05
+        },
+        {
+          "request": "Set aside nine green towels for the next web order.",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "carton_contents",
+            "dispatch_lane",
+            "free_stock"
+          ],
+          "input_tokens": 411,
+          "output_tokens": 45,
+          "seconds": 0.375,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.726e-05
+        },
+        {
+          "request": "Truck 54 delivered the summer replenishment. Reconcile what came off it with what purchasing asked for.",
+          "expected": "inbound_count",
+          "predicted": "inbound_count",
+          "status": "selected",
+          "candidates": [
+            "carton_contents",
+            "inbound_count",
+            "dispatch_lane"
+          ],
+          "input_tokens": 429,
+          "output_tokens": 45,
+          "seconds": 0.374,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.802e-05
+        },
+        {
+          "request": "I have number 702 and an upset driver. Can you look into it?",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "custody_history",
+            "free_stock",
+            "label_revision"
+          ],
+          "input_tokens": 419,
+          "output_tokens": 45,
+          "seconds": 0.334,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.76e-05
+        },
+        {
+          "request": "The returns team see an old barcode layout. Compare this parcel's label edition with the one on file.",
+          "expected": "label_revision",
+          "predicted": "label_revision",
+          "status": "selected",
+          "candidates": [
+            "label_revision",
+            "inbound_count",
+            "carton_contents"
+          ],
+          "input_tokens": 424,
+          "output_tokens": 45,
+          "seconds": 0.351,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.781e-05
+        },
+        {
+          "request": "The thermal sticker says issue C. Does that agree with the last shipping artwork issued for BX11?",
+          "expected": "label_revision",
+          "predicted": "label_revision",
+          "status": "selected",
+          "candidates": [
+            "carton_contents",
+            "label_revision",
+            "dispatch_lane"
+          ],
+          "input_tokens": 423,
+          "output_tokens": 45,
+          "seconds": 0.373,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.777e-05
+        }
+      ]
+    },
+    "categories": {
+      "summary": {
+        "requests": 36,
+        "supported": 24,
+        "should_abstain": 12,
+        "correct": 34,
+        "correct_recipe": 22,
+        "correct_abstentions": 12,
+        "false_accepts": 0,
+        "invalid": 0,
+        "retrieved_gold": 23,
+        "input_tokens": 15162,
+        "output_tokens": 1620
+      },
+      "rows": [
+        {
+          "request": "Get me the signed handovers and the packing discrepancy on consignment R17.",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "custody_history",
+            "dispatch_lane",
+            "inbound_count"
+          ],
+          "input_tokens": 422,
+          "output_tokens": 45,
+          "seconds": 0.358,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.772e-05
+        },
+        {
+          "request": "Before I sign off job 71, are the articles inside consistent with its sales lines?",
+          "expected": "carton_contents",
+          "predicted": "carton_contents",
+          "status": "selected",
+          "candidates": [
+            "carton_contents",
+            "label_revision",
+            "inbound_count"
+          ],
+          "input_tokens": 422,
+          "output_tokens": 45,
+          "seconds": 0.364,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.772e-05
+        },
+        {
+          "request": "What's the humidity inside the cheese cage right now?",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "carton_contents",
+            "label_revision",
+            "custody_history"
+          ],
+          "input_tokens": 414,
+          "output_tokens": 45,
+          "seconds": 0.422,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.739e-05
+        },
+        {
+          "request": "We signed for pallet P09 at receiving. Was the vendor short on any of the ordered quantities?",
+          "expected": "inbound_count",
+          "predicted": "inbound_count",
+          "status": "selected",
+          "candidates": [
+            "inbound_count",
+            "free_stock",
+            "custody_history"
+          ],
+          "input_tokens": 423,
+          "output_tokens": 45,
+          "seconds": 0.38,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.777e-05
+        },
+        {
+          "request": "Bin A has 36 rolls on the ledger, some earmarked for jobs. What's the sellable balance at this depot?",
+          "expected": "free_stock",
+          "predicted": "free_stock",
+          "status": "selected",
+          "candidates": [
+            "free_stock",
+            "inbound_count",
+            "carton_contents"
+          ],
+          "input_tokens": 429,
+          "output_tokens": 45,
+          "seconds": 0.433,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.802e-05
+        },
+        {
+          "request": "We found two versions of the courier label. Is the one physically attached to 938 the active one?",
+          "expected": "label_revision",
+          "predicted": "label_revision",
+          "status": "selected",
+          "candidates": [
+            "label_revision",
+            "carton_contents",
+            "dispatch_lane"
+          ],
+          "input_tokens": 425,
+          "output_tokens": 45,
+          "seconds": 0.423,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.785e-05
+        },
+        {
+          "request": "Northline collects from door seven. Does the chute used for this consignment lead there?",
+          "expected": "dispatch_lane",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "dispatch_lane",
+            "custody_history",
+            "free_stock"
+          ],
+          "input_tokens": 421,
+          "output_tokens": 45,
+          "seconds": 0.372,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.768e-05
+        },
+        {
+          "request": "A package is missing between shifts. Who acknowledged possession of 77-B most recently?",
+          "expected": "custody_history",
+          "predicted": "custody_history",
+          "status": "selected",
+          "candidates": [
+            "custody_history",
+            "dispatch_lane",
+            "carton_contents"
+          ],
+          "input_tokens": 421,
+          "output_tokens": 45,
+          "seconds": 0.378,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.768e-05
+        },
+        {
+          "request": "Has the waybill on the outside been superseded since it was printed?",
+          "expected": "label_revision",
+          "predicted": "label_revision",
+          "status": "selected",
+          "candidates": [
+            "label_revision",
+            "carton_contents",
+            "dispatch_lane"
+          ],
+          "input_tokens": 418,
+          "output_tokens": 45,
+          "seconds": 0.322,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.756e-05
+        },
+        {
+          "request": "The inbound supplier invoice has a fuel surcharge. Was the rate negotiated correctly?",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "dispatch_lane",
+            "custody_history",
+            "inbound_count"
+          ],
+          "input_tokens": 421,
+          "output_tokens": 45,
+          "seconds": 0.344,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.768e-05
+        },
+        {
+          "request": "Change the recorded recipient on last night's custody slip to Dana.",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "carton_contents",
+            "label_revision",
+            "inbound_count"
+          ],
+          "input_tokens": 416,
+          "output_tokens": 45,
+          "seconds": 0.456,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.747e-05
+        },
+        {
+          "request": "Someone at packing counted six mugs in BX88, although the shopper ordered a set of four. Can you check the discrepancy?",
+          "expected": "carton_contents",
+          "predicted": "carton_contents",
+          "status": "selected",
+          "candidates": [
+            "carton_contents",
+            "label_revision",
+            "custody_history"
+          ],
+          "input_tokens": 430,
+          "output_tokens": 45,
+          "seconds": 0.507,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.806e-05
+        },
+        {
+          "request": "Which of today's pallets is tallest?",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "inbound_count",
+            "free_stock",
+            "custody_history"
+          ],
+          "input_tokens": 411,
+          "output_tokens": 45,
+          "seconds": 0.532,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.726e-05
+        },
+        {
+          "request": "If that sticker is obsolete, print a replacement and put it on the package.",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "label_revision",
+            "carton_contents",
+            "dispatch_lane"
+          ],
+          "input_tokens": 418,
+          "output_tokens": 45,
+          "seconds": 0.532,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.756e-05
+        },
+        {
+          "request": "Parcel W14 lit up the amber diverter. Is that its carrier's designated exit?",
+          "expected": "dispatch_lane",
+          "predicted": "dispatch_lane",
+          "status": "selected",
+          "candidates": [
+            "dispatch_lane",
+            "custody_history",
+            "carton_contents"
+          ],
+          "input_tokens": 423,
+          "output_tokens": 45,
+          "seconds": 0.591,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.777e-05
+        },
+        {
+          "request": "Give me a delivery ETA for a parcel already on the motorway.",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "free_stock",
+            "inbound_count",
+            "custody_history"
+          ],
+          "input_tokens": 416,
+          "output_tokens": 45,
+          "seconds": 0.524,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.747e-05
+        },
+        {
+          "request": "Can finance pay for all 120 incoming cases, judging only by the number physically received against the PO?",
+          "expected": "inbound_count",
+          "predicted": "inbound_count",
+          "status": "selected",
+          "candidates": [
+            "custody_history",
+            "dispatch_lane",
+            "inbound_count"
+          ],
+          "input_tokens": 427,
+          "output_tokens": 45,
+          "seconds": 0.558,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.793e-05
+        },
+        {
+          "request": "Can I promise any units of R4 today from this building once the open allocations are deducted?",
+          "expected": "free_stock",
+          "predicted": "free_stock",
+          "status": "selected",
+          "candidates": [
+            "free_stock",
+            "inbound_count",
+            "custody_history"
+          ],
+          "input_tokens": 421,
+          "output_tokens": 45,
+          "seconds": 0.519,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.768e-05
+        },
+        {
+          "request": "A caller wants our remaining supply of lime paint at East. Exclude anything held for another customer.",
+          "expected": "free_stock",
+          "predicted": "free_stock",
+          "status": "selected",
+          "candidates": [
+            "free_stock",
+            "inbound_count",
+            "carton_contents"
+          ],
+          "input_tokens": 422,
+          "output_tokens": 45,
+          "seconds": 0.564,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.772e-05
+        },
+        {
+          "request": "Read back the transfers of tote G from pack station to courier, including the latest confirmed holder.",
+          "expected": "custody_history",
+          "predicted": "custody_history",
+          "status": "selected",
+          "candidates": [
+            "label_revision",
+            "carton_contents",
+            "custody_history"
+          ],
+          "input_tokens": 422,
+          "output_tokens": 45,
+          "seconds": 0.532,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.772e-05
+        },
+        {
+          "request": "Night shift booked in the ceramic order. Did the wholesaler send all the pieces we were expecting?",
+          "expected": "inbound_count",
+          "predicted": "inbound_count",
+          "status": "selected",
+          "candidates": [
+            "inbound_count",
+            "free_stock",
+            "carton_contents"
+          ],
+          "input_tokens": 422,
+          "output_tokens": 45,
+          "seconds": 0.521,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.772e-05
+        },
+        {
+          "request": "Check sellable stock at East and also whether our vendor's shipment was short.",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "inbound_count",
+            "free_stock",
+            "dispatch_lane"
+          ],
+          "input_tokens": 417,
+          "output_tokens": 45,
+          "seconds": 0.526,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.751e-05
+        },
+        {
+          "request": "Can you tell me if yesterday's job is fine?",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "label_revision",
+            "carton_contents",
+            "inbound_count"
+          ],
+          "input_tokens": 414,
+          "output_tokens": 45,
+          "seconds": 0.522,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.739e-05
+        },
+        {
+          "request": "Did anyone take responsibility for the parcel after the cage attendant signed it out?",
+          "expected": "custody_history",
+          "predicted": "custody_history",
+          "status": "selected",
+          "candidates": [
+            "custody_history",
+            "dispatch_lane",
+            "carton_contents"
+          ],
+          "input_tokens": 418,
+          "output_tokens": 45,
+          "seconds": 0.698,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.756e-05
+        },
+        {
+          "request": "Security needs the handover record for consignment H21. Who accepted it last?",
+          "expected": "custody_history",
+          "predicted": "custody_history",
+          "status": "selected",
+          "candidates": [
+            "custody_history",
+            "dispatch_lane",
+            "carton_contents"
+          ],
+          "input_tokens": 422,
+          "output_tokens": 45,
+          "seconds": 0.563,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.772e-05
+        },
+        {
+          "request": "The sorter logged a divert to spur 18 for P31. Check the outbound assignment.",
+          "expected": "dispatch_lane",
+          "predicted": "dispatch_lane",
+          "status": "selected",
+          "candidates": [
+            "dispatch_lane",
+            "custody_history",
+            "carton_contents"
+          ],
+          "input_tokens": 423,
+          "output_tokens": 45,
+          "seconds": 0.519,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.777e-05
+        },
+        {
+          "request": "The weight alarm went off. I only need to know whether each product and count inside matches the order.",
+          "expected": "carton_contents",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "dispatch_lane",
+            "custody_history",
+            "free_stock"
+          ],
+          "input_tokens": 422,
+          "output_tokens": 45,
+          "seconds": 0.547,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.772e-05
+        },
+        {
+          "request": "Move P18 from the postal spur to express so it doesn't miss departure.",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "dispatch_lane",
+            "custody_history",
+            "free_stock"
+          ],
+          "input_tokens": 418,
+          "output_tokens": 45,
+          "seconds": 0.451,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.756e-05
+        },
+        {
+          "request": "The website wants to sell another eight kettles from Bristol. How many are still available after commitments?",
+          "expected": "free_stock",
+          "predicted": "free_stock",
+          "status": "selected",
+          "candidates": [
+            "free_stock",
+            "inbound_count",
+            "carton_contents"
+          ],
+          "input_tokens": 421,
+          "output_tokens": 45,
+          "seconds": 0.372,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.768e-05
+        },
+        {
+          "request": "Bench 12 got order 804. The pick ticket says two lids and a tub. Does the sealed unit contain that mix?",
+          "expected": "carton_contents",
+          "predicted": "carton_contents",
+          "status": "selected",
+          "candidates": [
+            "carton_contents",
+            "label_revision",
+            "inbound_count"
+          ],
+          "input_tokens": 433,
+          "output_tokens": 45,
+          "seconds": 0.431,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.819e-05
+        },
+        {
+          "request": "This is a postal bag on carousel C. Verify it is headed for the correct loading bay.",
+          "expected": "dispatch_lane",
+          "predicted": "dispatch_lane",
+          "status": "selected",
+          "candidates": [
+            "dispatch_lane",
+            "custody_history",
+            "label_revision"
+          ],
+          "input_tokens": 422,
+          "output_tokens": 45,
+          "seconds": 0.384,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.772e-05
+        },
+        {
+          "request": "Set aside nine green towels for the next web order.",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "carton_contents",
+            "label_revision",
+            "dispatch_lane"
+          ],
+          "input_tokens": 413,
+          "output_tokens": 45,
+          "seconds": 0.409,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.735e-05
+        },
+        {
+          "request": "Truck 54 delivered the summer replenishment. Reconcile what came off it with what purchasing asked for.",
+          "expected": "inbound_count",
+          "predicted": "inbound_count",
+          "status": "selected",
+          "candidates": [
+            "carton_contents",
+            "label_revision",
+            "inbound_count"
+          ],
+          "input_tokens": 429,
+          "output_tokens": 45,
+          "seconds": 0.385,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.802e-05
+        },
+        {
+          "request": "I have number 702 and an upset driver. Can you look into it?",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "custody_history",
+            "dispatch_lane",
+            "free_stock"
+          ],
+          "input_tokens": 419,
+          "output_tokens": 45,
+          "seconds": 0.387,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.76e-05
+        },
+        {
+          "request": "The returns team see an old barcode layout. Compare this parcel's label edition with the one on file.",
+          "expected": "label_revision",
+          "predicted": "label_revision",
+          "status": "selected",
+          "candidates": [
+            "label_revision",
+            "carton_contents",
+            "inbound_count"
+          ],
+          "input_tokens": 424,
+          "output_tokens": 45,
+          "seconds": 0.402,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.781e-05
+        },
+        {
+          "request": "The thermal sticker says issue C. Does that agree with the last shipping artwork issued for BX11?",
+          "expected": "label_revision",
+          "predicted": "label_revision",
+          "status": "selected",
+          "candidates": [
+            "carton_contents",
+            "label_revision",
+            "dispatch_lane"
+          ],
+          "input_tokens": 423,
+          "output_tokens": 45,
+          "seconds": 0.351,
+          "served_model": "jev-1.14.0",
+          "estimated_cost_usd": 1.777e-05
+        }
+      ]
+    }
+  }
+}

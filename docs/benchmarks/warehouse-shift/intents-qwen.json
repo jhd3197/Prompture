@@ -1,0 +1,1102 @@
+{
+  "model": "ollama/qwen2.5:1.5b",
+  "fixtures": [
+    "f25ff3674b9dac0d3eb942987054a845bad933d31823480dccaf8f544b9c75da",
+    "90753df562f954048bc69aef325fc1eb72ffd9081046f016fe9f4dd37c803bbf"
+  ],
+  "summary": {
+    "requests": 60,
+    "supported": 42,
+    "should_abstain": 18,
+    "correct": 22,
+    "correct_recipe": 17,
+    "correct_abstentions": 5,
+    "false_accepts": 7,
+    "invalid": 17,
+    "retrieved_gold": 42,
+    "input_tokens": 14165,
+    "output_tokens": 350
+  },
+  "rows": [
+    {
+      "request": "Get me the signed handovers and the packing discrepancy on consignment R17.",
+      "expected": "abstain",
+      "choice": "2",
+      "predicted": "custody_history",
+      "candidates": [
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "free_stock",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "selected",
+      "served_model": "qwen2.5:1.5b",
+      "input_tokens": 235,
+      "output_tokens": 2
+    },
+    {
+      "request": "Before I sign off job 71, are the articles inside consistent with its sales lines?",
+      "expected": "carton_contents",
+      "choice": "0",
+      "predicted": "abstain",
+      "candidates": [
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "free_stock",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "abstained",
+      "served_model": "qwen2.5:1.5b",
+      "input_tokens": 237,
+      "output_tokens": 2
+    },
+    {
+      "request": "What's the humidity inside the cheese cage right now?",
+      "expected": "abstain",
+      "choice": "The humidity inside the cheese cage is currently 85%.",
+      "predicted": "invalid",
+      "candidates": [
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "free_stock",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "invalid",
+      "served_model": "qwen2.5:1.5b",
+      "input_tokens": 229,
+      "output_tokens": 13
+    },
+    {
+      "request": "We signed for pallet P09 at receiving. Was the vendor short on any of the ordered quantities?",
+      "expected": "inbound_count",
+      "choice": "0",
+      "predicted": "abstain",
+      "candidates": [
+        "carton_contents",
+        "inbound_count",
+        "custody_history",
+        "dispatch_lane",
+        "free_stock",
+        "label_revision"
+      ],
+      "status": "abstained",
+      "served_model": "qwen2.5:1.5b",
+      "input_tokens": 239,
+      "output_tokens": 2
+    },
+    {
+      "request": "Bin A has 36 rolls on the ledger, some earmarked for jobs. What's the sellable balance at this depot?",
+      "expected": "free_stock",
+      "choice": "0",
+      "predicted": "abstain",
+      "candidates": [
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "free_stock",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "abstained",
+      "served_model": "qwen2.5:1.5b",
+      "input_tokens": 245,
+      "output_tokens": 2
+    },
+    {
+      "request": "We found two versions of the courier label. Is the one physically attached to 938 the active one?",
+      "expected": "label_revision",
+      "choice": "1",
+      "predicted": "label_revision",
+      "candidates": [
+        "label_revision",
+        "free_stock",
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "inbound_count"
+      ],
+      "status": "selected",
+      "served_model": "qwen2.5:1.5b",
+      "input_tokens": 241,
+      "output_tokens": 2
+    },
+    {
+      "request": "Northline collects from door seven. Does the chute used for this consignment lead there?",
+      "expected": "dispatch_lane",
+      "choice": "No, the chute used for the consignment from door seven does not lead there",
+      "predicted": "invalid",
+      "candidates": [
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "free_stock",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "invalid",
+      "served_model": "qwen2.5:1.5b",
+      "input_tokens": 236,
+      "output_tokens": 16
+    },
+    {
+      "request": "A package is missing between shifts. Who acknowledged possession of 77-B most recently?",
+      "expected": "custody_history",
+      "choice": "The option that answers the question is \"custody_history: Find the last accepted",
+      "predicted": "invalid",
+      "candidates": [
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "free_stock",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "invalid",
+      "served_model": "qwen2.5:1.5b",
+      "input_tokens": 236,
+      "output_tokens": 16
+    },
+    {
+      "request": "Has the waybill on the outside been superseded since it was printed?",
+      "expected": "label_revision",
+      "choice": "1",
+      "predicted": "label_revision",
+      "candidates": [
+        "label_revision",
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "free_stock",
+        "inbound_count"
+      ],
+      "status": "selected",
+      "served_model": "qwen2.5:1.5b",
+      "input_tokens": 233,
+      "output_tokens": 2
+    },
+    {
+      "request": "The inbound supplier invoice has a fuel surcharge. Was the rate negotiated correctly?",
+      "expected": "abstain",
+      "choice": "0",
+      "predicted": "abstain",
+      "candidates": [
+        "inbound_count",
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "free_stock",
+        "label_revision"
+      ],
+      "status": "abstained",
+      "served_model": "qwen2.5:1.5b",
+      "input_tokens": 234,
+      "output_tokens": 2
+    },
+    {
+      "request": "Change the recorded recipient on last night's custody slip to Dana.",
+      "expected": "abstain",
+      "choice": "0",
+      "predicted": "abstain",
+      "candidates": [
+        "custody_history",
+        "carton_contents",
+        "dispatch_lane",
+        "free_stock",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "abstained",
+      "served_model": "qwen2.5:1.5b",
+      "input_tokens": 231,
+      "output_tokens": 2
+    },
+    {
+      "request": "Someone at packing counted six mugs in BX88, although the shopper ordered a set of four. Can you check the discrepancy?",
+      "expected": "carton_contents",
+      "choice": "The discrepancy is that the shopper ordered a set of four mugs, but the",
+      "predicted": "invalid",
+      "candidates": [
+        "free_stock",
+        "inbound_count",
+        "label_revision",
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane"
+      ],
+      "status": "invalid",
+      "served_model": "qwen2.5:1.5b",
+      "input_tokens": 245,
+      "output_tokens": 16
+    },
+    {
+      "request": "Which of today's pallets is tallest?",
+      "expected": "abstain",
+      "choice": "I'm sorry, but I don't have any information about today's pallets",
+      "predicted": "invalid",
+      "candidates": [
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "free_stock",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "invalid",
+      "served_model": "qwen2.5:1.5b",
+      "input_tokens": 227,
+      "output_tokens": 16
+    },
+    {
+      "request": "If that sticker is obsolete, print a replacement and put it on the package.",
+      "expected": "abstain",
+      "choice": "0",
+      "predicted": "abstain",
+      "candidates": [
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "free_stock",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "abstained",
+      "served_model": "qwen2.5:1.5b",
+      "input_tokens": 234,
+      "output_tokens": 2
+    },
+    {
+      "request": "Parcel W14 lit up the amber diverter. Is that its carrier's designated exit?",
+      "expected": "dispatch_lane",
+      "choice": "4",
+      "predicted": "carton_contents",
+      "candidates": [
+        "dispatch_lane",
+        "custody_history",
+        "free_stock",
+        "carton_contents",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "selected",
+      "served_model": "qwen2.5:1.5b",
+      "input_tokens": 237,
+      "output_tokens": 2
+    },
+    {
+      "request": "Give me a delivery ETA for a parcel already on the motorway.",
+      "expected": "abstain",
+      "choice": "9",
+      "predicted": "abstain",
+      "candidates": [
+        "dispatch_lane",
+        "inbound_count",
+        "carton_contents",
+        "custody_history",
+        "free_stock",
+        "label_revision"
+      ],
+      "status": "abstained",
+      "served_model": "qwen2.5:1.5b",
+      "input_tokens": 232,
+      "output_tokens": 2
+    },
+    {
+      "request": "Can finance pay for all 120 incoming cases, judging only by the number physically received against the PO?",
+      "expected": "inbound_count",
+      "choice": "4",
+      "predicted": "custody_history",
+      "candidates": [
+        "inbound_count",
+        "dispatch_lane",
+        "carton_contents",
+        "custody_history",
+        "free_stock",
+        "label_revision"
+      ],
+      "status": "selected",
+      "served_model": "qwen2.5:1.5b",
+      "input_tokens": 241,
+      "output_tokens": 2
+    },
+    {
+      "request": "Can I promise any units of R4 today from this building once the open allocations are deducted?",
+      "expected": "free_stock",
+      "choice": "0",
+      "predicted": "abstain",
+      "candidates": [
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "free_stock",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "abstained",
+      "served_model": "qwen2.5:1.5b",
+      "input_tokens": 237,
+      "output_tokens": 2
+    },
+    {
+      "request": "A caller wants our remaining supply of lime paint at East. Exclude anything held for another customer.",
+      "expected": "free_stock",
+      "choice": "4",
+      "predicted": "free_stock",
+      "candidates": [
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "free_stock",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "selected",
+      "served_model": "qwen2.5:1.5b",
+      "input_tokens": 237,
+      "output_tokens": 2
+    },
+    {
+      "request": "Read back the transfers of tote G from pack station to courier, including the latest confirmed holder.",
+      "expected": "custody_history",
+      "choice": "The transfer of tote G from pack station to courier is confirmed by the last accepted",
+      "predicted": "invalid",
+      "candidates": [
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "free_stock",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "invalid",
+      "served_model": "qwen2.5:1.5b",
+      "input_tokens": 237,
+      "output_tokens": 16
+    },
+    {
+      "request": "Night shift booked in the ceramic order. Did the wholesaler send all the pieces we were expecting?",
+      "expected": "inbound_count",
+      "choice": "4",
+      "predicted": "dispatch_lane",
+      "candidates": [
+        "inbound_count",
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "free_stock",
+        "label_revision"
+      ],
+      "status": "selected",
+      "served_model": "qwen2.5:1.5b",
+      "input_tokens": 238,
+      "output_tokens": 2
+    },
+    {
+      "request": "Check sellable stock at East and also whether our vendor's shipment was short.",
+      "expected": "abstain",
+      "choice": "1",
+      "predicted": "free_stock",
+      "candidates": [
+        "free_stock",
+        "carton_contents",
+        "custody_history",
+        "inbound_count",
+        "label_revision",
+        "dispatch_lane"
+      ],
+      "status": "selected",
+      "served_model": "qwen2.5:1.5b",
+      "input_tokens": 234,
+      "output_tokens": 2
+    },
+    {
+      "request": "Can you tell me if yesterday's job is fine?",
+      "expected": "abstain",
+      "choice": "No, I cannot tell you if yesterday's job is fine as there is no",
+      "predicted": "invalid",
+      "candidates": [
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "free_stock",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "invalid",
+      "served_model": "qwen2.5:1.5b",
+      "input_tokens": 229,
+      "output_tokens": 16
+    },
+    {
+      "request": "Did anyone take responsibility for the parcel after the cage attendant signed it out?",
+      "expected": "custody_history",
+      "choice": "0",
+      "predicted": "abstain",
+      "candidates": [
+        "dispatch_lane",
+        "free_stock",
+        "carton_contents",
+        "custody_history",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "abstained",
+      "served_model": "qwen2.5:1.5b",
+      "input_tokens": 233,
+      "output_tokens": 2
+    },
+    {
+      "request": "Security needs the handover record for consignment H21. Who accepted it last?",
+      "expected": "custody_history",
+      "choice": "1",
+      "predicted": "custody_history",
+      "candidates": [
+        "custody_history",
+        "carton_contents",
+        "dispatch_lane",
+        "free_stock",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "selected",
+      "served_model": "qwen2.5:1.5b",
+      "input_tokens": 236,
+      "output_tokens": 2
+    },
+    {
+      "request": "The sorter logged a divert to spur 18 for P31. Check the outbound assignment.",
+      "expected": "dispatch_lane",
+      "choice": "1",
+      "predicted": "dispatch_lane",
+      "candidates": [
+        "dispatch_lane",
+        "free_stock",
+        "inbound_count",
+        "label_revision",
+        "carton_contents",
+        "custody_history"
+      ],
+      "status": "selected",
+      "served_model": "qwen2.5:1.5b",
+      "input_tokens": 238,
+      "output_tokens": 2
+    },
+    {
+      "request": "The weight alarm went off. I only need to know whether each product and count inside matches the order.",
+      "expected": "carton_contents",
+      "choice": "2",
+      "predicted": "carton_contents",
+      "candidates": [
+        "inbound_count",
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "free_stock",
+        "label_revision"
+      ],
+      "status": "selected",
+      "served_model": "qwen2.5:1.5b",
+      "input_tokens": 239,
+      "output_tokens": 2
+    },
+    {
+      "request": "Move P18 from the postal spur to express so it doesn't miss departure.",
+      "expected": "abstain",
+      "choice": "1",
+      "predicted": "carton_contents",
+      "candidates": [
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "free_stock",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "selected",
+      "served_model": "qwen2.5:1.5b",
+      "input_tokens": 235,
+      "output_tokens": 2
+    },
+    {
+      "request": "The website wants to sell another eight kettles from Bristol. How many are still available after commitments?",
+      "expected": "free_stock",
+      "choice": "The website wants to sell another eight kettles from Bristol. After commitments,",
+      "predicted": "invalid",
+      "candidates": [
+        "free_stock",
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "invalid",
+      "served_model": "qwen2.5:1.5b",
+      "input_tokens": 239,
+      "output_tokens": 16
+    },
+    {
+      "request": "Bench 12 got order 804. The pick ticket says two lids and a tub. Does the sealed unit contain that mix?",
+      "expected": "carton_contents",
+      "choice": "The sealed unit contains two lids and a tub.",
+      "predicted": "invalid",
+      "candidates": [
+        "inbound_count",
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "free_stock",
+        "label_revision"
+      ],
+      "status": "invalid",
+      "served_model": "qwen2.5:1.5b",
+      "input_tokens": 248,
+      "output_tokens": 11
+    },
+    {
+      "request": "This is a postal bag on carousel C. Verify it is headed for the correct loading bay.",
+      "expected": "dispatch_lane",
+      "choice": "1",
+      "predicted": "carton_contents",
+      "candidates": [
+        "carton_contents",
+        "dispatch_lane",
+        "custody_history",
+        "free_stock",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "selected",
+      "served_model": "qwen2.5:1.5b",
+      "input_tokens": 237,
+      "output_tokens": 2
+    },
+    {
+      "request": "Set aside nine green towels for the next web order.",
+      "expected": "abstain",
+      "choice": "9",
+      "predicted": "abstain",
+      "candidates": [
+        "inbound_count",
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "free_stock",
+        "label_revision"
+      ],
+      "status": "abstained",
+      "served_model": "qwen2.5:1.5b",
+      "input_tokens": 229,
+      "output_tokens": 2
+    },
+    {
+      "request": "Truck 54 delivered the summer replenishment. Reconcile what came off it with what purchasing asked for.",
+      "expected": "inbound_count",
+      "choice": "6",
+      "predicted": "label_revision",
+      "candidates": [
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "free_stock",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "selected",
+      "served_model": "qwen2.5:1.5b",
+      "input_tokens": 242,
+      "output_tokens": 2
+    },
+    {
+      "request": "I have number 702 and an upset driver. Can you look into it?",
+      "expected": "abstain",
+      "choice": "The option that corresponds to the record ID 702 is \"Change or",
+      "predicted": "invalid",
+      "candidates": [
+        "custody_history",
+        "free_stock",
+        "carton_contents",
+        "dispatch_lane",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "invalid",
+      "served_model": "qwen2.5:1.5b",
+      "input_tokens": 236,
+      "output_tokens": 16
+    },
+    {
+      "request": "The returns team see an old barcode layout. Compare this parcel's label edition with the one on file.",
+      "expected": "label_revision",
+      "choice": "1",
+      "predicted": "label_revision",
+      "candidates": [
+        "label_revision",
+        "carton_contents",
+        "dispatch_lane",
+        "free_stock",
+        "inbound_count",
+        "custody_history"
+      ],
+      "status": "selected",
+      "served_model": "qwen2.5:1.5b",
+      "input_tokens": 239,
+      "output_tokens": 2
+    },
+    {
+      "request": "The thermal sticker says issue C. Does that agree with the last shipping artwork issued for BX11?",
+      "expected": "label_revision",
+      "choice": "The thermal sticker says issue C. This option aligns with the last shipping artwork",
+      "predicted": "invalid",
+      "candidates": [
+        "label_revision",
+        "custody_history",
+        "carton_contents",
+        "dispatch_lane",
+        "free_stock",
+        "inbound_count"
+      ],
+      "status": "invalid",
+      "served_model": "qwen2.5:1.5b",
+      "input_tokens": 239,
+      "output_tokens": 16
+    },
+    {
+      "request": "Look at unit 140's pack record. Are the socket sizes and quantities inside exactly what the buyer ordered?",
+      "expected": "carton_contents",
+      "choice": "0",
+      "predicted": "abstain",
+      "candidates": [
+        "carton_contents",
+        "custody_history",
+        "free_stock",
+        "inbound_count",
+        "dispatch_lane",
+        "label_revision"
+      ],
+      "status": "abstained",
+      "served_model": "qwen2.5:1.5b",
+      "input_tokens": 242,
+      "output_tokens": 2
+    },
+    {
+      "request": "Inspect the goods receipt for the oak panels and report any difference from the supplier order quantities.",
+      "expected": "inbound_count",
+      "choice": "1",
+      "predicted": "inbound_count",
+      "candidates": [
+        "inbound_count",
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "free_stock",
+        "label_revision"
+      ],
+      "status": "selected",
+      "served_model": "qwen2.5:1.5b",
+      "input_tokens": 236,
+      "output_tokens": 2
+    },
+    {
+      "request": "How many staff clocked in for the unloading shift?",
+      "expected": "abstain",
+      "choice": "The given list of options does not contain any information about staff clocking in for",
+      "predicted": "invalid",
+      "candidates": [
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "free_stock",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "invalid",
+      "served_model": "qwen2.5:1.5b",
+      "input_tokens": 230,
+      "output_tokens": 16
+    },
+    {
+      "request": "Between Mia at pickup and the airport shed, who last confirmed receipt of the mailbag?",
+      "expected": "custody_history",
+      "choice": "The last person to confirm receipt of the mailbag was Mia at the airport shed",
+      "predicted": "invalid",
+      "candidates": [
+        "custody_history",
+        "inbound_count",
+        "carton_contents",
+        "dispatch_lane",
+        "free_stock",
+        "label_revision"
+      ],
+      "status": "invalid",
+      "served_model": "qwen2.5:1.5b",
+      "input_tokens": 236,
+      "output_tokens": 16
+    },
+    {
+      "request": "Change the dock assignment to East and tell the driver.",
+      "expected": "abstain",
+      "choice": "1",
+      "predicted": "dispatch_lane",
+      "candidates": [
+        "dispatch_lane",
+        "carton_contents",
+        "custody_history",
+        "free_stock",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "selected",
+      "served_model": "qwen2.5:1.5b",
+      "input_tokens": 229,
+      "output_tokens": 2
+    },
+    {
+      "request": "Is the parcel wearing a retired edition of its address label?",
+      "expected": "label_revision",
+      "choice": "1",
+      "predicted": "label_revision",
+      "candidates": [
+        "label_revision",
+        "dispatch_lane",
+        "custody_history",
+        "carton_contents",
+        "free_stock",
+        "inbound_count"
+      ],
+      "status": "selected",
+      "served_model": "qwen2.5:1.5b",
+      "input_tokens": 230,
+      "output_tokens": 2
+    },
+    {
+      "request": "Could you check the thing from the late shift?",
+      "expected": "abstain",
+      "choice": "1",
+      "predicted": "free_stock",
+      "candidates": [
+        "free_stock",
+        "inbound_count",
+        "label_revision",
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane"
+      ],
+      "status": "selected",
+      "served_model": "qwen2.5:1.5b",
+      "input_tokens": 228,
+      "output_tokens": 2
+    },
+    {
+      "request": "The slip calls for a shirt and two scarves. Does the packing scan account for that assortment?",
+      "expected": "carton_contents",
+      "choice": "The packing scan does not account for the specific items requested, which are a shirt",
+      "predicted": "invalid",
+      "candidates": [
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "free_stock",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "invalid",
+      "served_model": "qwen2.5:1.5b",
+      "input_tokens": 238,
+      "output_tokens": 16
+    },
+    {
+      "request": "A mystery accessory turned up in our packing photo. Did the customer's order call for everything in the box?",
+      "expected": "carton_contents",
+      "choice": "4",
+      "predicted": "carton_contents",
+      "candidates": [
+        "custody_history",
+        "free_stock",
+        "inbound_count",
+        "carton_contents",
+        "dispatch_lane",
+        "label_revision"
+      ],
+      "status": "selected",
+      "served_model": "qwen2.5:1.5b",
+      "input_tokens": 240,
+      "output_tokens": 2
+    },
+    {
+      "request": "The wholesaler billed a hundred tea tins on our buying order. How many actually landed against that number?",
+      "expected": "inbound_count",
+      "choice": "4",
+      "predicted": "custody_history",
+      "candidates": [
+        "inbound_count",
+        "dispatch_lane",
+        "carton_contents",
+        "custody_history",
+        "free_stock",
+        "label_revision"
+      ],
+      "status": "selected",
+      "served_model": "qwen2.5:1.5b",
+      "input_tokens": 240,
+      "output_tokens": 2
+    },
+    {
+      "request": "What date will courier 15 deliver that envelope to the island?",
+      "expected": "abstain",
+      "choice": "The date that courier 15 will deliver the envelope to the island is",
+      "predicted": "invalid",
+      "candidates": [
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "free_stock",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "invalid",
+      "served_model": "qwen2.5:1.5b",
+      "input_tokens": 232,
+      "output_tokens": 16
+    },
+    {
+      "request": "For product 29 at the annex, give me on-hand minus the units ring-fenced for open tickets.",
+      "expected": "free_stock",
+      "choice": "0",
+      "predicted": "abstain",
+      "candidates": [
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "free_stock",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "abstained",
+      "served_model": "qwen2.5:1.5b",
+      "input_tokens": 241,
+      "output_tokens": 2
+    },
+    {
+      "request": "A waybill was amended overnight. Check whether the physical copy on crate Z still matches.",
+      "expected": "label_revision",
+      "choice": "4",
+      "predicted": "carton_contents",
+      "candidates": [
+        "free_stock",
+        "inbound_count",
+        "label_revision",
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane"
+      ],
+      "status": "selected",
+      "served_model": "qwen2.5:1.5b",
+      "input_tokens": 236,
+      "output_tokens": 2
+    },
+    {
+      "request": "Put a hold on all remaining oak panels until the inspector arrives.",
+      "expected": "abstain",
+      "choice": "1",
+      "predicted": "carton_contents",
+      "candidates": [
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "free_stock",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "selected",
+      "served_model": "qwen2.5:1.5b",
+      "input_tokens": 231,
+      "output_tokens": 2
+    },
+    {
+      "request": "Show each recorded handover for X80 up to the most recent acceptance.",
+      "expected": "custody_history",
+      "choice": "1",
+      "predicted": "custody_history",
+      "candidates": [
+        "custody_history",
+        "free_stock",
+        "carton_contents",
+        "dispatch_lane",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "selected",
+      "served_model": "qwen2.5:1.5b",
+      "input_tokens": 234,
+      "output_tokens": 2
+    },
+    {
+      "request": "Recover the signed chain of possession for the missing camera box, ending with its latest keeper.",
+      "expected": "custody_history",
+      "choice": "1",
+      "predicted": "custody_history",
+      "candidates": [
+        "custody_history",
+        "dispatch_lane",
+        "carton_contents",
+        "free_stock",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "selected",
+      "served_model": "qwen2.5:1.5b",
+      "input_tokens": 237,
+      "output_tokens": 2
+    },
+    {
+      "request": "Were both the printed waybill and the items inside this parcel correct?",
+      "expected": "abstain",
+      "choice": "4",
+      "predicted": "custody_history",
+      "candidates": [
+        "carton_contents",
+        "dispatch_lane",
+        "label_revision",
+        "custody_history",
+        "free_stock",
+        "inbound_count"
+      ],
+      "status": "selected",
+      "served_model": "qwen2.5:1.5b",
+      "input_tokens": 232,
+      "output_tokens": 2
+    },
+    {
+      "request": "Leeds has parts already claimed by service jobs. What quantity of the motor can I offer a walk-in buyer?",
+      "expected": "free_stock",
+      "choice": "The quantity of the motor that can be offered to a walk-in buyer depends on",
+      "predicted": "invalid",
+      "candidates": [
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "free_stock",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "invalid",
+      "served_model": "qwen2.5:1.5b",
+      "input_tokens": 241,
+      "output_tokens": 16
+    },
+    {
+      "request": "Our blue carrier collects on belt 2. Did the sorter route the Valencia parcel onto that belt?",
+      "expected": "dispatch_lane",
+      "choice": "1",
+      "predicted": "dispatch_lane",
+      "candidates": [
+        "dispatch_lane",
+        "carton_contents",
+        "custody_history",
+        "free_stock",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "selected",
+      "served_model": "qwen2.5:1.5b",
+      "input_tokens": 238,
+      "output_tokens": 2
+    },
+    {
+      "request": "The revision mark on this sticker reads 07. Is that still the current issue for this consignment?",
+      "expected": "label_revision",
+      "choice": "Yes, the revision mark on the sticker reads 07, which indicates that",
+      "predicted": "invalid",
+      "candidates": [
+        "label_revision",
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "free_stock",
+        "inbound_count"
+      ],
+      "status": "invalid",
+      "served_model": "qwen2.5:1.5b",
+      "input_tokens": 240,
+      "output_tokens": 16
+    },
+    {
+      "request": "Can a new customer take three brass hinges from this store once outstanding reservations are covered?",
+      "expected": "free_stock",
+      "choice": "1",
+      "predicted": "free_stock",
+      "candidates": [
+        "free_stock",
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "selected",
+      "served_model": "qwen2.5:1.5b",
+      "input_tokens": 235,
+      "output_tokens": 2
+    },
+    {
+      "request": "When we unloaded the flour this morning, was the amount received equal to the amount ordered?",
+      "expected": "inbound_count",
+      "choice": "1",
+      "predicted": "inbound_count",
+      "candidates": [
+        "inbound_count",
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "free_stock",
+        "label_revision"
+      ],
+      "status": "selected",
+      "served_model": "qwen2.5:1.5b",
+      "input_tokens": 236,
+      "output_tokens": 2
+    },
+    {
+      "request": "FastParcel freight went down the red chute. Is that the assigned exit for this service?",
+      "expected": "dispatch_lane",
+      "choice": "1",
+      "predicted": "dispatch_lane",
+      "candidates": [
+        "dispatch_lane",
+        "carton_contents",
+        "custody_history",
+        "free_stock",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "selected",
+      "served_model": "qwen2.5:1.5b",
+      "input_tokens": 236,
+      "output_tokens": 2
+    },
+    {
+      "request": "Check bag 12's last outbound divert against its booked loading point.",
+      "expected": "dispatch_lane",
+      "choice": "1",
+      "predicted": "dispatch_lane",
+      "candidates": [
+        "dispatch_lane",
+        "custody_history",
+        "inbound_count",
+        "free_stock",
+        "label_revision",
+        "carton_contents"
+      ],
+      "status": "selected",
+      "served_model": "qwen2.5:1.5b",
+      "input_tokens": 233,
+      "output_tokens": 2
+    }
+  ]
+}
