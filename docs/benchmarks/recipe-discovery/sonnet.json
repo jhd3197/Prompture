@@ -1,0 +1,1528 @@
+{
+  "model": "claude/claude-sonnet-4-6",
+  "fixture_sha256": "d9b1dc199f91adc91ef0d594f0b405c0b6d5b8646d5a226411524a5e0750fbee",
+  "arms": {
+    "6": {
+      "summary": {
+        "requests": 48,
+        "supported": 30,
+        "should_abstain": 18,
+        "correct": 45,
+        "correct_recipe": 27,
+        "correct_abstentions": 18,
+        "false_accepts": 0,
+        "invalid": 3,
+        "retrieved_gold": 30,
+        "input_tokens": 10269,
+        "output_tokens": 289
+      },
+      "rows": [
+        {
+          "request": "Subtract the units already spoken for from the shelf balance at this site.",
+          "expected": "free_stock",
+          "predicted": "free_stock",
+          "status": "selected",
+          "candidates": [
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane",
+            "free_stock",
+            "inbound_count",
+            "label_revision"
+          ],
+          "input_tokens": 216,
+          "output_tokens": 6,
+          "seconds": 2.372
+        },
+        {
+          "request": "The receiving slip shows forty; do the dock tallies back it up?",
+          "expected": "inbound_count",
+          "predicted": "inbound_count",
+          "status": "selected",
+          "candidates": [
+            "custody_history",
+            "dispatch_lane",
+            "free_stock",
+            "carton_contents",
+            "inbound_count",
+            "label_revision"
+          ],
+          "input_tokens": 216,
+          "output_tokens": 5,
+          "seconds": 1.096
+        },
+        {
+          "request": "Check that the paperwork matches.",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "free_stock",
+            "inbound_count",
+            "label_revision",
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane"
+          ],
+          "input_tokens": 208,
+          "output_tokens": 5,
+          "seconds": 1.173
+        },
+        {
+          "request": "Did somebody pack an extra charger in the customer's parcel?",
+          "expected": "carton_contents",
+          "predicted": "carton_contents",
+          "status": "selected",
+          "candidates": [
+            "carton_contents",
+            "dispatch_lane",
+            "custody_history",
+            "free_stock",
+            "inbound_count",
+            "label_revision"
+          ],
+          "input_tokens": 215,
+          "output_tokens": 6,
+          "seconds": 1.189
+        },
+        {
+          "request": "Are the revision on this parcel and the active label revision identical?",
+          "expected": "label_revision",
+          "predicted": "label_revision",
+          "status": "selected",
+          "candidates": [
+            "label_revision",
+            "dispatch_lane",
+            "carton_contents",
+            "custody_history",
+            "free_stock",
+            "inbound_count"
+          ],
+          "input_tokens": 215,
+          "output_tokens": 6,
+          "seconds": 1.582
+        },
+        {
+          "request": "Can the packed SKU mix account for every order line?",
+          "expected": "carton_contents",
+          "predicted": "carton_contents",
+          "status": "selected",
+          "candidates": [
+            "carton_contents",
+            "inbound_count",
+            "custody_history",
+            "dispatch_lane",
+            "free_stock",
+            "label_revision"
+          ],
+          "input_tokens": 213,
+          "output_tokens": 5,
+          "seconds": 1.151
+        },
+        {
+          "request": "Correct the purchase order so it agrees with the receiving slip.",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "inbound_count",
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane",
+            "free_stock",
+            "label_revision"
+          ],
+          "input_tokens": 214,
+          "output_tokens": 5,
+          "seconds": 0.718
+        },
+        {
+          "request": "Tell me both how much is free and who last took custody.",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "custody_history",
+            "free_stock",
+            "carton_contents",
+            "dispatch_lane",
+            "inbound_count",
+            "label_revision"
+          ],
+          "input_tokens": 214,
+          "output_tokens": 5,
+          "seconds": 1.805
+        },
+        {
+          "request": "Of the twenty shown on hand here, how many are free for another order?",
+          "expected": "free_stock",
+          "predicted": "free_stock",
+          "status": "selected",
+          "candidates": [
+            "free_stock",
+            "inbound_count",
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane",
+            "label_revision"
+          ],
+          "input_tokens": 217,
+          "output_tokens": 6,
+          "seconds": 1.259
+        },
+        {
+          "request": "Is the parcel in the correct chute for its outbound service?",
+          "expected": "dispatch_lane",
+          "predicted": "dispatch_lane",
+          "status": "selected",
+          "candidates": [
+            "dispatch_lane",
+            "custody_history",
+            "carton_contents",
+            "free_stock",
+            "inbound_count",
+            "label_revision"
+          ],
+          "input_tokens": 216,
+          "output_tokens": 5,
+          "seconds": 1.427
+        },
+        {
+          "request": "Find the right outbound lane and book the carrier pickup.",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "dispatch_lane",
+            "custody_history",
+            "carton_contents",
+            "free_stock",
+            "inbound_count",
+            "label_revision"
+          ],
+          "input_tokens": 213,
+          "output_tokens": 5,
+          "seconds": 0.729
+        },
+        {
+          "request": "Which forklift needs a battery change?",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane",
+            "free_stock",
+            "inbound_count",
+            "label_revision"
+          ],
+          "input_tokens": 210,
+          "output_tokens": 5,
+          "seconds": 1.083
+        },
+        {
+          "request": "Compare the printed waybill version to the current one in the system.",
+          "expected": "label_revision",
+          "predicted": "label_revision",
+          "status": "selected",
+          "candidates": [
+            "label_revision",
+            "carton_contents",
+            "free_stock",
+            "inbound_count",
+            "custody_history",
+            "dispatch_lane"
+          ],
+          "input_tokens": 216,
+          "output_tokens": 6,
+          "seconds": 1.204
+        },
+        {
+          "request": "Remove the extra book from the carton.",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane",
+            "free_stock",
+            "inbound_count",
+            "label_revision"
+          ],
+          "input_tokens": 210,
+          "output_tokens": 5,
+          "seconds": 1.266
+        },
+        {
+          "request": "Trace possession from the last accepted handover.",
+          "expected": "custody_history",
+          "predicted": "custody_history",
+          "status": "selected",
+          "candidates": [
+            "custody_history",
+            "carton_contents",
+            "dispatch_lane",
+            "free_stock",
+            "inbound_count",
+            "label_revision"
+          ],
+          "input_tokens": 211,
+          "output_tokens": 5,
+          "seconds": 1.171
+        },
+        {
+          "request": "At goods-in, compare the pieces we got with the PO.",
+          "expected": "inbound_count",
+          "predicted": "inbound_count",
+          "status": "selected",
+          "candidates": [
+            "carton_contents",
+            "inbound_count",
+            "label_revision",
+            "custody_history",
+            "dispatch_lane",
+            "free_stock"
+          ],
+          "input_tokens": 216,
+          "output_tokens": 5,
+          "seconds": 1.303
+        },
+        {
+          "request": "After existing promises, how many of these could another buyer still order here?",
+          "expected": "free_stock",
+          "predicted": "free_stock",
+          "status": "selected",
+          "candidates": [
+            "free_stock",
+            "inbound_count",
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane",
+            "label_revision"
+          ],
+          "input_tokens": 216,
+          "output_tokens": 6,
+          "seconds": 1.122
+        },
+        {
+          "request": "Does what the packer put in the box agree with the customer's shopping list?",
+          "expected": "carton_contents",
+          "predicted": "carton_contents",
+          "status": "selected",
+          "candidates": [
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane",
+            "free_stock",
+            "inbound_count",
+            "label_revision"
+          ],
+          "input_tokens": 218,
+          "output_tokens": 6,
+          "seconds": 0.72
+        },
+        {
+          "request": "Before sealing this one, reconcile the tote's item counts to this shipment.",
+          "expected": "carton_contents",
+          "predicted": "carton_contents",
+          "status": "selected",
+          "candidates": [
+            "inbound_count",
+            "carton_contents",
+            "custody_history",
+            "free_stock",
+            "dispatch_lane",
+            "label_revision"
+          ],
+          "input_tokens": 220,
+          "output_tokens": 5,
+          "seconds": 1.189
+        },
+        {
+          "request": "Cross-check the load bay on this dispatch scan against the manifest.",
+          "expected": "dispatch_lane",
+          "predicted": "dispatch_lane",
+          "status": "selected",
+          "candidates": [
+            "dispatch_lane",
+            "inbound_count",
+            "free_stock",
+            "label_revision",
+            "carton_contents",
+            "custody_history"
+          ],
+          "input_tokens": 215,
+          "output_tokens": 6,
+          "seconds": 0.675
+        },
+        {
+          "request": "Which two suppliers had the highest return rate this month?",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "inbound_count",
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane",
+            "free_stock",
+            "label_revision"
+          ],
+          "input_tokens": 212,
+          "output_tokens": 5,
+          "seconds": 1.147
+        },
+        {
+          "request": "When will this order reach the buyer's doorstep?",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "inbound_count",
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane",
+            "free_stock",
+            "label_revision"
+          ],
+          "input_tokens": 213,
+          "output_tokens": 5,
+          "seconds": 1.098
+        },
+        {
+          "request": "Check the carton contents and the current label revision.",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "label_revision",
+            "carton_contents",
+            "free_stock",
+            "inbound_count",
+            "custody_history",
+            "dispatch_lane"
+          ],
+          "input_tokens": 212,
+          "output_tokens": 5,
+          "seconds": 1.059
+        },
+        {
+          "request": "A shipping label was reissued yesterday. Is the old one still on this carton?",
+          "expected": "label_revision",
+          "predicted": "label_revision",
+          "status": "selected",
+          "candidates": [
+            "label_revision",
+            "carton_contents",
+            "free_stock",
+            "custody_history",
+            "dispatch_lane",
+            "inbound_count"
+          ],
+          "input_tokens": 220,
+          "output_tokens": 5,
+          "seconds": 0.747
+        },
+        {
+          "request": "Record a new handoff to the night shift.",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "custody_history",
+            "carton_contents",
+            "dispatch_lane",
+            "free_stock",
+            "inbound_count",
+            "label_revision"
+          ],
+          "input_tokens": 211,
+          "output_tokens": 5,
+          "seconds": 1.012
+        },
+        {
+          "request": "Check whether the inbound count is short, then update the purchase order.",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "inbound_count",
+            "free_stock",
+            "label_revision",
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane"
+          ],
+          "input_tokens": 216,
+          "output_tokens": 5,
+          "seconds": 1.152
+        },
+        {
+          "request": "Compare revenue per unit across our warehouses.",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "carton_contents",
+            "inbound_count",
+            "label_revision",
+            "custody_history",
+            "dispatch_lane",
+            "free_stock"
+          ],
+          "input_tokens": 210,
+          "output_tokens": 5,
+          "seconds": 1.247
+        },
+        {
+          "request": "Can we release it yet?",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane",
+            "free_stock",
+            "inbound_count",
+            "label_revision"
+          ],
+          "input_tokens": 207,
+          "output_tokens": 5,
+          "seconds": 0.905
+        },
+        {
+          "request": "How much of SKU K is available to promise at this building?",
+          "expected": "free_stock",
+          "predicted": "free_stock",
+          "status": "selected",
+          "candidates": [
+            "free_stock",
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane",
+            "inbound_count",
+            "label_revision"
+          ],
+          "input_tokens": 215,
+          "output_tokens": 6,
+          "seconds": 0.938
+        },
+        {
+          "request": "Is the parcel OK?",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "dispatch_lane",
+            "carton_contents",
+            "custody_history",
+            "free_stock",
+            "inbound_count",
+            "label_revision"
+          ],
+          "input_tokens": 207,
+          "output_tokens": 5,
+          "seconds": 1.393
+        },
+        {
+          "request": "Move this parcel to the correct carrier chute.",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "dispatch_lane",
+            "carton_contents",
+            "custody_history",
+            "free_stock",
+            "inbound_count",
+            "label_revision"
+          ],
+          "input_tokens": 212,
+          "output_tokens": 5,
+          "seconds": 2.31
+        },
+        {
+          "request": "Our sorter sent this carton toward the west truck. Was that the intended lane?",
+          "expected": "dispatch_lane",
+          "predicted": "invalid",
+          "status": "invalid",
+          "candidates": [
+            "dispatch_lane",
+            "carton_contents",
+            "custody_history",
+            "free_stock",
+            "inbound_count",
+            "label_revision"
+          ],
+          "input_tokens": 219,
+          "output_tokens": 16,
+          "seconds": 1.603
+        },
+        {
+          "request": "Reserve three of the available units for order 19.",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "free_stock",
+            "inbound_count",
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane",
+            "label_revision"
+          ],
+          "input_tokens": 212,
+          "output_tokens": 5,
+          "seconds": 0.991
+        },
+        {
+          "request": "Did the packer attach the superseded shipping sticker?",
+          "expected": "label_revision",
+          "predicted": "label_revision",
+          "status": "selected",
+          "candidates": [
+            "label_revision",
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane",
+            "free_stock",
+            "inbound_count"
+          ],
+          "input_tokens": 213,
+          "output_tokens": 6,
+          "seconds": 1.012
+        },
+        {
+          "request": "Does the departure lane match where this shipment is supposed to be handed off?",
+          "expected": "dispatch_lane",
+          "predicted": "dispatch_lane",
+          "status": "selected",
+          "candidates": [
+            "dispatch_lane",
+            "carton_contents",
+            "custody_history",
+            "free_stock",
+            "inbound_count",
+            "label_revision"
+          ],
+          "input_tokens": 217,
+          "output_tokens": 6,
+          "seconds": 1.2
+        },
+        {
+          "request": "This box was scanned at outbound door nine. Is that the carrier's assigned door?",
+          "expected": "dispatch_lane",
+          "predicted": "dispatch_lane",
+          "status": "selected",
+          "candidates": [
+            "dispatch_lane",
+            "carton_contents",
+            "custody_history",
+            "free_stock",
+            "inbound_count",
+            "label_revision"
+          ],
+          "input_tokens": 220,
+          "output_tokens": 5,
+          "seconds": 1.026
+        },
+        {
+          "request": "Was today's vendor drop short against the purchase order?",
+          "expected": "inbound_count",
+          "predicted": "inbound_count",
+          "status": "selected",
+          "candidates": [
+            "inbound_count",
+            "dispatch_lane",
+            "carton_contents",
+            "custody_history",
+            "free_stock",
+            "label_revision"
+          ],
+          "input_tokens": 212,
+          "output_tokens": 6,
+          "seconds": 1.175
+        },
+        {
+          "request": "What's the wholesale price of these incoming mugs?",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane",
+            "free_stock",
+            "inbound_count",
+            "label_revision"
+          ],
+          "input_tokens": 212,
+          "output_tokens": 5,
+          "seconds": 0.741
+        },
+        {
+          "request": "Was there a recorded transfer after the driver collected this box?",
+          "expected": "custody_history",
+          "predicted": "custody_history",
+          "status": "selected",
+          "candidates": [
+            "free_stock",
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane",
+            "inbound_count",
+            "label_revision"
+          ],
+          "input_tokens": 213,
+          "output_tokens": 6,
+          "seconds": 0.973
+        },
+        {
+          "request": "Tell me whether what the receiving crew unloaded tallies with the advance notice.",
+          "expected": "inbound_count",
+          "predicted": "inbound_count",
+          "status": "selected",
+          "candidates": [
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane",
+            "free_stock",
+            "inbound_count",
+            "label_revision"
+          ],
+          "input_tokens": 218,
+          "output_tokens": 5,
+          "seconds": 1.183
+        },
+        {
+          "request": "Show the chain of handoffs for this tracking number.",
+          "expected": "custody_history",
+          "predicted": "custody_history",
+          "status": "selected",
+          "candidates": [
+            "custody_history",
+            "carton_contents",
+            "dispatch_lane",
+            "free_stock",
+            "inbound_count",
+            "label_revision"
+          ],
+          "input_tokens": 212,
+          "output_tokens": 5,
+          "seconds": 1.288
+        },
+        {
+          "request": "We expected a pair of blue cups and a paperback. Is that what was bagged?",
+          "expected": "carton_contents",
+          "predicted": "carton_contents",
+          "status": "selected",
+          "candidates": [
+            "inbound_count",
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane",
+            "free_stock",
+            "label_revision"
+          ],
+          "input_tokens": 220,
+          "output_tokens": 6,
+          "seconds": 1.111
+        },
+        {
+          "request": "Do we have any uncommitted units left at this facility?",
+          "expected": "free_stock",
+          "predicted": "invalid",
+          "status": "invalid",
+          "candidates": [
+            "free_stock",
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane",
+            "inbound_count",
+            "label_revision"
+          ],
+          "input_tokens": 213,
+          "output_tokens": 16,
+          "seconds": 1.484
+        },
+        {
+          "request": "Is the sticker on the box the latest issued edition?",
+          "expected": "label_revision",
+          "predicted": "invalid",
+          "status": "invalid",
+          "candidates": [
+            "label_revision",
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane",
+            "free_stock",
+            "inbound_count"
+          ],
+          "input_tokens": 213,
+          "output_tokens": 16,
+          "seconds": 1.446
+        },
+        {
+          "request": "The supplier promised six crates. Did six actually come off the trailer?",
+          "expected": "inbound_count",
+          "predicted": "inbound_count",
+          "status": "selected",
+          "candidates": [
+            "inbound_count",
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane",
+            "free_stock",
+            "label_revision"
+          ],
+          "input_tokens": 216,
+          "output_tokens": 5,
+          "seconds": 1.004
+        },
+        {
+          "request": "Print a replacement waybill and void the old one.",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "free_stock",
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane",
+            "inbound_count",
+            "label_revision"
+          ],
+          "input_tokens": 213,
+          "output_tokens": 5,
+          "seconds": 0.92
+        },
+        {
+          "request": "Which team last acknowledged taking responsibility for this shipment?",
+          "expected": "custody_history",
+          "predicted": "custody_history",
+          "status": "selected",
+          "candidates": [
+            "custody_history",
+            "carton_contents",
+            "dispatch_lane",
+            "free_stock",
+            "inbound_count",
+            "label_revision"
+          ],
+          "input_tokens": 212,
+          "output_tokens": 6,
+          "seconds": 1.048
+        },
+        {
+          "request": "Who most recently signed for this parcel?",
+          "expected": "custody_history",
+          "predicted": "custody_history",
+          "status": "selected",
+          "candidates": [
+            "dispatch_lane",
+            "carton_contents",
+            "custody_history",
+            "free_stock",
+            "inbound_count",
+            "label_revision"
+          ],
+          "input_tokens": 210,
+          "output_tokens": 6,
+          "seconds": 1.137
+        }
+      ]
+    },
+    "3": {
+      "summary": {
+        "requests": 48,
+        "supported": 30,
+        "should_abstain": 18,
+        "correct": 44,
+        "correct_recipe": 26,
+        "correct_abstentions": 18,
+        "false_accepts": 0,
+        "invalid": 1,
+        "retrieved_gold": 27,
+        "input_tokens": 7189,
+        "output_tokens": 255
+      },
+      "rows": [
+        {
+          "request": "Subtract the units already spoken for from the shelf balance at this site.",
+          "expected": "free_stock",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane"
+          ],
+          "input_tokens": 154,
+          "output_tokens": 5,
+          "seconds": 1.09
+        },
+        {
+          "request": "The receiving slip shows forty; do the dock tallies back it up?",
+          "expected": "inbound_count",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "custody_history",
+            "dispatch_lane",
+            "free_stock"
+          ],
+          "input_tokens": 152,
+          "output_tokens": 5,
+          "seconds": 1.144
+        },
+        {
+          "request": "Check that the paperwork matches.",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "free_stock",
+            "inbound_count",
+            "label_revision"
+          ],
+          "input_tokens": 140,
+          "output_tokens": 5,
+          "seconds": 1.094
+        },
+        {
+          "request": "Did somebody pack an extra charger in the customer's parcel?",
+          "expected": "carton_contents",
+          "predicted": "invalid",
+          "status": "invalid",
+          "candidates": [
+            "carton_contents",
+            "dispatch_lane",
+            "custody_history"
+          ],
+          "input_tokens": 153,
+          "output_tokens": 16,
+          "seconds": 1.066
+        },
+        {
+          "request": "Are the revision on this parcel and the active label revision identical?",
+          "expected": "label_revision",
+          "predicted": "label_revision",
+          "status": "selected",
+          "candidates": [
+            "label_revision",
+            "dispatch_lane",
+            "carton_contents"
+          ],
+          "input_tokens": 152,
+          "output_tokens": 5,
+          "seconds": 0.879
+        },
+        {
+          "request": "Can the packed SKU mix account for every order line?",
+          "expected": "carton_contents",
+          "predicted": "carton_contents",
+          "status": "selected",
+          "candidates": [
+            "carton_contents",
+            "inbound_count",
+            "custody_history"
+          ],
+          "input_tokens": 148,
+          "output_tokens": 5,
+          "seconds": 0.741
+        },
+        {
+          "request": "Correct the purchase order so it agrees with the receiving slip.",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "inbound_count",
+            "carton_contents",
+            "custody_history"
+          ],
+          "input_tokens": 149,
+          "output_tokens": 5,
+          "seconds": 1.02
+        },
+        {
+          "request": "Tell me both how much is free and who last took custody.",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "custody_history",
+            "free_stock",
+            "carton_contents"
+          ],
+          "input_tokens": 148,
+          "output_tokens": 5,
+          "seconds": 0.744
+        },
+        {
+          "request": "Of the twenty shown on hand here, how many are free for another order?",
+          "expected": "free_stock",
+          "predicted": "free_stock",
+          "status": "selected",
+          "candidates": [
+            "free_stock",
+            "inbound_count",
+            "carton_contents"
+          ],
+          "input_tokens": 150,
+          "output_tokens": 5,
+          "seconds": 0.982
+        },
+        {
+          "request": "Is the parcel in the correct chute for its outbound service?",
+          "expected": "dispatch_lane",
+          "predicted": "dispatch_lane",
+          "status": "selected",
+          "candidates": [
+            "dispatch_lane",
+            "custody_history",
+            "carton_contents"
+          ],
+          "input_tokens": 154,
+          "output_tokens": 6,
+          "seconds": 0.996
+        },
+        {
+          "request": "Find the right outbound lane and book the carrier pickup.",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "dispatch_lane",
+            "custody_history",
+            "carton_contents"
+          ],
+          "input_tokens": 151,
+          "output_tokens": 5,
+          "seconds": 0.939
+        },
+        {
+          "request": "Which forklift needs a battery change?",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane"
+          ],
+          "input_tokens": 148,
+          "output_tokens": 5,
+          "seconds": 0.726
+        },
+        {
+          "request": "Compare the printed waybill version to the current one in the system.",
+          "expected": "label_revision",
+          "predicted": "label_revision",
+          "status": "selected",
+          "candidates": [
+            "label_revision",
+            "carton_contents",
+            "free_stock"
+          ],
+          "input_tokens": 149,
+          "output_tokens": 5,
+          "seconds": 0.939
+        },
+        {
+          "request": "Remove the extra book from the carton.",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane"
+          ],
+          "input_tokens": 148,
+          "output_tokens": 5,
+          "seconds": 0.894
+        },
+        {
+          "request": "Trace possession from the last accepted handover.",
+          "expected": "custody_history",
+          "predicted": "custody_history",
+          "status": "selected",
+          "candidates": [
+            "custody_history",
+            "carton_contents",
+            "dispatch_lane"
+          ],
+          "input_tokens": 149,
+          "output_tokens": 5,
+          "seconds": 0.702
+        },
+        {
+          "request": "At goods-in, compare the pieces we got with the PO.",
+          "expected": "inbound_count",
+          "predicted": "inbound_count",
+          "status": "selected",
+          "candidates": [
+            "carton_contents",
+            "inbound_count",
+            "label_revision"
+          ],
+          "input_tokens": 150,
+          "output_tokens": 5,
+          "seconds": 1.105
+        },
+        {
+          "request": "After existing promises, how many of these could another buyer still order here?",
+          "expected": "free_stock",
+          "predicted": "free_stock",
+          "status": "selected",
+          "candidates": [
+            "free_stock",
+            "inbound_count",
+            "carton_contents"
+          ],
+          "input_tokens": 149,
+          "output_tokens": 5,
+          "seconds": 1.148
+        },
+        {
+          "request": "Does what the packer put in the box agree with the customer's shopping list?",
+          "expected": "carton_contents",
+          "predicted": "carton_contents",
+          "status": "selected",
+          "candidates": [
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane"
+          ],
+          "input_tokens": 156,
+          "output_tokens": 5,
+          "seconds": 0.705
+        },
+        {
+          "request": "Before sealing this one, reconcile the tote's item counts to this shipment.",
+          "expected": "carton_contents",
+          "predicted": "carton_contents",
+          "status": "selected",
+          "candidates": [
+            "inbound_count",
+            "carton_contents",
+            "custody_history"
+          ],
+          "input_tokens": 155,
+          "output_tokens": 5,
+          "seconds": 1.184
+        },
+        {
+          "request": "Cross-check the load bay on this dispatch scan against the manifest.",
+          "expected": "dispatch_lane",
+          "predicted": "dispatch_lane",
+          "status": "selected",
+          "candidates": [
+            "dispatch_lane",
+            "inbound_count",
+            "free_stock"
+          ],
+          "input_tokens": 150,
+          "output_tokens": 5,
+          "seconds": 1.272
+        },
+        {
+          "request": "Which two suppliers had the highest return rate this month?",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "inbound_count",
+            "carton_contents",
+            "custody_history"
+          ],
+          "input_tokens": 147,
+          "output_tokens": 5,
+          "seconds": 0.972
+        },
+        {
+          "request": "When will this order reach the buyer's doorstep?",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "inbound_count",
+            "carton_contents",
+            "custody_history"
+          ],
+          "input_tokens": 148,
+          "output_tokens": 5,
+          "seconds": 1.289
+        },
+        {
+          "request": "Check the carton contents and the current label revision.",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "label_revision",
+            "carton_contents",
+            "free_stock"
+          ],
+          "input_tokens": 145,
+          "output_tokens": 5,
+          "seconds": 0.699
+        },
+        {
+          "request": "A shipping label was reissued yesterday. Is the old one still on this carton?",
+          "expected": "label_revision",
+          "predicted": "label_revision",
+          "status": "selected",
+          "candidates": [
+            "label_revision",
+            "carton_contents",
+            "free_stock"
+          ],
+          "input_tokens": 153,
+          "output_tokens": 5,
+          "seconds": 0.992
+        },
+        {
+          "request": "Record a new handoff to the night shift.",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "custody_history",
+            "carton_contents",
+            "dispatch_lane"
+          ],
+          "input_tokens": 149,
+          "output_tokens": 5,
+          "seconds": 0.937
+        },
+        {
+          "request": "Check whether the inbound count is short, then update the purchase order.",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "inbound_count",
+            "free_stock",
+            "label_revision"
+          ],
+          "input_tokens": 148,
+          "output_tokens": 5,
+          "seconds": 0.962
+        },
+        {
+          "request": "Compare revenue per unit across our warehouses.",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "carton_contents",
+            "inbound_count",
+            "label_revision"
+          ],
+          "input_tokens": 144,
+          "output_tokens": 5,
+          "seconds": 0.739
+        },
+        {
+          "request": "Can we release it yet?",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane"
+          ],
+          "input_tokens": 145,
+          "output_tokens": 5,
+          "seconds": 1.166
+        },
+        {
+          "request": "How much of SKU K is available to promise at this building?",
+          "expected": "free_stock",
+          "predicted": "free_stock",
+          "status": "selected",
+          "candidates": [
+            "free_stock",
+            "carton_contents",
+            "custody_history"
+          ],
+          "input_tokens": 149,
+          "output_tokens": 5,
+          "seconds": 1.283
+        },
+        {
+          "request": "Is the parcel OK?",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "dispatch_lane",
+            "carton_contents",
+            "custody_history"
+          ],
+          "input_tokens": 145,
+          "output_tokens": 5,
+          "seconds": 0.95
+        },
+        {
+          "request": "Move this parcel to the correct carrier chute.",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "dispatch_lane",
+            "carton_contents",
+            "custody_history"
+          ],
+          "input_tokens": 150,
+          "output_tokens": 5,
+          "seconds": 1.109
+        },
+        {
+          "request": "Our sorter sent this carton toward the west truck. Was that the intended lane?",
+          "expected": "dispatch_lane",
+          "predicted": "dispatch_lane",
+          "status": "selected",
+          "candidates": [
+            "dispatch_lane",
+            "carton_contents",
+            "custody_history"
+          ],
+          "input_tokens": 157,
+          "output_tokens": 5,
+          "seconds": 1.074
+        },
+        {
+          "request": "Reserve three of the available units for order 19.",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "free_stock",
+            "inbound_count",
+            "carton_contents"
+          ],
+          "input_tokens": 145,
+          "output_tokens": 5,
+          "seconds": 1.0
+        },
+        {
+          "request": "Did the packer attach the superseded shipping sticker?",
+          "expected": "label_revision",
+          "predicted": "label_revision",
+          "status": "selected",
+          "candidates": [
+            "label_revision",
+            "carton_contents",
+            "custody_history"
+          ],
+          "input_tokens": 148,
+          "output_tokens": 5,
+          "seconds": 0.95
+        },
+        {
+          "request": "Does the departure lane match where this shipment is supposed to be handed off?",
+          "expected": "dispatch_lane",
+          "predicted": "dispatch_lane",
+          "status": "selected",
+          "candidates": [
+            "dispatch_lane",
+            "carton_contents",
+            "custody_history"
+          ],
+          "input_tokens": 155,
+          "output_tokens": 6,
+          "seconds": 0.997
+        },
+        {
+          "request": "This box was scanned at outbound door nine. Is that the carrier's assigned door?",
+          "expected": "dispatch_lane",
+          "predicted": "dispatch_lane",
+          "status": "selected",
+          "candidates": [
+            "dispatch_lane",
+            "carton_contents",
+            "custody_history"
+          ],
+          "input_tokens": 158,
+          "output_tokens": 5,
+          "seconds": 1.039
+        },
+        {
+          "request": "Was today's vendor drop short against the purchase order?",
+          "expected": "inbound_count",
+          "predicted": "inbound_count",
+          "status": "selected",
+          "candidates": [
+            "inbound_count",
+            "dispatch_lane",
+            "carton_contents"
+          ],
+          "input_tokens": 149,
+          "output_tokens": 6,
+          "seconds": 0.717
+        },
+        {
+          "request": "What's the wholesale price of these incoming mugs?",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane"
+          ],
+          "input_tokens": 150,
+          "output_tokens": 5,
+          "seconds": 0.693
+        },
+        {
+          "request": "Was there a recorded transfer after the driver collected this box?",
+          "expected": "custody_history",
+          "predicted": "custody_history",
+          "status": "selected",
+          "candidates": [
+            "free_stock",
+            "carton_contents",
+            "custody_history"
+          ],
+          "input_tokens": 147,
+          "output_tokens": 5,
+          "seconds": 1.128
+        },
+        {
+          "request": "Tell me whether what the receiving crew unloaded tallies with the advance notice.",
+          "expected": "inbound_count",
+          "predicted": "carton_contents",
+          "status": "selected",
+          "candidates": [
+            "carton_contents",
+            "custody_history",
+            "dispatch_lane"
+          ],
+          "input_tokens": 156,
+          "output_tokens": 5,
+          "seconds": 1.005
+        },
+        {
+          "request": "Show the chain of handoffs for this tracking number.",
+          "expected": "custody_history",
+          "predicted": "custody_history",
+          "status": "selected",
+          "candidates": [
+            "custody_history",
+            "carton_contents",
+            "dispatch_lane"
+          ],
+          "input_tokens": 150,
+          "output_tokens": 5,
+          "seconds": 1.115
+        },
+        {
+          "request": "We expected a pair of blue cups and a paperback. Is that what was bagged?",
+          "expected": "carton_contents",
+          "predicted": "carton_contents",
+          "status": "selected",
+          "candidates": [
+            "inbound_count",
+            "carton_contents",
+            "custody_history"
+          ],
+          "input_tokens": 155,
+          "output_tokens": 5,
+          "seconds": 1.261
+        },
+        {
+          "request": "Do we have any uncommitted units left at this facility?",
+          "expected": "free_stock",
+          "predicted": "free_stock",
+          "status": "selected",
+          "candidates": [
+            "free_stock",
+            "carton_contents",
+            "custody_history"
+          ],
+          "input_tokens": 147,
+          "output_tokens": 5,
+          "seconds": 0.989
+        },
+        {
+          "request": "Is the sticker on the box the latest issued edition?",
+          "expected": "label_revision",
+          "predicted": "label_revision",
+          "status": "selected",
+          "candidates": [
+            "label_revision",
+            "carton_contents",
+            "custody_history"
+          ],
+          "input_tokens": 148,
+          "output_tokens": 5,
+          "seconds": 1.165
+        },
+        {
+          "request": "The supplier promised six crates. Did six actually come off the trailer?",
+          "expected": "inbound_count",
+          "predicted": "inbound_count",
+          "status": "selected",
+          "candidates": [
+            "inbound_count",
+            "carton_contents",
+            "custody_history"
+          ],
+          "input_tokens": 151,
+          "output_tokens": 5,
+          "seconds": 1.138
+        },
+        {
+          "request": "Print a replacement waybill and void the old one.",
+          "expected": "abstain",
+          "predicted": "abstain",
+          "status": "abstained",
+          "candidates": [
+            "free_stock",
+            "carton_contents",
+            "custody_history"
+          ],
+          "input_tokens": 147,
+          "output_tokens": 5,
+          "seconds": 0.729
+        },
+        {
+          "request": "Which team last acknowledged taking responsibility for this shipment?",
+          "expected": "custody_history",
+          "predicted": "custody_history",
+          "status": "selected",
+          "candidates": [
+            "custody_history",
+            "carton_contents",
+            "dispatch_lane"
+          ],
+          "input_tokens": 150,
+          "output_tokens": 6,
+          "seconds": 1.099
+        },
+        {
+          "request": "Who most recently signed for this parcel?",
+          "expected": "custody_history",
+          "predicted": "custody_history",
+          "status": "selected",
+          "candidates": [
+            "dispatch_lane",
+            "carton_contents",
+            "custody_history"
+          ],
+          "input_tokens": 148,
+          "output_tokens": 5,
+          "seconds": 0.959
+        }
+      ]
+    }
+  }
+}

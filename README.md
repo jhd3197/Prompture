@@ -2378,6 +2378,7 @@ Both build on the same wire-format code in `prompture.gateway` (OpenAI chat comp
 
 ## Integrating & Extending
 
+- **Saved workflow recipes** can answer confirmed phrases locally or suggest a read-only recipe for unfamiliar wording through any text-capable Prompture driver. [API example and model comparison](docs/benchmarks/recipe-discovery/README.md) · [Recipe execution and Anthropic PTC benchmarks](docs/benchmarks/pack-checks/README.md)
 - **FastAPI integration patterns** (AsyncAgent + tools, SSE streaming, structured endpoints, error handling) — see [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md#integrating-prompture-into-your-project)
 - **Custom provider plugins** (architecture + a complete `ProviderPlugin` walkthrough) — see [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md#extending-prompture)
 

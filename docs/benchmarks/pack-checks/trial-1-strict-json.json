@@ -1,0 +1,255 @@
+{
+  "model": "claude-sonnet-4-6",
+  "recipe": "9318d33bfbf2a618ce3e68748cb30868a1db64631551d73ecf9b401b9a8a33d6",
+  "arms": {
+    "python": {
+      "requests": 0,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "hosted_callbacks": 0,
+      "usage_by_request": [],
+      "exact": true,
+      "correct": 12,
+      "total": 12,
+      "false_releases": 0,
+      "qualified": true,
+      "seconds": 0.0004,
+      "reads": {
+        "manifests": 1,
+        "scans": 1
+      }
+    },
+    "local-recipe": {
+      "requests": 0,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "hosted_callbacks": 0,
+      "usage_by_request": [],
+      "exact": true,
+      "correct": 12,
+      "total": 12,
+      "false_releases": 0,
+      "qualified": true,
+      "seconds": 0.0099,
+      "reads": {
+        "manifests": 1,
+        "scans": 1
+      }
+    },
+    "direct": {
+      "requests": 2,
+      "input_tokens": 3235,
+      "output_tokens": 1010,
+      "cache_read_input_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "hosted_callbacks": 0,
+      "usage_by_request": [
+        {
+          "input_tokens": 825,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 0,
+            "ephemeral_1h_input_tokens": 0
+          },
+          "output_tokens": 110,
+          "service_tier": "standard",
+          "inference_geo": "global",
+          "speed": "standard"
+        },
+        {
+          "input_tokens": 2410,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 0,
+            "ephemeral_1h_input_tokens": 0
+          },
+          "output_tokens": 900,
+          "service_tier": "standard",
+          "inference_geo": "global",
+          "speed": "standard"
+        }
+      ],
+      "exact": false,
+      "correct": 0,
+      "total": 12,
+      "false_releases": 0,
+      "qualified": false,
+      "error": "Expecting value: line 1 column 1 (char 0)",
+      "seconds": 15.8291,
+      "reads": {
+        "manifests": 1,
+        "scans": 1
+      }
+    },
+    "ptc": {
+      "requests": 3,
+      "input_tokens": 14398,
+      "output_tokens": 1555,
+      "cache_read_input_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "hosted_callbacks": 2,
+      "usage_by_request": [
+        {
+          "input_tokens": 3386,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 0,
+            "ephemeral_1h_input_tokens": 0
+          },
+          "output_tokens": 135,
+          "service_tier": "standard",
+          "inference_geo": "global",
+          "speed": "standard",
+          "server_tool_use": {
+            "web_search_requests": 0,
+            "web_fetch_requests": 0
+          }
+        },
+        {
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "server_tool_use": {
+            "web_search_requests": 0,
+            "web_fetch_requests": 0
+          }
+        },
+        {
+          "input_tokens": 11012,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 0,
+            "ephemeral_1h_input_tokens": 0
+          },
+          "output_tokens": 1420,
+          "service_tier": "standard",
+          "inference_geo": "global",
+          "speed": "standard",
+          "server_tool_use": {
+            "web_search_requests": 0,
+            "web_fetch_requests": 0
+          }
+        }
+      ],
+      "exact": false,
+      "correct": 0,
+      "total": 12,
+      "false_releases": 0,
+      "qualified": false,
+      "error": "Expecting value: line 1 column 1 (char 0)",
+      "seconds": 30.9359,
+      "reads": {
+        "manifests": 1,
+        "scans": 1
+      }
+    },
+    "recipe": {
+      "requests": 2,
+      "input_tokens": 1685,
+      "output_tokens": 583,
+      "cache_read_input_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "hosted_callbacks": 0,
+      "usage_by_request": [
+        {
+          "input_tokens": 736,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 0,
+            "ephemeral_1h_input_tokens": 0
+          },
+          "output_tokens": 76,
+          "service_tier": "standard",
+          "inference_geo": "global",
+          "speed": "standard"
+        },
+        {
+          "input_tokens": 949,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 0,
+            "ephemeral_1h_input_tokens": 0
+          },
+          "output_tokens": 507,
+          "service_tier": "standard",
+          "inference_geo": "global",
+          "speed": "standard"
+        }
+      ],
+      "exact": false,
+      "correct": 0,
+      "total": 12,
+      "false_releases": 0,
+      "qualified": false,
+      "error": "Expecting value: line 1 column 1 (char 0)",
+      "seconds": 11.0028,
+      "reads": {
+        "manifests": 1,
+        "scans": 1
+      }
+    },
+    "ptc-recipe": {
+      "requests": 2,
+      "input_tokens": 6936,
+      "output_tokens": 253,
+      "cache_read_input_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "hosted_callbacks": 1,
+      "usage_by_request": [
+        {
+          "input_tokens": 3285,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 0,
+            "ephemeral_1h_input_tokens": 0
+          },
+          "output_tokens": 97,
+          "service_tier": "standard",
+          "inference_geo": "global",
+          "speed": "standard",
+          "server_tool_use": {
+            "web_search_requests": 0,
+            "web_fetch_requests": 0
+          }
+        },
+        {
+          "input_tokens": 3651,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 0,
+            "ephemeral_1h_input_tokens": 0
+          },
+          "output_tokens": 156,
+          "service_tier": "standard",
+          "inference_geo": "global",
+          "speed": "standard",
+          "server_tool_use": {
+            "web_search_requests": 0,
+            "web_fetch_requests": 0
+          }
+        }
+      ],
+      "exact": true,
+      "correct": 12,
+      "total": 12,
+      "false_releases": 0,
+      "qualified": true,
+      "seconds": 7.0751,
+      "reads": {
+        "manifests": 1,
+        "scans": 1
+      }
+    }
+  }
+}

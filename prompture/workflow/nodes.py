@@ -8,6 +8,7 @@ Runners own NO provider logic — they delegate to existing Prompture surfaces
 
 from __future__ import annotations
 
+import inspect
 from typing import TYPE_CHECKING, Any
 
 from .errors import NodeExecutionError
@@ -112,7 +113,15 @@ def run_tool(node: Node, config: dict[str, Any], ctx: ExecutionContext) -> NodeR
     if not tool_name:
         raise NodeExecutionError(node.id, "tool node requires config['tool']")
     args = config.get("args", {})
-    result = registry.execute(tool_name, args if isinstance(args, dict) else {"value": args})
+    arguments = args if isinstance(args, dict) else {"value": args}
+    if ctx.options.get("strict_tool_arguments"):
+        result = registry.execute(tool_name, arguments, raise_on_invalid=True)
+        if inspect.isawaitable(result):
+            if inspect.iscoroutine(result):
+                result.close()
+            raise NodeExecutionError(node.id, f"Tool {tool_name!r} requires asynchronous execution")
+    else:
+        result = registry.execute(tool_name, arguments)
     return _ok(node.id, {"result": result})
 
 

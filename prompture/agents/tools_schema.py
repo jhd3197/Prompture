@@ -1179,13 +1179,14 @@ class ToolRegistry:
             if not (value is None and key in properties and key not in required and not accepts_null(properties[key]))
         }
 
-    def execute(self, name: str, arguments: dict[str, Any]) -> Any:
+    def execute(self, name: str, arguments: dict[str, Any], *, raise_on_invalid: bool = False) -> Any:
         """Execute a registered tool by name with the given arguments.
 
         Arguments are coerced to the function's annotated types and validated
         against the tool's JSON Schema; on failure an LLM-friendly error
         string is returned (so the model can self-correct) instead of a bare
-        ``TypeError`` escaping.
+        ``TypeError`` escaping. Set ``raise_on_invalid=True`` for a local
+        workflow that must stop on validation failure.
 
         Raises:
             KeyError: If no tool with *name* is registered.
@@ -1196,9 +1197,13 @@ class ToolRegistry:
         arguments = self._drop_null_optionals(td, arguments)
         error = self._validate_arguments(td, arguments)
         if error:
+            if raise_on_invalid:
+                raise ValueError(error)
             return error
         coerced, error = self._coerce_and_validate_arguments(td, arguments)
         if error:
+            if raise_on_invalid:
+                raise ValueError(error)
             return error
         return td.function(**coerced)
 
