@@ -4,7 +4,8 @@ import pytest
 
 from prompture.agents.tools_schema import ToolRegistry
 from prompture.drivers.base import Driver
-from prompture.workflow import Graph, Handle, Node, RecipeStore, WorkflowError
+from prompture.drivers.decision_base import ChoiceAnswer, DecisionDriver, DecisionResponse
+from prompture.workflow import Graph, Handle, Node, RecipeCandidate, RecipeExampleIndex, RecipeStore, WorkflowError
 
 
 class CompletionOnly(Driver):
@@ -23,6 +24,18 @@ class CompletionOnly(Driver):
                 "raw_response": {"private": "ignored"},
             },
         }
+
+
+class FixedDecision(DecisionDriver):
+    def __init__(self, choice):
+        super().__init__()
+        self.choice = choice
+        self.criteria = None
+
+    def decide(self, state, questions, **options):
+        self.criteria = questions["recipe"].criteria
+        answers = {"recipe": ChoiceAnswer(self.choice, {}, 0.7)} if self.choice is not None else {}
+        return DecisionResponse("fixed", answers, {"input_tokens": 15, "output_tokens": 0, "cost": 0})
 
 
 def graph(name, description):
@@ -109,6 +122,41 @@ def test_scope_versions_empty_catalog_and_ties(store):
 def test_one_bold_choice(store):
     result = store.discover("check the dock assignment", model=CompletionOnly(" **1** "))
     assert result.status == "selected" and result.recipe.name == result.candidates[0]
+
+
+@pytest.mark.parametrize("choice,status", [("1", "selected"), ("0", "abstained"), ("99", "invalid"), (None, "invalid")])
+def test_typed_selection(store, choice, status, monkeypatch):
+    driver = FixedDecision(choice)
+    monkeypatch.setattr("prompture.drivers.get_decision_driver_for_model", lambda _: driver)
+    index = RecipeExampleIndex({"check_dock": ["which exit"], "ghost": ["which exit"]})
+    result = store.discover("which exit", model="laya/typed-decisions", index=index, limit=1)
+    assert set(driver.criteria) == {"0", "1"}
+    assert result.candidates == ("check_dock",)
+    assert result.status == status
+    assert result.usage == {"prompt_tokens": 15, "completion_tokens": 0, "cost": 0}
+
+
+def test_category_grouping_and_fallback_order():
+    candidates = [RecipeCandidate(n, n, n, 0) for n in ("lane", "stock", "receipt", "handoff")]
+    samples = {"stock": ["remaining inventory"], "receipt": ["supplier delivery"], "lane": ["carrier truck"]}
+    categories = {"stock": "inventory", "receipt": "inventory", "lane": "shipping"}
+    index = RecipeExampleIndex(samples, categories=categories)
+    assert [c.name for c in index.shortlist("remaining inventory", candidates, limit=3)] == ["stock", "receipt", "lane"]
+    assert index.shortlist("§§", candidates, limit=3) == candidates[:3]
+    assert index.shortlist("remaining inventory", candidates, limit=1) == [candidates[1]]
+    with pytest.raises(TypeError):
+        RecipeExampleIndex({"stock": "inventory"})
+
+
+@pytest.mark.parametrize("answer,status", [("Yes.", "selected"), ("no", "abstained"), ("yes or no", "invalid")])
+def test_confirm_only_the_leading_suggestion(store, answer, status):
+    driver = CompletionOnly(answer)
+    match = store.discover("outbound carrier", model=driver, confirm_first=True)
+    assert match.candidates == ("check_dock",)
+    assert match.status == status
+    assert "carton" not in driver.prompts[0].lower()
+    assert store.discover("departure bay", model=driver, confirm_first=True).status == "exact"
+    assert len(driver.prompts) == 1
 
 
 def test_invalid_request_never_runs_model(store):

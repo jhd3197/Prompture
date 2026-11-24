@@ -22,6 +22,8 @@ from .recovery import graph_version
 
 if TYPE_CHECKING:
     from ..drivers.base import Driver
+    from ..drivers.decision_base import DecisionDriver
+    from .recipe_ranking import RecipeExampleIndex
 
 
 class RecipeStore:
@@ -226,8 +228,8 @@ class RecipeStore:
         """Current definitions and their verified usage counts in this scope."""
         return [(candidate.name, candidate.verified_uses) for candidate, _ in self._catalog()]
 
-    def search(self, request: str, *, limit: int = 6) -> list[RecipeCandidate]:
-        """Rank compatible definitions by name, description and confirmed aliases; ties favor verified use."""
+    def search(self, request: str, *, limit: int = 6, index: RecipeExampleIndex | None = None) -> list[RecipeCandidate]:
+        """Rank compatible definitions locally, optionally reranking with a host's example index."""
         # tool_context imports execution, which registers workflow nodes during startup.
         from ..agents.tool_context import rank_tool
 
@@ -243,18 +245,38 @@ class RecipeStore:
             )
             ranked.append((rank_tool(request, summary), candidate))
         ranked.sort(key=lambda entry: -entry[0])  # stable: catalog order is usage, then name
+        if index is not None:
+            return index.shortlist(request, [candidate for _, candidate in ranked], limit=limit)
         return [candidate for _, candidate in ranked[:limit]]
 
     def discover(
-        self, request: str, *, model: str | Driver, limit: int = 6, options: dict[str, Any] | None = None
+        self,
+        request: str,
+        *,
+        model: str | Driver | DecisionDriver,
+        limit: int = 6,
+        options: dict[str, Any] | None = None,
+        index: RecipeExampleIndex | None = None,
+        confirm_first: bool = False,
     ) -> RecipeMatch:
-        """Resolve confirmed wording locally, otherwise ask a text driver to choose or abstain. No tools execute."""
+        """Resolve confirmed wording locally, otherwise ask a text or decision driver to choose or abstain.
+
+        With confirm_first, show only the leading candidate. Text drivers answer yes or no
+        and decision drivers receive one option plus abstention. Discovery never executes a recipe.
+        """
         if not request.strip() or limit < 1:
             raise ValueError("A nonempty request and a positive candidate limit are required")
         try:
             graph, fingerprint = self._load(request)
         except KeyError:
-            return select_recipe(self.scope, request, self.search(request, limit=limit), model, options)
+            return select_recipe(
+                self.scope,
+                request,
+                self.search(request, limit=limit, index=index),
+                model,
+                options,
+                confirm_first=confirm_first,
+            )
         with self._connect() as db:
             uses = db.execute(
                 "SELECT COUNT(*) FROM recipe_runs WHERE scope=? AND fingerprint=?", (self.scope, fingerprint)

@@ -1,0 +1,52 @@
+{
+  "carton_contents": [
+    "Bench 12 got order 804. The pick ticket says two lids and a tub. Does the sealed unit contain that mix?",
+    "Before I sign off job 71, are the articles inside consistent with its sales lines?",
+    "Someone at packing counted six mugs in BX88, although the shopper ordered a set of four. Can you check the discrepancy?",
+    "The weight alarm went off. I only need to know whether each product and count inside matches the order."
+  ],
+  "inbound_count": [
+    "We signed for pallet P09 at receiving. Was the vendor short on any of the ordered quantities?",
+    "Truck 54 delivered the summer replenishment. Reconcile what came off it with what purchasing asked for.",
+    "Can finance pay for all 120 incoming cases, judging only by the number physically received against the PO?",
+    "Night shift booked in the ceramic order. Did the wholesaler send all the pieces we were expecting?"
+  ],
+  "dispatch_lane": [
+    "Parcel W14 lit up the amber diverter. Is that its carrier's designated exit?",
+    "This is a postal bag on carousel C. Verify it is headed for the correct loading bay.",
+    "Northline collects from door seven. Does the chute used for this consignment lead there?",
+    "The sorter logged a divert to spur 18 for P31. Check the outbound assignment."
+  ],
+  "free_stock": [
+    "The website wants to sell another eight kettles from Bristol. How many are still available after commitments?",
+    "Bin A has 36 rolls on the ledger, some earmarked for jobs. What's the sellable balance at this depot?",
+    "A caller wants our remaining supply of lime paint at East. Exclude anything held for another customer.",
+    "Can I promise any units of R4 today from this building once the open allocations are deducted?"
+  ],
+  "custody_history": [
+    "A package is missing between shifts. Who acknowledged possession of 77-B most recently?",
+    "Read back the transfers of tote G from pack station to courier, including the latest confirmed holder.",
+    "Security needs the handover record for consignment H21. Who accepted it last?",
+    "Did anyone take responsibility for the parcel after the cage attendant signed it out?"
+  ],
+  "label_revision": [
+    "The thermal sticker says issue C. Does that agree with the last shipping artwork issued for BX11?",
+    "We found two versions of the courier label. Is the one physically attached to 938 the active one?",
+    "Has the waybill on the outside been superseded since it was printed?",
+    "The returns team see an old barcode layout. Compare this parcel's label edition with the one on file."
+  ],
+  "abstain": [
+    "Move P18 from the postal spur to express so it doesn't miss departure.",
+    "Set aside nine green towels for the next web order.",
+    "Can you tell me if yesterday's job is fine?",
+    "Get me the signed handovers and the packing discrepancy on consignment R17.",
+    "What's the humidity inside the cheese cage right now?",
+    "If that sticker is obsolete, print a replacement and put it on the package.",
+    "The inbound supplier invoice has a fuel surcharge. Was the rate negotiated correctly?",
+    "Which of today's pallets is tallest?",
+    "I have number 702 and an upset driver. Can you look into it?",
+    "Check sellable stock at East and also whether our vendor's shipment was short.",
+    "Change the recorded recipient on last night's custody slip to Dana.",
+    "Give me a delivery ETA for a parcel already on the motorway."
+  ]
+}

@@ -52,6 +52,7 @@ from .errors import (
     WorkflowError,
 )
 from .model import Edge, Graph, Handle, HandleType, Node, build_graph
+from .recipe_ranking import RecipeExampleIndex
 from .recipes import RecipeStore
 from .recovery import (
     FileWorkflowStateStore,
@@ -125,6 +126,7 @@ __all__ = [
     "OperationRecord",
     "OperationStatus",
     "RecipeCandidate",
+    "RecipeExampleIndex",
     "RecipeMatch",
     "RecipeStore",
     "ReconciliationRequired",
