@@ -257,6 +257,7 @@ class RecipeStore:
         limit: int = 6,
         options: dict[str, Any] | None = None,
         index: RecipeExampleIndex | None = None,
+        confirm_first: bool = False,
     ) -> RecipeMatch:
         """Resolve confirmed wording locally, otherwise ask a text driver to choose or abstain. No tools execute."""
         if not request.strip() or limit < 1:
@@ -264,7 +265,14 @@ class RecipeStore:
         try:
             graph, fingerprint = self._load(request)
         except KeyError:
-            return select_recipe(self.scope, request, self.search(request, limit=limit, index=index), model, options)
+            return select_recipe(
+                self.scope,
+                request,
+                self.search(request, limit=limit, index=index),
+                model,
+                options,
+                confirm_first=confirm_first,
+            )
         with self._connect() as db:
             uses = db.execute(
                 "SELECT COUNT(*) FROM recipe_runs WHERE scope=? AND fingerprint=?", (self.scope, fingerprint)

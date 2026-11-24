@@ -72,8 +72,12 @@ def main() -> None:
     parser.add_argument("--model", required=True, help="Prompture provider/model string")
     parser.add_argument("--ollama-endpoint", help="Override the endpoint for a locally installed Ollama model")
     parser.add_argument("--out", required=True, type=Path)
-    parser.add_argument(
+    fixture = parser.add_mutually_exclusive_group()
+    fixture.add_argument(
         "--shift-holdout", action="store_true", help="Use new requests and compare four candidate menus"
+    )
+    fixture.add_argument(
+        "--confirmation-holdout", action="store_true", help="Evaluate confirmation on the second fresh set"
     )
     parser.add_argument(
         "--decision", action="store_true", help="Use a typed decision driver, such as laya/typed-decisions"
@@ -94,12 +98,14 @@ def main() -> None:
 
         driver = get_driver_for_model(args.model)
     data_file = CASES.with_name("warehouse_shift_holdout.json") if args.shift_holdout else CASES
+    if args.confirmation_holdout:
+        data_file = CASES.with_name("warehouse_confirmation_holdout.json")
     raw = data_file.read_text(encoding="utf-8")
     cases = [(request, label) for label, requests in json.loads(raw).items() for request in requests]
     assert set(label for _, label in cases) == {*CATALOG, "abstain"}
     assert not {q for q, _ in cases} & ({*CATALOG} | {alias for _, alias in CATALOG.values()})
     menus = [("6", 6, None), ("3", 3, None)]
-    if args.shift_holdout:
+    if args.shift_holdout or args.confirmation_holdout:
         old = json.loads(CASES.read_text(encoding="utf-8"))
         assert not {q.casefold() for q, _ in cases} & {q.casefold() for phrases in old.values() for q in phrases}
         examples = {name: old[name] for name in CATALOG}
@@ -117,6 +123,12 @@ def main() -> None:
                 ("categories", 3, RecipeExampleIndex(examples, categories=categories)),
             ]
         )
+        if args.confirmation_holdout:
+            first_shift = json.loads(CASES.with_name("warehouse_shift_holdout.json").read_text(encoding="utf-8"))
+            assert not {q.casefold() for q, _ in cases} & {
+                q.casefold() for phrases in first_shift.values() for q in phrases
+            }
+            menus = [menus[0], menus[2], ("confirm", 1, RecipeExampleIndex(examples))]
     random.Random(131).shuffle(cases)
     report = {
         "model": args.model,
@@ -130,7 +142,9 @@ def main() -> None:
             for request, expected in cases:
                 start = perf_counter()
                 options = {} if args.decision else {"temperature": 0, "max_tokens": 16}
-                match = store.discover(request, model=driver, limit=limit, index=index, options=options)
+                match = store.discover(
+                    request, model=driver, limit=limit, index=index, options=options, confirm_first=arm == "confirm"
+                )
                 predicted = (
                     match.recipe.name if match.recipe else ("abstain" if match.status == "abstained" else "invalid")
                 )
