@@ -1,0 +1,257 @@
+{
+  "model": "claude-sonnet-4-6",
+  "max_tokens_per_request": 6144,
+  "recipe": "9318d33bfbf2a618ce3e68748cb30868a1db64631551d73ecf9b401b9a8a33d6",
+  "arms": {
+    "python": {
+      "requests": 0,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "hosted_callbacks": 0,
+      "usage_by_request": [],
+      "exact": true,
+      "correct": 12,
+      "total": 12,
+      "false_releases": 0,
+      "qualified": true,
+      "seconds": 0.0005,
+      "reads": {
+        "manifests": 1,
+        "scans": 1
+      }
+    },
+    "local-recipe": {
+      "requests": 0,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "hosted_callbacks": 0,
+      "usage_by_request": [],
+      "exact": true,
+      "correct": 12,
+      "total": 12,
+      "false_releases": 0,
+      "qualified": true,
+      "seconds": 0.0101,
+      "reads": {
+        "manifests": 1,
+        "scans": 1
+      }
+    },
+    "direct": {
+      "requests": 2,
+      "input_tokens": 3238,
+      "output_tokens": 1132,
+      "cache_read_input_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "hosted_callbacks": 0,
+      "usage_by_request": [
+        {
+          "input_tokens": 825,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 0,
+            "ephemeral_1h_input_tokens": 0
+          },
+          "output_tokens": 113,
+          "service_tier": "standard",
+          "inference_geo": "global",
+          "speed": "standard"
+        },
+        {
+          "input_tokens": 2413,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 0,
+            "ephemeral_1h_input_tokens": 0
+          },
+          "output_tokens": 1019,
+          "service_tier": "standard",
+          "inference_geo": "global",
+          "speed": "standard"
+        }
+      ],
+      "final_text": "Got both datasets. Now I'll evaluate every shipment methodically against each rule in priority order.\n\n---\n\n**Rule-by-rule analysis for each shipment:**\n\n**S11** \u2013 Not cancelled. Scan present & complete. Carton CS11\u2713, Dest DS11\u2713, Rev 2\u2713. No scan-ID conflicts. Items: scan IDs a(mug-blue,1)+b(mug-blue,1)+c(book,1) \u2192 mug-blue:2, book:1 = manifest lines exactly. \u2705 **pass/match**\n\n**S28** \u2013 Not cancelled. Scan present & complete. Carton CS28\u2713, Dest DS28\u2713, Rev 2\u2713. No conflicts. Items: a(mug-blue,1)+b(mug-blue,1) \u2192 mug-blue:2, book:0. Manifest requires book:1. \u274c **hold/contents**\n\n**S32** \u2013 Not cancelled. Scan present & complete. Carton scanned=CS28, manifest=CS32 \u2192 mismatch. \u274c **hold/carton**\n\n**S47** \u2013 Not cancelled. Scan present & complete. Carton CS47\u2713, Dest DS47\u2713. Revision scanned=1, manifest=2 \u2192 outdated label. \u274c **hold/label**\n\n**S53** \u2013 Not cancelled. Scan present & complete. Carton CS53\u2713. Destination scanned=DS11, manifest=DS53 \u2192 mismatch. \u274c **hold/destination**\n\n**S64** \u2013 Not cancelled. **No scan record at all** \u2192 missing scan. \u274c **review/incomplete**\n\n**S71** \u2013 Not cancelled. Scan present & complete. Carton CS71\u2713, Dest DS71\u2713, Rev 2\u2713. Scan ID conflicts: scan ID \"b\" appears twice with the same SKU (mug-blue) but quantities 1 and 1 \u2014 same SKU & qty so these are **exact duplicates** (ignore). Items (deduplicated): a(mug-blue,1)+b(mug-blue,1)+c(book,1) \u2192 mug-blue:2, book:1 = manifest. \u2705 **pass/match**\n\n**S82** \u2013 Not cancelled. Scan present & complete. Carton CS82\u2713, Dest DS82\u2713, Rev 2\u2713. Scan ID conflict check: scan ID \"a\" appears twice \u2014 first as (mug-blue,1) then as (mug-red,1). Same ID, different SKU \u2192 **conflict**. \u274c **review/conflict**\n\n**S95** \u2013 **Cancelled**. \u274c **hold/cancelled**\n\n**S09** \u2013 Not cancelled. Scan present & complete. Carton CS09\u2713, Dest DS09\u2713, Rev 2\u2713. No ID conflicts. Items: a(mug-blue,1)+b(mug-blue,1)+c(book,1)+d(book,1) \u2192 mug-blue:2, book:2. Manifest requires book:1 \u2192 mismatch. \u274c **hold/contents**\n\n**S17** \u2013 Not cancelled. Scan present but `complete: false` \u2192 incomplete scan. \u274c **review/incomplete**\n\n**S23** \u2013 Not cancelled. Scan present & complete. Carton CS23\u2713, Dest DS23\u2713, Rev 2\u2713. No conflicts. Items: a(journal,1) \u2192 journal:1 = manifest line exactly. \u2705 **pass/match**\n\n---\n\n```json\n{\n  \"S11\": [\"pass\",            \"match\"],\n  \"S28\": [\"hold\",            \"contents\"],\n  \"S32\": [\"hold\",            \"carton\"],\n  \"S47\": [\"hold\",            \"label\"],\n  \"S53\": [\"hold\",            \"destination\"],\n  \"S64\": [\"review\",          \"incomplete\"],\n  \"S71\": [\"pass\",            \"match\"],\n  \"S82\": [\"review\",          \"conflict\"],\n  \"S95\": [\"hold\",            \"cancelled\"],\n  \"S09\": [\"hold\",            \"contents\"],\n  \"S17\": [\"review\",          \"incomplete\"],\n  \"S23\": [\"pass\",            \"match\"]\n}\n```",
+      "exact": true,
+      "correct": 12,
+      "total": 12,
+      "false_releases": 0,
+      "qualified": true,
+      "seconds": 17.8834,
+      "reads": {
+        "manifests": 1,
+        "scans": 1
+      }
+    },
+    "ptc": {
+      "requests": 3,
+      "input_tokens": 21994,
+      "output_tokens": 2421,
+      "cache_read_input_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "hosted_callbacks": 2,
+      "usage_by_request": [
+        {
+          "input_tokens": 3386,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 0,
+            "ephemeral_1h_input_tokens": 0
+          },
+          "output_tokens": 135,
+          "service_tier": "standard",
+          "inference_geo": "global",
+          "speed": "standard",
+          "server_tool_use": {
+            "web_search_requests": 0,
+            "web_fetch_requests": 0
+          }
+        },
+        {
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "server_tool_use": {
+            "web_search_requests": 0,
+            "web_fetch_requests": 0
+          }
+        },
+        {
+          "input_tokens": 18608,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 0,
+            "ephemeral_1h_input_tokens": 0
+          },
+          "output_tokens": 2286,
+          "service_tier": "standard",
+          "inference_geo": "global",
+          "speed": "standard",
+          "server_tool_use": {
+            "web_search_requests": 0,
+            "web_fetch_requests": 0
+          }
+        }
+      ],
+      "final_text": "Let me verify the tricky cases before finalising:All cases verified. Here is the final result:\n\n```json\n{\n  \"S11\": [\"pass\",   \"match\"],\n  \"S28\": [\"hold\",   \"contents\"],\n  \"S32\": [\"hold\",   \"carton\"],\n  \"S47\": [\"hold\",   \"label\"],\n  \"S53\": [\"hold\",   \"destination\"],\n  \"S64\": [\"review\", \"incomplete\"],\n  \"S71\": [\"pass\",   \"match\"],\n  \"S82\": [\"review\", \"conflict\"],\n  \"S95\": [\"hold\",   \"cancelled\"],\n  \"S09\": [\"hold\",   \"contents\"],\n  \"S17\": [\"review\", \"incomplete\"],\n  \"S23\": [\"pass\",   \"match\"]\n}\n```\n\n---\n\n**Decision walkthrough for every shipment:**\n\n| ID | Decision | Rule hit | Key evidence |\n|----|----------|----------|--------------|\n| **S11** | pass/match | \u2014 | All fields match; scan IDs a+b each carry 1\u00d7mug-blue (sum = 2), c = 1\u00d7book. Exact manifest. |\n| **S28** | hold/contents | contents | Carton/dest/rev all correct; scan has only mug-blue\u00d72, book is entirely absent. |\n| **S32** | hold/carton | carton | Scan reports carton **CS28** but manifest expects **CS32**. |\n| **S47** | hold/label | label | Scan revision **1** < manifest revision **2**. |\n| **S53** | hold/destination | destination | Scan destination **DS11** \u2260 manifest destination **DS53**. |\n| **S64** | review/incomplete | missing scan | No scan record exists for S64. |\n| **S71** | pass/match | \u2014 | Scan ID `b` appears twice with identical (mug-blue, 1) \u2192 exact duplicate, ignored. Net: mug-blue\u00d72, book\u00d71. Matches manifest. |\n| **S82** | review/conflict | conflict | Scan ID `a` appears as both (mug-blue, 1) **and** (mug-red, 1) \u2014 same ID, different SKUs \u2192 conflict. |\n| **S95** | hold/cancelled | cancelled | `cancelled: true`. |\n| **S09** | hold/contents | contents | Scan IDs c and d both carry book\u00d71 \u2192 book sum = **2**; manifest expects book = **1**. |\n| **S17** | review/incomplete | incomplete | Scan `complete: false`. |\n| **S23** | pass/match | \u2014 | Split order sharing order OS11, but evaluated independently. Carton/dest/rev match; journal\u00d71 matches its own manifest line. |",
+      "exact": true,
+      "correct": 12,
+      "total": 12,
+      "false_releases": 0,
+      "qualified": true,
+      "seconds": 47.0611,
+      "reads": {
+        "manifests": 1,
+        "scans": 1
+      }
+    },
+    "recipe": {
+      "requests": 2,
+      "input_tokens": 1684,
+      "output_tokens": 473,
+      "cache_read_input_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "hosted_callbacks": 0,
+      "usage_by_request": [
+        {
+          "input_tokens": 736,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 0,
+            "ephemeral_1h_input_tokens": 0
+          },
+          "output_tokens": 75,
+          "service_tier": "standard",
+          "inference_geo": "global",
+          "speed": "standard"
+        },
+        {
+          "input_tokens": 948,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 0,
+            "ephemeral_1h_input_tokens": 0
+          },
+          "output_tokens": 398,
+          "service_tier": "standard",
+          "inference_geo": "global",
+          "speed": "standard"
+        }
+      ],
+      "final_text": "Here are the audit results for every shipment in batch **B1**, with the first applicable rule applied per manifest:\n\n```json\n{\n  \"S11\": [\"pass\",    \"match\"],\n  \"S28\": [\"hold\",    \"contents\"],\n  \"S32\": [\"hold\",    \"carton\"],\n  \"S47\": [\"hold\",    \"label\"],\n  \"S53\": [\"hold\",    \"destination\"],\n  \"S64\": [\"review\",  \"incomplete\"],\n  \"S71\": [\"pass\",    \"match\"],\n  \"S82\": [\"review\",  \"conflict\"],\n  \"S95\": [\"hold\",    \"cancelled\"],\n  \"S09\": [\"hold\",    \"contents\"],\n  \"S17\": [\"review\",  \"incomplete\"],\n  \"S23\": [\"pass\",    \"match\"]\n}\n```\n\n**Summary by action:**\n\n| Action | Shipments |\n|--------|-----------|\n| **pass** | S11, S71, S23 |\n| **hold** | S28 (contents), S32 (carton), S47 (label), S53 (destination), S95 (cancelled), S09 (contents) |\n| **review** | S64 (incomplete), S82 (conflict), S17 (incomplete) |\n\n- **3 shipments** cleared and are ready to proceed.\n- **6 shipments** are on hold \u2014 most urgently **S95** (cancelled order) and **S32** (wrong carton), plus destination, label, and contents mismatches.\n- **3 shipments** need review \u2014 two have missing/incomplete scans (S64, S17) and one has conflicting scan data for the same scan ID (S82).",
+      "exact": true,
+      "correct": 12,
+      "total": 12,
+      "false_releases": 0,
+      "qualified": true,
+      "seconds": 8.0265,
+      "reads": {
+        "manifests": 1,
+        "scans": 1
+      }
+    },
+    "ptc-recipe": {
+      "requests": 2,
+      "input_tokens": 6936,
+      "output_tokens": 253,
+      "cache_read_input_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "hosted_callbacks": 1,
+      "usage_by_request": [
+        {
+          "input_tokens": 3285,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 0,
+            "ephemeral_1h_input_tokens": 0
+          },
+          "output_tokens": 97,
+          "service_tier": "standard",
+          "inference_geo": "global",
+          "speed": "standard",
+          "server_tool_use": {
+            "web_search_requests": 0,
+            "web_fetch_requests": 0
+          }
+        },
+        {
+          "input_tokens": 3651,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 0,
+            "ephemeral_1h_input_tokens": 0
+          },
+          "output_tokens": 156,
+          "service_tier": "standard",
+          "inference_geo": "global",
+          "speed": "standard",
+          "server_tool_use": {
+            "web_search_requests": 0,
+            "web_fetch_requests": 0
+          }
+        }
+      ],
+      "final_text": "```json\n{\n  \"S11\": [\"pass\", \"match\"],\n  \"S17\": [\"review\", \"incomplete\"],\n  \"S23\": [\"pass\", \"match\"],\n  \"S28\": [\"hold\", \"contents\"],\n  \"S32\": [\"hold\", \"carton\"],\n  \"S47\": [\"hold\", \"label\"],\n  \"S53\": [\"hold\", \"destination\"],\n  \"S64\": [\"review\", \"incomplete\"],\n  \"S71\": [\"pass\", \"match\"],\n  \"S82\": [\"review\", \"conflict\"],\n  \"S95\": [\"hold\", \"cancelled\"],\n  \"S09\": [\"hold\", \"contents\"]\n}\n```",
+      "exact": true,
+      "correct": 12,
+      "total": 12,
+      "false_releases": 0,
+      "qualified": true,
+      "seconds": 6.4777,
+      "reads": {
+        "manifests": 1,
+        "scans": 1
+      }
+    }
+  }
+}

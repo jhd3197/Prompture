@@ -1,0 +1,64 @@
+{
+  "carton_contents": [
+    "Does what the packer put in the box agree with the customer's shopping list?",
+    "We expected a pair of blue cups and a paperback. Is that what was bagged?",
+    "Before sealing this one, reconcile the tote's item counts to this shipment.",
+    "Did somebody pack an extra charger in the customer's parcel?",
+    "Can the packed SKU mix account for every order line?"
+  ],
+  "inbound_count": [
+    "The supplier promised six crates. Did six actually come off the trailer?",
+    "Was today's vendor drop short against the purchase order?",
+    "Tell me whether what the receiving crew unloaded tallies with the advance notice.",
+    "At goods-in, compare the pieces we got with the PO.",
+    "The receiving slip shows forty; do the dock tallies back it up?"
+  ],
+  "dispatch_lane": [
+    "This box was scanned at outbound door nine. Is that the carrier's assigned door?",
+    "Is the parcel in the correct chute for its outbound service?",
+    "Our sorter sent this carton toward the west truck. Was that the intended lane?",
+    "Cross-check the load bay on this dispatch scan against the manifest.",
+    "Does the departure lane match where this shipment is supposed to be handed off?"
+  ],
+  "free_stock": [
+    "After existing promises, how many of these could another buyer still order here?",
+    "Subtract the units already spoken for from the shelf balance at this site.",
+    "How much of SKU K is available to promise at this building?",
+    "Do we have any uncommitted units left at this facility?",
+    "Of the twenty shown on hand here, how many are free for another order?"
+  ],
+  "custody_history": [
+    "Who most recently signed for this parcel?",
+    "Trace possession from the last accepted handover.",
+    "Was there a recorded transfer after the driver collected this box?",
+    "Which team last acknowledged taking responsibility for this shipment?",
+    "Show the chain of handoffs for this tracking number."
+  ],
+  "label_revision": [
+    "Is the sticker on the box the latest issued edition?",
+    "A shipping label was reissued yesterday. Is the old one still on this carton?",
+    "Compare the printed waybill version to the current one in the system.",
+    "Did the packer attach the superseded shipping sticker?",
+    "Are the revision on this parcel and the active label revision identical?"
+  ],
+  "abstain": [
+    "Move this parcel to the correct carrier chute.",
+    "Reserve three of the available units for order 19.",
+    "Print a replacement waybill and void the old one.",
+    "Correct the purchase order so it agrees with the receiving slip.",
+    "Record a new handoff to the night shift.",
+    "Remove the extra book from the carton.",
+    "What's the wholesale price of these incoming mugs?",
+    "When will this order reach the buyer's doorstep?",
+    "Which forklift needs a battery change?",
+    "Is the parcel OK?",
+    "Check that the paperwork matches.",
+    "Can we release it yet?",
+    "Check the carton contents and the current label revision.",
+    "Tell me both how much is free and who last took custody.",
+    "Check whether the inbound count is short, then update the purchase order.",
+    "Find the right outbound lane and book the carrier pickup.",
+    "Compare revenue per unit across our warehouses.",
+    "Which two suppliers had the highest return rate this month?"
+  ]
+}

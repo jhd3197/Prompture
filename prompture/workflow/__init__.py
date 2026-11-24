@@ -35,6 +35,7 @@ from .architect import (
     architect,
     node_type_catalog,
 )
+from .discovery import RecipeCandidate, RecipeMatch
 from .engine import (
     CompiledWorkflow,
     GraphRunner,
@@ -51,6 +52,8 @@ from .errors import (
     WorkflowError,
 )
 from .model import Edge, Graph, Handle, HandleType, Node, build_graph
+from .recipe_ranking import RecipeExampleIndex
+from .recipes import RecipeStore
 from .recovery import (
     FileWorkflowStateStore,
     HumanInputRequired,
@@ -122,6 +125,10 @@ __all__ = [
     "OperationLedger",
     "OperationRecord",
     "OperationStatus",
+    "RecipeCandidate",
+    "RecipeExampleIndex",
+    "RecipeMatch",
+    "RecipeStore",
     "ReconciliationRequired",
     # references
     "Reference",

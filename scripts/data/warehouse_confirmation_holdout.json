@@ -1,0 +1,40 @@
+{
+  "free_stock": [
+    "Leeds has parts already claimed by service jobs. What quantity of the motor can I offer a walk-in buyer?",
+    "For product 29 at the annex, give me on-hand minus the units ring-fenced for open tickets.",
+    "Can a new customer take three brass hinges from this store once outstanding reservations are covered?"
+  ],
+  "custody_history": [
+    "Recover the signed chain of possession for the missing camera box, ending with its latest keeper.",
+    "Between Mia at pickup and the airport shed, who last confirmed receipt of the mailbag?",
+    "Show each recorded handover for X80 up to the most recent acceptance."
+  ],
+  "carton_contents": [
+    "Look at unit 140's pack record. Are the socket sizes and quantities inside exactly what the buyer ordered?",
+    "The slip calls for a shirt and two scarves. Does the packing scan account for that assortment?",
+    "A mystery accessory turned up in our packing photo. Did the customer's order call for everything in the box?"
+  ],
+  "dispatch_lane": [
+    "Our blue carrier collects on belt 2. Did the sorter route the Valencia parcel onto that belt?",
+    "Check bag 12's last outbound divert against its booked loading point.",
+    "FastParcel freight went down the red chute. Is that the assigned exit for this service?"
+  ],
+  "label_revision": [
+    "The revision mark on this sticker reads 07. Is that still the current issue for this consignment?",
+    "A waybill was amended overnight. Check whether the physical copy on crate Z still matches.",
+    "Is the parcel wearing a retired edition of its address label?"
+  ],
+  "inbound_count": [
+    "The wholesaler billed a hundred tea tins on our buying order. How many actually landed against that number?",
+    "When we unloaded the flour this morning, was the amount received equal to the amount ordered?",
+    "Inspect the goods receipt for the oak panels and report any difference from the supplier order quantities."
+  ],
+  "abstain": [
+    "Put a hold on all remaining oak panels until the inspector arrives.",
+    "Were both the printed waybill and the items inside this parcel correct?",
+    "What date will courier 15 deliver that envelope to the island?",
+    "Could you check the thing from the late shift?",
+    "Change the dock assignment to East and tell the driver.",
+    "How many staff clocked in for the unloading shift?"
+  ]
+}
