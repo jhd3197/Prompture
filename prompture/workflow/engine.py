@@ -9,7 +9,7 @@ from typing import Any
 
 from ..groups.types import ErrorPolicy
 from .errors import WorkflowError
-from .model import Graph
+from .model import Graph, HandleType
 from .scheduler import run_graph as _run_graph
 from .scheduler import run_node as _run_node
 from .state import NodeResult, RunResult, WorkflowCallbacks
@@ -130,11 +130,30 @@ class CompiledWorkflow:
 
         graph = self.graph
         tool_name = name or graph.id
-        properties = {h.name: {"type": "string", "description": h.description or h.name} for h in graph.inputs}
+        types = {
+            HandleType.TEXT: "string",
+            HandleType.BOOLEAN: "boolean",
+            HandleType.NUMBER: "number",
+            HandleType.LIST: "array",
+        }
+        properties = {}
+        for handle in graph.inputs:
+            if handle.schema is not None:
+                schema = dict(handle.schema)
+            elif handle.type == HandleType.JSON:
+                schema = {}
+            else:
+                schema = {"type": types.get(handle.type, "string")}
+            schema.setdefault("description", handle.description or handle.name)
+            if not handle.required and handle.default is not None:
+                schema.setdefault("default", handle.default)
+            properties[handle.name] = schema
         required = [h.name for h in graph.inputs if h.required]
 
         def _invoke(**kwargs: Any) -> dict[str, Any]:
-            return self(**kwargs)
+            supplied = {h.name: h.default for h in graph.inputs if not h.required and h.default is not None}
+            supplied.update(kwargs)
+            return self(**supplied)
 
         return ToolDefinition(
             name=tool_name,

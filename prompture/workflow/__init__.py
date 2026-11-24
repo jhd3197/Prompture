@@ -51,6 +51,7 @@ from .errors import (
     WorkflowError,
 )
 from .model import Edge, Graph, Handle, HandleType, Node, build_graph
+from .recipes import RecipeStore
 from .recovery import (
     FileWorkflowStateStore,
     HumanInputRequired,
@@ -122,6 +123,7 @@ __all__ = [
     "OperationLedger",
     "OperationRecord",
     "OperationStatus",
+    "RecipeStore",
     "ReconciliationRequired",
     # references
     "Reference",

@@ -1,0 +1,37 @@
+{
+  "model": "claude-sonnet-4-6",
+  "planning_usage": {
+    "prompt_tokens": 1854,
+    "completion_tokens": 512,
+    "total_tokens": 2366,
+    "cost": 0.013242
+  },
+  "runs": [
+    {
+      "phase": "cold",
+      "seconds": 7.286,
+      "planner_invocations": 1,
+      "reads": {
+        "manifests": 1,
+        "scans": 1
+      },
+      "exact": true,
+      "correct": 12,
+      "total": 12,
+      "false_releases": 0
+    },
+    {
+      "phase": "replay_changed_scan",
+      "seconds": 0.0102,
+      "planner_invocations": 0,
+      "reads": {
+        "manifests": 1,
+        "scans": 1
+      },
+      "exact": true,
+      "correct": 12,
+      "total": 12,
+      "false_releases": 0
+    }
+  ]
+}
