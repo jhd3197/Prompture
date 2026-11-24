@@ -1,0 +1,352 @@
+{
+  "proposer": "laya/typed-decisions",
+  "reviewer": "ollama/qwen2.5:1.5b",
+  "fixture_sha256": "90753df562f954048bc69aef325fc1eb72ffd9081046f016fe9f4dd37c803bbf",
+  "summary": {
+    "requests": 24,
+    "supported": 18,
+    "should_abstain": 6,
+    "correct": 15,
+    "correct_recipe": 10,
+    "correct_abstentions": 5,
+    "false_accepts": 0,
+    "invalid": 1,
+    "retrieved_gold": 17,
+    "input_tokens": 4810,
+    "output_tokens": 58
+  },
+  "rows": [
+    {
+      "request": "Look at unit 140's pack record. Are the socket sizes and quantities inside exactly what the buyer ordered?",
+      "expected": "carton_contents",
+      "proposed": "carton_contents",
+      "predicted": "abstain",
+      "status": "abstained",
+      "candidates": [
+        "carton_contents"
+      ],
+      "review_input": 90,
+      "review_output": 2,
+      "input_tokens": 215,
+      "output_tokens": 2
+    },
+    {
+      "request": "Inspect the goods receipt for the oak panels and report any difference from the supplier order quantities.",
+      "expected": "inbound_count",
+      "proposed": "inbound_count",
+      "predicted": "inbound_count",
+      "status": "selected",
+      "candidates": [
+        "inbound_count"
+      ],
+      "review_input": 84,
+      "review_output": 2,
+      "input_tokens": 208,
+      "output_tokens": 2
+    },
+    {
+      "request": "How many staff clocked in for the unloading shift?",
+      "expected": "abstain",
+      "proposed": "inbound_count",
+      "predicted": "invalid",
+      "status": "invalid",
+      "candidates": [
+        "inbound_count"
+      ],
+      "review_input": 78,
+      "review_output": 16,
+      "input_tokens": 193,
+      "output_tokens": 16
+    },
+    {
+      "request": "Between Mia at pickup and the airport shed, who last confirmed receipt of the mailbag?",
+      "expected": "custody_history",
+      "proposed": "custody_history",
+      "predicted": "abstain",
+      "status": "abstained",
+      "candidates": [
+        "custody_history"
+      ],
+      "review_input": 85,
+      "review_output": 2,
+      "input_tokens": 207,
+      "output_tokens": 2
+    },
+    {
+      "request": "Change the dock assignment to East and tell the driver.",
+      "expected": "abstain",
+      "proposed": "dispatch_lane",
+      "predicted": "abstain",
+      "status": "abstained",
+      "candidates": [
+        "dispatch_lane"
+      ],
+      "review_input": 78,
+      "review_output": 2,
+      "input_tokens": 196,
+      "output_tokens": 2
+    },
+    {
+      "request": "Is the parcel wearing a retired edition of its address label?",
+      "expected": "label_revision",
+      "proposed": "label_revision",
+      "predicted": "abstain",
+      "status": "abstained",
+      "candidates": [
+        "label_revision"
+      ],
+      "review_input": 79,
+      "review_output": 2,
+      "input_tokens": 199,
+      "output_tokens": 2
+    },
+    {
+      "request": "Could you check the thing from the late shift?",
+      "expected": "abstain",
+      "proposed": "custody_history",
+      "predicted": "abstain",
+      "status": "abstained",
+      "candidates": [
+        "custody_history"
+      ],
+      "review_input": 77,
+      "review_output": 2,
+      "input_tokens": 192,
+      "output_tokens": 2
+    },
+    {
+      "request": "The slip calls for a shirt and two scarves. Does the packing scan account for that assortment?",
+      "expected": "carton_contents",
+      "proposed": "carton_contents",
+      "predicted": "carton_contents",
+      "status": "selected",
+      "candidates": [
+        "carton_contents"
+      ],
+      "review_input": 86,
+      "review_output": 2,
+      "input_tokens": 213,
+      "output_tokens": 2
+    },
+    {
+      "request": "A mystery accessory turned up in our packing photo. Did the customer's order call for everything in the box?",
+      "expected": "carton_contents",
+      "proposed": "carton_contents",
+      "predicted": "carton_contents",
+      "status": "selected",
+      "candidates": [
+        "carton_contents"
+      ],
+      "review_input": 88,
+      "review_output": 2,
+      "input_tokens": 217,
+      "output_tokens": 2
+    },
+    {
+      "request": "The wholesaler billed a hundred tea tins on our buying order. How many actually landed against that number?",
+      "expected": "inbound_count",
+      "proposed": "inbound_count",
+      "predicted": "inbound_count",
+      "status": "selected",
+      "candidates": [
+        "inbound_count"
+      ],
+      "review_input": 88,
+      "review_output": 2,
+      "input_tokens": 213,
+      "output_tokens": 2
+    },
+    {
+      "request": "What date will courier 15 deliver that envelope to the island?",
+      "expected": "abstain",
+      "proposed": "abstain",
+      "predicted": "abstain",
+      "status": "abstained",
+      "candidates": [],
+      "review_input": 0,
+      "review_output": 0,
+      "input_tokens": 121,
+      "output_tokens": 0
+    },
+    {
+      "request": "For product 29 at the annex, give me on-hand minus the units ring-fenced for open tickets.",
+      "expected": "free_stock",
+      "proposed": "free_stock",
+      "predicted": "free_stock",
+      "status": "selected",
+      "candidates": [
+        "free_stock"
+      ],
+      "review_input": 88,
+      "review_output": 2,
+      "input_tokens": 215,
+      "output_tokens": 2
+    },
+    {
+      "request": "A waybill was amended overnight. Check whether the physical copy on crate Z still matches.",
+      "expected": "label_revision",
+      "proposed": "label_revision",
+      "predicted": "label_revision",
+      "status": "selected",
+      "candidates": [
+        "label_revision"
+      ],
+      "review_input": 85,
+      "review_output": 2,
+      "input_tokens": 211,
+      "output_tokens": 2
+    },
+    {
+      "request": "Put a hold on all remaining oak panels until the inspector arrives.",
+      "expected": "abstain",
+      "proposed": "abstain",
+      "predicted": "abstain",
+      "status": "abstained",
+      "candidates": [],
+      "review_input": 0,
+      "review_output": 0,
+      "input_tokens": 119,
+      "output_tokens": 0
+    },
+    {
+      "request": "Show each recorded handover for X80 up to the most recent acceptance.",
+      "expected": "custody_history",
+      "proposed": "custody_history",
+      "predicted": "custody_history",
+      "status": "selected",
+      "candidates": [
+        "custody_history"
+      ],
+      "review_input": 83,
+      "review_output": 2,
+      "input_tokens": 201,
+      "output_tokens": 2
+    },
+    {
+      "request": "Recover the signed chain of possession for the missing camera box, ending with its latest keeper.",
+      "expected": "custody_history",
+      "proposed": "custody_history",
+      "predicted": "abstain",
+      "status": "abstained",
+      "candidates": [
+        "custody_history"
+      ],
+      "review_input": 86,
+      "review_output": 2,
+      "input_tokens": 211,
+      "output_tokens": 2
+    },
+    {
+      "request": "Were both the printed waybill and the items inside this parcel correct?",
+      "expected": "abstain",
+      "proposed": "label_revision",
+      "predicted": "abstain",
+      "status": "abstained",
+      "candidates": [
+        "label_revision"
+      ],
+      "review_input": 81,
+      "review_output": 2,
+      "input_tokens": 203,
+      "output_tokens": 2
+    },
+    {
+      "request": "Leeds has parts already claimed by service jobs. What quantity of the motor can I offer a walk-in buyer?",
+      "expected": "free_stock",
+      "proposed": "carton_contents",
+      "predicted": "abstain",
+      "status": "abstained",
+      "candidates": [
+        "carton_contents"
+      ],
+      "review_input": 89,
+      "review_output": 2,
+      "input_tokens": 218,
+      "output_tokens": 2
+    },
+    {
+      "request": "Our blue carrier collects on belt 2. Did the sorter route the Valencia parcel onto that belt?",
+      "expected": "dispatch_lane",
+      "proposed": "dispatch_lane",
+      "predicted": "abstain",
+      "status": "abstained",
+      "candidates": [
+        "dispatch_lane"
+      ],
+      "review_input": 87,
+      "review_output": 2,
+      "input_tokens": 214,
+      "output_tokens": 2
+    },
+    {
+      "request": "The revision mark on this sticker reads 07. Is that still the current issue for this consignment?",
+      "expected": "label_revision",
+      "proposed": "label_revision",
+      "predicted": "label_revision",
+      "status": "selected",
+      "candidates": [
+        "label_revision"
+      ],
+      "review_input": 89,
+      "review_output": 2,
+      "input_tokens": 218,
+      "output_tokens": 2
+    },
+    {
+      "request": "Can a new customer take three brass hinges from this store once outstanding reservations are covered?",
+      "expected": "free_stock",
+      "proposed": "free_stock",
+      "predicted": "abstain",
+      "status": "abstained",
+      "candidates": [
+        "free_stock"
+      ],
+      "review_input": 82,
+      "review_output": 2,
+      "input_tokens": 203,
+      "output_tokens": 2
+    },
+    {
+      "request": "When we unloaded the flour this morning, was the amount received equal to the amount ordered?",
+      "expected": "inbound_count",
+      "proposed": "inbound_count",
+      "predicted": "inbound_count",
+      "status": "selected",
+      "candidates": [
+        "inbound_count"
+      ],
+      "review_input": 84,
+      "review_output": 2,
+      "input_tokens": 210,
+      "output_tokens": 2
+    },
+    {
+      "request": "FastParcel freight went down the red chute. Is that the assigned exit for this service?",
+      "expected": "dispatch_lane",
+      "proposed": "dispatch_lane",
+      "predicted": "dispatch_lane",
+      "status": "selected",
+      "candidates": [
+        "dispatch_lane"
+      ],
+      "review_input": 85,
+      "review_output": 2,
+      "input_tokens": 210,
+      "output_tokens": 2
+    },
+    {
+      "request": "Check bag 12's last outbound divert against its booked loading point.",
+      "expected": "dispatch_lane",
+      "proposed": "dispatch_lane",
+      "predicted": "abstain",
+      "status": "abstained",
+      "candidates": [
+        "dispatch_lane"
+      ],
+      "review_input": 82,
+      "review_output": 2,
+      "input_tokens": 203,
+      "output_tokens": 2
+    }
+  ]
+}

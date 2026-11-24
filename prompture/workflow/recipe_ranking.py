@@ -43,7 +43,7 @@ class RecipeExampleIndex:
         self._norms = {name: [self._norm(doc) for doc in docs] for name, docs in self._examples.items()}
 
     def _norm(self, terms: set[str]) -> float:
-        return math.sqrt(sum(self._weights.get(term, 0.0) for term in terms))
+        return math.sqrt(math.fsum(self._weights[term] for term in terms))
 
     def shortlist(self, request: str, candidates: Sequence[RecipeCandidate], *, limit: int) -> list[RecipeCandidate]:
         """Rerank compatible candidates, using lexical order to break ties."""
@@ -56,7 +56,7 @@ class RecipeExampleIndex:
             # Query norm is constant across documents and cancels for ranking.
             scores[name] = max(
                 (
-                    sum(self._weights[t] for t in query & doc) / norm
+                    math.fsum(self._weights[t] for t in query & doc) / norm
                     for doc, norm in zip(self._examples.get(name, ()), self._norms.get(name, ()), strict=True)
                     if norm
                 ),

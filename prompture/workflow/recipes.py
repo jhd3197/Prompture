@@ -229,7 +229,7 @@ class RecipeStore:
         return [(candidate.name, candidate.verified_uses) for candidate, _ in self._catalog()]
 
     def search(self, request: str, *, limit: int = 6, index: RecipeExampleIndex | None = None) -> list[RecipeCandidate]:
-        """Rank compatible definitions by name, description and confirmed aliases; ties favor verified use."""
+        """Rank compatible definitions locally, optionally reranking with a host's example index."""
         # tool_context imports execution, which registers workflow nodes during startup.
         from ..agents.tool_context import rank_tool
 
@@ -259,7 +259,11 @@ class RecipeStore:
         index: RecipeExampleIndex | None = None,
         confirm_first: bool = False,
     ) -> RecipeMatch:
-        """Resolve confirmed wording locally, otherwise ask a text driver to choose or abstain. No tools execute."""
+        """Resolve confirmed wording locally, otherwise ask a text or decision driver to choose or abstain.
+
+        With confirm_first, show only the leading candidate. Text drivers answer yes or no
+        and decision drivers receive one option plus abstention. Discovery never executes a recipe.
+        """
         if not request.strip() or limit < 1:
             raise ValueError("A nonempty request and a positive candidate limit are required")
         try:
