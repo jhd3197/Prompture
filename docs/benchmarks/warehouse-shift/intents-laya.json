@@ -1,0 +1,1102 @@
+{
+  "model": "laya/typed-decisions",
+  "fixtures": [
+    "f25ff3674b9dac0d3eb942987054a845bad933d31823480dccaf8f544b9c75da",
+    "90753df562f954048bc69aef325fc1eb72ffd9081046f016fe9f4dd37c803bbf"
+  ],
+  "summary": {
+    "requests": 60,
+    "supported": 42,
+    "should_abstain": 18,
+    "correct": 36,
+    "correct_recipe": 31,
+    "correct_abstentions": 5,
+    "false_accepts": 13,
+    "invalid": 0,
+    "retrieved_gold": 42,
+    "input_tokens": 14642,
+    "output_tokens": 0
+  },
+  "rows": [
+    {
+      "request": "Get me the signed handovers and the packing discrepancy on consignment R17.",
+      "expected": "abstain",
+      "choice": "2",
+      "predicted": "custody_history",
+      "candidates": [
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "free_stock",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "selected",
+      "served_model": "laya-rl-agent",
+      "input_tokens": 242,
+      "output_tokens": 0
+    },
+    {
+      "request": "Before I sign off job 71, are the articles inside consistent with its sales lines?",
+      "expected": "carton_contents",
+      "choice": "1",
+      "predicted": "carton_contents",
+      "candidates": [
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "free_stock",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "selected",
+      "served_model": "laya-rl-agent",
+      "input_tokens": 243,
+      "output_tokens": 0
+    },
+    {
+      "request": "What's the humidity inside the cheese cage right now?",
+      "expected": "abstain",
+      "choice": "1",
+      "predicted": "carton_contents",
+      "candidates": [
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "free_stock",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "selected",
+      "served_model": "laya-rl-agent",
+      "input_tokens": 237,
+      "output_tokens": 0
+    },
+    {
+      "request": "We signed for pallet P09 at receiving. Was the vendor short on any of the ordered quantities?",
+      "expected": "inbound_count",
+      "choice": "2",
+      "predicted": "inbound_count",
+      "candidates": [
+        "carton_contents",
+        "inbound_count",
+        "custody_history",
+        "dispatch_lane",
+        "free_stock",
+        "label_revision"
+      ],
+      "status": "selected",
+      "served_model": "laya-rl-agent",
+      "input_tokens": 247,
+      "output_tokens": 0
+    },
+    {
+      "request": "Bin A has 36 rolls on the ledger, some earmarked for jobs. What's the sellable balance at this depot?",
+      "expected": "free_stock",
+      "choice": "1",
+      "predicted": "carton_contents",
+      "candidates": [
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "free_stock",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "selected",
+      "served_model": "laya-rl-agent",
+      "input_tokens": 255,
+      "output_tokens": 0
+    },
+    {
+      "request": "We found two versions of the courier label. Is the one physically attached to 938 the active one?",
+      "expected": "label_revision",
+      "choice": "1",
+      "predicted": "label_revision",
+      "candidates": [
+        "label_revision",
+        "free_stock",
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "inbound_count"
+      ],
+      "status": "selected",
+      "served_model": "laya-rl-agent",
+      "input_tokens": 248,
+      "output_tokens": 0
+    },
+    {
+      "request": "Northline collects from door seven. Does the chute used for this consignment lead there?",
+      "expected": "dispatch_lane",
+      "choice": "1",
+      "predicted": "carton_contents",
+      "candidates": [
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "free_stock",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "selected",
+      "served_model": "laya-rl-agent",
+      "input_tokens": 245,
+      "output_tokens": 0
+    },
+    {
+      "request": "A package is missing between shifts. Who acknowledged possession of 77-B most recently?",
+      "expected": "custody_history",
+      "choice": "2",
+      "predicted": "custody_history",
+      "candidates": [
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "free_stock",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "selected",
+      "served_model": "laya-rl-agent",
+      "input_tokens": 243,
+      "output_tokens": 0
+    },
+    {
+      "request": "Has the waybill on the outside been superseded since it was printed?",
+      "expected": "label_revision",
+      "choice": "1",
+      "predicted": "label_revision",
+      "candidates": [
+        "label_revision",
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "free_stock",
+        "inbound_count"
+      ],
+      "status": "selected",
+      "served_model": "laya-rl-agent",
+      "input_tokens": 241,
+      "output_tokens": 0
+    },
+    {
+      "request": "The inbound supplier invoice has a fuel surcharge. Was the rate negotiated correctly?",
+      "expected": "abstain",
+      "choice": "1",
+      "predicted": "inbound_count",
+      "candidates": [
+        "inbound_count",
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "free_stock",
+        "label_revision"
+      ],
+      "status": "selected",
+      "served_model": "laya-rl-agent",
+      "input_tokens": 243,
+      "output_tokens": 0
+    },
+    {
+      "request": "Change the recorded recipient on last night's custody slip to Dana.",
+      "expected": "abstain",
+      "choice": "1",
+      "predicted": "custody_history",
+      "candidates": [
+        "custody_history",
+        "carton_contents",
+        "dispatch_lane",
+        "free_stock",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "selected",
+      "served_model": "laya-rl-agent",
+      "input_tokens": 239,
+      "output_tokens": 0
+    },
+    {
+      "request": "Someone at packing counted six mugs in BX88, although the shopper ordered a set of four. Can you check the discrepancy?",
+      "expected": "carton_contents",
+      "choice": "2",
+      "predicted": "inbound_count",
+      "candidates": [
+        "free_stock",
+        "inbound_count",
+        "label_revision",
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane"
+      ],
+      "status": "selected",
+      "served_model": "laya-rl-agent",
+      "input_tokens": 253,
+      "output_tokens": 0
+    },
+    {
+      "request": "Which of today's pallets is tallest?",
+      "expected": "abstain",
+      "choice": "9",
+      "predicted": "abstain",
+      "candidates": [
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "free_stock",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "abstained",
+      "served_model": "laya-rl-agent",
+      "input_tokens": 236,
+      "output_tokens": 0
+    },
+    {
+      "request": "If that sticker is obsolete, print a replacement and put it on the package.",
+      "expected": "abstain",
+      "choice": "6",
+      "predicted": "label_revision",
+      "candidates": [
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "free_stock",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "selected",
+      "served_model": "laya-rl-agent",
+      "input_tokens": 243,
+      "output_tokens": 0
+    },
+    {
+      "request": "Parcel W14 lit up the amber diverter. Is that its carrier's designated exit?",
+      "expected": "dispatch_lane",
+      "choice": "1",
+      "predicted": "dispatch_lane",
+      "candidates": [
+        "dispatch_lane",
+        "custody_history",
+        "free_stock",
+        "carton_contents",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "selected",
+      "served_model": "laya-rl-agent",
+      "input_tokens": 246,
+      "output_tokens": 0
+    },
+    {
+      "request": "Give me a delivery ETA for a parcel already on the motorway.",
+      "expected": "abstain",
+      "choice": "1",
+      "predicted": "dispatch_lane",
+      "candidates": [
+        "dispatch_lane",
+        "inbound_count",
+        "carton_contents",
+        "custody_history",
+        "free_stock",
+        "label_revision"
+      ],
+      "status": "selected",
+      "served_model": "laya-rl-agent",
+      "input_tokens": 241,
+      "output_tokens": 0
+    },
+    {
+      "request": "Can finance pay for all 120 incoming cases, judging only by the number physically received against the PO?",
+      "expected": "inbound_count",
+      "choice": "1",
+      "predicted": "inbound_count",
+      "candidates": [
+        "inbound_count",
+        "dispatch_lane",
+        "carton_contents",
+        "custody_history",
+        "free_stock",
+        "label_revision"
+      ],
+      "status": "selected",
+      "served_model": "laya-rl-agent",
+      "input_tokens": 246,
+      "output_tokens": 0
+    },
+    {
+      "request": "Can I promise any units of R4 today from this building once the open allocations are deducted?",
+      "expected": "free_stock",
+      "choice": "4",
+      "predicted": "free_stock",
+      "candidates": [
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "free_stock",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "selected",
+      "served_model": "laya-rl-agent",
+      "input_tokens": 247,
+      "output_tokens": 0
+    },
+    {
+      "request": "A caller wants our remaining supply of lime paint at East. Exclude anything held for another customer.",
+      "expected": "free_stock",
+      "choice": "8",
+      "predicted": "abstain",
+      "candidates": [
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "free_stock",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "abstained",
+      "served_model": "laya-rl-agent",
+      "input_tokens": 246,
+      "output_tokens": 0
+    },
+    {
+      "request": "Read back the transfers of tote G from pack station to courier, including the latest confirmed holder.",
+      "expected": "custody_history",
+      "choice": "2",
+      "predicted": "custody_history",
+      "candidates": [
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "free_stock",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "selected",
+      "served_model": "laya-rl-agent",
+      "input_tokens": 247,
+      "output_tokens": 0
+    },
+    {
+      "request": "Night shift booked in the ceramic order. Did the wholesaler send all the pieces we were expecting?",
+      "expected": "inbound_count",
+      "choice": "1",
+      "predicted": "inbound_count",
+      "candidates": [
+        "inbound_count",
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "free_stock",
+        "label_revision"
+      ],
+      "status": "selected",
+      "served_model": "laya-rl-agent",
+      "input_tokens": 246,
+      "output_tokens": 0
+    },
+    {
+      "request": "Check sellable stock at East and also whether our vendor's shipment was short.",
+      "expected": "abstain",
+      "choice": "4",
+      "predicted": "inbound_count",
+      "candidates": [
+        "free_stock",
+        "carton_contents",
+        "custody_history",
+        "inbound_count",
+        "label_revision",
+        "dispatch_lane"
+      ],
+      "status": "selected",
+      "served_model": "laya-rl-agent",
+      "input_tokens": 242,
+      "output_tokens": 0
+    },
+    {
+      "request": "Can you tell me if yesterday's job is fine?",
+      "expected": "abstain",
+      "choice": "1",
+      "predicted": "carton_contents",
+      "candidates": [
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "free_stock",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "selected",
+      "served_model": "laya-rl-agent",
+      "input_tokens": 237,
+      "output_tokens": 0
+    },
+    {
+      "request": "Did anyone take responsibility for the parcel after the cage attendant signed it out?",
+      "expected": "custody_history",
+      "choice": "4",
+      "predicted": "custody_history",
+      "candidates": [
+        "dispatch_lane",
+        "free_stock",
+        "carton_contents",
+        "custody_history",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "selected",
+      "served_model": "laya-rl-agent",
+      "input_tokens": 241,
+      "output_tokens": 0
+    },
+    {
+      "request": "Security needs the handover record for consignment H21. Who accepted it last?",
+      "expected": "custody_history",
+      "choice": "1",
+      "predicted": "custody_history",
+      "candidates": [
+        "custody_history",
+        "carton_contents",
+        "dispatch_lane",
+        "free_stock",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "selected",
+      "served_model": "laya-rl-agent",
+      "input_tokens": 243,
+      "output_tokens": 0
+    },
+    {
+      "request": "The sorter logged a divert to spur 18 for P31. Check the outbound assignment.",
+      "expected": "dispatch_lane",
+      "choice": "1",
+      "predicted": "dispatch_lane",
+      "candidates": [
+        "dispatch_lane",
+        "free_stock",
+        "inbound_count",
+        "label_revision",
+        "carton_contents",
+        "custody_history"
+      ],
+      "status": "selected",
+      "served_model": "laya-rl-agent",
+      "input_tokens": 245,
+      "output_tokens": 0
+    },
+    {
+      "request": "The weight alarm went off. I only need to know whether each product and count inside matches the order.",
+      "expected": "carton_contents",
+      "choice": "2",
+      "predicted": "carton_contents",
+      "candidates": [
+        "inbound_count",
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "free_stock",
+        "label_revision"
+      ],
+      "status": "selected",
+      "served_model": "laya-rl-agent",
+      "input_tokens": 247,
+      "output_tokens": 0
+    },
+    {
+      "request": "Move P18 from the postal spur to express so it doesn't miss departure.",
+      "expected": "abstain",
+      "choice": "7",
+      "predicted": "abstain",
+      "candidates": [
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "free_stock",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "abstained",
+      "served_model": "laya-rl-agent",
+      "input_tokens": 242,
+      "output_tokens": 0
+    },
+    {
+      "request": "The website wants to sell another eight kettles from Bristol. How many are still available after commitments?",
+      "expected": "free_stock",
+      "choice": "1",
+      "predicted": "free_stock",
+      "candidates": [
+        "free_stock",
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "selected",
+      "served_model": "laya-rl-agent",
+      "input_tokens": 247,
+      "output_tokens": 0
+    },
+    {
+      "request": "Bench 12 got order 804. The pick ticket says two lids and a tub. Does the sealed unit contain that mix?",
+      "expected": "carton_contents",
+      "choice": "2",
+      "predicted": "carton_contents",
+      "candidates": [
+        "inbound_count",
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "free_stock",
+        "label_revision"
+      ],
+      "status": "selected",
+      "served_model": "laya-rl-agent",
+      "input_tokens": 253,
+      "output_tokens": 0
+    },
+    {
+      "request": "This is a postal bag on carousel C. Verify it is headed for the correct loading bay.",
+      "expected": "dispatch_lane",
+      "choice": "1",
+      "predicted": "carton_contents",
+      "candidates": [
+        "carton_contents",
+        "dispatch_lane",
+        "custody_history",
+        "free_stock",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "selected",
+      "served_model": "laya-rl-agent",
+      "input_tokens": 247,
+      "output_tokens": 0
+    },
+    {
+      "request": "Set aside nine green towels for the next web order.",
+      "expected": "abstain",
+      "choice": "0",
+      "predicted": "abstain",
+      "candidates": [
+        "inbound_count",
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "free_stock",
+        "label_revision"
+      ],
+      "status": "abstained",
+      "served_model": "laya-rl-agent",
+      "input_tokens": 237,
+      "output_tokens": 0
+    },
+    {
+      "request": "Truck 54 delivered the summer replenishment. Reconcile what came off it with what purchasing asked for.",
+      "expected": "inbound_count",
+      "choice": "1",
+      "predicted": "carton_contents",
+      "candidates": [
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "free_stock",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "selected",
+      "served_model": "laya-rl-agent",
+      "input_tokens": 248,
+      "output_tokens": 0
+    },
+    {
+      "request": "I have number 702 and an upset driver. Can you look into it?",
+      "expected": "abstain",
+      "choice": "3",
+      "predicted": "carton_contents",
+      "candidates": [
+        "custody_history",
+        "free_stock",
+        "carton_contents",
+        "dispatch_lane",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "selected",
+      "served_model": "laya-rl-agent",
+      "input_tokens": 241,
+      "output_tokens": 0
+    },
+    {
+      "request": "The returns team see an old barcode layout. Compare this parcel's label edition with the one on file.",
+      "expected": "label_revision",
+      "choice": "2",
+      "predicted": "carton_contents",
+      "candidates": [
+        "label_revision",
+        "carton_contents",
+        "dispatch_lane",
+        "free_stock",
+        "inbound_count",
+        "custody_history"
+      ],
+      "status": "selected",
+      "served_model": "laya-rl-agent",
+      "input_tokens": 248,
+      "output_tokens": 0
+    },
+    {
+      "request": "The thermal sticker says issue C. Does that agree with the last shipping artwork issued for BX11?",
+      "expected": "label_revision",
+      "choice": "1",
+      "predicted": "label_revision",
+      "candidates": [
+        "label_revision",
+        "custody_history",
+        "carton_contents",
+        "dispatch_lane",
+        "free_stock",
+        "inbound_count"
+      ],
+      "status": "selected",
+      "served_model": "laya-rl-agent",
+      "input_tokens": 247,
+      "output_tokens": 0
+    },
+    {
+      "request": "Look at unit 140's pack record. Are the socket sizes and quantities inside exactly what the buyer ordered?",
+      "expected": "carton_contents",
+      "choice": "1",
+      "predicted": "carton_contents",
+      "candidates": [
+        "carton_contents",
+        "custody_history",
+        "free_stock",
+        "inbound_count",
+        "dispatch_lane",
+        "label_revision"
+      ],
+      "status": "selected",
+      "served_model": "laya-rl-agent",
+      "input_tokens": 247,
+      "output_tokens": 0
+    },
+    {
+      "request": "Inspect the goods receipt for the oak panels and report any difference from the supplier order quantities.",
+      "expected": "inbound_count",
+      "choice": "1",
+      "predicted": "inbound_count",
+      "candidates": [
+        "inbound_count",
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "free_stock",
+        "label_revision"
+      ],
+      "status": "selected",
+      "served_model": "laya-rl-agent",
+      "input_tokens": 245,
+      "output_tokens": 0
+    },
+    {
+      "request": "How many staff clocked in for the unloading shift?",
+      "expected": "abstain",
+      "choice": "1",
+      "predicted": "carton_contents",
+      "candidates": [
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "free_stock",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "selected",
+      "served_model": "laya-rl-agent",
+      "input_tokens": 238,
+      "output_tokens": 0
+    },
+    {
+      "request": "Between Mia at pickup and the airport shed, who last confirmed receipt of the mailbag?",
+      "expected": "custody_history",
+      "choice": "1",
+      "predicted": "custody_history",
+      "candidates": [
+        "custody_history",
+        "inbound_count",
+        "carton_contents",
+        "dispatch_lane",
+        "free_stock",
+        "label_revision"
+      ],
+      "status": "selected",
+      "served_model": "laya-rl-agent",
+      "input_tokens": 245,
+      "output_tokens": 0
+    },
+    {
+      "request": "Change the dock assignment to East and tell the driver.",
+      "expected": "abstain",
+      "choice": "1",
+      "predicted": "dispatch_lane",
+      "candidates": [
+        "dispatch_lane",
+        "carton_contents",
+        "custody_history",
+        "free_stock",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "selected",
+      "served_model": "laya-rl-agent",
+      "input_tokens": 237,
+      "output_tokens": 0
+    },
+    {
+      "request": "Is the parcel wearing a retired edition of its address label?",
+      "expected": "label_revision",
+      "choice": "1",
+      "predicted": "label_revision",
+      "candidates": [
+        "label_revision",
+        "dispatch_lane",
+        "custody_history",
+        "carton_contents",
+        "free_stock",
+        "inbound_count"
+      ],
+      "status": "selected",
+      "served_model": "laya-rl-agent",
+      "input_tokens": 238,
+      "output_tokens": 0
+    },
+    {
+      "request": "Could you check the thing from the late shift?",
+      "expected": "abstain",
+      "choice": "0",
+      "predicted": "abstain",
+      "candidates": [
+        "free_stock",
+        "inbound_count",
+        "label_revision",
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane"
+      ],
+      "status": "abstained",
+      "served_model": "laya-rl-agent",
+      "input_tokens": 236,
+      "output_tokens": 0
+    },
+    {
+      "request": "The slip calls for a shirt and two scarves. Does the packing scan account for that assortment?",
+      "expected": "carton_contents",
+      "choice": "1",
+      "predicted": "carton_contents",
+      "candidates": [
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "free_stock",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "selected",
+      "served_model": "laya-rl-agent",
+      "input_tokens": 246,
+      "output_tokens": 0
+    },
+    {
+      "request": "A mystery accessory turned up in our packing photo. Did the customer's order call for everything in the box?",
+      "expected": "carton_contents",
+      "choice": "4",
+      "predicted": "carton_contents",
+      "candidates": [
+        "custody_history",
+        "free_stock",
+        "inbound_count",
+        "carton_contents",
+        "dispatch_lane",
+        "label_revision"
+      ],
+      "status": "selected",
+      "served_model": "laya-rl-agent",
+      "input_tokens": 248,
+      "output_tokens": 0
+    },
+    {
+      "request": "The wholesaler billed a hundred tea tins on our buying order. How many actually landed against that number?",
+      "expected": "inbound_count",
+      "choice": "1",
+      "predicted": "inbound_count",
+      "candidates": [
+        "inbound_count",
+        "dispatch_lane",
+        "carton_contents",
+        "custody_history",
+        "free_stock",
+        "label_revision"
+      ],
+      "status": "selected",
+      "served_model": "laya-rl-agent",
+      "input_tokens": 248,
+      "output_tokens": 0
+    },
+    {
+      "request": "What date will courier 15 deliver that envelope to the island?",
+      "expected": "abstain",
+      "choice": "10",
+      "predicted": "abstain",
+      "candidates": [
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "free_stock",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "abstained",
+      "served_model": "laya-rl-agent",
+      "input_tokens": 239,
+      "output_tokens": 0
+    },
+    {
+      "request": "For product 29 at the annex, give me on-hand minus the units ring-fenced for open tickets.",
+      "expected": "free_stock",
+      "choice": "1",
+      "predicted": "carton_contents",
+      "candidates": [
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "free_stock",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "selected",
+      "served_model": "laya-rl-agent",
+      "input_tokens": 249,
+      "output_tokens": 0
+    },
+    {
+      "request": "A waybill was amended overnight. Check whether the physical copy on crate Z still matches.",
+      "expected": "label_revision",
+      "choice": "2",
+      "predicted": "inbound_count",
+      "candidates": [
+        "free_stock",
+        "inbound_count",
+        "label_revision",
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane"
+      ],
+      "status": "selected",
+      "served_model": "laya-rl-agent",
+      "input_tokens": 244,
+      "output_tokens": 0
+    },
+    {
+      "request": "Put a hold on all remaining oak panels until the inspector arrives.",
+      "expected": "abstain",
+      "choice": "1",
+      "predicted": "carton_contents",
+      "candidates": [
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "free_stock",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "selected",
+      "served_model": "laya-rl-agent",
+      "input_tokens": 239,
+      "output_tokens": 0
+    },
+    {
+      "request": "Show each recorded handover for X80 up to the most recent acceptance.",
+      "expected": "custody_history",
+      "choice": "1",
+      "predicted": "custody_history",
+      "candidates": [
+        "custody_history",
+        "free_stock",
+        "carton_contents",
+        "dispatch_lane",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "selected",
+      "served_model": "laya-rl-agent",
+      "input_tokens": 241,
+      "output_tokens": 0
+    },
+    {
+      "request": "Recover the signed chain of possession for the missing camera box, ending with its latest keeper.",
+      "expected": "custody_history",
+      "choice": "1",
+      "predicted": "custody_history",
+      "candidates": [
+        "custody_history",
+        "dispatch_lane",
+        "carton_contents",
+        "free_stock",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "selected",
+      "served_model": "laya-rl-agent",
+      "input_tokens": 245,
+      "output_tokens": 0
+    },
+    {
+      "request": "Were both the printed waybill and the items inside this parcel correct?",
+      "expected": "abstain",
+      "choice": "1",
+      "predicted": "carton_contents",
+      "candidates": [
+        "carton_contents",
+        "dispatch_lane",
+        "label_revision",
+        "custody_history",
+        "free_stock",
+        "inbound_count"
+      ],
+      "status": "selected",
+      "served_model": "laya-rl-agent",
+      "input_tokens": 240,
+      "output_tokens": 0
+    },
+    {
+      "request": "Leeds has parts already claimed by service jobs. What quantity of the motor can I offer a walk-in buyer?",
+      "expected": "free_stock",
+      "choice": "8",
+      "predicted": "abstain",
+      "candidates": [
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "free_stock",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "abstained",
+      "served_model": "laya-rl-agent",
+      "input_tokens": 250,
+      "output_tokens": 0
+    },
+    {
+      "request": "Our blue carrier collects on belt 2. Did the sorter route the Valencia parcel onto that belt?",
+      "expected": "dispatch_lane",
+      "choice": "1",
+      "predicted": "dispatch_lane",
+      "candidates": [
+        "dispatch_lane",
+        "carton_contents",
+        "custody_history",
+        "free_stock",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "selected",
+      "served_model": "laya-rl-agent",
+      "input_tokens": 246,
+      "output_tokens": 0
+    },
+    {
+      "request": "The revision mark on this sticker reads 07. Is that still the current issue for this consignment?",
+      "expected": "label_revision",
+      "choice": "1",
+      "predicted": "label_revision",
+      "candidates": [
+        "label_revision",
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "free_stock",
+        "inbound_count"
+      ],
+      "status": "selected",
+      "served_model": "laya-rl-agent",
+      "input_tokens": 247,
+      "output_tokens": 0
+    },
+    {
+      "request": "Can a new customer take three brass hinges from this store once outstanding reservations are covered?",
+      "expected": "free_stock",
+      "choice": "1",
+      "predicted": "free_stock",
+      "candidates": [
+        "free_stock",
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "selected",
+      "served_model": "laya-rl-agent",
+      "input_tokens": 244,
+      "output_tokens": 0
+    },
+    {
+      "request": "When we unloaded the flour this morning, was the amount received equal to the amount ordered?",
+      "expected": "inbound_count",
+      "choice": "1",
+      "predicted": "inbound_count",
+      "candidates": [
+        "inbound_count",
+        "carton_contents",
+        "custody_history",
+        "dispatch_lane",
+        "free_stock",
+        "label_revision"
+      ],
+      "status": "selected",
+      "served_model": "laya-rl-agent",
+      "input_tokens": 245,
+      "output_tokens": 0
+    },
+    {
+      "request": "FastParcel freight went down the red chute. Is that the assigned exit for this service?",
+      "expected": "dispatch_lane",
+      "choice": "1",
+      "predicted": "dispatch_lane",
+      "candidates": [
+        "dispatch_lane",
+        "carton_contents",
+        "custody_history",
+        "free_stock",
+        "inbound_count",
+        "label_revision"
+      ],
+      "status": "selected",
+      "served_model": "laya-rl-agent",
+      "input_tokens": 246,
+      "output_tokens": 0
+    },
+    {
+      "request": "Check bag 12's last outbound divert against its booked loading point.",
+      "expected": "dispatch_lane",
+      "choice": "6",
+      "predicted": "carton_contents",
+      "candidates": [
+        "dispatch_lane",
+        "custody_history",
+        "inbound_count",
+        "free_stock",
+        "label_revision",
+        "carton_contents"
+      ],
+      "status": "selected",
+      "served_model": "laya-rl-agent",
+      "input_tokens": 240,
+      "output_tokens": 0
+    }
+  ]
+}

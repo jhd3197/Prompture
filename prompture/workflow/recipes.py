@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -258,14 +258,23 @@ class RecipeStore:
         options: dict[str, Any] | None = None,
         index: RecipeExampleIndex | None = None,
         confirm_first: bool = False,
+        decline_reasons: Sequence[str] = (),
     ) -> RecipeMatch:
         """Resolve confirmed wording locally, otherwise ask a text or decision driver to choose or abstain.
 
         With confirm_first, show only the leading candidate. Text drivers answer yes or no
         and decision drivers receive one option plus abstention. Discovery never executes a recipe.
+        Pass decline_reasons to offer several abstention descriptions. Put the general
+        fallback first. The chosen description is returned in RecipeMatch.decline_reason.
         """
         if not request.strip() or limit < 1:
             raise ValueError("A nonempty request and a positive candidate limit are required")
+        if isinstance(decline_reasons, str) or any(
+            not isinstance(reason, str) or not reason.strip() for reason in decline_reasons
+        ):
+            raise ValueError("Supply decline reasons as a sequence of nonempty descriptions")
+        if decline_reasons and confirm_first:
+            raise ValueError("Single-candidate confirmation and a custom decline menu are separate selection modes")
         try:
             graph, fingerprint = self._load(request)
         except KeyError:
@@ -276,6 +285,7 @@ class RecipeStore:
                 model,
                 options,
                 confirm_first=confirm_first,
+                decline_reasons=decline_reasons,
             )
         with self._connect() as db:
             uses = db.execute(

@@ -8,6 +8,7 @@ The two fresh sets shared the same catalog and the two arms below. Each cell in 
 
 | Model | Full catalog · correct / tokens | Example shortlist · correct / tokens | Right recipe / 42, shortlist | Correct declines / 18, shortlist |
 | --- | ---: | ---: | ---: | ---: |
+| Jev 1.14.0 | 58 / 33,863 | **58 / 27,938** | 40 | 18 |
 | Claude Sonnet 4.6 | 51 / 13,624 | **57 / 9,664** | 39 | 18 |
 | Laya typed-decisions | 33 / 10,862 | **45 / 7,417** | 39 | 6 |
 | Qwen2.5 1.5B | 29 / 11,945 | 28 / 8,751 | 10 | 18 |
@@ -21,6 +22,7 @@ The first set had 24 supported requests and 12 requests involving changes, ambig
 
 | Model | Catalog · correct / tokens | Lexical | Examples | Categories |
 | --- | ---: | ---: | ---: | ---: |
+| Jev | 35 / 20,334 | 30 / 16,793 | **35 / 16,780** | 34 / 16,782 |
 | Claude | 33 / 8,162 | 29 / 5,846 | **34 / 5,807** | 34 / 5,811 |
 | Laya | 18 / 6,531 | 16 / 4,478 | **26 / 4,461** | 23 / 4,470 |
 | Qwen | 19 / 7,182 | 17 / 5,287 | 17 / 5,265 | 15 / 5,268 |
@@ -34,6 +36,7 @@ After observing the first set, we fixed a separate set of 24 requests with 18 su
 
 | Model | Full · correct / tokens | Three examples | Confirm first | Correct recipe / 18, confirm | Correct declines / 6, confirm |
 | --- | ---: | ---: | ---: | ---: | ---: |
+| Jev | 23 / 13,529 | **23 / 11,158** | 18 / 9,567 | 12 | 6 |
 | Claude | 18 / 5,462 | **23 / 3,857** | 7 / 2,179 | 4 | 3 |
 | Laya | 15 / 4,331 | **19 / 2,956** | 17 / 2,036 | 13 | 4 |
 | Qwen | 10 / 4,763 | 11 / 3,486 | **11 / 2,118** | 8 | 3 |
@@ -42,6 +45,22 @@ After observing the first set, we fixed a separate set of 24 requests with 18 su
 On this set Qwen matched its three-choice score with **39% fewer tokens** under confirmation. Llama improved from four to eight correct, while Claude fell from 23 to seven. A single proposal removes the opportunity to rescue a poor first match. Invalid yes/no responses also counted against the score. The confirmation mode is opt-in.
 
 **What about putting Laya in front of an older model?** In an exploratory replay of these 24 requests, Laya proposed a recipe on 22. A live Qwen review of each proposal yielded **15/24 correct with 4,868 combined tokens**. Llama review yielded **10/24 with 4,906**. Both reduced false accepts on unsupported requests from four for Laya alone to zero. The extra review also rejected correct proposals. Claude with the three examples-ranked candidates still led at 23/24 and used fewer tokens than either two-model route. Counts include the measured Laya pass on every request and the review call whenever it was needed. [Qwen review](review-qwen.json) · [Llama review](review-llama.json)
+
+## Giving Jev 13 explicit intents
+
+Jev served version `jev-1.14.0` for `typesafe/jev-latest`. It made **58/60** correct decisions with either all six recipes or the three example-ranked recipes. The shortlist saved **17.5%** of Jev's reported tokens. Claude with the same shortlist got 57/60 with 9,664 tokens versus Jev's 27,938. Each provider reports its own token and billing units.
+
+We then asked whether it helps to give a classifier more ways to decline. The experimental menu contained the same six recipes plus seven other intents covering changes, multiple jobs, unclear wording, delivery prediction, site operations, commercial questions and a general fallback. All seven map to abstention. All five models saw the same requests, recipe order and option descriptions. Text drivers used a numeric reply with a 16-output-token allowance. Typed drivers used their choice API.
+
+| Model | Correct / 60 | Right recipe / 42 | Correct declines / 18 | Invalid | Input + output tokens |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| [Jev](intents-jev.json) | **60** | 42 | 18 | 0 | 36,803 + 6,666 |
+| [Claude](intents-sonnet.json) | 54 | 38 | 16 | 5 | 15,495 + 356 |
+| [Laya](intents-laya.json) | 36 | 31 | 5 | 0 | 14,642 + 0 |
+| [Qwen](intents-qwen.json) | 22 | 17 | 5 | 17 | 14,165 + 350 |
+| [Llama](intents-llama.json) | 0 | 0 | 0 | 60 | 14,076 + 960 |
+
+Compared with Jev's example shortlist, 13 options cost **15,531 extra reported tokens for two extra correct routes**. Llama used its entire 16-token reply allowance on every request, and none of those replies passed the single-number parser. The taxonomy was designed **after** inspecting the benchmark results. It was graded on recipe-or-decline decisions. The fixtures have no gold annotations for the seven individual decline reasons. The 60/60 score warrants a blind operator trial before choosing a default, particularly for requests that span departments.
 
 ## Using it in Prompture
 
@@ -59,7 +78,24 @@ choices = store.search(request, index=index, limit=3)
 match = store.discover(request, index=index, limit=3, model="claude/claude-sonnet-4-6")
 ```
 
-For a local typed selector, pass `model="laya/typed-decisions"` with the Laya extra installed. A configured Jev account can use `model="typesafe/jev-latest"`. This machine had no Jev credential, so every typed-model number above is Laya's. Use `confirm_first=True` to test a single suggestion on your own requests. To evaluate a taxonomy, pass a recipe-name-to-category mapping as `categories=` when constructing the index. Consider further validation before promoting free-text decisions to automatic execution. [Creating a store and verifying execution](../pack-checks/README.md#using-saved-recipes)
+For a local typed selector, pass `model="laya/typed-decisions"` with the Laya extra installed. For hosted Jev, set `TYPESAFE_API_KEY` in the environment or the project's ignored `.env` file. To try the 13-option configuration with six compatible recipes:
+
+```python
+reasons = (
+    "Other request outside these lookups.",
+    "Change or write warehouse data, inventory or a physical item.",
+    "Multiple distinct jobs or lookups are required.",
+    "Unclear which warehouse question the user wants answered.",
+    "Predict arrival time or future delivery performance.",
+    "Inspect facilities, environment, staffing or equipment.",
+    "Evaluate prices, contracts, finances or business performance.",
+)
+match = store.discover(request, limit=6, model="typesafe/jev-latest", decline_reasons=reasons)
+if match.status == "abstained":
+    print(match.decline_reason)
+```
+
+Use `confirm_first=True` to test a single suggestion. Grouping recipes during local retrieval uses the separate `categories=` mapping on the index. The host retains control of execution and independent verification. [Creating a store and verifying execution](../pack-checks/README.md#using-saved-recipes)
 
 ## Evidence and reproduction
 
@@ -72,11 +108,14 @@ Claude used the Messages API. The two older models ran through Ollama with their
 | First 36 | [Decisions](sonnet.json) | [Decisions](qwen.json) | [Decisions](llama.json) | [Decisions](laya.json) |
 | Second 24 | [Decisions](confirm-sonnet.json) | [Decisions](confirm-qwen.json) | [Decisions](confirm-llama.json) | [Decisions](confirm-laya.json) |
 
+Jev was run on the same frozen fixtures after its credential became available. Its row-level records include the served model and Prompture's pricing-table estimate where available. [First 36](jev.json) · [Second 24](confirm-jev.json)
+
 ```sh
 python -m scripts.benchmark_recipe_discovery --shift-holdout --model ollama/qwen2.5:1.5b --out qwen.json
 python -m scripts.benchmark_recipe_discovery --confirmation-holdout --model claude/claude-sonnet-4-6 --out confirm-sonnet.json
 python -m scripts.benchmark_recipe_discovery --confirmation-holdout --decision --model laya/typed-decisions --out confirm-laya.json
 python -m scripts.benchmark_recipe_review --proposals confirm-laya.json --model ollama/llama3.1:8b --out review-llama.json
+python -m scripts.benchmark_recipe_intents --model typesafe/jev-latest --baseline docs/benchmarks/warehouse-shift/sonnet.json docs/benchmarks/warehouse-shift/confirm-sonnet.json --out intents-jev.json
 ```
 
 **Related research.** ToolRerank found that accounting for hierarchy can improve retrieval and downstream execution on a larger tool library. AdaMenu compared retrieved example-based menus with hierarchical selection over larger label sets and found that one compact menu could reduce input tokens while retaining or improving accuracy on several datasets. These findings motivated testing retrieval recall and final selection separately. Neither study establishes an optimal number of warehouse categories. [ToolRerank, LREC-COLING 2024](https://arxiv.org/abs/2403.06551) · [AdaMenu preprint](https://arxiv.org/abs/2611.19005) · [Laya model card](https://huggingface.co/convaiinnovations/laya)

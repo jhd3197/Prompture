@@ -160,6 +160,11 @@ def main() -> None:
                         "seconds": round(perf_counter() - start, 3),
                     }
                 )
+                if args.decision:
+                    metadata = driver.last_usage
+                    rows[-1]["served_model"] = (metadata.get("raw_response") or {}).get("model", args.model)
+                    if not metadata.get("pricing_unknown", True):
+                        rows[-1]["estimated_cost_usd"] = metadata["cost"]
             summary = summarize(rows)
             report["arms"][arm] = {"summary": summary, "rows": rows}
             args.out.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")

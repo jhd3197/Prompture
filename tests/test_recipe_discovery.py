@@ -159,6 +159,29 @@ def test_confirm_only_the_leading_suggestion(store, answer, status):
     assert len(driver.prompts) == 1
 
 
+@pytest.mark.parametrize("driver", [CompletionOnly("**3**"), FixedDecision("3")])
+def test_typed_and_text_declines_are_never_recipe_calls(store, driver):
+    reasons = ("Outside the catalog", "Requires a change")
+    result = store.discover("please move the carton", model=driver, decline_reasons=reasons)
+    assert (result.status, result.recipe, result.decline_reason) == ("abstained", None, reasons[1])
+    if isinstance(driver, FixedDecision):
+        assert driver.criteria["3"] == reasons[1] and driver.criteria["0"] == reasons[0]
+    with pytest.raises(WorkflowError):
+        store.run_match(result, {}, verify=lambda _: True)
+    selected = store.discover("carrier lane?", model=FixedDecision("2"), decline_reasons=reasons)
+    assert selected.recipe.name == selected.candidates[1] and selected.decline_reason is None
+    invalid = store.discover("carrier lane?", model=FixedDecision("4"), decline_reasons=reasons)
+    assert invalid.status == "invalid" and invalid.decline_reason is None
+
+
+def test_invalid_decline_menu(store):
+    for reasons in ("a string", [" "]):
+        with pytest.raises(ValueError, match="decline reasons"):
+            store.discover("departure bay", model=CompletionOnly(), decline_reasons=reasons)
+    with pytest.raises(ValueError, match="confirmation"):
+        store.discover("carrier lane?", model=CompletionOnly(), decline_reasons=["unclear"], confirm_first=True)
+
+
 def test_invalid_request_never_runs_model(store):
     driver = CompletionOnly()
     with pytest.raises(ValueError):
