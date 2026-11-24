@@ -13,7 +13,6 @@ from uuid import uuid4
 
 from jsonschema import validate
 
-from ..agents.tool_context import rank_tool
 from ..agents.tools_schema import ToolDefinition, ToolRegistry
 from .discovery import RecipeCandidate, RecipeMatch, select_recipe
 from .engine import compile_graph
@@ -229,6 +228,9 @@ class RecipeStore:
 
     def search(self, request: str, *, limit: int = 6) -> list[RecipeCandidate]:
         """Rank compatible definitions by name, description and confirmed aliases; ties favor verified use."""
+        # tool_context imports execution, which registers workflow nodes during startup.
+        from ..agents.tool_context import rank_tool
+
         if limit < 1:
             raise ValueError("limit must be positive")
         ranked = []
