@@ -82,8 +82,48 @@ def _rejects_forced_tool(model: str) -> bool:
     return model.startswith(_NO_FORCED_TOOL)
 
 
+# Keywords Anthropic's structured output refuses ("For 'number' type, properties maximum,
+# minimum are not supported"). They are dropped from the schema and kept as words in the
+# field's description, so the model still sees the limit; the caller's own validation
+# (Pydantic, jsonschema) still enforces it on the answer.
+_UNSUPPORTED_KEYWORDS = (
+    "minimum",
+    "maximum",
+    "exclusiveMinimum",
+    "exclusiveMaximum",
+    "multipleOf",
+    "minLength",
+    "maxLength",
+    "maxItems",
+    "uniqueItems",
+    "minProperties",
+    "maxProperties",
+)
+
+
+def _strip_unsupported(node: Any) -> None:
+    if isinstance(node, list):
+        for item in node:
+            _strip_unsupported(item)
+        return
+    if not isinstance(node, dict):
+        return
+    dropped = [f"{k} {node.pop(k)}" for k in _UNSUPPORTED_KEYWORDS if k in node and not isinstance(node[k], dict)]
+    # minItems above 1 is refused too; 0 and 1 are fine.
+    if isinstance(node.get("minItems"), int) and node["minItems"] > 1:
+        dropped.append(f"minItems {node.pop('minItems')}")
+    if dropped:
+        note = "(" + ", ".join(dropped) + ")"
+        node["description"] = f"{node['description']} {note}" if node.get("description") else note
+    for value in node.values():
+        if isinstance(value, (dict, list)):
+            _strip_unsupported(value)
+
+
 def _structured_output_format(json_schema: dict[str, Any]) -> dict[str, Any]:
-    return {"type": "json_schema", "schema": prepare_strict_schema(json_schema)}
+    schema = prepare_strict_schema(json_schema)
+    _strip_unsupported(schema)
+    return {"type": "json_schema", "schema": schema}
 
 
 def _first_text(content: list[Any]) -> str:
