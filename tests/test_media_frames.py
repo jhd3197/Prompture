@@ -166,6 +166,7 @@ def test_detect_shots_can_be_cancelled(monkeypatch):
 
     class Hung:
         returncode = None
+        stdout = None
         stderr = None
 
         def __init__(self, *a, **k):
@@ -189,3 +190,11 @@ def test_detect_shots_can_be_cancelled(monkeypatch):
     with pytest.raises(fr.ShotDetectionCancelled):
         fr.detect_shots("film.mkv", end=10.0, method="ffmpeg", cancel=stop)
     assert killed
+
+
+@needs_ffmpeg
+def test_detect_shots_reports_progress(three_shots):
+    seen: list[float] = []
+    fr.detect_shots(three_shots, method="ffmpeg", progress=seen.append)
+    # a 6-second clip may finish before the first half-second tick; any tick is a position
+    assert all(0 <= t <= 6.5 for t in seen)

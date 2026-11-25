@@ -19,13 +19,15 @@ Every ffmpeg call is an argv list with a timeout (see :mod:`.ffmpeg`).
 from __future__ import annotations
 
 import base64
+import contextlib
 import io
 import json
 import os
 import re
 import subprocess
 import tempfile
-from collections.abc import Sequence
+import threading
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -301,10 +303,11 @@ def _ffmpeg_cuts(
     height: int,
     timeout: float,
     cancel: Any = None,
+    progress: Callable[[float], None] | None = None,
 ) -> list[float]:
     ffmpeg = tool_path("ffmpeg")
     with tempfile.TemporaryDirectory() as tmp:
-        argv = [ffmpeg, "-v", "error", "-nostdin"]
+        argv = [ffmpeg, "-v", "error", "-nostdin", "-nostats", "-progress", "pipe:1"]
         if start:
             argv += ["-ss", f"{start:.3f}"]
         argv += ["-i", path]
@@ -325,17 +328,40 @@ def _ffmpeg_cuts(
         proc = subprocess.Popen(  # nosec B603 - argv list, no shell
             argv,
             cwd=tmp,
-            stdout=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             env=probe_env(),
             stdin=subprocess.DEVNULL,
         )
+        # Drain both pipes on threads: ffmpeg blocks if a pipe fills up, and
+        # "-progress pipe:1" reports how far it has read (out_time_us=...).
+        seen = [0.0]
+        errs: list[bytes] = []
+
+        def read_progress() -> None:
+            for raw in iter(proc.stdout.readline, b"") if proc.stdout else []:
+                if raw.startswith(b"out_time_us="):
+                    with contextlib.suppress(ValueError):
+                        seen[0] = int(raw.split(b"=", 1)[1]) / 1_000_000
+
+        def read_errors() -> None:
+            if proc.stderr:
+                errs.append(proc.stderr.read())
+
+        readers = [
+            threading.Thread(target=read_progress, daemon=True),
+            threading.Thread(target=read_errors, daemon=True),
+        ]
+        for r in readers:
+            r.start()
         waited = 0.0
         while proc.poll() is None:
             try:
                 proc.wait(timeout=0.5)
             except subprocess.TimeoutExpired:
                 waited += 0.5
+                if progress is not None:
+                    progress(seen[0] + (start or 0.0))
                 if cancel is not None and cancel.is_set():
                     proc.kill()
                     proc.wait()
@@ -344,7 +370,9 @@ def _ffmpeg_cuts(
                     proc.kill()
                     proc.wait()
                     raise MediaProcessingError(f"shot detection timed out after {timeout:g}s") from None
-        err = proc.stderr.read() if proc.stderr else b""
+        for r in readers:
+            r.join(timeout=5)
+        err = b"".join(errs)
         if proc.returncode:
             raise MediaProcessingError("ffmpeg shot detection failed: " + err.decode("utf-8", errors="replace")[-400:])
         marks = Path(tmp) / "cuts.txt"
@@ -383,6 +411,7 @@ def detect_shots(
     height: int = 144,
     timeout: float = 3600.0,
     cancel: Any = None,
+    progress: Callable[[float], None] | None = None,
 ) -> list[Shot]:
     """Split a video (or ``[start, end]`` of it) into shots at camera cuts.
 
@@ -394,6 +423,8 @@ def detect_shots(
         height: Frames are scaled to this height before scoring (speed).
         cancel: Anything with ``is_set()`` (a ``threading.Event``); when it is
             set the ffmpeg pass stops and :class:`ShotDetectionCancelled` is raised.
+        progress: Called about twice a second with the position (seconds of
+            the video) the ffmpeg pass has reached.
     """
     src = os.fspath(path)
     use_psd = method == "pyscenedetect"
@@ -407,7 +438,7 @@ def detect_shots(
     cuts = (
         _pyscenedetect_cuts(src, start, end)
         if use_psd
-        else _ffmpeg_cuts(src, start, end, threshold, height, timeout, cancel)
+        else _ffmpeg_cuts(src, start, end, threshold, height, timeout, cancel, progress)
     )
     lo = float(start or 0.0)
     hi = end
