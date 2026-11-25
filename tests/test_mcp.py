@@ -103,6 +103,30 @@ class TestServer:
         register_tools(srv, prompture_tool_definitions(media=False))
         assert srv.registered == ["generate_text", "estimate_cost"]
 
+    def test_register_tools_passes_structured_output_opt_out(self):
+        from prompture.agents.tools_schema import tool_from_function
+
+        def picture() -> list:
+            """A tool that returns content blocks."""
+            return []
+
+        seen = {}
+
+        class _Recording(_FakeFastMCP):
+            def add_tool(self, fn, name=None, description=None, **kw):
+                seen[name] = kw
+                super().add_tool(fn, name=name, description=description)
+
+        class _Old(_FakeFastMCP):  # an mcp release without structured_output
+            pass
+
+        td = tool_from_function(picture, name="picture", metadata={"structured_output": False})
+        register_tools(_Recording("x"), [td])
+        assert seen["picture"] == {"structured_output": False}
+        old = _Old("y")
+        register_tools(old, [td])
+        assert old.registered == ["picture"]
+
 
 class _FakeTool:
     def __init__(self, name, description, schema):

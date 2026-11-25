@@ -98,15 +98,88 @@ def summarize_media_tool(model: str | None = None) -> ToolDefinition:
     return tool_from_function(summarize_media, name="summarize_media", metadata={"category": "media"})
 
 
-def media_understanding_tools(model: str | None = None) -> list[ToolDefinition]:
-    """Both tools, for ``ToolRegistry`` / ``tools=[...]``."""
-    return [transcribe_media_tool(), summarize_media_tool(model)]
+def contact_sheet_media(
+    path: str,
+    start: float,
+    end: float,
+    cols: int = 3,
+    rows: int = 2,
+    out_dir: str = "",
+) -> str:
+    """Make a contact sheet: frames from a local video tiled into one labelled JPEG.
+
+    Each tile carries its number and timestamp, so you can look at the image
+    and answer with times. Use it to "watch" a stretch of video cheaply.
+
+    Args:
+        path: Local video file.
+        start: Start of the range in seconds.
+        end: End of the range in seconds.
+        cols: Tiles per row.
+        rows: Rows of tiles.
+        out_dir: Folder for the JPEG (default: the system temp folder).
+
+    Returns:
+        The saved JPEG path and the time of each tile, or a line starting with "Error:".
+    """
+    import tempfile
+    from pathlib import Path
+
+    from .frames import contact_sheet
+
+    try:
+        sheet = contact_sheet(path, start=float(start), end=float(end), cols=int(cols), rows=int(rows))
+        folder = Path(out_dir or tempfile.gettempdir())
+        folder.mkdir(parents=True, exist_ok=True)
+        out = sheet.save(folder / f"contact-{int(start * 1000)}-{int(end * 1000)}.jpg")
+        lines = [f"Contact sheet saved: {out}", f"Tiles: {sheet.legend()}"]
+        lines += [f"Note: {n}" for n in sheet.notes]
+        return "\n".join(lines)
+    except Exception as exc:
+        return _error(exc)
+
+
+def detect_shots_media(path: str, start: float = 0.0, end: float = 0.0) -> str:
+    """List the camera cuts (shots) of a local video, optionally inside a range.
+
+    Args:
+        path: Local video file.
+        start: Start of the range in seconds (0 = beginning).
+        end: End of the range in seconds (0 = the end of the video).
+
+    Returns:
+        One shot per line as "start-end" in seconds, or a line starting with "Error:".
+    """
+    from .frames import detect_shots
+
+    try:
+        shots = detect_shots(path, start=float(start) or None, end=float(end) or None)
+        return "\n".join(f"{s.start:.2f}-{s.end:.2f}" for s in shots) or "No shots found."
+    except Exception as exc:
+        return _error(exc)
+
+
+def video_understanding_tools() -> list[ToolDefinition]:
+    """``contact_sheet`` and ``detect_shots`` as tools, for agents that watch video."""
+    return [
+        tool_from_function(contact_sheet_media, name="contact_sheet", metadata={"category": "media"}),
+        tool_from_function(detect_shots_media, name="detect_shots", metadata={"category": "media"}),
+    ]
+
+
+def media_understanding_tools(model: str | None = None, *, video: bool = False) -> list[ToolDefinition]:
+    """The transcription tools (plus the video tools when *video* is set)."""
+    tools = [transcribe_media_tool(), summarize_media_tool(model)]
+    return tools + video_understanding_tools() if video else tools
 
 
 __all__ = [
+    "contact_sheet_media",
+    "detect_shots_media",
     "media_understanding_tools",
     "summarize_media",
     "summarize_media_tool",
     "transcribe_media",
     "transcribe_media_tool",
+    "video_understanding_tools",
 ]

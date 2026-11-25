@@ -37,9 +37,23 @@ def register_tools(server: Any, tools: Any = None) -> Any:
     *tools* may be a list of :class:`ToolDefinition`, a ``ToolRegistry``, or ``None``
     (Prompture's default capability set). Each tool's underlying function is
     registered — FastMCP derives the input schema from its type hints + docstring.
+    ``metadata={"structured_output": False}`` on a tool turns off structured
+    output for it (tools that return images or a list of content blocks).
     """
     for td in _coerce_tool_definitions(tools):
-        server.add_tool(td.function, name=td.name, description=td.description)
+        kwargs: dict[str, Any] = {}
+        # A tool that returns images or other content blocks sets
+        # metadata["structured_output"] = False; otherwise the MCP SDK tries
+        # to serialize its annotated return type as JSON and fails.
+        if td.metadata.get("structured_output") is not None:
+            kwargs["structured_output"] = bool(td.metadata["structured_output"])
+        try:
+            server.add_tool(td.function, name=td.name, description=td.description, **kwargs)
+        except TypeError:
+            if not kwargs:
+                raise
+            # mcp releases before structured output take no such argument
+            server.add_tool(td.function, name=td.name, description=td.description)
     return server
 
 

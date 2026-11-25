@@ -38,7 +38,7 @@ mcp = ["mcp>=1.0"]
 # Capability layer: richer web readers (feeds, YouTube transcripts, article
 # extraction) and video/podcast audio download for transcription.
 web = ["feedparser>=6.0", "youtube-transcript-api>=1.0", "trafilatura>=1.8"]
-media = ["yt-dlp>=2024.8.6"]
+media = ["yt-dlp>=2024.8.6", "pillow>=10.1"]
 # Chess harness (prompture.games.chess): legal-move menus and motif tags.
 chess = ["chess>=1.10"]
 all = [
