@@ -28,6 +28,7 @@ import tempfile
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from ...capabilities.probe import probe_env
 from ..image import ImageContent
@@ -288,8 +289,18 @@ _PTS = re.compile(r"pts_time:([\d.]+)")
 _SCORE = re.compile(r"lavfi\.scene_score=([\d.]+)")
 
 
+class ShotDetectionCancelled(MediaProcessingError):
+    """``cancel`` was set while shot detection ran."""
+
+
 def _ffmpeg_cuts(
-    path: str, start: float | None, end: float | None, threshold: float, height: int, timeout: float
+    path: str,
+    start: float | None,
+    end: float | None,
+    threshold: float,
+    height: int,
+    timeout: float,
+    cancel: Any = None,
 ) -> list[float]:
     ffmpeg = tool_path("ffmpeg")
     with tempfile.TemporaryDirectory() as tmp:
@@ -311,21 +322,31 @@ def _ffmpeg_cuts(
             "null",
             "-",
         ]
-        try:
-            proc = subprocess.run(  # nosec B603 - argv list, no shell
-                argv,
-                cwd=tmp,
-                capture_output=True,
-                timeout=timeout,
-                env=probe_env(),
-                stdin=subprocess.DEVNULL,
-                check=False,
-            )
-        except subprocess.TimeoutExpired as exc:
-            raise MediaProcessingError(f"shot detection timed out after {timeout:g}s") from exc
+        proc = subprocess.Popen(  # nosec B603 - argv list, no shell
+            argv,
+            cwd=tmp,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            env=probe_env(),
+            stdin=subprocess.DEVNULL,
+        )
+        waited = 0.0
+        while proc.poll() is None:
+            try:
+                proc.wait(timeout=0.5)
+            except subprocess.TimeoutExpired:
+                waited += 0.5
+                if cancel is not None and cancel.is_set():
+                    proc.kill()
+                    proc.wait()
+                    raise ShotDetectionCancelled("shot detection was cancelled") from None
+                if waited >= timeout:
+                    proc.kill()
+                    proc.wait()
+                    raise MediaProcessingError(f"shot detection timed out after {timeout:g}s") from None
+        err = proc.stderr.read() if proc.stderr else b""
         if proc.returncode:
-            err = (proc.stderr or b"").decode("utf-8", errors="replace")[-400:]
-            raise MediaProcessingError(f"ffmpeg shot detection failed: {err}")
+            raise MediaProcessingError("ffmpeg shot detection failed: " + err.decode("utf-8", errors="replace")[-400:])
         marks = Path(tmp) / "cuts.txt"
         text = marks.read_text(encoding="utf-8", errors="replace") if marks.is_file() else ""
     cuts: list[float] = []
@@ -361,6 +382,7 @@ def detect_shots(
     method: str = "auto",
     height: int = 144,
     timeout: float = 3600.0,
+    cancel: Any = None,
 ) -> list[Shot]:
     """Split a video (or ``[start, end]`` of it) into shots at camera cuts.
 
@@ -370,6 +392,8 @@ def detect_shots(
         threshold: ffmpeg scene score that counts as a cut (0..1).
         min_shot: Cuts closer than this to the previous one are dropped.
         height: Frames are scaled to this height before scoring (speed).
+        cancel: Anything with ``is_set()`` (a ``threading.Event``); when it is
+            set the ffmpeg pass stops and :class:`ShotDetectionCancelled` is raised.
     """
     src = os.fspath(path)
     use_psd = method == "pyscenedetect"
@@ -381,7 +405,9 @@ def detect_shots(
         except ImportError:
             use_psd = False
     cuts = (
-        _pyscenedetect_cuts(src, start, end) if use_psd else _ffmpeg_cuts(src, start, end, threshold, height, timeout)
+        _pyscenedetect_cuts(src, start, end)
+        if use_psd
+        else _ffmpeg_cuts(src, start, end, threshold, height, timeout, cancel)
     )
     lo = float(start or 0.0)
     hi = end
@@ -471,6 +497,7 @@ __all__ = [
     "SCENE_THRESHOLD",
     "ContactSheet",
     "Shot",
+    "ShotDetectionCancelled",
     "VideoInfo",
     "contact_sheet",
     "detect_shots",

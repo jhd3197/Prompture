@@ -157,3 +157,35 @@ def test_video_clip_is_a_small_mp4(three_shots):
     assert clip.duration_seconds == 2.0
     data = base64.b64decode(clip.data)
     assert data[4:8] == b"ftyp"
+
+
+def test_detect_shots_can_be_cancelled(monkeypatch):
+    import threading
+
+    killed = []
+
+    class Hung:
+        returncode = None
+        stderr = None
+
+        def __init__(self, *a, **k):
+            pass
+
+        def poll(self):
+            return None if not killed else -9
+
+        def wait(self, timeout=None):
+            if killed:
+                return -9
+            raise subprocess.TimeoutExpired("ffmpeg", timeout)
+
+        def kill(self):
+            killed.append(True)
+
+    monkeypatch.setattr(fr, "tool_path", lambda name: name)
+    monkeypatch.setattr(fr.subprocess, "Popen", Hung)
+    stop = threading.Event()
+    stop.set()
+    with pytest.raises(fr.ShotDetectionCancelled):
+        fr.detect_shots("film.mkv", end=10.0, method="ffmpeg", cancel=stop)
+    assert killed
