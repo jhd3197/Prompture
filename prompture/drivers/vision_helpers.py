@@ -111,7 +111,9 @@ def _prepare_google_vision_messages(messages: list[dict[str, Any]]) -> list[dict
         for block in content:
             if isinstance(block, dict) and block.get("type") == "text":
                 parts.append(block["text"])
-            elif isinstance(block, dict) and block.get("type") == "image":
+            elif isinstance(block, dict) and block.get("type") in ("image", "video"):
+                # Gemini takes video the same way as images: inline bytes
+                # with a video/* MIME type (VideoContent from media.video).
                 source = block["source"]
                 parts.append(
                     {

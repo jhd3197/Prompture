@@ -15,6 +15,9 @@ Quick start::
   (via a healthy ``yt-dlp``); ffmpeg downmix + 10-minute chunking; stitched
   timestamps; hard size / duration caps; provider ``auto`` = Groq → OpenAI →
   ElevenLabs, with a second provider only on ``allow_provider_fallback=True``.
+* :func:`contact_sheet` / :func:`detect_shots` / :func:`video_clip` — let a
+  vision model "watch" a video: labelled frame grids, camera cuts, small clips
+  (see :mod:`.frames`).
 * :func:`summarize_media` — chunked map-reduce summary with timestamped key points.
 * :func:`transcribe_media_tool` / :func:`summarize_media_tool` — agent tools.
 * ``prompture.media.understand.health`` registers ``transcription`` and
@@ -32,9 +35,27 @@ from .errors import (
     TranscriptionError,
     TranscriptionUnavailableError,
 )
+from .frames import (
+    ContactSheet,
+    Shot,
+    VideoInfo,
+    contact_sheet,
+    detect_shots,
+    extract_frame,
+    extract_frames,
+    probe_video,
+    sample_times,
+    snap_to_shots,
+    video_clip,
+)
 from .groq_stt import GroqSTTDriver, ensure_groq_stt_registered
 from .summarize import KeyPoint, MediaSummary, summarize_media, summarize_transcript
-from .tools import media_understanding_tools, summarize_media_tool, transcribe_media_tool
+from .tools import (
+    media_understanding_tools,
+    summarize_media_tool,
+    transcribe_media_tool,
+    video_understanding_tools,
+)
 from .transcribe import (
     STT_PROVIDERS,
     STTBackend,
@@ -49,6 +70,7 @@ from .transcribe import (
 
 __all__ = [
     "STT_PROVIDERS",
+    "ContactSheet",
     "GroqSTTDriver",
     "KeyPoint",
     "MediaProcessingError",
@@ -58,19 +80,30 @@ __all__ = [
     "MediaToolMissingError",
     "MediaUnderstandingError",
     "STTBackend",
+    "Shot",
     "Transcript",
     "TranscriptSegment",
     "TranscriptionError",
     "TranscriptionUnavailableError",
+    "VideoInfo",
     "active_stt_provider",
+    "contact_sheet",
+    "detect_shots",
     "ensure_groq_stt_registered",
+    "extract_frame",
+    "extract_frames",
     "format_timestamp",
     "media_understanding_tools",
     "plan_stt_backends",
+    "probe_video",
+    "sample_times",
+    "snap_to_shots",
     "summarize_media",
     "summarize_media_tool",
     "summarize_transcript",
     "transcribe",
     "transcribe_media_tool",
     "transcription_available",
+    "video_clip",
+    "video_understanding_tools",
 ]
