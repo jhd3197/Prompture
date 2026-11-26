@@ -306,7 +306,9 @@ def _ffmpeg_cuts(
     progress: Callable[[float], None] | None = None,
 ) -> list[float]:
     ffmpeg = tool_path("ffmpeg")
-    with tempfile.TemporaryDirectory() as tmp:
+    # ignore_cleanup_errors: on Windows a scanner or a slow-to-exit ffmpeg can still hold
+    # cuts.txt when the folder goes; the cuts are already read, so that must not fail.
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         argv = [ffmpeg, "-v", "error", "-nostdin", "-nostats", "-progress", "pipe:1"]
         if start:
             argv += ["-ss", f"{start:.3f}"]
@@ -488,7 +490,7 @@ def video_clip(
     if end <= start:
         raise ValueError("end must be after start")
     ffmpeg = tool_path("ffmpeg")
-    with tempfile.TemporaryDirectory() as tmp:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         out = Path(tmp) / "clip.mp4"
         argv = [
             ffmpeg,
