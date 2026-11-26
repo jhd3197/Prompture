@@ -355,21 +355,25 @@ def _ffmpeg_cuts(
         for r in readers:
             r.start()
         waited = 0.0
-        while proc.poll() is None:
-            try:
-                proc.wait(timeout=0.5)
-            except subprocess.TimeoutExpired:
-                waited += 0.5
-                if progress is not None:
-                    progress(seen[0] + (start or 0.0))
-                if cancel is not None and cancel.is_set():
-                    proc.kill()
-                    proc.wait()
-                    raise ShotDetectionCancelled("shot detection was cancelled") from None
-                if waited >= timeout:
-                    proc.kill()
-                    proc.wait()
-                    raise MediaProcessingError(f"shot detection timed out after {timeout:g}s") from None
+        try:
+            while proc.poll() is None:
+                try:
+                    proc.wait(timeout=0.5)
+                except subprocess.TimeoutExpired:
+                    waited += 0.5
+                    if progress is not None:
+                        progress(seen[0] + (start or 0.0))
+                    if cancel is not None and cancel.is_set():
+                        raise ShotDetectionCancelled("shot detection was cancelled") from None
+                    if waited >= timeout:
+                        raise MediaProcessingError(f"shot detection timed out after {timeout:g}s") from None
+        finally:
+            # Whatever stops the wait (cancel, timeout, or an exception from the
+            # progress callback), ffmpeg must be gone before the temp folder is
+            # removed: on Windows it still holds cuts.txt open otherwise.
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait()
         for r in readers:
             r.join(timeout=5)
         err = b"".join(errs)
