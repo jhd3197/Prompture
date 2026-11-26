@@ -43,7 +43,7 @@ def test_several_pictures_are_sent_as_a_list():
 
 def test_too_many_or_no_pictures_is_an_error():
     d = _driver()
-    with pytest.raises(ValueError, match="at most 16"):
+    with pytest.raises(ValueError, match="at most 16 image"):
         d.edit_image([PNG] * 17, "x", {})
     with pytest.raises(ValueError, match="at least one"):
         d.edit_image([], "x", {})

@@ -16,7 +16,7 @@ except ImportError:
 
 from ..infra.cost_mixin import ImageCostMixin
 from ..media.image import image_from_base64, image_from_bytes
-from .img_gen_base import ImageGenDriver
+from .img_gen_base import ImageGenDriver, edit_images_list
 
 logger = logging.getLogger(__name__)
 
@@ -280,11 +280,7 @@ class OpenAIImageGenDriver(ImageCostMixin, ImageGenDriver):
         if self.client is None:
             raise RuntimeError("openai package (>=1.0.0) is not installed")
 
-        images = [image] if isinstance(image, (bytes, bytearray)) else list(image)
-        if not images:
-            raise ValueError("edit_image needs at least one image")
-        if len(images) > self.max_edit_images:
-            raise ValueError(f"edit_image takes at most {self.max_edit_images} images, got {len(images)}")
+        images = edit_images_list(image, self.max_edit_images)
 
         default_model = self.model if str(self.model).startswith("gpt-image") else "gpt-image-1"
         model = options.get("model") or default_model

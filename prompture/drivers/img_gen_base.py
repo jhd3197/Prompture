@@ -4,12 +4,27 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Sequence
 from typing import Any
 
 from ..infra.callbacks import DriverCallbacks
 from ._media_usage import record_media_usage
 
 logger = logging.getLogger("prompture.img_gen_driver")
+
+
+def edit_images_list(image: bytes | Sequence[bytes], max_edit_images: int) -> list[bytes]:
+    """Turn ``edit_image``'s ``image`` argument into a list of pictures.
+
+    Accepts one picture or a sequence of them, and raises ``ValueError`` when
+    there are none or more than the driver's ``max_edit_images``.
+    """
+    images = [bytes(image)] if isinstance(image, (bytes, bytearray)) else list(image)
+    if not images:
+        raise ValueError("edit_image needs at least one image")
+    if len(images) > max_edit_images:
+        raise ValueError(f"edit_image takes at most {max_edit_images} image(s), got {len(images)}")
+    return images
 
 
 class ImageGenDriver:
@@ -63,7 +78,7 @@ class ImageGenDriver:
 
     def edit_image(
         self,
-        image: bytes,
+        image: bytes | Sequence[bytes],
         prompt: str,
         options: dict[str, Any],
         *,
@@ -72,8 +87,9 @@ class ImageGenDriver:
         """Edit an existing image with a text instruction (image-to-image).
 
         Args:
-            image: Source image bytes (PNG/JPEG), or a sequence of them on a
-                driver whose ``max_edit_images`` is above one.
+            image: Source image bytes (PNG/JPEG), or a sequence of them. A
+                sequence may hold up to ``max_edit_images`` pictures; a driver
+                that edits one picture takes a one-item list too.
             prompt: Instruction describing the desired change.
             options: Provider-specific options (size, n, model, etc.).
             mask: Optional PNG mask; transparent pixels mark the region to edit

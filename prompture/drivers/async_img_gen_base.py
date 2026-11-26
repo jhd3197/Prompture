@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Sequence
 from typing import Any
 
 from ..infra.callbacks import DriverCallbacks
@@ -23,6 +24,11 @@ class AsyncImageGenDriver:
     supported_sizes: list[str] = []
     max_images: int = 10
 
+    # Editing capabilities (default: not supported), as on ImageGenDriver.
+    supports_edit: bool = False
+    # How many input pictures one edit_image call takes (several = a combining edit).
+    max_edit_images: int = 1
+
     # Whether the driver honors a native ``negative_prompt`` option (see
     # ``prompture.imaging.compose_negative_prompt`` for the cross-provider route).
     supports_negative_prompt: bool = False
@@ -40,6 +46,23 @@ class AsyncImageGenDriver:
             Dict with ``images`` and ``meta`` keys.
         """
         raise NotImplementedError
+
+    async def edit_image(
+        self,
+        image: bytes | Sequence[bytes],
+        prompt: str,
+        options: dict[str, Any],
+        *,
+        mask: bytes | None = None,
+    ) -> dict[str, Any]:
+        """Edit an existing image with a text instruction (async).
+
+        Same arguments and result as :meth:`ImageGenDriver.edit_image`: ``image``
+        is one picture or a sequence of up to ``max_edit_images`` pictures.
+        """
+        raise NotImplementedError(
+            f"{self.__class__.__name__} does not support image editing"
+        )
 
     # ------------------------------------------------------------------
     # Hook-aware wrapper

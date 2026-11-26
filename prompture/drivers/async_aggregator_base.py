@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import time
+from collections.abc import Sequence
 from typing import Any
 
 import httpx
@@ -16,6 +17,7 @@ from ..media.video import video_from_url
 from .aggregator_base import extract_media_urls
 from .async_img_gen_base import AsyncImageGenDriver
 from .async_video_gen_base import AsyncVideoGenDriver
+from .img_gen_base import edit_images_list
 from .job_runner import async_poll_job, normalize_status
 from .lipsync_base import AsyncLipsyncDriver
 from .music_base import AsyncMusicGenDriver
@@ -343,13 +345,19 @@ class AsyncAggregatorImageDriver(AsyncAggregatorClient, AsyncImageGenDriver):
         return await self._run_image(slug, self.build_image_payload(prompt, options), options)
 
     async def edit_image(
-        self, image: bytes, prompt: str, options: dict[str, Any], *, mask: bytes | None = None
+        self,
+        image: bytes | Sequence[bytes],
+        prompt: str,
+        options: dict[str, Any],
+        *,
+        mask: bytes | None = None,
     ) -> dict[str, Any]:
+        (source,) = edit_images_list(image, self.max_edit_images)
         self._require_key()
         slug = options.get("model", self.model)
         payload = self.build_image_payload(prompt, options)
         if "image_url" not in payload:
-            payload["image_url"] = await self.upload_file(image, filename="input.png")
+            payload["image_url"] = await self.upload_file(source, filename="input.png")
         if mask is not None:
             payload["mask_url"] = await self.upload_file(mask, filename="mask.png")
         return await self._run_image(slug, payload, options)

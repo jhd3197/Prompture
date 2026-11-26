@@ -22,6 +22,7 @@ from __future__ import annotations
 import logging
 import os
 import time
+from collections.abc import Sequence
 from typing import Any
 
 import httpx
@@ -30,7 +31,7 @@ from ..jobs import JobHandle, JobResult, JobStatus, MediaAsset
 from ..media.audio import audio_from_url
 from ..media.image import image_from_url
 from ..media.video import video_from_url
-from .img_gen_base import ImageGenDriver
+from .img_gen_base import ImageGenDriver, edit_images_list
 from .job_runner import normalize_status, poll_job
 from .lipsync_base import LipsyncDriver
 from .music_base import MusicGenDriver
@@ -402,13 +403,19 @@ class AggregatorImageDriver(AggregatorClient, ImageGenDriver):
         return self._run_image(slug, self.build_image_payload(prompt, options), options)
 
     def edit_image(
-        self, image: bytes, prompt: str, options: dict[str, Any], *, mask: bytes | None = None
+        self,
+        image: bytes | Sequence[bytes],
+        prompt: str,
+        options: dict[str, Any],
+        *,
+        mask: bytes | None = None,
     ) -> dict[str, Any]:
+        (source,) = edit_images_list(image, self.max_edit_images)
         self._require_key()
         slug = options.get("model", self.model)
         payload = self.build_image_payload(prompt, options)
         if "image_url" not in payload:
-            payload["image_url"] = self.upload_file(image, filename="input.png")
+            payload["image_url"] = self.upload_file(source, filename="input.png")
         if mask is not None:
             payload["mask_url"] = self.upload_file(mask, filename="mask.png")
         return self._run_image(slug, payload, options)
