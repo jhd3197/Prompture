@@ -198,3 +198,63 @@ def test_detect_shots_reports_progress(three_shots):
     fr.detect_shots(three_shots, method="ffmpeg", progress=seen.append)
     # a 6-second clip may finish before the first half-second tick; any tick is a position
     assert all(0 <= t <= 6.5 for t in seen)
+
+
+@needs_ffmpeg
+def test_detect_shots_in_pieces_finds_the_same_cuts(three_shots, monkeypatch):
+    monkeypatch.setattr(fr, "MIN_PIECE", 1.0)  # the test clip is 6 s; real pieces are minutes
+    whole = fr.detect_shots(three_shots, method="ffmpeg")
+    seen: list[float] = []
+    pieces = fr.detect_shots(three_shots, method="ffmpeg", workers=3, progress=seen.append)
+    assert [(round(s.start, 1), round(s.end, 1)) for s in pieces] == \
+        [(round(s.start, 1), round(s.end, 1)) for s in whole]
+    assert all(0 <= t <= 6.5 for t in seen)
+
+
+def test_shot_timeout_grows_with_the_video(monkeypatch):
+    got = {}
+
+    def fake(path, start, end, threshold, height, timeout, cancel=None, progress=None, hwaccel=None):
+        got["timeout"] = timeout
+        return []
+
+    monkeypatch.setattr(fr, "_ffmpeg_cuts", fake)
+    monkeypatch.setattr(fr, "probe_video", lambda p: fr.VideoInfo(duration=11194.5, width=3840, height=1608))
+    fr.detect_shots("film.mkv", method="ffmpeg")
+    assert got["timeout"] == pytest.approx(6 * 11194.5)  # a 3-hour film is not cut off after an hour
+    fr.detect_shots("film.mkv", method="ffmpeg", start=0, end=60)
+    assert got["timeout"] == fr.MIN_SHOT_TIMEOUT
+    fr.detect_shots("film.mkv", method="ffmpeg", timeout=10)
+    assert got["timeout"] == 10
+
+
+def test_a_failed_hardware_pass_runs_again_in_software(monkeypatch):
+    calls = []
+
+    def fake(path, start, end, threshold, height, timeout, cancel=None, progress=None, hwaccel=None):
+        calls.append(hwaccel)
+        if hwaccel:
+            raise fr.MediaProcessingError("no such device")
+        return [2.0]
+
+    monkeypatch.setattr(fr, "_ffmpeg_cuts", fake)
+    shots = fr.detect_shots("film.mkv", method="ffmpeg", end=6.0, hwaccel="cuda")
+    assert calls == ["cuda", None] and [s.start for s in shots] == [0.0, 2.0]
+
+
+def test_a_failing_piece_stops_the_others(monkeypatch):
+    def fake(path, start, end, threshold, height, timeout, cancel=None, progress=None, hwaccel=None):
+        if start == 0.0:
+            raise fr.MediaProcessingError("broken")
+        import time
+
+        for _ in range(50):
+            if cancel.is_set():
+                raise fr.ShotDetectionCancelled("stopped")
+            time.sleep(0.02)
+        return []
+
+    monkeypatch.setattr(fr, "_ffmpeg_cuts", fake)
+    monkeypatch.setattr(fr, "probe_video", lambda p: fr.VideoInfo(duration=600.0, width=1, height=1))
+    with pytest.raises(fr.MediaProcessingError, match="broken"):
+        fr.detect_shots("film.mkv", method="ffmpeg", workers=4)

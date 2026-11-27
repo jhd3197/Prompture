@@ -28,6 +28,7 @@ import subprocess
 import tempfile
 import threading
 from collections.abc import Callable, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -40,6 +41,13 @@ from .ffmpeg import run_media_command, tool_path
 
 #: ffmpeg scene score above which a frame starts a new shot.
 SCENE_THRESHOLD = 0.32
+# Shot detection reads the whole video: without an explicit timeout it may take this
+# many times the video's length (a 4K AV1 film can decode slower than real time).
+SHOT_TIME_FACTOR = 6.0
+MIN_SHOT_TIMEOUT = 3600.0
+# Parallel pieces overlap by this much, so a cut on a piece's edge is seen whole.
+PIECE_OVERLAP = 2.0
+MIN_PIECE = 120.0  # seconds: shorter pieces are not worth a process of their own
 #: Cuts closer together than this (seconds) are flashes, merged into one shot.
 MIN_SHOT = 0.4
 #: Seconds allowed per extracted frame (4K HEVC seeks can be slow).
@@ -304,12 +312,15 @@ def _ffmpeg_cuts(
     timeout: float,
     cancel: Any = None,
     progress: Callable[[float], None] | None = None,
+    hwaccel: str | None = None,
 ) -> list[float]:
     ffmpeg = tool_path("ffmpeg")
     # ignore_cleanup_errors: on Windows a scanner or a slow-to-exit ffmpeg can still hold
     # cuts.txt when the folder goes; the cuts are already read, so that must not fail.
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         argv = [ffmpeg, "-v", "error", "-nostdin", "-nostats", "-progress", "pipe:1"]
+        if hwaccel:
+            argv += ["-hwaccel", hwaccel]
         if start:
             argv += ["-ss", f"{start:.3f}"]
         argv += ["-i", path]
@@ -415,9 +426,11 @@ def detect_shots(
     min_shot: float = MIN_SHOT,
     method: str = "auto",
     height: int = 144,
-    timeout: float = 3600.0,
+    timeout: float | None = None,
     cancel: Any = None,
     progress: Callable[[float], None] | None = None,
+    workers: int = 1,
+    hwaccel: str | None = None,
 ) -> list[Shot]:
     """Split a video (or ``[start, end]`` of it) into shots at camera cuts.
 
@@ -427,10 +440,18 @@ def detect_shots(
         threshold: ffmpeg scene score that counts as a cut (0..1).
         min_shot: Cuts closer than this to the previous one are dropped.
         height: Frames are scaled to this height before scoring (speed).
+        timeout: Seconds before giving up. None: an hour, or six times the length of
+            what is read when that is longer (slow codecs decode below real time).
         cancel: Anything with ``is_set()`` (a ``threading.Event``); when it is
             set the ffmpeg pass stops and :class:`ShotDetectionCancelled` is raised.
         progress: Called about twice a second with the position (seconds of
-            the video) the ffmpeg pass has reached.
+            the video) the ffmpeg pass has reached; with several workers, the
+            start plus everything read so far.
+        workers: ffmpeg passes run side by side, each on its own piece of the
+            video (pieces overlap a little, so no cut is lost on an edge). Worth it
+            when one decoder can't use every core, as with AV1 through libaom.
+        hwaccel: An ffmpeg ``-hwaccel`` method ("auto", "cuda", "d3d11va"...) to
+            decode on the GPU. A pass that fails with it runs again without.
     """
     src = os.fspath(path)
     use_psd = method == "pyscenedetect"
@@ -441,15 +462,20 @@ def detect_shots(
             use_psd = True
         except ImportError:
             use_psd = False
-    cuts = (
-        _pyscenedetect_cuts(src, start, end)
-        if use_psd
-        else _ffmpeg_cuts(src, start, end, threshold, height, timeout, cancel, progress)
-    )
     lo = float(start or 0.0)
     hi = end
-    if hi is None:
+    if hi is None:  # the timeout and the pieces need the length
         hi = probe_video(src).duration
+    span = (hi - lo) if hi is not None else None
+    if timeout is None:
+        timeout = max(MIN_SHOT_TIMEOUT, SHOT_TIME_FACTOR * span) if span else MIN_SHOT_TIMEOUT
+    if use_psd:
+        cuts = _pyscenedetect_cuts(src, start, end)
+    elif workers > 1 and span and span >= 2 * MIN_PIECE:
+        cuts = _ffmpeg_cuts_pieces(src, lo, lo + span, threshold, height, timeout, cancel, progress,
+                                   min(int(workers), int(span // MIN_PIECE)), hwaccel)
+    else:
+        cuts = _ffmpeg_cuts_retry(src, start, end, threshold, height, timeout, cancel, progress, hwaccel)
     if hi is None:
         hi = (max(cuts) + 1.0) if cuts else lo + 1.0
     bounds = [lo]
@@ -458,6 +484,95 @@ def detect_shots(
             bounds.append(round(t, 3))
     ends = [*bounds[1:], round(float(hi), 3)]
     return [Shot(a, b) for a, b in zip(bounds, ends, strict=True) if b > a]
+
+
+def _ffmpeg_cuts_retry(
+    path: str,
+    start: float | None,
+    end: float | None,
+    threshold: float,
+    height: int,
+    timeout: float,
+    cancel: Any,
+    progress: Callable[[float], None] | None,
+    hwaccel: str | None,
+) -> list[float]:
+    """One ffmpeg pass; with *hwaccel*, a failed pass runs again in software."""
+    if hwaccel:
+        try:
+            return _ffmpeg_cuts(path, start, end, threshold, height, timeout, cancel, progress, hwaccel)
+        except ShotDetectionCancelled:
+            raise
+        except MediaProcessingError:
+            pass
+    return _ffmpeg_cuts(path, start, end, threshold, height, timeout, cancel, progress)
+
+
+def _ffmpeg_cuts_pieces(
+    path: str,
+    lo: float,
+    hi: float,
+    threshold: float,
+    height: int,
+    timeout: float,
+    cancel: Any,
+    progress: Callable[[float], None] | None,
+    workers: int,
+    hwaccel: str | None,
+) -> list[float]:
+    """Cuts in [lo, hi] from *workers* ffmpeg passes run side by side, one per piece.
+    Each piece but the first starts PIECE_OVERLAP early; a cut found twice in an
+    overlap is kept once."""
+    size = (hi - lo) / workers
+    pieces = [(lo + i * size, hi if i == workers - 1 else lo + (i + 1) * size) for i in range(workers)]
+    read = [0.0] * workers
+    lock = threading.Lock()
+    stop = threading.Event()
+
+    class _Either:
+        """Stop every piece when the caller cancels or one piece fails."""
+
+        def is_set(self) -> bool:
+            return stop.is_set() or (cancel is not None and cancel.is_set())
+
+    either = _Either()
+
+    def run(i: int) -> list[float]:
+        a, b = pieces[i]
+        a0 = a if i == 0 else max(lo, a - PIECE_OVERLAP)
+
+        def seen(pos: float) -> None:
+            with lock:
+                read[i] = max(0.0, min(pos, b) - a)
+                total = sum(read)
+            if progress is not None:
+                progress(lo + total)
+
+        try:
+            return _ffmpeg_cuts_retry(path, a0, b, threshold, height, timeout, either, seen, hwaccel)
+        except BaseException:
+            stop.set()
+            raise
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = [pool.submit(run, i) for i in range(workers)]
+        results = []
+        error: BaseException | None = None
+        for f in futures:
+            try:
+                results.append(f.result())
+            except BaseException as exc:  # the first real error wins over the stops it caused
+                if error is None or isinstance(error, ShotDetectionCancelled):
+                    error = exc
+    if cancel is not None and cancel.is_set():
+        raise ShotDetectionCancelled("shot detection was cancelled")
+    if error is not None:
+        raise error
+    merged: list[float] = []
+    for t in sorted(t for r in results for t in r):
+        if not merged or t - merged[-1] > 0.25:
+            merged.append(t)
+    return merged
 
 
 def snap_to_shots(t: float, shots: Sequence[Shot], *, max_move: float = 3.0) -> float:
@@ -531,6 +646,7 @@ def video_clip(
 
 __all__ = [
     "MIN_SHOT",
+    "PIECE_OVERLAP",
     "SCENE_THRESHOLD",
     "ContactSheet",
     "Shot",
